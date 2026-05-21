@@ -74,10 +74,14 @@ QM-Dev/
 
 ## Tauri CLI: pointing at `backend/`
 
-Tauri's default is `src-tauri/`. We use `frontend/package.json`'s `tauri`
-script with `TAURI_DIR=../backend tauri` so the CLI relocates. The
-`backend/tauri.conf.json` references the frontend via
+Tauri 2's CLI discovers the project by searching subfolders of cwd
+for `tauri.conf.json`. From `frontend/` it can't see `backend/`, so
+`frontend/package.json`'s `tauri` script is `"cd .. && tauri"` —
+shifting cwd to the QM-Dev root where `backend/` is a subfolder.
+
+`backend/tauri.conf.json` then references the frontend via
 `pnpm --dir=../frontend dev` / `build` and `frontendDist: ../frontend/dist`.
+Both directions of the cross-folder hop are explicit.
 
 ## When to add a new top-level folder
 

@@ -7,7 +7,7 @@
     "dev": "vite",
     "build": "tsc && vite build",
     "preview": "vite preview",
-    "tauri": "TAURI_DIR=../backend tauri",
+    "tauri": "cd .. && tauri",
     "test": "vitest run",
     "test:watch": "vitest"
   },
