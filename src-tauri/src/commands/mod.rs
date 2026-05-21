@@ -5,3 +5,4 @@
 // - phase 1.14: workspace::{save_prompt, load_prompt}
 
 pub mod models;
+pub mod prompt;
