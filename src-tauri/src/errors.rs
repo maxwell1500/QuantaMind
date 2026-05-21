@@ -10,6 +10,9 @@ pub enum AppError {
     #[error("not found: {0}")]
     NotFound(String),
 
+    #[error("inference: {0}")]
+    Inference(String),
+
     #[error("internal: {0}")]
     Internal(String),
 }

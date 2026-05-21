@@ -1,5 +1,6 @@
 pub mod commands;
 pub mod errors;
+pub mod inference;
 pub mod validation;
 
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
