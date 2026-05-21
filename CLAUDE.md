@@ -39,9 +39,9 @@ If step 5 fails, do not "fix" by loosening the assertion. Fix the code.
 
 - **Stack:** Tauri 2.x + Rust + React 18 + TS 5 + Vite + Tailwind + Zustand.
   Full table in `docs/tech-stack.md`.
-- **Layout:** `src/` (React features), `src-tauri/` (Rust commands +
-  inference), `docs/`, `e2e/`, `scripts/`. Full tree in
-  `docs/folder-structure.md`.
+- **Layout:** `frontend/src/` (React features) + `frontend/` configs,
+  `backend/src/` (Rust commands + inference) + `backend/tauri.conf.json`,
+  plus `docs/`. Full tree in `docs/folder-structure.md`.
 - **Naming:** Rust `snake_case`, TS `camelCase`, components `PascalCase`,
   branches `phase-N/feature-name`. Full list in `docs/conventions.md`.
 - **Setup:** Day-zero install + verification steps in `docs/setup.md`.

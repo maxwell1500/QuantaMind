@@ -17,7 +17,7 @@ HTTP to a local Ollama server.
 │                    IPC boundary (JSON)                     │
 │                             │                              │
 │  ┌──────────────────────────▼─────────────────────────┐    │
-│  │              Rust Backend (src-tauri/)             │    │
+│  │               Rust Backend (backend/)              │    │
 │  │  commands/  →  inference/  →  metrics/             │    │
 │  │       ↓                                            │    │
 │  │  persistence/                                      │    │
@@ -32,7 +32,7 @@ HTTP to a local Ollama server.
 
 ## Module boundaries
 
-### Frontend (`src/`)
+### Frontend (`frontend/src/`)
 
 - `app/` — application shell, routing, providers. No feature logic.
 - `features/<name>/` — self-contained vertical slice. Owns its components,
@@ -41,7 +41,7 @@ HTTP to a local Ollama server.
 - `shared/components/` — primitives reused by 2+ features. If only one
   feature uses it, it lives in that feature.
 
-### Backend (`src-tauri/src/`)
+### Backend (`backend/src/`)
 
 - `commands/` — IPC entry points. Thin. Validate input, call domain, return.
 - `inference/` — backend adapters behind `InferenceBackend` trait.

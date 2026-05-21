@@ -4,71 +4,83 @@
 QM-Dev/
 ├── .github/
 │   ├── workflows/{ci.yml,release.yml,nightly.yml}
-│   ├── ISSUE_TEMPLATE/{bug_report.md,feature_request.md}
 │   └── PULL_REQUEST_TEMPLATE.md
 │
-├── src/                            # React frontend
-│   ├── app/{App.tsx,routes.tsx,providers.tsx}
-│   ├── features/
-│   │   ├── workspace/              # Phase 1
-│   │   │   ├── components/{PromptEditor,OutputStream,ModelPicker,RunControls}.tsx
-│   │   │   ├── hooks/{useStreamingRun,usePromptStore}.ts
-│   │   │   ├── state/workspaceStore.ts
-│   │   │   ├── types.ts
-│   │   │   ├── schemas.ts          # zod
-│   │   │   └── __tests__/
-│   │   ├── inspector/              # Phase 4
-│   │   ├── bench/                  # Phase 3
-│   │   └── settings/               # Phase 2
-│   ├── shared/
-│   │   ├── components/
-│   │   ├── ipc/{client.ts,types.ts,__tests__/}
-│   │   ├── hooks/
-│   │   ├── lib/
-│   │   └── styles/tokens.css
-│   ├── main.tsx
-│   └── index.css
+├── frontend/                       # React + TS + Vite app
+│   ├── src/
+│   │   ├── app/{App.tsx,routes.tsx,providers.tsx}
+│   │   ├── features/
+│   │   │   ├── workspace/          # Phase 1
+│   │   │   │   ├── components/{PromptEditor,OutputStream,ModelPicker,RunControls}.tsx
+│   │   │   │   ├── hooks/{useStreamingRun,usePromptStore}.ts
+│   │   │   │   ├── state/workspaceStore.ts
+│   │   │   │   ├── types.ts
+│   │   │   │   ├── schemas.ts      # zod
+│   │   │   │   └── __tests__/
+│   │   │   ├── inspector/          # Phase 4
+│   │   │   ├── bench/              # Phase 3
+│   │   │   └── settings/           # Phase 2
+│   │   ├── shared/
+│   │   │   ├── components/
+│   │   │   ├── ipc/{client.ts,types.ts,__tests__/}
+│   │   │   └── styles/tokens.css
+│   │   ├── test/setup.ts
+│   │   ├── main.tsx
+│   │   └── index.css
+│   ├── index.html
+│   ├── package.json
+│   ├── pnpm-lock.yaml
+│   ├── tsconfig.json
+│   ├── tsconfig.node.json
+│   ├── vite.config.ts
+│   ├── vitest.config.ts
+│   ├── tailwind.config.js
+│   └── postcss.config.js
 │
-├── src-tauri/                      # Rust backend
+├── backend/                        # Rust + Tauri 2 app
 │   ├── src/
 │   │   ├── main.rs
+│   │   ├── lib.rs
 │   │   ├── commands/{mod,prompt,models,settings,workspace}.rs
 │   │   ├── inference/{mod,ollama,llama_cpp,mlx,traits}.rs
 │   │   ├── metrics/{mod,timing,vram}.rs
 │   │   ├── persistence/{mod,prompts,history}.rs
 │   │   ├── validation/{mod,schemas}.rs
 │   │   └── errors.rs
-│   ├── tests/{ollama_integration,prompt_persistence}.rs
+│   ├── tests/{ollama_stream,models_list,prompt_stream}.rs
 │   ├── Cargo.toml
 │   ├── tauri.conf.json
 │   ├── build.rs
+│   ├── capabilities/
 │   └── icons/
 │
-├── e2e/                            # Phase 2+ Playwright
-├── scripts/{dev.sh,test-all.sh,release.sh,seed-test-data.sh}
 ├── docs/                           # this directory
-├── .editorconfig .gitignore .prettierrc .eslintrc.json
-├── lefthook.yml package.json tsconfig.json vite.config.ts
-├── tailwind.config.js vitest.config.ts
-└── LICENSE README.md CHANGELOG.md CONTRIBUTING.md CODE_OF_CONDUCT.md
+├── CLAUDE.md .gitignore
+└── LICENSE README.md CHANGELOG.md
 ```
 
 ## Rationale
 
+- **`frontend/` + `backend/` top split.** Two languages, two toolchains.
+  Co-locating each side's configs with its source means a frontend dev
+  rarely needs to read backend files and vice versa.
 - **`features/` over `components/` at top level.** Each feature is a
-  vertical slice: components + hooks + state + tests. Easy to delete,
-  easy to extract, easy to reason about.
+  vertical slice: components + hooks + state + tests. Deletable in one
+  `rm -rf`.
 - **`commands/` mirrors `features/`.** Every command corresponds to a
   frontend need. If they drift, something is wrong.
-- **`validation/` is first-class.** Schemas are not afterthoughts.
-- **`__tests__/` next to code, not in `/tests`.** Tests die when they
-  live far from the code they cover. Rust integration tests are the
-  exception — they live in `src-tauri/tests/` because cargo requires it.
+- **`__tests__/` next to code.** Rust integration tests are the exception
+  — they live in `backend/tests/` because cargo requires it.
+
+## Tauri CLI: pointing at `backend/`
+
+Tauri's default is `src-tauri/`. We use `frontend/package.json`'s `tauri`
+script with `TAURI_DIR=../backend tauri` so the CLI relocates. The
+`backend/tauri.conf.json` references the frontend via
+`pnpm --dir=../frontend dev` / `build` and `frontendDist: ../frontend/dist`.
 
 ## When to add a new top-level folder
 
-Almost never. New work usually fits into:
-- a new feature → `src/features/<name>/`
-- a new command + backend module → `src-tauri/src/commands/` + matching domain dir
-
-If you think you need a new top-level, propose it in chat first.
+Almost never. New work fits into:
+- a new feature → `frontend/src/features/<name>/`
+- a new command + domain → `backend/src/commands/` + matching module dir
