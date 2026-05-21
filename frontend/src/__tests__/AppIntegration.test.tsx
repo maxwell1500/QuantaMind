@@ -45,6 +45,8 @@ beforeEach(() => {
     const a = args as Record<string, unknown> | undefined;
     if (cmd === "list_models")
       return Promise.resolve(["llama3.2:1b", "mistral:7b"]);
+    if (cmd === "check_ollama_health")
+      return Promise.resolve({ available: true, version: "0.1.32" });
     if (cmd === "run_prompt") return Promise.resolve();
     if (cmd === "stop_prompt") return Promise.resolve();
     if (cmd === "save_prompt") {
@@ -99,6 +101,11 @@ describe("Phase 1 E2E smoke — edit → run → save → load → re-run", () =
     expect(screen.getByTestId("metrics")).toHaveTextContent("TTFT: 8 ms");
     expect(screen.getByTestId("metrics")).toHaveTextContent("32.0 tok/s");
     expect(screen.getByTestId("run-status")).toHaveTextContent("done");
+    // display consistency: StatusBar reads the same metrics as the inline display
+    const bar = screen.getByTestId("status-bar-metrics");
+    expect(bar).toHaveTextContent("TTFT 8ms");
+    expect(bar).toHaveTextContent("32.0 tok/s");
+    expect(bar).toHaveTextContent("4 tokens");
 
     // 3. SAVE
     fireEvent.click(screen.getByRole("button", { name: /save/i }));

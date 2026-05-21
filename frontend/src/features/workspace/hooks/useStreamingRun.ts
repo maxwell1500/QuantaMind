@@ -7,6 +7,7 @@ import {
   type DonePayload,
   type TokenPayload,
 } from "../../../shared/ipc/events";
+import { useWorkspaceStore } from "../state/workspaceStore";
 
 export type RunStatus = "idle" | "running" | "done" | "error";
 
@@ -32,6 +33,7 @@ export function useStreamingRun() {
       const ud = await listen<DonePayload>(EVENT_DONE, (e) => {
         setMetrics(e.payload);
         setStatus("done");
+        useWorkspaceStore.getState().setLastRunMetrics(e.payload);
       });
       if (cancelled) {
         ud();

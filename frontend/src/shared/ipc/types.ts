@@ -14,3 +14,8 @@ export type StoredPrompt = {
   model: string;
   prompt: string;
 };
+
+export type HealthStatus = {
+  available: boolean;
+  version: string | null;
+};

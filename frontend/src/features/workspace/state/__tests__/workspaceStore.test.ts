@@ -2,7 +2,7 @@ import { describe, it, expect, beforeEach } from "vitest";
 import { useWorkspaceStore } from "../workspaceStore";
 
 beforeEach(() => {
-  useWorkspaceStore.setState({ status: "idle" });
+  useWorkspaceStore.setState({ status: "idle", lastRunMetrics: null });
 });
 
 describe("workspaceStore state machine", () => {
@@ -61,5 +61,28 @@ describe("workspaceStore state machine", () => {
   it("finish from idle is a no-op", () => {
     useWorkspaceStore.getState().finish();
     expect(useWorkspaceStore.getState().status).toBe("idle");
+  });
+
+  it("lastRunMetrics starts null and accepts a DonePayload", () => {
+    expect(useWorkspaceStore.getState().lastRunMetrics).toBeNull();
+    useWorkspaceStore
+      .getState()
+      .setLastRunMetrics({ ttft_ms: 120, tokens_per_sec: 47.3, token_count: 47 });
+    expect(useWorkspaceStore.getState().lastRunMetrics).toEqual({
+      ttft_ms: 120,
+      tokens_per_sec: 47.3,
+      token_count: 47,
+    });
+  });
+
+  it("metrics persist across a beginRun (stale display until next done)", () => {
+    const s = useWorkspaceStore.getState;
+    s().setLastRunMetrics({ ttft_ms: 200, tokens_per_sec: 30, token_count: 10 });
+    s().beginRun();
+    expect(s().lastRunMetrics).toEqual({
+      ttft_ms: 200,
+      tokens_per_sec: 30,
+      token_count: 10,
+    });
   });
 });

@@ -7,6 +7,7 @@ vi.mock("@tauri-apps/api/event", () => ({ listen: vi.fn() }));
 import { invoke } from "@tauri-apps/api/core";
 import { listen, type EventCallback } from "@tauri-apps/api/event";
 import { useStreamingRun } from "../useStreamingRun";
+import { useWorkspaceStore } from "../../state/workspaceStore";
 
 const handlers: Record<string, EventCallback<unknown>> = {};
 
@@ -29,6 +30,7 @@ describe("useStreamingRun", () => {
     vi.mocked(invoke).mockReset();
     vi.mocked(listen).mockReset();
     installListenMock();
+    useWorkspaceStore.setState({ status: "idle", lastRunMetrics: null });
   });
 
   it("tokens append in order, no dup, no drop; status -> done", async () => {
@@ -66,6 +68,20 @@ describe("useStreamingRun", () => {
       model: "llama3.2:1b",
       prompt: "Why is the sky blue?",
     });
+  });
+
+  it("on Done, mirrors metrics into workspaceStore.lastRunMetrics", async () => {
+    vi.mocked(invoke).mockResolvedValue(undefined);
+    renderHook(() => useStreamingRun());
+
+    await waitFor(() => expect(handlers["prompt-done"]).toBeDefined());
+
+    const payload = { ttft_ms: 200, tokens_per_sec: 30.5, token_count: 12 };
+    act(() => {
+      fire("prompt-done", payload);
+    });
+
+    expect(useWorkspaceStore.getState().lastRunMetrics).toEqual(payload);
   });
 
   it("invoke rejection sets status=error and preserves output so far", async () => {

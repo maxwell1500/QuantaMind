@@ -10,6 +10,7 @@ pub fn run() {
     tauri::Builder::default()
         .manage(commands::prompt::RunState::default())
         .invoke_handler(tauri::generate_handler![
+            commands::health::check_ollama_health,
             commands::models::list_models,
             commands::prompt::run_prompt,
             commands::prompt::stop_prompt,
