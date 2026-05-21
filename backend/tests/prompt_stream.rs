@@ -1,6 +1,7 @@
 use mockito::Server;
 use splice_lib::commands::prompt::run_prompt_inner;
 use splice_lib::errors::AppError;
+use tokio_util::sync::CancellationToken;
 
 #[tokio::test]
 async fn tokens_arrive_in_order_and_concat_to_fixture() {
@@ -18,9 +19,13 @@ async fn tokens_arrive_in_order_and_concat_to_fixture() {
         .await;
 
     let mut tokens: Vec<String> = Vec::new();
-    run_prompt_inner(&server.url(), "x", "Why is the sky blue?", |t| {
-        tokens.push(t.to_string())
-    })
+    run_prompt_inner(
+        &server.url(),
+        "x",
+        "Why is the sky blue?",
+        CancellationToken::new(),
+        |t| tokens.push(t.to_string()),
+    )
     .await
     .unwrap();
 
@@ -37,7 +42,15 @@ async fn empty_prompt_rejected_before_http() {
         .create_async()
         .await;
 
-    match run_prompt_inner(&server.url(), "x", "   ", |_| {}).await {
+    match run_prompt_inner(
+        &server.url(),
+        "x",
+        "   ",
+        CancellationToken::new(),
+        |_| {},
+    )
+    .await
+    {
         Err(AppError::Validation(msg)) => assert!(msg.contains("prompt"), "msg: {msg}"),
         other => panic!("expected Validation err, got {other:?}"),
     }
@@ -53,7 +66,7 @@ async fn empty_model_rejected_before_http() {
         .create_async()
         .await;
 
-    match run_prompt_inner(&server.url(), "", "hi", |_| {}).await {
+    match run_prompt_inner(&server.url(), "", "hi", CancellationToken::new(), |_| {}).await {
         Err(AppError::Validation(msg)) => assert!(msg.contains("model"), "msg: {msg}"),
         other => panic!("expected Validation err, got {other:?}"),
     }

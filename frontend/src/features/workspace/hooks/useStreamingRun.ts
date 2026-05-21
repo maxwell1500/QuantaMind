@@ -54,5 +54,13 @@ export function useStreamingRun() {
     }
   }, []);
 
-  return { output, status, error, start };
+  const cancel = useCallback(async () => {
+    try {
+      await invoke("stop_prompt");
+    } catch {
+      // best-effort: backend may have already finished
+    }
+  }, []);
+
+  return { output, status, error, start, cancel };
 }

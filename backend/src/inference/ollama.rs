@@ -2,6 +2,7 @@ use crate::errors::{AppError, AppResult};
 use futures_util::StreamExt;
 use reqwest::Client;
 use serde::{Deserialize, Serialize};
+use tokio_util::sync::CancellationToken;
 
 #[derive(Serialize)]
 struct GenerateRequest<'a> {
@@ -21,6 +22,7 @@ pub async fn stream_generate(
     endpoint: &str,
     model: &str,
     prompt: &str,
+    cancel: CancellationToken,
     mut on_token: impl FnMut(&str),
 ) -> AppResult<()> {
     let client = Client::new();
@@ -38,22 +40,25 @@ pub async fn stream_generate(
 
     let mut bytes = resp.bytes_stream();
     let mut buf: Vec<u8> = Vec::new();
-    while let Some(piece) = bytes.next().await {
-        let piece = piece.map_err(|e| AppError::Inference(e.to_string()))?;
-        buf.extend_from_slice(&piece);
-        while let Some(nl) = buf.iter().position(|&b| b == b'\n') {
-            let line: Vec<u8> = buf.drain(..=nl).collect();
-            let trimmed = &line[..line.len() - 1];
-            if trimmed.is_empty() {
-                continue;
-            }
-            let chunk: GenerateChunk = serde_json::from_slice(trimmed)
-                .map_err(|e| AppError::Inference(format!("bad chunk: {e}")))?;
-            if !chunk.response.is_empty() {
-                on_token(&chunk.response);
-            }
-            if chunk.done {
-                return Ok(());
+    loop {
+        tokio::select! {
+            _ = cancel.cancelled() => return Ok(()),
+            piece = bytes.next() => {
+                let Some(piece) = piece else { break };
+                let piece = piece.map_err(|e| AppError::Inference(e.to_string()))?;
+                buf.extend_from_slice(&piece);
+                while let Some(nl) = buf.iter().position(|&b| b == b'\n') {
+                    let line: Vec<u8> = buf.drain(..=nl).collect();
+                    let trimmed = &line[..line.len() - 1];
+                    if trimmed.is_empty() { continue; }
+                    let chunk: GenerateChunk = serde_json::from_slice(trimmed)
+                        .map_err(|e| AppError::Inference(format!("bad chunk: {e}")))?;
+                    if !chunk.response.is_empty() {
+                        on_token(&chunk.response);
+                    }
+                    if cancel.is_cancelled() { return Ok(()); }
+                    if chunk.done { return Ok(()); }
+                }
             }
         }
     }
