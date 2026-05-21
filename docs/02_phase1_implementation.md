@@ -20,6 +20,7 @@ verified.
 | 1.1 | Tauri + React + TS scaffold | `pnpm tauri dev` opens window; HMR works | Window renders default; edit `App.tsx` → live reload |
 > 1.1 — ✅ shipped 2026-05-21. User confirmed `pnpm tauri dev` window rendered Phase 1 content. Automated proxy: `pnpm build` (tsc + vite, 28 modules → dist) and `cargo check` clean. Node 22.1.0 < Vite's recommended 22.12+ (warning, non-blocking). Vitest deferred to 1.2.
 | 1.2 | Add zustand, zod, monaco, Tailwind | Vitest smoke + Tailwind class renders | Class applies; store get/set returns correct value |
+> 1.2 — ✅ shipped 2026-05-21. Vitest 4 + jsdom; 4/4 smoke tests green (Tailwind class on rendered node, Zustand get/set, Zod parse, `@monaco-editor/react` named exports). Tailwind 3.4 (locked, not v4). Data-quality: `pnpm build` emits 4.87KB CSS containing `--tw-*` preflight + `bg-red-500` utility scanned from the test file. Monaco's `Editor` is `React.memo(...)` (object with `$$typeof` symbol), not a bare function — test asserts that shape.
 | 1.3 | Rust base: `errors.rs`, `validation/`, `commands/mod.rs` | `cargo test` passes | `AppError` variants serialize as expected JSON |
 | 1.4 | `inference/ollama.rs` HTTP client (streaming) | mockito test: stream returns ordered chunks | Chunks count, order, UTF-8, terminator all match fixture |
 | 1.5 | `commands/models.rs` → `list_models` | mocked test | Returned list sorted, deduped, names exact |
