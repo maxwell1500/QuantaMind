@@ -13,6 +13,9 @@ pub enum AppError {
     #[error("inference: {0}")]
     Inference(String),
 
+    #[error("io: {0}")]
+    Io(String),
+
     #[error("internal: {0}")]
     Internal(String),
 }

@@ -20,7 +20,12 @@ Revisit when: <a concrete trigger, not "later">
 
 ## Entries
 
-_(empty — add entries here as they come up)_
+### serde_yaml → serde_yml — 2026-05-21
+Current choice: `serde_yaml = "0.9"` for prompt persistence (step 1.12).
+Proposed alternative: `serde_yml` (dtolnay-blessed community fork) or `yaml-rust2`.
+Claimed benefit: `serde_yaml` is crate-deprecated by its author; alternatives are actively maintained.
+Why we said no (now): `serde_yaml 0.9` still compiles, still receives security advisories, and the round-trip behavior we depend on is stable. Migrating mid-Phase 1 buys nothing.
+Revisit when: serde_yaml fails to build against the current Rust toolchain, or a security CVE lands with no upstream fix.
 
 ## Rules
 
