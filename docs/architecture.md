@@ -1,0 +1,70 @@
+# Architecture
+
+Splice is a Tauri desktop app: React/TS frontend, Rust backend, JSON IPC,
+HTTP to a local Ollama server.
+
+## Mental model
+
+```
+┌─────────────────────────────────────────────────────────────┐
+│                    Splice Desktop App                       │
+│                                                             │
+│  ┌────────────────────────────────────────────────────┐    │
+│  │            React + TypeScript Frontend             │    │
+│  │  features/  ←  shared/ipc/  ←  Tauri invoke()      │    │
+│  └──────────────────────────┬─────────────────────────┘    │
+│                             │                              │
+│                    IPC boundary (JSON)                     │
+│                             │                              │
+│  ┌──────────────────────────▼─────────────────────────┐    │
+│  │              Rust Backend (src-tauri/)             │    │
+│  │  commands/  →  inference/  →  metrics/             │    │
+│  │       ↓                                            │    │
+│  │  persistence/                                      │    │
+│  └──────────────────────────┬─────────────────────────┘    │
+└─────────────────────────────┼──────────────────────────────┘
+                              │ HTTP
+                              ▼
+                ┌─────────────────────────────┐
+                │   Ollama (localhost:11434)  │
+                └─────────────────────────────┘
+```
+
+## Module boundaries
+
+### Frontend (`src/`)
+
+- `app/` — application shell, routing, providers. No feature logic.
+- `features/<name>/` — self-contained vertical slice. Owns its components,
+  hooks, state, types, schemas, and tests. Deletable in one rm -rf.
+- `shared/ipc/` — only place that calls Tauri `invoke`. Typed wrappers.
+- `shared/components/` — primitives reused by 2+ features. If only one
+  feature uses it, it lives in that feature.
+
+### Backend (`src-tauri/src/`)
+
+- `commands/` — IPC entry points. Thin. Validate input, call domain, return.
+- `inference/` — backend adapters behind `InferenceBackend` trait.
+- `metrics/` — measurements: TTFT, tokens/sec, VRAM.
+- `persistence/` — YAML/JSON read+write of prompts and history.
+- `validation/` — schemas. Shared by commands and persistence.
+- `errors.rs` — single `AppError` enum. No `unwrap()` outside tests.
+
+## Rules
+
+1. **One file = one concern.** If you need "and" to describe what a file
+   does, split it.
+2. **No cross-feature imports.** Features talk to each other only via
+   `shared/` or via the backend.
+3. **IPC is the only Rust/TS bridge.** No code-gen, no shared types file —
+   keep contracts explicit in `shared/ipc/types.ts` and mirror in Rust.
+4. **Validation at boundaries.** Zod on the TS side, `validator` + serde on
+   the Rust side. Never trust IPC payloads.
+5. **Errors are typed.** Rust returns `Result<T, AppError>`. TS returns
+   discriminated unions, not thrown errors across IPC.
+
+## Update this doc when
+
+- A new top-level module is added.
+- A boundary rule changes.
+- The IPC contract gains a new category of message.

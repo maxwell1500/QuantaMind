@@ -1,0 +1,75 @@
+# Phase Roadmap
+
+High-level phases. Each phase has its own implementation file
+(`02_phase1_implementation.md`, etc.) added when the phase begins.
+
+Each step inside a phase follows `workflow.md` strictly: implement → test
+passes → output verified → docs updated → commit → next step.
+
+## Phase 1 — Workspace MVP
+
+Goal: edit a prompt, run it against Ollama, stream the output, save/load
+the prompt as YAML.
+
+Modules touched:
+- `src/features/workspace/`
+- `src-tauri/src/commands/{prompt,models,workspace}.rs`
+- `src-tauri/src/inference/ollama.rs`
+- `src-tauri/src/persistence/prompts.rs`
+
+Exit criteria:
+- Run prompt → tokens stream into the UI.
+- Cancel mid-stream works cleanly.
+- Save / load prompt round-trips byte-identical YAML.
+- TTFT + tokens/sec displayed correctly.
+
+## Phase 2 — Settings + Persistence
+
+Goal: persistent user settings, model defaults, history of recent runs.
+
+Modules touched:
+- `src/features/settings/`
+- `src-tauri/src/commands/settings.rs`
+- `src-tauri/src/persistence/history.rs`
+- Introduces Tauri `plugin-store` and `plugin-fs`.
+
+Exit criteria: settings persist across restarts; history is browsable
+and replayable.
+
+## Phase 3 — Bench (multi-model comparison)
+
+Goal: run the same prompt across N models, side-by-side comparison.
+
+Modules touched:
+- `src/features/bench/`
+- `src-tauri/src/inference/llama_cpp.rs`
+
+Exit criteria: ≥2 backends usable; outputs aligned in the UI; per-model
+metrics correct.
+
+## Phase 4 — Inspector
+
+Goal: VRAM, latency breakdown, token-by-token timing.
+
+Modules touched:
+- `src/features/inspector/`
+- `src-tauri/src/metrics/vram.rs`
+
+Exit criteria: live metrics during a run; export to CSV.
+
+## Phase 5 — MLX backend
+
+Goal: native Apple-Silicon inference path.
+
+Modules touched:
+- `src-tauri/src/inference/mlx.rs`
+
+Exit criteria: Same prompt produces equivalent output on Ollama and MLX
+backends; user can pick the backend per run.
+
+## Updating this doc
+
+- When a phase begins, add its implementation file under the same prefix
+  (`02_phase1_implementation.md`, `03_phase2_implementation.md`, …).
+- When a phase ships, mark it "shipped — vX.Y" and freeze its section.
+- Do not change a shipped phase's exit criteria retroactively.
