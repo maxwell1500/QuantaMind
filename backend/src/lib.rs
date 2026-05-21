@@ -13,6 +13,8 @@ pub fn run() {
             commands::models::list_models,
             commands::prompt::run_prompt,
             commands::prompt::stop_prompt,
+            commands::workspace::save_prompt,
+            commands::workspace::load_prompt,
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");
