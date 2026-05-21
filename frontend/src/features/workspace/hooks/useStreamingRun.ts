@@ -4,6 +4,7 @@ import { listen } from "@tauri-apps/api/event";
 import {
   EVENT_DONE,
   EVENT_TOKEN,
+  type DonePayload,
   type TokenPayload,
 } from "../../../shared/ipc/events";
 
@@ -13,6 +14,7 @@ export function useStreamingRun() {
   const [output, setOutput] = useState("");
   const [status, setStatus] = useState<RunStatus>("idle");
   const [error, setError] = useState<string | null>(null);
+  const [metrics, setMetrics] = useState<DonePayload | null>(null);
 
   useEffect(() => {
     let cancelled = false;
@@ -27,7 +29,8 @@ export function useStreamingRun() {
       }
       unsubs.push(ut);
 
-      const ud = await listen(EVENT_DONE, () => {
+      const ud = await listen<DonePayload>(EVENT_DONE, (e) => {
+        setMetrics(e.payload);
         setStatus("done");
       });
       if (cancelled) {
@@ -44,6 +47,7 @@ export function useStreamingRun() {
 
   const start = useCallback(async (model: string, prompt: string) => {
     setOutput("");
+    setMetrics(null);
     setError(null);
     setStatus("running");
     try {
@@ -62,5 +66,5 @@ export function useStreamingRun() {
     }
   }, []);
 
-  return { output, status, error, start, cancel };
+  return { output, status, error, metrics, start, cancel };
 }

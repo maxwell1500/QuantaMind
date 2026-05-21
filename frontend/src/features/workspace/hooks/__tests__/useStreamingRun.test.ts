@@ -52,11 +52,16 @@ describe("useStreamingRun", () => {
     });
 
     act(() => {
-      fire("prompt-done", undefined);
+      fire("prompt-done", { ttft_ms: 12, tokens_per_sec: 50.0, token_count: 4 });
     });
 
     expect(result.current.output).toBe("The sky is blue.");
     expect(result.current.status).toBe("done");
+    expect(result.current.metrics).toEqual({
+      ttft_ms: 12,
+      tokens_per_sec: 50.0,
+      token_count: 4,
+    });
     expect(invoke).toHaveBeenCalledWith("run_prompt", {
       model: "llama3.2:1b",
       prompt: "Why is the sky blue?",

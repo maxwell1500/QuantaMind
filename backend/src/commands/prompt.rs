@@ -1,7 +1,8 @@
 use crate::errors::{AppError, AppResult};
 use crate::inference::ollama::stream_generate;
+use crate::metrics::timing::RunTiming;
 use serde::Serialize;
-use std::sync::Mutex;
+use std::sync::{Arc, Mutex};
 use tauri::Emitter;
 use tokio_util::sync::CancellationToken;
 
@@ -17,6 +18,13 @@ pub struct RunState {
 #[derive(Serialize, Clone)]
 struct TokenPayload {
     text: String,
+}
+
+#[derive(Serialize, Clone)]
+struct DonePayload {
+    ttft_ms: Option<u64>,
+    tokens_per_sec: Option<f64>,
+    token_count: usize,
 }
 
 fn validate(model: &str, prompt: &str) -> AppResult<()> {
@@ -54,8 +62,11 @@ pub async fn run_prompt(
         *guard = Some(token.clone());
     }
 
+    let timing = Arc::new(Mutex::new(RunTiming::start()));
+    let timing_cb = timing.clone();
     let emit_app = app.clone();
     let result = run_prompt_inner(DEFAULT_OLLAMA, &model, &prompt, token, move |t| {
+        timing_cb.lock().unwrap().record_token();
         let _ = emit_app.emit(EVENT_TOKEN, TokenPayload { text: t.to_string() });
     })
     .await;
@@ -63,7 +74,13 @@ pub async fn run_prompt(
     *state.current.lock().unwrap() = None;
 
     if result.is_ok() {
-        app.emit(EVENT_DONE, &())
+        let t = timing.lock().unwrap();
+        let payload = DonePayload {
+            ttft_ms: t.ttft_ms(),
+            tokens_per_sec: t.tokens_per_sec(),
+            token_count: t.token_count,
+        };
+        app.emit(EVENT_DONE, &payload)
             .map_err(|e| AppError::Internal(e.to_string()))?;
     }
     result
