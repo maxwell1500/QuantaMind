@@ -22,6 +22,7 @@ verified.
 | 1.2 | Add zustand, zod, monaco, Tailwind | Vitest smoke + Tailwind class renders | Class applies; store get/set returns correct value |
 > 1.2 — ✅ shipped 2026-05-21. Vitest 4 + jsdom; 4/4 smoke tests green (Tailwind class on rendered node, Zustand get/set, Zod parse, `@monaco-editor/react` named exports). Tailwind 3.4 (locked, not v4). Data-quality: `pnpm build` emits 4.87KB CSS containing `--tw-*` preflight + `bg-red-500` utility scanned from the test file. Monaco's `Editor` is `React.memo(...)` (object with `$$typeof` symbol), not a bare function — test asserts that shape.
 | 1.3 | Rust base: `errors.rs`, `validation/`, `commands/mod.rs` | `cargo test` passes | `AppError` variants serialize as expected JSON |
+> 1.3 — ✅ shipped 2026-05-21. `cargo test` 4/4 green. `AppError` is `thiserror::Error` + `serde::Serialize` with `#[serde(tag="kind", content="message", rename_all="snake_case")]`. Variants: `Validation`, `NotFound`, `Internal`. Eyeballed JSON: `{"kind":"validation","message":"prompt is empty"}` (and equivalents). `validation/` and `commands/` are skeletal — populated in later steps (1.5/1.7/1.10/1.14). Added `thiserror 2` dep.
 | 1.4 | `inference/ollama.rs` HTTP client (streaming) | mockito test: stream returns ordered chunks | Chunks count, order, UTF-8, terminator all match fixture |
 | 1.5 | `commands/models.rs` → `list_models` | mocked test | Returned list sorted, deduped, names exact |
 | 1.6 | `shared/ipc/client.ts` + `ModelPicker.tsx` | Vitest behavior test | Dropdown shows real Ollama models, selection persists |
