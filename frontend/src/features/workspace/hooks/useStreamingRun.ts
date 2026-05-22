@@ -76,11 +76,8 @@ export function useStreamingRun() {
     setError(null);
     setStatus("running");
     try {
-      await withTimeout(
-        invoke("run_prompt", { model, prompt }),
-        RUN_PROMPT_TIMEOUT_MS,
-        "run_prompt",
-      );
+      const call = invoke("run_prompt", { model, prompt });
+      await withTimeout(call, RUN_PROMPT_TIMEOUT_MS, "run_prompt");
     } catch (e) {
       setError(e instanceof Error ? e.message : String(e));
       setStatus("error");
@@ -89,11 +86,7 @@ export function useStreamingRun() {
 
   const cancel = useCallback(async () => {
     try {
-      await withTimeout(
-        invoke("stop_prompt"),
-        STOP_PROMPT_TIMEOUT_MS,
-        "stop_prompt",
-      );
+      await withTimeout(invoke("stop_prompt"), STOP_PROMPT_TIMEOUT_MS, "stop_prompt");
     } catch {
       // best-effort: backend may have already finished, or timed out
     }
