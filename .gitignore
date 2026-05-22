@@ -23,3 +23,6 @@ target/
 # Env
 .env
 .env.local
+
+# Splice workspace state (saved by WorkspaceIO; per-user, not a project artifact)
+splice-current.yaml

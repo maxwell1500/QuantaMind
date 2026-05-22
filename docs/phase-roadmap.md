@@ -6,7 +6,7 @@ High-level phases. Each phase has its own implementation file
 Each step inside a phase follows `workflow.md` strictly: implement → test
 passes → output verified → docs updated → commit → next step.
 
-## Phase 1 — Workspace MVP
+## Phase 1 — Workspace MVP — shipped v0.1 (2026-05-21)
 
 Goal: edit a prompt, run it against Ollama, stream the output, save/load
 the prompt as YAML.
@@ -22,6 +22,23 @@ Exit criteria:
 - Cancel mid-stream works cleanly.
 - Save / load prompt round-trips byte-identical YAML.
 - TTFT + tokens/sec displayed correctly.
+
+## Phase M — Model Management
+
+Goal: install, remove, and inspect Ollama models from inside the app.
+Three install sources (Ollama library, Hugging Face GGUF, local file).
+Inserts between Phase 1 and Phase 2; may run parallel to Phase 2.
+
+Modules touched:
+- `src/features/models/`
+- `src-tauri/src/commands/models.rs`
+- `src-tauri/src/inference/{huggingface,gguf,modelfile,chat_templates}.rs`
+
+Exit criteria: all three install sources work end-to-end; storage view
+accurate ±5%; disk pre-checks refuse <2GB-free installs; no orphaned
+partial files or temp Modelfiles after success/cancel paths.
+
+Step ledger lives in `03_phaseM_implementation.md`.
 
 ## Phase 2 — Settings + Persistence
 
