@@ -21,7 +21,7 @@ beforeEach(() => {
     handlers[event] = cb as EventCallback<unknown>;
     return Promise.resolve(() => { delete handlers[event]; });
   });
-  useWorkspaceStore.setState({ status: "idle", lastRunMetrics: null });
+  useWorkspaceStore.setState({ lastRunMetrics: null });
 });
 
 describe("useStreamingRun — cancel (F12)", () => {
