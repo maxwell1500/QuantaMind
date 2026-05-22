@@ -4,9 +4,10 @@ import { listModels } from "../../../shared/ipc/client";
 type Props = {
   value: string | null;
   onChange: (model: string) => void;
+  onAddClick?: () => void;
 };
 
-export function ModelPicker({ value, onChange }: Props) {
+export function ModelPicker({ value, onChange, onAddClick }: Props) {
   const [models, setModels] = useState<string[]>([]);
   const [error, setError] = useState<string | null>(null);
 
@@ -24,29 +25,39 @@ export function ModelPicker({ value, onChange }: Props) {
     };
   }, []);
 
-  if (error) {
-    return (
-      <div role="alert" className="text-red-600 text-sm">
-        {error}
-      </div>
-    );
-  }
-
   return (
-    <select
-      aria-label="Model"
-      value={value ?? ""}
-      onChange={(e) => onChange(e.target.value)}
-      className="border rounded px-2 py-1 text-sm"
-    >
-      <option value="" disabled>
-        Pick a model
-      </option>
-      {models.map((m) => (
-        <option key={m} value={m}>
-          {m}
-        </option>
-      ))}
-    </select>
+    <div className="flex gap-2 items-center">
+      {error ? (
+        <div role="alert" className="text-red-600 text-sm flex-1">
+          {error}
+        </div>
+      ) : (
+        <select
+          aria-label="Model"
+          value={value ?? ""}
+          onChange={(e) => onChange(e.target.value)}
+          className="border rounded px-2 py-1 text-sm"
+        >
+          <option value="" disabled>
+            Pick a model
+          </option>
+          {models.map((m) => (
+            <option key={m} value={m}>
+              {m}
+            </option>
+          ))}
+        </select>
+      )}
+      {onAddClick && (
+        <button
+          type="button"
+          onClick={onAddClick}
+          aria-label="Add model"
+          className="border rounded px-2 py-1 text-sm leading-none"
+        >
+          +
+        </button>
+      )}
+    </div>
   );
 }
