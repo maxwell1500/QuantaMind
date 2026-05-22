@@ -7,6 +7,7 @@ import {
   type InstalledModelInfo,
 } from "../../../../shared/ipc/storage";
 import { formatBytes } from "../../format";
+import { StoragePathSection } from "../StoragePathSection";
 
 export function StorageTab() {
   const [models, setModels] = useState<InstalledModelInfo[]>([]);
@@ -43,6 +44,7 @@ export function StorageTab() {
 
   return (
     <div data-testid="storage-tab" className="flex flex-col gap-3 h-full">
+      <StoragePathSection />
       {usage && (
         <div className="text-xs text-gray-600" data-testid="disk-summary">
           Models: {formatBytes(usage.ollama_models_bytes)} / Free:{" "}

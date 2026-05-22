@@ -21,6 +21,8 @@ pub fn run() {
             commands::models::list_models,
             commands::models_pull::pull_model,
             commands::models_pull::cancel_pull,
+            commands::settings::get_storage_path,
+            commands::settings::validate_storage_path,
             commands::storage::get_installed_models_with_stats,
             commands::storage::remove_model,
             commands::storage::get_disk_usage,

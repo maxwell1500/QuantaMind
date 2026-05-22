@@ -16,6 +16,7 @@ pub mod models_pull;
 pub mod prompt;
 pub mod prompt_handler;
 pub mod prompt_payloads;
+pub mod settings;
 pub mod storage;
 pub mod storage_disk;
 pub mod storage_types;
