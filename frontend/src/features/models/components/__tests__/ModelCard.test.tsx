@@ -24,9 +24,18 @@ const handlers: Record<string, EventCallback<unknown>> = {};
 const fire = (event: string, payload: unknown) =>
   handlers[event]({ event, id: 0, payload });
 
+// Default invoke: feasibility check returns "ok"; pull_model returns a pull_id.
+// Individual tests can override per-call as needed.
+function defaultInvoke(cmd: string) {
+  if (cmd === "check_install_feasibility") return Promise.resolve({ kind: "ok" });
+  if (cmd === "pull_model") return Promise.resolve("pid-1");
+  return Promise.resolve();
+}
+
 beforeEach(() => {
   for (const k of Object.keys(handlers)) delete handlers[k];
   vi.mocked(invoke).mockReset();
+  vi.mocked(invoke).mockImplementation(defaultInvoke as never);
   vi.mocked(listen).mockReset();
   vi.mocked(listen).mockImplementation((event, cb) => {
     handlers[event] = cb as EventCallback<unknown>;
@@ -51,7 +60,6 @@ describe("ModelCard (M.4)", () => {
   });
 
   it("clicking Install invokes pull_model with the model name", async () => {
-    vi.mocked(invoke).mockResolvedValue("pid-1");
     render(<ModelCard model={PHI} isInstalled={false} />);
     await act(async () => {
       fireEvent.click(screen.getByRole("button", { name: /install/i }));
@@ -60,7 +68,6 @@ describe("ModelCard (M.4)", () => {
   });
 
   it("during pull, card shows 'Installing · N%' and updates modelStore.installInFlight", async () => {
-    vi.mocked(invoke).mockResolvedValue("pid-1");
     render(<ModelCard model={PHI} isInstalled={false} />);
     await act(async () => {
       fireEvent.click(screen.getByRole("button", { name: /install/i }));
@@ -75,7 +82,6 @@ describe("ModelCard (M.4)", () => {
   });
 
   it("after success, badge swaps to Installed and installInFlight clears", async () => {
-    vi.mocked(invoke).mockResolvedValue("pid-1");
     render(<ModelCard model={PHI} isInstalled={false} />);
     await act(async () => {
       fireEvent.click(screen.getByRole("button", { name: /install/i }));
@@ -84,4 +90,5 @@ describe("ModelCard (M.4)", () => {
     expect(screen.getByTestId("installed-badge")).toBeInTheDocument();
     expect(useModelStore.getState().installInFlight).toBeNull();
   });
+
 });

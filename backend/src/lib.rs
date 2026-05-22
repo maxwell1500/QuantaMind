@@ -12,6 +12,7 @@ pub fn run() {
         .manage(commands::prompt::RunState::default())
         .manage(commands::models_pull::PullState::default())
         .invoke_handler(tauri::generate_handler![
+            commands::feasibility::check_install_feasibility,
             commands::health::check_ollama_health,
             commands::models::list_models,
             commands::models_pull::pull_model,
