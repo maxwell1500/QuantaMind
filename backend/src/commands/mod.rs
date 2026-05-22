@@ -5,6 +5,7 @@
 // - phase 1.14: workspace::{save_prompt, load_prompt}
 // - phase 1.16: health::check_ollama_health
 // - phase-1.5/1.5.1: prompt_handler::make_token_handler
+// - phase-1.5/1.5.5: prompt_payloads (split out of prompt.rs)
 
 pub mod health;
 pub mod models;

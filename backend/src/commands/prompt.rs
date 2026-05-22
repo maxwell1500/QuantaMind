@@ -1,8 +1,13 @@
+#![deny(clippy::unwrap_used)]
+
 use crate::commands::prompt_handler::make_token_handler;
-use crate::commands::prompt_payloads::{CancelledPayload, DonePayload, TokenPayload};
+use crate::commands::prompt_payloads::{
+    done_payload_or_zero, CancelledPayload, TokenPayload,
+};
 use crate::errors::{AppError, AppResult};
 use crate::inference::ollama::stream_generate;
 use crate::metrics::timing::RunTiming;
+use crate::sync::MutexExt;
 use std::sync::{Arc, Mutex};
 use tauri::Emitter;
 use tokio_util::sync::CancellationToken;
@@ -47,7 +52,7 @@ pub async fn run_prompt(
 ) -> Result<(), AppError> {
     let token = CancellationToken::new();
     {
-        let mut guard = state.current.lock().unwrap();
+        let mut guard = state.current.lock_recover();
         if let Some(prev) = guard.take() { prev.cancel(); }
         *guard = Some(token.clone());
     }
@@ -63,23 +68,17 @@ pub async fn run_prompt(
     );
     let result = run_prompt_inner(DEFAULT_OLLAMA, &model, &prompt, token.clone(), handler).await;
 
-    *state.current.lock().unwrap() = None;
+    *state.current.lock_recover() = None;
 
     if result.is_ok() {
-        let t = timing.lock().unwrap();
         if token.is_cancelled() {
-            app.emit(EVENT_CANCELLED, CancelledPayload { token_count: t.token_count })
+            let count = timing.lock_recover().token_count;
+            app.emit(EVENT_CANCELLED, CancelledPayload { token_count: count })
                 .map_err(|e| AppError::Internal(e.to_string()))?;
         } else {
-            app.emit(
-                EVENT_DONE,
-                DonePayload {
-                    ttft_ms: t.ttft_ms(),
-                    tokens_per_sec: t.tokens_per_sec(),
-                    token_count: t.token_count,
-                },
-            )
-            .map_err(|e| AppError::Internal(e.to_string()))?;
+            let payload = done_payload_or_zero(&timing);
+            app.emit(EVENT_DONE, &payload)
+                .map_err(|e| AppError::Internal(e.to_string()))?;
         }
     }
     result
@@ -87,7 +86,7 @@ pub async fn run_prompt(
 
 #[tauri::command]
 pub fn stop_prompt(state: tauri::State<'_, RunState>) -> Result<(), AppError> {
-    if let Some(token) = state.current.lock().unwrap().take() {
+    if let Some(token) = state.current.lock_recover().take() {
         token.cancel();
     }
     Ok(())

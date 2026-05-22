@@ -2,12 +2,14 @@ import { useCallback, useEffect, useState } from "react";
 import { invoke } from "@tauri-apps/api/core";
 import { listen } from "@tauri-apps/api/event";
 import {
+  CancelledPayloadSchema,
+  DonePayloadSchema,
   EVENT_CANCELLED,
   EVENT_DONE,
   EVENT_TOKEN,
+  TokenPayloadSchema,
   type CancelledPayload,
   type DonePayload,
-  type TokenPayload,
 } from "../../../shared/ipc/events";
 import { useWorkspaceStore } from "../state/workspaceStore";
 
@@ -24,23 +26,34 @@ export function useStreamingRun() {
   useEffect(() => {
     let cancelled = false;
     const unsubs: Array<() => void> = [];
+    const reject = (label: string, issues: unknown) => {
+      console.error(`invalid ${label} payload`, issues);
+      setError("invalid backend payload");
+      setStatus("error");
+    };
     (async () => {
-      const ut = await listen<TokenPayload>(EVENT_TOKEN, (e) => {
-        setOutput((prev) => prev + e.payload.text);
+      const ut = await listen<unknown>(EVENT_TOKEN, (e) => {
+        const p = TokenPayloadSchema.safeParse(e.payload);
+        if (!p.success) return reject("prompt-token", p.error.issues);
+        setOutput((prev) => prev + p.data.text);
       });
       if (cancelled) { ut(); return; }
       unsubs.push(ut);
 
-      const ud = await listen<DonePayload>(EVENT_DONE, (e) => {
-        setMetrics(e.payload);
+      const ud = await listen<unknown>(EVENT_DONE, (e) => {
+        const p = DonePayloadSchema.safeParse(e.payload);
+        if (!p.success) return reject("prompt-done", p.error.issues);
+        setMetrics(p.data);
         setStatus("done");
-        useWorkspaceStore.getState().setLastRunMetrics(e.payload);
+        useWorkspaceStore.getState().setLastRunMetrics(p.data);
       });
       if (cancelled) { ud(); return; }
       unsubs.push(ud);
 
-      const uc = await listen<CancelledPayload>(EVENT_CANCELLED, (e) => {
-        setCancelledInfo(e.payload);
+      const uc = await listen<unknown>(EVENT_CANCELLED, (e) => {
+        const p = CancelledPayloadSchema.safeParse(e.payload);
+        if (!p.success) return reject("prompt-cancelled", p.error.issues);
+        setCancelledInfo(p.data);
         setStatus("cancelled");
       });
       if (cancelled) { uc(); return; }
