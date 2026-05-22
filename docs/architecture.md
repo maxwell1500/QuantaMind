@@ -62,6 +62,15 @@ HTTP to a local Ollama server.
    the Rust side. Never trust IPC payloads.
 5. **Errors are typed.** Rust returns `Result<T, AppError>`. TS returns
    discriminated unions, not thrown errors across IPC.
+6. **Hooks for ephemeral, store for shared.** Per-action state that lives
+   only as long as the action (mid-run output, install progress, ongoing
+   fetch) belongs in a hook's local `useState`. Cross-component state
+   read by parts of the UI that don't drive the action (current model,
+   list of installed models, last run's final metrics) belongs in the
+   Zustand store. Hooks may write to the store at completion (the result
+   of an action), but components must not read both the hook's local
+   state and the store for the same piece of data — pick one source per
+   piece of data.
 
 ## Update this doc when
 

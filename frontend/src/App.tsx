@@ -6,6 +6,7 @@ import { RunControls } from "./features/workspace/components/RunControls";
 import { WorkspaceIO } from "./features/workspace/components/WorkspaceIO";
 import { StatusBar } from "./features/workspace/components/StatusBar";
 import { useStreamingRun } from "./features/workspace/hooks/useStreamingRun";
+import { formatMetrics } from "./features/workspace/format";
 
 export default function App() {
   const [model, setModel] = useState<string | null>(null);
@@ -29,9 +30,7 @@ export default function App() {
       <OutputStream output={output} />
       {metrics && (
         <p className="text-xs text-gray-600" data-testid="metrics">
-          TTFT: {metrics.ttft_ms ?? "—"} ms ·{" "}
-          {metrics.tokens_per_sec?.toFixed(1) ?? "—"} tok/s ·{" "}
-          {metrics.token_count} tokens
+          {formatMetrics(metrics)}
         </p>
       )}
       {cancelledInfo && (

@@ -12,7 +12,7 @@ import { useWorkspaceStore } from "../state/workspaceStore";
 describe("StatusBar", () => {
   beforeEach(() => {
     vi.mocked(checkOllamaHealth).mockReset();
-    useWorkspaceStore.setState({ status: "idle", lastRunMetrics: null });
+    useWorkspaceStore.setState({ lastRunMetrics: null });
   });
 
   it("renders 'no run yet' before any run completes", async () => {
@@ -66,7 +66,6 @@ describe("StatusBar", () => {
       version: null,
     });
     useWorkspaceStore.setState({
-      status: "done",
       lastRunMetrics: { ttft_ms: 137, tokens_per_sec: 47.345, token_count: 92 },
     });
     render(<StatusBar model="llama3.2:1b" />);
