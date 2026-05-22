@@ -2,6 +2,7 @@ import { useEffect, useState } from "react";
 import { checkOllamaHealth } from "../../../shared/ipc/client";
 import type { HealthStatus } from "../../../shared/ipc/types";
 import { useWorkspaceStore } from "../state/workspaceStore";
+import { formatMetrics } from "../format";
 
 const POLL_MS = 5000;
 
@@ -58,15 +59,7 @@ export function StatusBar({ model, onModelClick }: Props) {
         {healthLabel}
       </span>
       <span data-testid="status-bar-metrics">
-        {metrics ? (
-          <>
-            TTFT {metrics.ttft_ms ?? "—"}ms ·{" "}
-            {metrics.tokens_per_sec?.toFixed(1) ?? "—"} tok/s ·{" "}
-            {metrics.token_count} tokens
-          </>
-        ) : (
-          "no run yet"
-        )}
+        {metrics ? formatMetrics(metrics) : "no run yet"}
       </span>
     </footer>
   );

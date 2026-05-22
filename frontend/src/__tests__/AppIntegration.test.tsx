@@ -98,14 +98,13 @@ describe("Phase 1 E2E smoke — edit → run → save → load → re-run", () =
     expect(screen.getByTestId("output-stream")).toHaveTextContent(
       "The sky is blue.",
     );
-    expect(screen.getByTestId("metrics")).toHaveTextContent("TTFT: 8 ms");
-    expect(screen.getByTestId("metrics")).toHaveTextContent("32.0 tok/s");
-    expect(screen.getByTestId("run-status")).toHaveTextContent("done");
-    // display consistency: StatusBar reads the same metrics as the inline display
+    const inline = screen.getByTestId("metrics");
     const bar = screen.getByTestId("status-bar-metrics");
-    expect(bar).toHaveTextContent("TTFT 8ms");
-    expect(bar).toHaveTextContent("32.0 tok/s");
-    expect(bar).toHaveTextContent("4 tokens");
+    const expected = "TTFT 8ms · 32.0 tok/s · 4 tokens";
+    expect(inline).toHaveTextContent(expected);
+    expect(bar).toHaveTextContent(expected);
+    expect(inline.textContent).toEqual(bar.textContent);
+    expect(screen.getByTestId("run-status")).toHaveTextContent("done");
 
     // 3. SAVE
     fireEvent.click(screen.getByRole("button", { name: /save/i }));
