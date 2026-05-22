@@ -1,3 +1,4 @@
+use crate::commands::gguf_cmd::EVENT_MODELS_CHANGED;
 use crate::errors::{AppError, AppResult};
 use crate::inference::pull::{pull_model as run_pull, validate_name};
 use crate::inference::pull_progress::PullProgress;
@@ -53,6 +54,8 @@ pub async fn pull_model(
         .await;
         if let Err(e) = &result {
             eprintln!("pull_model({pid}) failed: {e:?}");
+        } else {
+            let _ = emit_app.emit(EVENT_MODELS_CHANGED, ());
         }
         if let Some(state) = emit_app.try_state::<PullState>() {
             state.active.lock_recover().remove(&pid);

@@ -11,7 +11,7 @@ import { InstallFeasibilityDialog } from "./InstallFeasibilityDialog";
 type Props = { model: ModelCatalogEntry; isInstalled: boolean };
 
 export function ModelCard({ model, isInstalled }: Props) {
-  const { state, install } = useModelInstall();
+  const { state, install, cancel: cancelInstall } = useModelInstall();
   const setInstallInFlight = useModelStore((s) => s.setInstallInFlight);
   const [pending, setPending] = useState<InstallFeasibility | null>(null);
 
@@ -38,7 +38,7 @@ export function ModelCard({ model, isInstalled }: Props) {
     else setPending(f);
   };
   const confirm = () => { setPending(null); install(model.name); };
-  const cancel = () => setPending(null);
+  const dismissFeasibility = () => setPending(null);
 
   return (
     <div data-testid={`model-card-${model.name}`} className="border rounded p-3 flex flex-col gap-1">
@@ -54,9 +54,17 @@ export function ModelCard({ model, isInstalled }: Props) {
             Installed ✓
           </span>
         ) : pulling ? (
-          <span className="text-xs text-blue-600" data-testid="installing-state">
-            Installing · {percent}%
-          </span>
+          <div data-testid="installing-state" className="flex items-center gap-2">
+            <progress value={percent} max={100} className="flex-1 h-2" />
+            <span className="text-xs tabular-nums w-10 text-right">{percent}%</span>
+            <button
+              type="button"
+              onClick={() => void cancelInstall()}
+              className="text-xs border rounded px-2 py-1"
+            >
+              Cancel
+            </button>
+          </div>
         ) : (
           <button type="button" onClick={handleInstall} className="text-xs border rounded px-2 py-1">
             Install
@@ -68,7 +76,7 @@ export function ModelCard({ model, isInstalled }: Props) {
           feasibility={pending}
           modelName={model.name}
           onConfirm={confirm}
-          onCancel={cancel}
+          onCancel={dismissFeasibility}
         />
       )}
     </div>

@@ -57,7 +57,10 @@ describe("HuggingFaceRepoDetail (M.11)", () => {
     act(() => fire("hf-progress", {
       phase: "downloading", bytes_completed: 100_000_000, bytes_total: 4_000_000_000, speed_bps: 50_000_000,
     }));
-    expect(screen.getByTestId("hf-downloading")).toHaveTextContent("Downloading · 3%");
+    const dl = screen.getByTestId("hf-downloading");
+    expect(dl).toHaveTextContent("3%");
+    expect(dl.querySelector("progress")).toHaveAttribute("value", "3");
+    expect(dl.querySelector('button')).toHaveTextContent(/Cancel/);
   });
 
   it("invoke rejection surfaces M.12 stub error and offers dismiss", async () => {

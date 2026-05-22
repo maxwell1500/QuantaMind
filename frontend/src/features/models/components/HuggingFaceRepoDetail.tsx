@@ -5,7 +5,7 @@ import { formatBytes } from "../format";
 type Props = { entry: HfRepoEntry; onBack: () => void };
 
 export function HuggingFaceRepoDetail({ entry, onBack }: Props) {
-  const { state, install, reset } = useHfInstall();
+  const { state, install, cancel, reset } = useHfInstall();
   const busy = state.status === "downloading" || state.status === "installing";
 
   const handleInstall = (v: HfVariant) => {
@@ -45,12 +45,18 @@ export function HuggingFaceRepoDetail({ entry, onBack }: Props) {
         </tbody>
       </table>
       {state.status === "downloading" && (
-        <div className="text-xs" data-testid="hf-downloading">
-          Downloading · {state.percent}%
+        <div data-testid="hf-downloading" className="flex items-center gap-2">
+          <progress value={state.percent} max={100} className="flex-1 h-2" />
+          <span className="text-xs tabular-nums w-10 text-right">{state.percent}%</span>
+          <button type="button" onClick={cancel} className="text-xs border rounded px-2 py-1">
+            Cancel
+          </button>
         </div>
       )}
       {state.status === "installing" && (
-        <div className="text-xs" data-testid="hf-installing">Installing into Ollama…</div>
+        <div data-testid="hf-installing" className="text-xs">
+          Installing into Ollama…
+        </div>
       )}
       {state.status === "error" && (
         <div role="alert" className="text-red-600 text-xs" data-testid="hf-error">

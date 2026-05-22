@@ -76,7 +76,10 @@ describe("ModelCard (M.4)", () => {
       pull_id: "pid-1",
       progress: { phase: "downloading", digest: "sha256:x", total: 1000, completed: 250, speed_bps: 100 },
     }));
-    expect(screen.getByTestId("installing-state")).toHaveTextContent("Installing · 25%");
+    const installing = screen.getByTestId("installing-state");
+    expect(installing).toHaveTextContent("25%");
+    expect(installing.querySelector("progress")).toHaveAttribute("value", "25");
+    expect(installing.querySelector('button')).toHaveTextContent(/Cancel/);
     expect(useModelStore.getState().installInFlight?.name).toBe("phi3.5:latest");
     expect(useModelStore.getState().installInFlight?.progress).toBe(25);
   });

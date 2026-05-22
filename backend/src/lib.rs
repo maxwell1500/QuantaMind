@@ -12,11 +12,13 @@ pub fn run() {
         .plugin(tauri_plugin_dialog::init())
         .manage(commands::prompt::RunState::default())
         .manage(commands::models_pull::PullState::default())
+        .manage(commands::hf_install::HfInstallState::default())
         .invoke_handler(tauri::generate_handler![
             commands::feasibility::check_install_feasibility,
             commands::gguf_cmd::inspect_gguf,
             commands::gguf_cmd::install_local_gguf,
             commands::hf_install::install_hf_gguf,
+            commands::hf_install::cancel_hf_install,
             commands::health::check_ollama_health,
             commands::models::list_models,
             commands::models_pull::pull_model,

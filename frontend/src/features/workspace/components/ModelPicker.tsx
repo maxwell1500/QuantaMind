@@ -1,4 +1,5 @@
 import { useEffect, useState } from "react";
+import { listen } from "@tauri-apps/api/event";
 import { listModels } from "../../../shared/ipc/client";
 
 type Props = {
@@ -7,21 +8,38 @@ type Props = {
   onAddClick?: () => void;
 };
 
+const EVENT_MODELS_CHANGED = "models-changed";
+
 export function ModelPicker({ value, onChange, onAddClick }: Props) {
   const [models, setModels] = useState<string[]>([]);
   const [error, setError] = useState<string | null>(null);
 
   useEffect(() => {
     let cancelled = false;
-    listModels()
-      .then((list) => {
-        if (!cancelled) setModels(list);
-      })
-      .catch((e) => {
-        if (!cancelled) setError(String(e));
+    let unsub: (() => void) | null = null;
+
+    const refresh = () =>
+      listModels()
+        .then((list) => {
+          if (!cancelled) {
+            setModels(list);
+            setError(null);
+          }
+        })
+        .catch((e) => {
+          if (!cancelled) setError(String(e));
+        });
+
+    refresh();
+    (async () => {
+      const u = await listen(EVENT_MODELS_CHANGED, () => {
+        refresh();
       });
+      if (cancelled) u(); else unsub = u;
+    })();
     return () => {
       cancelled = true;
+      unsub?.();
     };
   }, []);
 

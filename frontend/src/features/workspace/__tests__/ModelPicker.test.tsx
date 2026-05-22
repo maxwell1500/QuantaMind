@@ -4,6 +4,9 @@ import { render, screen, fireEvent } from "@testing-library/react";
 vi.mock("../../../shared/ipc/client", () => ({
   listModels: vi.fn(),
 }));
+vi.mock("@tauri-apps/api/event", () => ({
+  listen: vi.fn().mockResolvedValue(() => {}),
+}));
 
 import { listModels } from "../../../shared/ipc/client";
 import { ModelPicker } from "../components/ModelPicker";

@@ -21,3 +21,7 @@ export async function installHfGguf(
 ): Promise<void> {
   await invoke("install_hf_gguf", { repo, filename, name });
 }
+
+export async function cancelHfInstall(): Promise<void> {
+  await invoke("cancel_hf_install");
+}

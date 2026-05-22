@@ -970,6 +970,29 @@ Execute in order. Manual. Production build. Mac mini.
 
 Time estimate: 1 evening (mostly waiting on downloads).
 
+### M.14 — findings from manual gate
+
+Issues surfaced while driving the smoke and the in-commit fixes:
+
+- **GGUF inspect truncated on large vocabularies.** Header read buffer
+  was 64KB; real GGUFs (Llama 3 / Qwen 2.5 SentencePiece, ~32k tokens)
+  push metadata well past that. `GgufReader` then errored with
+  `truncated: need N bytes at offset M`. Fix: `HEADER_READ_BYTES`
+  raised to 8 MiB in `backend/src/inference/gguf.rs` — comfortable
+  headroom, still a tiny fraction of any multi-GB GGUF.
+- **Picker stale after install.** `ModelPicker` called `listModels`
+  only on mount, so a freshly-installed model wasn't selectable
+  until app reload. Fix: backend emits the new
+  `models-changed` Tauri event on every successful install
+  (`pull_model` spawned task and `install_local_gguf`); picker
+  subscribes via `@tauri-apps/api/event#listen` and re-fetches on
+  receipt. Constant lives in `commands::gguf_cmd::EVENT_MODELS_CHANGED`.
+- **Install state lost on tab change (deferred).** `useHfInstall` is
+  local to `HuggingFaceRepoDetail`; navigating away unmounts the
+  hook and the UI loses the in-flight download (the backend task
+  keeps running). Tracked for M.15 polish — fix is to lift install
+  state into the Zustand `modelStore`.
+
 ---
 
 ## Step M.15 — Polish pass

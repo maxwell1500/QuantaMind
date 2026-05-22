@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import { listen } from "@tauri-apps/api/event";
 import {
+  cancelHfInstall,
   EVENT_HF_PROGRESS,
   HfPhaseSchema,
   installHfGguf,
@@ -67,5 +68,9 @@ export function useHfInstall() {
 
   const reset = useCallback(() => setState(IDLE), []);
 
-  return { state, install, reset };
+  const cancel = useCallback(async () => {
+    try { await cancelHfInstall(); } catch { /* best-effort */ }
+  }, []);
+
+  return { state, install, cancel, reset };
 }

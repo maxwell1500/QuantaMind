@@ -2,13 +2,20 @@ use crate::commands::gguf_cmd::install_local_gguf;
 use crate::errors::{AppError, AppResult};
 use crate::inference::hf_download::{download_gguf, DownloadProgress};
 use crate::inference::pull::validate_name;
+use crate::sync::MutexExt;
 use serde::Serialize;
 use std::fs;
+use std::sync::Mutex;
 use tauri::{AppHandle, Emitter};
 use tokio_util::sync::CancellationToken;
 
 const HF_ENDPOINT: &str = "https://huggingface.co";
 pub const EVENT_HF_PROGRESS: &str = "hf-progress";
+
+#[derive(Default)]
+pub struct HfInstallState {
+    current: Mutex<Option<CancellationToken>>,
+}
 
 #[derive(Serialize, Clone)]
 #[serde(tag = "phase", rename_all = "snake_case")]
@@ -17,10 +24,9 @@ pub enum HfPhase {
     Installing,
 }
 
-/// Public for testing — installs from an arbitrary HF-compatible endpoint
-/// (mockito in tests; `https://huggingface.co` in production).
 pub async fn install_hf_gguf_inner(
     app: AppHandle,
+    state: &HfInstallState,
     endpoint: &str,
     repo: &str,
     filename: &str,
@@ -32,6 +38,13 @@ pub async fn install_hf_gguf_inner(
     let safe = name.replace([':', '/'], "_");
     let dest = temp_dir.join(format!("{safe}.gguf"));
 
+    let token = CancellationToken::new();
+    {
+        let mut g = state.current.lock_recover();
+        if let Some(prev) = g.take() { prev.cancel(); }
+        *g = Some(token.clone());
+    }
+
     let emit_app = app.clone();
     let on_progress = move |p: DownloadProgress| {
         let _ = emit_app.emit(EVENT_HF_PROGRESS, HfPhase::Downloading {
@@ -41,18 +54,37 @@ pub async fn install_hf_gguf_inner(
         });
     };
 
-    download_gguf(endpoint, repo, filename, &dest, on_progress, CancellationToken::new()).await?;
+    let dl = download_gguf(endpoint, repo, filename, &dest, on_progress, token.clone()).await;
+    if token.is_cancelled() {
+        *state.current.lock_recover() = None;
+        return Err(AppError::Validation("install cancelled".into()));
+    }
+    dl?;
 
     let _ = app.emit(EVENT_HF_PROGRESS, HfPhase::Installing);
-    install_local_gguf(dest.to_string_lossy().into_owned(), name.to_string()).await
+    let result = install_local_gguf(app.clone(), dest.to_string_lossy().into_owned(), name.to_string()).await;
+    if result.is_ok() {
+        let _ = fs::remove_file(&dest);
+    }
+    *state.current.lock_recover() = None;
+    result
 }
 
 #[tauri::command]
 pub async fn install_hf_gguf(
     app: AppHandle,
+    state: tauri::State<'_, HfInstallState>,
     repo: String,
     filename: String,
     name: String,
 ) -> Result<(), AppError> {
-    install_hf_gguf_inner(app, HF_ENDPOINT, &repo, &filename, &name).await
+    install_hf_gguf_inner(app, state.inner(), HF_ENDPOINT, &repo, &filename, &name).await
+}
+
+#[tauri::command]
+pub fn cancel_hf_install(state: tauri::State<'_, HfInstallState>) -> Result<(), AppError> {
+    if let Some(token) = state.current.lock_recover().take() {
+        token.cancel();
+    }
+    Ok(())
 }

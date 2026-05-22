@@ -5,17 +5,16 @@ use crate::inference::modelfile::{generate_modelfile, ModelfileParameters, Model
 use crate::inference::ollama_create::ollama_create;
 use crate::inference::pull::validate_name;
 use std::path::PathBuf;
+use tauri::{AppHandle, Emitter};
 
 const DEFAULT_OLLAMA: &str = "http://localhost:11434";
+pub const EVENT_MODELS_CHANGED: &str = "models-changed";
 
 #[tauri::command]
 pub async fn inspect_gguf(path: String) -> Result<GgufMetadata, AppError> {
     inspect(&PathBuf::from(&path))
 }
 
-/// Inspect the GGUF, detect a chat template, generate a Modelfile, and
-/// POST it to Ollama's /api/create. Public for testing — production
-/// `install_local_gguf` hardcodes `DEFAULT_OLLAMA`.
 pub async fn install_local_gguf_inner(endpoint: &str, path: &str, name: &str) -> AppResult<()> {
     validate_name(name)?;
     let p = PathBuf::from(path);
@@ -39,6 +38,10 @@ pub async fn install_local_gguf_inner(endpoint: &str, path: &str, name: &str) ->
 }
 
 #[tauri::command]
-pub async fn install_local_gguf(path: String, name: String) -> AppResult<()> {
-    install_local_gguf_inner(DEFAULT_OLLAMA, &path, &name).await
+pub async fn install_local_gguf(app: AppHandle, path: String, name: String) -> AppResult<()> {
+    let r = install_local_gguf_inner(DEFAULT_OLLAMA, &path, &name).await;
+    if r.is_ok() {
+        let _ = app.emit(EVENT_MODELS_CHANGED, ());
+    }
+    r
 }

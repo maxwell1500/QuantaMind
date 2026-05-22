@@ -8,7 +8,11 @@ use std::fs;
 use std::io::Read;
 use std::path::Path;
 
-const HEADER_READ_BYTES: usize = 64 * 1024;
+// 64KB was too small — real GGUFs with sizable tokenizer arrays (e.g.
+// SentencePiece vocabularies for Llama 3, ~32k entries) easily push
+// metadata past 64KB. 8MB is comfortable headroom for current models
+// and still a tiny fraction of any multi-GB GGUF.
+const HEADER_READ_BYTES: usize = 8 * 1024 * 1024;
 const MIN_FILE_SIZE: u64 = 64 * 1024;
 
 #[derive(Serialize, Clone, Debug)]
