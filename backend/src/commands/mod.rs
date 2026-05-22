@@ -8,4 +8,5 @@
 pub mod health;
 pub mod models;
 pub mod prompt;
+pub mod prompt_payloads;
 pub mod workspace;

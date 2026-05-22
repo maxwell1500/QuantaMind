@@ -3,6 +3,7 @@ pub mod errors;
 pub mod inference;
 pub mod metrics;
 pub mod persistence;
+pub mod sync;
 pub mod validation;
 
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
