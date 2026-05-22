@@ -135,9 +135,9 @@ describe("Phase 1 E2E smoke — edit → run → save → load → re-run", () =
     });
   });
 
-  it("cancel mid-stream invokes stop_prompt cleanly", async () => {
+  it("cancel mid-stream produces a distinct cancelled terminal state", async () => {
     render(<App />);
-    await waitFor(() => expect(handlers["prompt-token"]).toBeDefined());
+    await waitFor(() => expect(handlers["prompt-cancelled"]).toBeDefined());
     fireEvent.change(await screen.findByTestId("prompt-input"), {
       target: { value: "x" },
     });
@@ -150,5 +150,11 @@ describe("Phase 1 E2E smoke — edit → run → save → load → re-run", () =
     act(() => fire("prompt-token", { text: "partial" }));
     fireEvent.click(screen.getByRole("button", { name: /cancel/i }));
     await waitFor(() => expect(invoke).toHaveBeenCalledWith("stop_prompt"));
+    act(() => fire("prompt-cancelled", { token_count: 1 }));
+    expect(screen.getByTestId("run-status")).toHaveTextContent("cancelled");
+    expect(screen.getByTestId("cancelled-info")).toHaveTextContent(
+      "Cancelled · 1 tokens",
+    );
+    expect(screen.queryByTestId("metrics")).toBeNull();
   });
 });

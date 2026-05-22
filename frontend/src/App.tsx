@@ -10,7 +10,8 @@ import { useStreamingRun } from "./features/workspace/hooks/useStreamingRun";
 export default function App() {
   const [model, setModel] = useState<string | null>(null);
   const [prompt, setPrompt] = useState("");
-  const { output, status, error, metrics, start, cancel } = useStreamingRun();
+  const { output, status, error, metrics, cancelledInfo, start, cancel } =
+    useStreamingRun();
   const pickerRef = useRef<HTMLDivElement>(null);
   return (
     <main className="min-h-screen p-6 pb-14 font-sans space-y-3">
@@ -31,6 +32,11 @@ export default function App() {
           TTFT: {metrics.ttft_ms ?? "—"} ms ·{" "}
           {metrics.tokens_per_sec?.toFixed(1) ?? "—"} tok/s ·{" "}
           {metrics.token_count} tokens
+        </p>
+      )}
+      {cancelledInfo && (
+        <p className="text-xs text-amber-700" data-testid="cancelled-info">
+          Cancelled · {cancelledInfo.token_count} tokens
         </p>
       )}
       {error && <p className="text-red-600 text-sm">{error}</p>}
