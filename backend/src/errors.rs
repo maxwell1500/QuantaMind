@@ -19,6 +19,9 @@ pub enum AppError {
     #[error("timeout: {0}")]
     Timeout(String),
 
+    #[error("auth required: {0}")]
+    AuthRequired(String),
+
     #[error("internal: {0}")]
     Internal(String),
 }
@@ -56,5 +59,11 @@ mod tests {
     fn timeout_serializes_as_tagged_json() {
         let json = serde_json::to_string(&AppError::Timeout("list_models after 5s".into())).unwrap();
         assert_eq!(json, r#"{"kind":"timeout","message":"list_models after 5s"}"#);
+    }
+
+    #[test]
+    fn auth_required_serializes_as_tagged_json() {
+        let json = serde_json::to_string(&AppError::AuthRequired("meta-llama/Llama-3".into())).unwrap();
+        assert_eq!(json, r#"{"kind":"auth_required","message":"meta-llama/Llama-3"}"#);
     }
 }
