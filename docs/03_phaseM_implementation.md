@@ -999,11 +999,20 @@ Issues surfaced while driving the smoke and the in-commit fixes:
   (`pull_model` spawned task and `install_local_gguf`); picker
   subscribes via `@tauri-apps/api/event#listen` and re-fetches on
   receipt. Constant lives in `commands::gguf_cmd::EVENT_MODELS_CHANGED`.
-- **Install state lost on tab change (deferred).** `useHfInstall` is
-  local to `HuggingFaceRepoDetail`; navigating away unmounts the
-  hook and the UI loses the in-flight download (the backend task
-  keeps running). Tracked for M.15 polish — fix is to lift install
-  state into the Zustand `modelStore`.
+- **Install state lost on tab change.** Two parts: (a) Ollama
+  `useModelInstall` called `cancel_pull` in its unmount cleanup, so
+  switching tabs killed the pull on the backend. Removed — downloads
+  now survive component unmount; the only way to cancel is the
+  Cancel button. (b) HF install state was hook-local. Lifted both
+  Ollama and HF install state into `modelStore.downloads` (a
+  `Record<id, DownloadEntry>` registry) — entries carry source,
+  status, percent, byte totals, and `pullId` (for Ollama cancel).
+- **Downloads tab.** New `DownloadsTab` (between Local File and
+  Storage) shows two sections: "In progress" (active entries from
+  the registry with progress bar + Cancel) and "Installed"
+  (`get_installed_models_with_stats` results with Delete +
+  confirmation). Both react to the `models-changed` event for
+  auto-refresh after install/uninstall. ⌘1–⌘5 jump tabs.
 
 ---
 

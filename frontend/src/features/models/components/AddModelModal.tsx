@@ -4,6 +4,7 @@ import { useModalDragDrop } from "../hooks/useModalDragDrop";
 import { OllamaLibraryTab } from "./tabs/OllamaLibraryTab";
 import { HuggingFaceTab } from "./tabs/HuggingFaceTab";
 import { LocalFileTab } from "./tabs/LocalFileTab";
+import { DownloadsTab } from "./tabs/DownloadsTab";
 import { StorageTab } from "./tabs/StorageTab";
 
 type Props = { isOpen: boolean; onClose: () => void };
@@ -12,6 +13,7 @@ const TABS: Array<{ id: TabId; label: string }> = [
   { id: "ollama", label: "Ollama Library" },
   { id: "huggingface", label: "Hugging Face" },
   { id: "local", label: "Local File" },
+  { id: "downloads", label: "Downloads" },
   { id: "storage", label: "Storage" },
 ];
 const FOCUSABLE = 'button, [href], input, select, textarea, [tabindex]:not([tabindex="-1"])';
@@ -29,7 +31,7 @@ export function AddModelModal({ isOpen, onClose }: Props) {
     previousFocus.current = document.activeElement as HTMLElement | null;
     const handleKey = (e: KeyboardEvent) => {
       if (e.key === "Escape") { e.preventDefault(); onClose(); return; }
-      if (e.metaKey && /^[1-4]$/.test(e.key)) {
+      if (e.metaKey && /^[1-5]$/.test(e.key)) {
         e.preventDefault();
         setActiveTab(TABS[parseInt(e.key, 10) - 1].id);
         return;
@@ -85,6 +87,7 @@ export function AddModelModal({ isOpen, onClose }: Props) {
           {activeTab === "ollama" && <OllamaLibraryTab />}
           {activeTab === "huggingface" && <HuggingFaceTab />}
           {activeTab === "local" && <LocalFileTab />}
+          {activeTab === "downloads" && <DownloadsTab />}
           {activeTab === "storage" && <StorageTab />}
         </main>
         <footer className="px-4 py-2 border-t text-xs text-gray-500" data-testid="modal-footer">

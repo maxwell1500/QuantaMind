@@ -78,13 +78,14 @@ describe("useModelInstall (M.2)", () => {
     expect(result.current.state.status).toBe("cancelled");
   });
 
-  it("unmount mid-pull auto-cancels", async () => {
+  it("unmount mid-pull does NOT cancel — download keeps running in background", async () => {
     vi.mocked(invoke).mockResolvedValue("pid-1");
     const { result, unmount } = renderHook(() => useModelInstall());
     await ready();
     await act(async () => { await result.current.install("x"); });
+    vi.mocked(invoke).mockClear();
     unmount();
-    expect(invoke).toHaveBeenCalledWith("cancel_pull", { pullId: "pid-1" });
+    expect(invoke).not.toHaveBeenCalledWith("cancel_pull", { pullId: "pid-1" });
   });
 
   it("install rejection transitions to error with the error message", async () => {

@@ -39,13 +39,15 @@ describe("AddModelModal (M.3)", () => {
     expect(onClose).toHaveBeenCalledTimes(2);
   });
 
-  it("clicking a tab and Cmd+1/2/3/4 both update the store", () => {
+  it("clicking a tab and Cmd+1..5 both update the store", () => {
     render(<AddModelModal isOpen onClose={() => {}} />);
     fireEvent.click(screen.getByRole("tab", { name: "Hugging Face" }));
     expect(useModelStore.getState().activeTab).toBe("huggingface");
     fireEvent.keyDown(document, { key: "3", metaKey: true });
     expect(useModelStore.getState().activeTab).toBe("local");
     fireEvent.keyDown(document, { key: "4", metaKey: true });
+    expect(useModelStore.getState().activeTab).toBe("downloads");
+    fireEvent.keyDown(document, { key: "5", metaKey: true });
     expect(useModelStore.getState().activeTab).toBe("storage");
     fireEvent.keyDown(document, { key: "1", metaKey: true });
     expect(useModelStore.getState().activeTab).toBe("ollama");
