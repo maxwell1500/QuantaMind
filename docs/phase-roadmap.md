@@ -23,6 +23,12 @@ Exit criteria:
 - Save / load prompt round-trips byte-identical YAML.
 - TTFT + tokens/sec displayed correctly.
 
+## Phase 1.5 — Remediation
+
+P0 + critical P1 fixes from the Phase 1 forensic audit (2026-05-21).
+3–4 evenings. See `02b_phase1.5_remediation.md`. Must complete
+before M.1.
+
 ## Phase M — Model Management
 
 Goal: install, remove, and inspect Ollama models from inside the app.

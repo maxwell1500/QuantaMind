@@ -71,3 +71,14 @@ If any prerequisite is red, fix it before touching code. This is the
 After each step, append a one-line note under that row in the table:
 status (✅ shipped / ⏳ in progress) + commit SHA + date. Do not re-flow
 the table; just keep it readable.
+
+## Post-ship audit (added 2026-05-21)
+
+A forensic audit performed after Phase 1 shipping identified 21
+issues (F1–F21). The 7 P0 and critical P1 fixes are addressed in
+Phase 1.5; see `02b_phase1.5_remediation.md`. Remaining items are
+tracked for their respective future phases.
+
+This note is additive forensic trail, not a retroactive scope change.
+The shipped-phase freeze rule (phase-roadmap.md) remains intact in
+spirit: original step ledger and exit criteria are unmodified.
