@@ -1,30 +1,15 @@
 import { create } from "zustand";
 import type { DonePayload } from "../../../shared/ipc/events";
 
-export type RunStatus = "idle" | "running" | "streaming" | "done";
-
+// Shared cross-component state only. Per-action/ephemeral state (run
+// status, output buffer, install progress) lives in hooks. See
+// architecture.md rule 6.
 export interface WorkspaceStore {
-  status: RunStatus;
   lastRunMetrics: DonePayload | null;
-  beginRun: () => void;
-  receiveToken: () => void;
-  finish: () => void;
-  cancel: () => void;
   setLastRunMetrics: (m: DonePayload) => void;
 }
 
 export const useWorkspaceStore = create<WorkspaceStore>((set) => ({
-  status: "idle",
   lastRunMetrics: null,
-  beginRun: () => set({ status: "running" }),
-  receiveToken: () =>
-    set((s) => (s.status === "running" ? { status: "streaming" } : s)),
-  finish: () =>
-    set((s) =>
-      s.status === "running" || s.status === "streaming"
-        ? { status: "done" }
-        : s,
-    ),
-  cancel: () => set({ status: "idle" }),
   setLastRunMetrics: (m) => set({ lastRunMetrics: m }),
 }));

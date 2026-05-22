@@ -30,7 +30,7 @@ describe("useStreamingRun", () => {
     vi.mocked(invoke).mockReset();
     vi.mocked(listen).mockReset();
     installListenMock();
-    useWorkspaceStore.setState({ status: "idle", lastRunMetrics: null });
+    useWorkspaceStore.setState({ lastRunMetrics: null });
   });
 
   it("tokens append in order, no dup, no drop; status -> done", async () => {
