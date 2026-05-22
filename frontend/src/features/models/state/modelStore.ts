@@ -1,7 +1,7 @@
 import { create } from "zustand";
 import { z } from "zod";
 
-export const TabIdSchema = z.enum(["ollama", "huggingface", "local"]);
+export const TabIdSchema = z.enum(["ollama", "huggingface", "local", "storage"]);
 export type TabId = z.infer<typeof TabIdSchema>;
 
 export interface InstallInFlight {
