@@ -16,6 +16,9 @@ pub enum AppError {
     #[error("io: {0}")]
     Io(String),
 
+    #[error("timeout: {0}")]
+    Timeout(String),
+
     #[error("internal: {0}")]
     Internal(String),
 }
@@ -47,5 +50,11 @@ mod tests {
     #[test]
     fn display_format_matches_thiserror_attr() {
         assert_eq!(format!("{}", AppError::Validation("x".into())), "validation: x");
+    }
+
+    #[test]
+    fn timeout_serializes_as_tagged_json() {
+        let json = serde_json::to_string(&AppError::Timeout("list_models after 5s".into())).unwrap();
+        assert_eq!(json, r#"{"kind":"timeout","message":"list_models after 5s"}"#);
     }
 }
