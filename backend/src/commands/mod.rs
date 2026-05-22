@@ -9,6 +9,7 @@
 
 pub mod health;
 pub mod models;
+pub mod models_pull;
 pub mod prompt;
 pub mod prompt_handler;
 pub mod prompt_payloads;

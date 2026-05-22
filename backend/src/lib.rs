@@ -10,9 +10,12 @@ pub mod validation;
 pub fn run() {
     tauri::Builder::default()
         .manage(commands::prompt::RunState::default())
+        .manage(commands::models_pull::PullState::default())
         .invoke_handler(tauri::generate_handler![
             commands::health::check_ollama_health,
             commands::models::list_models,
+            commands::models_pull::pull_model,
+            commands::models_pull::cancel_pull,
             commands::prompt::run_prompt,
             commands::prompt::stop_prompt,
             commands::workspace::save_prompt,
