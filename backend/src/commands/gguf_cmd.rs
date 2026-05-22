@@ -1,21 +1,24 @@
 use crate::errors::{AppError, AppResult};
+use crate::inference::chat_templates::detect_template;
 use crate::inference::gguf::{inspect_gguf as inspect, GgufMetadata};
+use crate::inference::modelfile::{generate_modelfile, ModelfileParameters, ModelfileSpec};
+use crate::inference::ollama_create::ollama_create;
 use crate::inference::pull::validate_name;
 use std::path::PathBuf;
+
+const DEFAULT_OLLAMA: &str = "http://localhost:11434";
 
 #[tauri::command]
 pub async fn inspect_gguf(path: String) -> Result<GgufMetadata, AppError> {
     inspect(&PathBuf::from(&path))
 }
 
-/// Validate inputs and (eventually) call M.12's Modelfile generator +
-/// `ollama create`. For M.8 this returns a clear "not implemented" error
-/// so the LocalFileTab can render it gracefully; M.12 will replace the
-/// body without touching this signature.
-#[tauri::command]
-pub async fn install_local_gguf(path: String, name: String) -> AppResult<()> {
-    validate_name(&name)?;
-    let p = PathBuf::from(&path);
+/// Inspect the GGUF, detect a chat template, generate a Modelfile, and
+/// POST it to Ollama's /api/create. Public for testing — production
+/// `install_local_gguf` hardcodes `DEFAULT_OLLAMA`.
+pub async fn install_local_gguf_inner(endpoint: &str, path: &str, name: &str) -> AppResult<()> {
+    validate_name(name)?;
+    let p = PathBuf::from(path);
     if !p.exists() {
         return Err(AppError::Validation(format!("file does not exist: {path}")));
     }
@@ -24,7 +27,18 @@ pub async fn install_local_gguf(path: String, name: String) -> AppResult<()> {
     if !ext_ok {
         return Err(AppError::Validation(format!("not a .gguf file: {path}")));
     }
-    Err(AppError::Internal(
-        "install_local_gguf is awaiting M.12 (Modelfile generator + ollama create)".into(),
-    ))
+    let meta = inspect(&p)?;
+    let template = detect_template(name, Some(&meta.architecture));
+    let spec = ModelfileSpec {
+        gguf_path: p.canonicalize().unwrap_or(p.clone()),
+        chat_template: template,
+        parameters: ModelfileParameters::default(),
+    };
+    let modelfile = generate_modelfile(&spec);
+    ollama_create(endpoint, name, &modelfile).await
+}
+
+#[tauri::command]
+pub async fn install_local_gguf(path: String, name: String) -> AppResult<()> {
+    install_local_gguf_inner(DEFAULT_OLLAMA, &path, &name).await
 }
