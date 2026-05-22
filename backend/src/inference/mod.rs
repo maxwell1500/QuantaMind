@@ -1,3 +1,5 @@
+pub mod chat_template_data;
+pub mod chat_templates;
 pub mod gguf;
 pub mod gguf_family;
 pub mod gguf_quant;
