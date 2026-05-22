@@ -2,7 +2,10 @@ use crate::errors::{AppError, AppResult};
 use futures_util::StreamExt;
 use reqwest::Client;
 use serde::{Deserialize, Serialize};
+use std::time::Duration;
 use tokio_util::sync::CancellationToken;
+
+const CONNECT_TIMEOUT: Duration = Duration::from_secs(60);
 
 #[derive(Serialize)]
 struct GenerateRequest<'a> {
@@ -25,14 +28,23 @@ pub async fn stream_generate(
     cancel: CancellationToken,
     mut on_token: impl FnMut(&str),
 ) -> AppResult<()> {
-    let client = Client::new();
+    let client = Client::builder()
+        .connect_timeout(CONNECT_TIMEOUT)
+        .build()
+        .map_err(|e| AppError::Internal(e.to_string()))?;
     let body = GenerateRequest { model, prompt, stream: true };
     let resp = client
         .post(format!("{endpoint}/api/generate"))
         .json(&body)
         .send()
         .await
-        .map_err(|e| AppError::Inference(e.to_string()))?;
+        .map_err(|e| {
+            if e.is_timeout() || e.is_connect() {
+                AppError::Timeout(format!("connect to Ollama: {e}"))
+            } else {
+                AppError::Inference(e.to_string())
+            }
+        })?;
 
     if !resp.status().is_success() {
         return Err(AppError::Inference(format!("HTTP {}", resp.status())));
