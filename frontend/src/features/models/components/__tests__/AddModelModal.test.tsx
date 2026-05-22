@@ -1,5 +1,11 @@
 import { describe, it, expect, vi, beforeEach } from "vitest";
 import { render, screen, fireEvent } from "@testing-library/react";
+
+vi.mock("@tauri-apps/api/core", () => ({ invoke: vi.fn().mockResolvedValue([]) }));
+vi.mock("@tauri-apps/api/event", () => ({
+  listen: vi.fn().mockResolvedValue(() => {}),
+}));
+
 import { AddModelModal } from "../AddModelModal";
 import { useModelStore } from "../../state/modelStore";
 
@@ -61,10 +67,10 @@ describe("AddModelModal (M.3)", () => {
 
   it("renders the correct tab content for each active tab", () => {
     render(<AddModelModal isOpen onClose={() => {}} />);
-    expect(screen.getByTestId("tab-ollama")).toBeInTheDocument();
+    expect(screen.getByTestId("model-grid")).toBeInTheDocument();
     fireEvent.click(screen.getByRole("tab", { name: "Hugging Face" }));
     expect(screen.getByTestId("tab-huggingface")).toBeInTheDocument();
-    expect(screen.queryByTestId("tab-ollama")).toBeNull();
+    expect(screen.queryByTestId("model-grid")).toBeNull();
   });
 
   it("installInFlight from store renders in footer", () => {
