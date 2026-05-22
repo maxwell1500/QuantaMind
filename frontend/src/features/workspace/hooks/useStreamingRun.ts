@@ -12,6 +12,7 @@ import {
   type DonePayload,
 } from "../../../shared/ipc/events";
 import { withTimeout } from "../../../shared/ipc/timeout";
+import { formatIpcError } from "../../../shared/ipc/error";
 import { useWorkspaceStore } from "../state/workspaceStore";
 
 export type RunStatus = "idle" | "running" | "done" | "cancelled" | "error";
@@ -79,7 +80,7 @@ export function useStreamingRun() {
       const call = invoke("run_prompt", { model, prompt });
       await withTimeout(call, RUN_PROMPT_TIMEOUT_MS, "run_prompt");
     } catch (e) {
-      setError(e instanceof Error ? e.message : String(e));
+      setError(formatIpcError(e));
       setStatus("error");
     }
   }, []);

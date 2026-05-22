@@ -7,6 +7,7 @@ import {
   type GgufMetadata,
 } from "../../../shared/ipc/gguf";
 import { useModelStore } from "../state/modelStore";
+import { formatIpcError } from "../../../shared/ipc/error";
 
 const defaultName = (path: string) =>
   (path.split("/").pop() ?? path).replace(/\.gguf$/i, "").replace(/[^A-Za-z0-9_\-.:]/g, "-");
@@ -28,7 +29,7 @@ export function useLocalImport() {
   const choose = useCallback(async (p: string) => {
     setError(null); setPath(p); setName(defaultName(p));
     try { setMeta(await inspectGguf(p)); }
-    catch (e) { setError(e instanceof Error ? e.message : String(e)); setMeta(null); }
+    catch (e) { setError(formatIpcError(e)); setMeta(null); }
   }, []);
 
   useEffect(() => {
@@ -54,7 +55,7 @@ export function useLocalImport() {
     if (!path) return;
     setBusy(true); setError(null);
     try { await installLocalGguf(path, name); cancel(); }
-    catch (e) { setError(e instanceof Error ? e.message : String(e)); }
+    catch (e) { setError(formatIpcError(e)); }
     finally { setBusy(false); }
   }, [path, name, cancel]);
 

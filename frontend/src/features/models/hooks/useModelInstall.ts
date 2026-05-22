@@ -10,6 +10,7 @@ import {
   IDLE,
   type ModelInstallState,
 } from "../state/install_state";
+import { formatIpcError } from "../../../shared/ipc/error";
 
 export function useModelInstall() {
   const [state, setState] = useState<ModelInstallState>(IDLE);
@@ -51,7 +52,7 @@ export function useModelInstall() {
       setState({
         status: "error",
         phase: null,
-        error: e instanceof Error ? e.message : String(e),
+        error: formatIpcError(e),
       });
     }
   }, []);

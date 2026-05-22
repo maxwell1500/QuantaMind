@@ -7,6 +7,7 @@ import {
   installHfGguf,
   type HfPhase,
 } from "../../../shared/ipc/hf_install";
+import { formatIpcError } from "../../../shared/ipc/error";
 
 export type HfStatus = "idle" | "downloading" | "installing" | "success" | "error";
 
@@ -59,7 +60,7 @@ export function useHfInstall() {
       setState((s) => ({
         ...s,
         status: "error",
-        error: e instanceof Error ? e.message : String(e),
+        error: formatIpcError(e),
       }));
     } finally {
       busy.current = false;

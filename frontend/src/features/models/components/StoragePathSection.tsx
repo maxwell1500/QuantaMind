@@ -7,6 +7,7 @@ import {
   type StoragePathInfo,
 } from "../../../shared/ipc/settings";
 import { formatBytes } from "../format";
+import { formatIpcError } from "../../../shared/ipc/error";
 
 export function StoragePathSection() {
   const [info, setInfo] = useState<StoragePathInfo | null>(null);
@@ -16,7 +17,7 @@ export function StoragePathSection() {
 
   useEffect(() => {
     getStoragePath().then(setInfo).catch((e) =>
-      setError(e instanceof Error ? e.message : String(e)),
+      setError(formatIpcError(e)),
     );
   }, []);
 
@@ -28,7 +29,7 @@ export function StoragePathSection() {
     try {
       setCheck(await validateStoragePath(picked));
     } catch (e) {
-      setError(e instanceof Error ? e.message : String(e));
+      setError(formatIpcError(e));
     }
   };
 

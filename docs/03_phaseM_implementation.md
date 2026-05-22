@@ -974,12 +974,24 @@ Time estimate: 1 evening (mostly waiting on downloads).
 
 Issues surfaced while driving the smoke and the in-commit fixes:
 
-- **GGUF inspect truncated on large vocabularies.** Header read buffer
-  was 64KB; real GGUFs (Llama 3 / Qwen 2.5 SentencePiece, ~32k tokens)
-  push metadata well past that. `GgufReader` then errored with
-  `truncated: need N bytes at offset M`. Fix: `HEADER_READ_BYTES`
-  raised to 8 MiB in `backend/src/inference/gguf.rs` — comfortable
-  headroom, still a tiny fraction of any multi-GB GGUF.
+- **GGUF inspect truncated on large vocabularies.** Two separate
+  problems showed up under the same symptom (`truncated: need N
+  bytes at offset M`). (1) Header read buffer was 64KB; real GGUFs
+  (Llama 3 / Qwen 2.5 SentencePiece, ~32k tokens) push metadata
+  well past that — raised `HEADER_READ_BYTES` to 8 MiB in
+  `backend/src/inference/gguf.rs`. (2) `std::io::Read::read` only
+  returns one syscall's worth on macOS (~64KB) even when given a
+  bigger buffer, so the read silently stopped at the OS page
+  boundary — switched to `f.take(HEADER_READ_BYTES).read_to_end()`
+  to actually fill the requested range.
+- **IPC errors rendered as `[object Object]`.** Tauri returns
+  `AppError` as `{kind, message}` JSON; the frontend was using
+  `e instanceof Error ? e.message : String(e)`, and `String({...})`
+  is `[object Object]`. Centralised the unwrap in
+  `frontend/src/shared/ipc/error.ts#formatIpcError` and replaced
+  every call site (9 files: hooks + components + StoragePathSection).
+  Test in `__tests__/error.test.ts` covers Error, primitive, IPC
+  object, and JSON-fallback paths.
 - **Picker stale after install.** `ModelPicker` called `listModels`
   only on mount, so a freshly-installed model wasn't selectable
   until app reload. Fix: backend emits the new

@@ -8,6 +8,7 @@ import {
 } from "../../../../shared/ipc/storage";
 import { formatBytes } from "../../format";
 import { StoragePathSection } from "../StoragePathSection";
+import { formatIpcError } from "../../../../shared/ipc/error";
 
 export function StorageTab() {
   const [models, setModels] = useState<InstalledModelInfo[]>([]);
@@ -24,7 +25,7 @@ export function StorageTab() {
       setModels(ms);
       setUsage(du);
     } catch (e) {
-      setError(e instanceof Error ? e.message : String(e));
+      setError(formatIpcError(e));
     }
   };
 
@@ -36,7 +37,7 @@ export function StorageTab() {
       setConfirmRemove(null);
       await refresh();
     } catch (e) {
-      setError(e instanceof Error ? e.message : String(e));
+      setError(formatIpcError(e));
     }
   };
 

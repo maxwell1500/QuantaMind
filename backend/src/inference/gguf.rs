@@ -8,11 +8,10 @@ use std::fs;
 use std::io::Read;
 use std::path::Path;
 
-// 64KB was too small — real GGUFs with sizable tokenizer arrays (e.g.
-// SentencePiece vocabularies for Llama 3, ~32k entries) easily push
-// metadata past 64KB. 8MB is comfortable headroom for current models
-// and still a tiny fraction of any multi-GB GGUF.
-const HEADER_READ_BYTES: usize = 8 * 1024 * 1024;
+// `Read::read` on macOS only returns one syscall's worth (~64KB),
+// so we use `take(N).read_to_end()` to actually fill `HEADER_READ_BYTES`.
+// 8 MiB covers Llama 3 / Qwen 2.5 SentencePiece tokenizer arrays.
+const HEADER_READ_BYTES: u64 = 8 * 1024 * 1024;
 const MIN_FILE_SIZE: u64 = 64 * 1024;
 
 #[derive(Serialize, Clone, Debug)]
@@ -86,10 +85,9 @@ pub fn inspect_gguf(path: &Path) -> Result<GgufMetadata, AppError> {
             "file too small to be a real GGUF: {} bytes", md.len()
         )));
     }
-    let mut f = fs::File::open(path).map_err(|e| AppError::Io(e.to_string()))?;
-    let mut buf = vec![0u8; HEADER_READ_BYTES];
-    let n = f.read(&mut buf).map_err(|e| AppError::Io(e.to_string()))?;
-    buf.truncate(n);
+    let f = fs::File::open(path).map_err(|e| AppError::Io(e.to_string()))?;
+    let mut buf: Vec<u8> = Vec::with_capacity(HEADER_READ_BYTES.min(md.len()) as usize);
+    f.take(HEADER_READ_BYTES).read_to_end(&mut buf).map_err(|e| AppError::Io(e.to_string()))?;
     let mut meta = inspect_gguf_bytes(&buf)?;
     if meta.quantization.is_none() {
         if let Some(name) = path.file_name().and_then(|s| s.to_str()) {
