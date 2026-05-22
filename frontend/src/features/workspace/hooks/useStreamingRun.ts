@@ -2,10 +2,11 @@ import { useCallback, useEffect, useState } from "react";
 import { invoke } from "@tauri-apps/api/core";
 import { listen } from "@tauri-apps/api/event";
 import {
+  DonePayloadSchema,
   EVENT_DONE,
   EVENT_TOKEN,
+  TokenPayloadSchema,
   type DonePayload,
-  type TokenPayload,
 } from "../../../shared/ipc/events";
 import { useWorkspaceStore } from "../state/workspaceStore";
 
@@ -21,24 +22,32 @@ export function useStreamingRun() {
     let cancelled = false;
     const unsubs: Array<() => void> = [];
     (async () => {
-      const ut = await listen<TokenPayload>(EVENT_TOKEN, (e) => {
-        setOutput((prev) => prev + e.payload.text);
+      const ut = await listen<unknown>(EVENT_TOKEN, (e) => {
+        const parsed = TokenPayloadSchema.safeParse(e.payload);
+        if (!parsed.success) {
+          console.error("invalid prompt-token payload", parsed.error.issues);
+          setError("invalid backend payload");
+          setStatus("error");
+          return;
+        }
+        setOutput((prev) => prev + parsed.data.text);
       });
-      if (cancelled) {
-        ut();
-        return;
-      }
+      if (cancelled) { ut(); return; }
       unsubs.push(ut);
 
-      const ud = await listen<DonePayload>(EVENT_DONE, (e) => {
-        setMetrics(e.payload);
+      const ud = await listen<unknown>(EVENT_DONE, (e) => {
+        const parsed = DonePayloadSchema.safeParse(e.payload);
+        if (!parsed.success) {
+          console.error("invalid prompt-done payload", parsed.error.issues);
+          setError("invalid backend payload");
+          setStatus("error");
+          return;
+        }
+        setMetrics(parsed.data);
         setStatus("done");
-        useWorkspaceStore.getState().setLastRunMetrics(e.payload);
+        useWorkspaceStore.getState().setLastRunMetrics(parsed.data);
       });
-      if (cancelled) {
-        ud();
-        return;
-      }
+      if (cancelled) { ud(); return; }
       unsubs.push(ud);
     })();
     return () => {
