@@ -13,13 +13,17 @@ export interface InstallInFlight {
 export interface ModelStore {
   activeTab: TabId;
   installInFlight: InstallInFlight | null;
+  pendingLocalPath: string | null;
   setActiveTab: (t: TabId) => void;
   setInstallInFlight: (i: InstallInFlight | null) => void;
+  setPendingLocalPath: (p: string | null) => void;
 }
 
 export const useModelStore = create<ModelStore>((set) => ({
   activeTab: "ollama",
   installInFlight: null,
+  pendingLocalPath: null,
   setActiveTab: (t) => set({ activeTab: t }),
   setInstallInFlight: (i) => set({ installInFlight: i }),
+  setPendingLocalPath: (p) => set({ pendingLocalPath: p }),
 }));

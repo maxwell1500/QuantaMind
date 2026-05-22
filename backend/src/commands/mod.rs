@@ -8,6 +8,7 @@
 // - phase-1.5/1.5.5: prompt_payloads (split out of prompt.rs)
 
 pub mod feasibility;
+pub mod gguf_cmd;
 pub mod health;
 pub mod models;
 pub mod models_pull;

@@ -1,5 +1,6 @@
 import { useEffect, useRef } from "react";
 import { useModelStore, type TabId } from "../state/modelStore";
+import { useModalDragDrop } from "../hooks/useModalDragDrop";
 import { OllamaLibraryTab } from "./tabs/OllamaLibraryTab";
 import { HuggingFaceTab } from "./tabs/HuggingFaceTab";
 import { LocalFileTab } from "./tabs/LocalFileTab";
@@ -21,6 +22,7 @@ export function AddModelModal({ isOpen, onClose }: Props) {
   const installInFlight = useModelStore((s) => s.installInFlight);
   const modalRef = useRef<HTMLDivElement>(null);
   const previousFocus = useRef<HTMLElement | null>(null);
+  useModalDragDrop(isOpen);
 
   useEffect(() => {
     if (!isOpen) return;
@@ -44,9 +46,7 @@ export function AddModelModal({ isOpen, onClose }: Props) {
       }
     };
     document.addEventListener("keydown", handleKey);
-    queueMicrotask(() =>
-      modalRef.current?.querySelector<HTMLElement>(FOCUSABLE)?.focus(),
-    );
+    queueMicrotask(() => modalRef.current?.querySelector<HTMLElement>(FOCUSABLE)?.focus());
     return () => {
       document.removeEventListener("keydown", handleKey);
       previousFocus.current?.focus();
@@ -66,9 +66,7 @@ export function AddModelModal({ isOpen, onClose }: Props) {
       >
         <header className="flex items-center justify-between px-4 py-3 border-b">
           <h2 id="add-model-title" className="text-lg font-semibold">Add Model</h2>
-          <button onClick={onClose} aria-label="Close" className="text-2xl leading-none text-gray-500 hover:text-black">
-            ×
-          </button>
+          <button onClick={onClose} aria-label="Close" className="text-2xl leading-none text-gray-500 hover:text-black">×</button>
         </header>
         <nav className="flex border-b" role="tablist">
           {TABS.map((tab) => (
@@ -90,9 +88,7 @@ export function AddModelModal({ isOpen, onClose }: Props) {
           {activeTab === "storage" && <StorageTab />}
         </main>
         <footer className="px-4 py-2 border-t text-xs text-gray-500" data-testid="modal-footer">
-          {installInFlight
-            ? `Installing ${installInFlight.name} · ${installInFlight.progress}%`
-            : ""}
+          {installInFlight ? `Installing ${installInFlight.name} · ${installInFlight.progress}%` : ""}
         </footer>
       </div>
     </div>

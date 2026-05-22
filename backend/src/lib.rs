@@ -9,10 +9,13 @@ pub mod validation;
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
     tauri::Builder::default()
+        .plugin(tauri_plugin_dialog::init())
         .manage(commands::prompt::RunState::default())
         .manage(commands::models_pull::PullState::default())
         .invoke_handler(tauri::generate_handler![
             commands::feasibility::check_install_feasibility,
+            commands::gguf_cmd::inspect_gguf,
+            commands::gguf_cmd::install_local_gguf,
             commands::health::check_ollama_health,
             commands::models::list_models,
             commands::models_pull::pull_model,
