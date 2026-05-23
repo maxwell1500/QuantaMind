@@ -4,6 +4,7 @@ import type { HfRepoEntry, HfVariant } from "../data/huggingface-catalog";
 import { useHfInstall } from "../hooks/useHfInstall";
 import { formatBytes } from "../format";
 import { listModels } from "../../../shared/ipc/client";
+import { formatIpcError } from "../../../shared/ipc/error";
 
 type Props = { entry: HfRepoEntry; onBack: () => void };
 
@@ -21,7 +22,7 @@ export function HuggingFaceRepoDetail({ entry, onBack }: Props) {
     let unsub: (() => void) | null = null;
     const refresh = () => listModels()
       .then((list) => { if (!cancelled) setInstalled(new Set(list.map(bareName))); })
-      .catch(() => {});
+      .catch((e) => console.error("HuggingFaceRepoDetail: listModels failed —", formatIpcError(e)));
     refresh();
     (async () => {
       const u = await listen(EVENT_MODELS_CHANGED, () => refresh());

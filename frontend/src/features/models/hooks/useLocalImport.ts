@@ -28,7 +28,9 @@ export function useLocalImport() {
   useEffect(() => { void startDownloadEventBus(); }, []);
 
   useEffect(() => {
-    listModels().then((m) => setInstalled(new Set(m))).catch(() => {});
+    listModels()
+      .then((m) => setInstalled(new Set(m)))
+      .catch((e) => console.error("useLocalImport: listModels failed —", formatIpcError(e)));
   }, []);
 
   const choose = useCallback(async (p: string) => {

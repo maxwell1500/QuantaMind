@@ -1,5 +1,6 @@
 import { useEffect, useMemo, useState } from "react";
 import { listModels } from "../../../../shared/ipc/client";
+import { formatIpcError } from "../../../../shared/ipc/error";
 import { OllamaCatalog, type Tag } from "../../data/ollama-catalog";
 import { ModelCard } from "../ModelCard";
 
@@ -23,7 +24,7 @@ export function OllamaLibraryTab() {
     let cancelled = false;
     listModels()
       .then((m) => { if (!cancelled) setInstalled(new Set(m)); })
-      .catch(() => { /* picker surfaces the error; tab stays usable */ });
+      .catch((e) => console.error("OllamaLibraryTab: listModels failed —", formatIpcError(e)));
     return () => { cancelled = true; };
   }, []);
 
