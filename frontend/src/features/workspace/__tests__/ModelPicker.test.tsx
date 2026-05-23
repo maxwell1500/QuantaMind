@@ -10,6 +10,7 @@ vi.mock("@tauri-apps/api/event", () => ({
 
 import { listModels } from "../../../shared/ipc/client";
 import { ModelPicker } from "../components/ModelPicker";
+import { useWorkspaceStore } from "../state/workspaceStore";
 
 describe("ModelPicker", () => {
   beforeEach(() => {
@@ -56,5 +57,25 @@ describe("ModelPicker", () => {
     vi.mocked(listModels).mockRejectedValue(new Error("HTTP 503"));
     render(<ModelPicker value={null} onChange={() => {}} />);
     expect(await screen.findByRole("alert")).toHaveTextContent("HTTP 503");
+  });
+
+  it("shows friendly Ollama-down message when StatusBar marks health=false even if listModels succeeded", async () => {
+    vi.mocked(listModels).mockResolvedValue(["llama3.2:1b"]);
+    render(<ModelPicker value={null} onChange={() => {}} />);
+    await screen.findByRole("option", { name: "llama3.2:1b" });
+    useWorkspaceStore.getState().setOllamaHealthy(false);
+    expect(await screen.findByRole("alert")).toHaveTextContent(
+      /Ollama is not running/,
+    );
+  });
+
+  it("refreshes listModels once when health flips from false to true", async () => {
+    vi.mocked(listModels).mockResolvedValue([]);
+    useWorkspaceStore.setState({ ollamaHealthy: false });
+    render(<ModelPicker value={null} onChange={() => {}} />);
+    vi.mocked(listModels).mockClear();
+    useWorkspaceStore.getState().setOllamaHealthy(true);
+    await new Promise((r) => setTimeout(r, 0));
+    expect(listModels).toHaveBeenCalledTimes(1);
   });
 });
