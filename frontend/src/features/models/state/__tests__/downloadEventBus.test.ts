@@ -63,6 +63,15 @@ describe("downloadEventBus", () => {
     });
   });
 
+  it("startDownloadEventBus is idempotent — second call returns the same promise without re-attaching", async () => {
+    const first = startDownloadEventBus();
+    const second = startDownloadEventBus();
+    expect(first).toBe(second);
+    await first;
+    // listen is called exactly 3 times (HF, pull, local), not 6.
+    expect(vi.mocked(listen)).toHaveBeenCalledTimes(3);
+  });
+
   it("startDownloadEventBus retries after a transient listen() rejection", async () => {
     // First call: listen rejects → bus singleton resets.
     vi.mocked(listen).mockRejectedValueOnce(new Error("tauri not ready"));
