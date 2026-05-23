@@ -48,9 +48,19 @@ export function AddModelModal({ isOpen, onClose }: Props) {
       }
     };
     document.addEventListener("keydown", handleKey);
-    queueMicrotask(() => modalRef.current?.querySelector<HTMLElement>(FOCUSABLE)?.focus());
+    // Try focus inside the modal after the next paint. queueMicrotask
+    // alone fired before the modal had been committed to the DOM in
+    // slow Tauri webview boots; rAF + retry covers the late-paint case.
+    let raf = requestAnimationFrame(() => {
+      const target = modalRef.current?.querySelector<HTMLElement>(FOCUSABLE);
+      if (target) target.focus();
+      else raf = requestAnimationFrame(() => {
+        modalRef.current?.querySelector<HTMLElement>(FOCUSABLE)?.focus();
+      });
+    });
     return () => {
       document.removeEventListener("keydown", handleKey);
+      cancelAnimationFrame(raf);
       previousFocus.current?.focus();
     };
   }, [isOpen, onClose, setActiveTab]);
