@@ -15,3 +15,13 @@ export async function runCompare(args: RunCompareArgs): Promise<void> {
 export async function stopCompare(modelId?: string): Promise<void> {
   await invoke("stop_compare", { modelId: modelId ?? null });
 }
+
+export type CompareReportFormat = "md" | "json";
+
+export async function saveCompareReport(
+  path: string,
+  format: CompareReportFormat,
+  contents: string,
+): Promise<void> {
+  await invoke("save_compare_report", { path, format, contents });
+}

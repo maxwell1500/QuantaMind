@@ -8,6 +8,7 @@
 // - phase-1.5/1.5.5: prompt_payloads (split out of prompt.rs)
 
 pub mod compare;
+pub mod compare_export;
 pub mod compare_payloads;
 pub mod feasibility;
 pub mod gguf_cmd;

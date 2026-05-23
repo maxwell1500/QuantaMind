@@ -1,0 +1,61 @@
+import { useState } from "react";
+import { save } from "@tauri-apps/plugin-dialog";
+import { saveCompareReport, type CompareReportFormat } from "../../../shared/ipc/compare";
+import { formatIpcError } from "../../../shared/ipc/error";
+import { useCompareStore } from "../state/compareStore";
+import { buildReport } from "../format/buildReport";
+import { toMarkdown } from "../format/markdownReport";
+import { toJson } from "../format/jsonReport";
+
+const FORMAT_LABEL: Record<CompareReportFormat, string> = { md: "MD", json: "JSON" };
+
+export function ExportButtons() {
+  const [error, setError] = useState<string | null>(null);
+  const rows = useCompareStore((s) => s.rows);
+  const disabled = rows.length === 0;
+
+  const exportAs = async (format: CompareReportFormat) => {
+    setError(null);
+    const path = await save({
+      defaultPath: `splice-compare-${Date.now()}.${format}`,
+      filters: [{ name: FORMAT_LABEL[format], extensions: [format] }],
+    });
+    if (!path) return;
+    const s = useCompareStore.getState();
+    const report = buildReport({
+      prompt: s.prompt, strategy: s.strategy,
+      hardwareSnapshot: s.hardwareSnapshot,
+      selectedModels: s.selectedModels, rows: s.rows,
+    });
+    const contents = format === "md" ? toMarkdown(report) : toJson(report);
+    try {
+      await saveCompareReport(path, format, contents);
+    } catch (e) {
+      setError(formatIpcError(e));
+    }
+  };
+
+  return (
+    <div className="flex items-center gap-2" data-testid="export-buttons">
+      <button
+        type="button" disabled={disabled} onClick={() => void exportAs("md")}
+        className="text-sm border rounded px-3 py-1 disabled:opacity-50"
+        data-testid="export-md"
+      >
+        Export Markdown
+      </button>
+      <button
+        type="button" disabled={disabled} onClick={() => void exportAs("json")}
+        className="text-sm border rounded px-3 py-1 disabled:opacity-50"
+        data-testid="export-json"
+      >
+        Export JSON
+      </button>
+      {error && (
+        <span role="alert" className="text-xs text-red-600" data-testid="export-error">
+          {error}
+        </span>
+      )}
+    </div>
+  );
+}

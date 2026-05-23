@@ -4,6 +4,7 @@ import { HardwareSummary } from "./HardwareSummary";
 import { RunStrategyPicker } from "./RunStrategyPicker";
 import { CompareToolbar } from "./CompareToolbar";
 import { CompareColumn } from "./CompareColumn";
+import { ExportButtons } from "./ExportButtons";
 
 export function CompareTab() {
   const prompt = useCompareStore((s) => s.prompt);
@@ -29,9 +30,12 @@ export function CompareTab() {
       />
       <CompareToolbar />
       {rows.length > 0 && (
-        <div className="flex gap-2 overflow-x-auto" data-testid="compare-columns">
-          {rows.map((r) => <CompareColumn key={r.model} row={r} />)}
-        </div>
+        <>
+          <div className="flex gap-2 overflow-x-auto" data-testid="compare-columns">
+            {rows.map((r) => <CompareColumn key={r.model} row={r} />)}
+          </div>
+          <ExportButtons />
+        </>
       )}
     </section>
   );

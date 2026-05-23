@@ -20,6 +20,7 @@ pub fn run() {
             commands::hardware::get_hardware_snapshot,
             commands::compare::run_compare,
             commands::compare::stop_compare,
+            commands::compare_export::save_compare_report,
             commands::gguf_cmd::install_local_gguf,
             commands::hf_browse::hf_search,
             commands::hf_browse::hf_repo_files,
