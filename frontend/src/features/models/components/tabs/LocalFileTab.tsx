@@ -16,6 +16,7 @@ export function LocalFileTab() {
         busy={s.busy}
         error={s.error}
         conflict={s.conflict}
+        phase={s.phase}
       />
     );
   }

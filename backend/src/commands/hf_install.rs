@@ -1,5 +1,6 @@
-use crate::commands::gguf_cmd::install_local_gguf;
+use crate::commands::gguf_cmd::install_local_gguf_inner;
 use crate::errors::{AppError, AppResult};
+use crate::inference::create_spec::CreatePhase;
 use crate::inference::hf_download::{download_gguf, DownloadProgress};
 use crate::inference::pull::validate_name;
 use crate::sync::MutexExt;
@@ -9,6 +10,7 @@ use std::sync::Mutex;
 use tauri::{AppHandle, Emitter};
 use tokio_util::sync::CancellationToken;
 
+const DEFAULT_OLLAMA: &str = "http://localhost:11434";
 const HF_ENDPOINT: &str = "https://huggingface.co";
 pub const EVENT_HF_PROGRESS: &str = "hf-progress";
 
@@ -21,16 +23,14 @@ pub struct HfInstallState {
 #[serde(tag = "phase", rename_all = "snake_case")]
 pub enum HfPhase {
     Downloading { bytes_completed: u64, bytes_total: u64, speed_bps: u64 },
+    Hashing { bytes_completed: u64, bytes_total: u64 },
+    Uploading { bytes_completed: u64, bytes_total: u64 },
     Installing,
 }
 
 pub async fn install_hf_gguf_inner(
-    app: AppHandle,
-    state: &HfInstallState,
-    endpoint: &str,
-    repo: &str,
-    filename: &str,
-    name: &str,
+    app: AppHandle, state: &HfInstallState, endpoint: &str,
+    repo: &str, filename: &str, name: &str,
 ) -> AppResult<()> {
     validate_name(name)?;
     let temp_dir = std::env::temp_dir().join("quatamind-hf");
@@ -45,26 +45,35 @@ pub async fn install_hf_gguf_inner(
         *g = Some(token.clone());
     }
 
-    let emit_app = app.clone();
-    let on_progress = move |p: DownloadProgress| {
-        let _ = emit_app.emit(EVENT_HF_PROGRESS, HfPhase::Downloading {
-            bytes_completed: p.bytes_completed,
-            bytes_total: p.bytes_total,
-            speed_bps: p.speed_bps,
+    let dl_app = app.clone();
+    let on_dl = move |p: DownloadProgress| {
+        let _ = dl_app.emit(EVENT_HF_PROGRESS, HfPhase::Downloading {
+            bytes_completed: p.bytes_completed, bytes_total: p.bytes_total, speed_bps: p.speed_bps,
         });
     };
-
-    let dl = download_gguf(endpoint, repo, filename, &dest, on_progress, token.clone()).await;
+    let dl = download_gguf(endpoint, repo, filename, &dest, on_dl, token.clone()).await;
     if token.is_cancelled() {
         *state.current.lock_recover() = None;
+        let _ = fs::remove_file(&dest);
         return Err(AppError::Validation("install cancelled".into()));
     }
     dl?;
 
-    let _ = app.emit(EVENT_HF_PROGRESS, HfPhase::Installing);
-    let result = install_local_gguf(app.clone(), dest.to_string_lossy().into_owned(), name.to_string()).await;
+    let install_app = app.clone();
+    let on_install = move |phase: CreatePhase| {
+        let mapped = match phase {
+            CreatePhase::Hashing { bytes_completed, bytes_total } =>
+                HfPhase::Hashing { bytes_completed, bytes_total },
+            CreatePhase::Uploading { bytes_completed, bytes_total } =>
+                HfPhase::Uploading { bytes_completed, bytes_total },
+            CreatePhase::Creating => HfPhase::Installing,
+        };
+        let _ = install_app.emit(EVENT_HF_PROGRESS, mapped);
+    };
+    let result = install_local_gguf_inner(DEFAULT_OLLAMA, &dest.to_string_lossy(), name, on_install).await;
     if result.is_ok() {
         let _ = fs::remove_file(&dest);
+        let _ = app.emit("models-changed", ());
     }
     *state.current.lock_recover() = None;
     result
@@ -72,11 +81,8 @@ pub async fn install_hf_gguf_inner(
 
 #[tauri::command]
 pub async fn install_hf_gguf(
-    app: AppHandle,
-    state: tauri::State<'_, HfInstallState>,
-    repo: String,
-    filename: String,
-    name: String,
+    app: AppHandle, state: tauri::State<'_, HfInstallState>,
+    repo: String, filename: String, name: String,
 ) -> Result<(), AppError> {
     install_hf_gguf_inner(app, state.inner(), HF_ENDPOINT, &repo, &filename, &name).await
 }

@@ -1,14 +1,12 @@
 use crate::errors::{AppError, AppResult};
+use crate::inference::create_body::build_create_body;
+use crate::inference::create_spec::{CreatePhase, CreateSpec};
+use crate::inference::ollama_blob::{blob_exists, sha256_file, upload_blob};
 use futures_util::StreamExt;
 use reqwest::Client;
-use serde::{Deserialize, Serialize};
+use serde::Deserialize;
+use std::sync::Arc;
 use std::time::Duration;
-
-#[derive(Serialize)]
-struct CreateRequest<'a> {
-    name: &'a str,
-    modelfile: &'a str,
-}
 
 #[derive(Deserialize)]
 struct CreateChunk {
@@ -18,23 +16,45 @@ struct CreateChunk {
     error: Option<String>,
 }
 
-/// POST `/api/create` with `{name, modelfile}` and stream the NDJSON
-/// response. Returns Ok on `{"status":"success"}`; any chunk with an
-/// `error` field aborts with `AppError::Inference`.
-pub async fn ollama_create(endpoint: &str, name: &str, modelfile: &str) -> AppResult<()> {
+pub async fn ollama_create<F>(
+    endpoint: &str,
+    model_name: &str,
+    spec: &CreateSpec,
+    on_progress: F,
+) -> AppResult<()>
+where F: Fn(CreatePhase) + Send + Sync + 'static,
+{
+    let cb = Arc::new(on_progress);
+
+    let hashing_cb = cb.clone();
+    let digest = sha256_file(&spec.gguf_path, move |bytes_completed, bytes_total| {
+        hashing_cb(CreatePhase::Hashing { bytes_completed, bytes_total });
+    }).await?;
+
+    if !blob_exists(endpoint, &digest).await? {
+        let upload_cb = cb.clone();
+        upload_blob(endpoint, &digest, &spec.gguf_path, move |bytes_completed, bytes_total| {
+            upload_cb(CreatePhase::Uploading { bytes_completed, bytes_total });
+        }).await?;
+    }
+
+    cb(CreatePhase::Creating);
+    let body = build_create_body(spec, model_name, &digest);
     let client = Client::builder()
         .connect_timeout(Duration::from_secs(60))
         .build()
         .map_err(|e| AppError::Internal(e.to_string()))?;
-    let resp = client
-        .post(format!("{endpoint}/api/create"))
-        .json(&CreateRequest { name, modelfile })
-        .send()
-        .await
+    let resp = client.post(format!("{endpoint}/api/create"))
+        .json(&body)
+        .send().await
         .map_err(|e| AppError::Inference(e.to_string()))?;
     if !resp.status().is_success() {
         return Err(AppError::Inference(format!("HTTP {}", resp.status())));
     }
+    consume_ndjson(resp).await
+}
+
+async fn consume_ndjson(resp: reqwest::Response) -> AppResult<()> {
     let mut bytes = resp.bytes_stream();
     let mut buf: Vec<u8> = Vec::new();
     while let Some(piece) = bytes.next().await {

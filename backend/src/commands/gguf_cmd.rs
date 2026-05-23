@@ -1,7 +1,7 @@
 use crate::errors::{AppError, AppResult};
 use crate::inference::chat_templates::detect_template;
+use crate::inference::create_spec::{CreateParameters, CreatePhase, CreateSpec};
 use crate::inference::gguf::{inspect_gguf as inspect, GgufMetadata};
-use crate::inference::modelfile::{generate_modelfile, ModelfileParameters, ModelfileSpec};
 use crate::inference::ollama_create::ollama_create;
 use crate::inference::pull::validate_name;
 use std::path::PathBuf;
@@ -9,13 +9,18 @@ use tauri::{AppHandle, Emitter};
 
 const DEFAULT_OLLAMA: &str = "http://localhost:11434";
 pub const EVENT_MODELS_CHANGED: &str = "models-changed";
+pub const EVENT_LOCAL_INSTALL_PROGRESS: &str = "local-install-progress";
 
 #[tauri::command]
 pub async fn inspect_gguf(path: String) -> Result<GgufMetadata, AppError> {
     inspect(&PathBuf::from(&path))
 }
 
-pub async fn install_local_gguf_inner(endpoint: &str, path: &str, name: &str) -> AppResult<()> {
+pub async fn install_local_gguf_inner<F>(
+    endpoint: &str, path: &str, name: &str, on_progress: F,
+) -> AppResult<()>
+where F: Fn(CreatePhase) + Send + Sync + 'static,
+{
     validate_name(name)?;
     let p = PathBuf::from(path);
     if !p.exists() {
@@ -27,19 +32,21 @@ pub async fn install_local_gguf_inner(endpoint: &str, path: &str, name: &str) ->
         return Err(AppError::Validation(format!("not a .gguf file: {path}")));
     }
     let meta = inspect(&p)?;
-    let template = detect_template(name, Some(&meta.architecture));
-    let spec = ModelfileSpec {
+    let spec = CreateSpec {
         gguf_path: p.canonicalize().unwrap_or(p.clone()),
-        chat_template: template,
-        parameters: ModelfileParameters::default(),
+        chat_template: detect_template(name, Some(&meta.architecture)),
+        parameters: CreateParameters::default(),
     };
-    let modelfile = generate_modelfile(&spec);
-    ollama_create(endpoint, name, &modelfile).await
+    ollama_create(endpoint, name, &spec, on_progress).await
 }
 
 #[tauri::command]
 pub async fn install_local_gguf(app: AppHandle, path: String, name: String) -> AppResult<()> {
-    let r = install_local_gguf_inner(DEFAULT_OLLAMA, &path, &name).await;
+    let emit_app = app.clone();
+    let on_progress = move |phase: CreatePhase| {
+        let _ = emit_app.emit(EVENT_LOCAL_INSTALL_PROGRESS, phase);
+    };
+    let r = install_local_gguf_inner(DEFAULT_OLLAMA, &path, &name, on_progress).await;
     if r.is_ok() {
         let _ = app.emit(EVENT_MODELS_CHANGED, ());
     }

@@ -1013,6 +1013,23 @@ Issues surfaced while driving the smoke and the in-commit fixes:
   (`get_installed_models_with_stats` results with Delete +
   confirmation). Both react to the `models-changed` event for
   auto-refresh after install/uninstall. ⌘1–⌘5 jump tabs.
+- **Ollama 0.24 `/api/create` schema change.** The legacy
+  `{name, modelfile: "FROM /path ..."}` body was removed by Ollama
+  — it now requires `POST /api/blobs/sha256:<digest>` to upload the
+  GGUF, then `POST /api/create` with
+  `{model, files: {filename: "sha256:<digest>"}, template,
+  parameters}`. Replaced `inference/modelfile.rs` with
+  `create_spec.rs` + `create_body.rs` (JSON payload builder) and
+  added `inference/ollama_blob.rs` (streaming SHA-256 via
+  `tokio::fs` + `sha2`, blob HEAD probe, streaming upload via
+  `reqwest::Body::wrap_stream(ReaderStream)` with per-chunk
+  progress). `ollama_create` now orchestrates hash → upload (skipped
+  if `HEAD` returns 200) → create, emitting `CreatePhase` events at
+  each step. `gguf_cmd::install_local_gguf` forwards them on a new
+  `local-install-progress` Tauri event; HF flow maps them onto its
+  existing `hf-progress` channel (new `Hashing`/`Uploading`
+  variants). `useLocalImport` listens and renders "Hashing N% →
+  Uploading N% → Creating model…" in the preview.
 - **Progress listener moved out of components.** Even after lifting
   the install registry into the store, switching tabs still
   appeared to freeze downloads: each hook owned its own

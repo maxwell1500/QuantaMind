@@ -3263,12 +3263,14 @@ dependencies = [
 name = "splice"
 version = "0.1.0"
 dependencies = [
+ "bytes",
  "futures-util",
  "mockito",
  "reqwest 0.12.28",
  "serde",
  "serde_json",
  "serde_yaml",
+ "sha2",
  "sysinfo",
  "tauri",
  "tauri-build",

@@ -20,11 +20,13 @@ serde_json = "1"
 serde_yaml = "0.9"
 thiserror = "2"
 reqwest = { version = "0.12", features = ["json", "stream"] }
-tokio = { version = "1", features = ["macros", "rt-multi-thread", "sync"] }
-tokio-util = "0.7"
+tokio = { version = "1", features = ["macros", "rt-multi-thread", "sync", "fs", "io-util"] }
+tokio-util = { version = "0.7", features = ["io"] }
 futures-util = "0.3"
 uuid = { version = "1", features = ["v4"] }
 sysinfo = { version = "0.32", default-features = false, features = ["disk"] }
+sha2 = "0.10"
+bytes = "1"
 
 [dev-dependencies]
 mockito = "1"

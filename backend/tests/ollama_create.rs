@@ -1,73 +1,81 @@
 use mockito::Server;
+use sha2::{Digest, Sha256};
 use splice_lib::errors::AppError;
+use splice_lib::inference::create_spec::{CreateParameters, CreateSpec};
 use splice_lib::inference::ollama_create::ollama_create;
+use std::io::Write;
+use tempfile::NamedTempFile;
 
-#[tokio::test]
-async fn create_success_through_ndjson_progression() {
-    let mut s = Server::new_async().await;
-    let body = "{\"status\":\"reading model\"}\n\
-                {\"status\":\"creating manifest\"}\n\
-                {\"status\":\"success\"}\n";
-    let _m = s.mock("POST", "/api/create")
-        .with_status(200)
-        .with_body(body)
-        .create_async()
-        .await;
-    ollama_create(&s.url(), "phi-test", "FROM /tmp/x.gguf\n")
-        .await
-        .expect("create succeeds");
+fn gguf_fixture(content: &[u8]) -> (NamedTempFile, String) {
+    let mut f = tempfile::Builder::new().suffix(".gguf").tempfile().unwrap();
+    f.write_all(content).unwrap();
+    f.flush().unwrap();
+    let digest = format!("{:x}", Sha256::digest(content));
+    (f, digest)
+}
+
+fn spec(path: std::path::PathBuf) -> CreateSpec {
+    CreateSpec { gguf_path: path, chat_template: None, parameters: CreateParameters::default() }
 }
 
 #[tokio::test]
-async fn create_sends_correct_json_body() {
+async fn create_success_uploads_blob_then_streams_ndjson_to_success() {
+    let (f, digest) = gguf_fixture(b"hello-gguf-bytes");
     let mut s = Server::new_async().await;
-    let m = s.mock("POST", "/api/create")
-        .match_body(r#"{"name":"phi-test","modelfile":"FROM /tmp/x.gguf\n"}"#)
+    let _head = s.mock("HEAD", format!("/api/blobs/sha256:{digest}").as_str())
+        .with_status(404).create_async().await;
+    let _blob = s.mock("POST", format!("/api/blobs/sha256:{digest}").as_str())
+        .with_status(201).create_async().await;
+    let _create = s.mock("POST", "/api/create")
+        .with_status(200)
+        .with_body("{\"status\":\"reading model\"}\n{\"status\":\"success\"}\n")
+        .create_async().await;
+    ollama_create(&s.url(), "qmtest:latest", &spec(f.path().to_path_buf()), |_| {})
+        .await.expect("create succeeds");
+}
+
+#[tokio::test]
+async fn create_skips_upload_when_blob_already_exists() {
+    let (f, digest) = gguf_fixture(b"already-uploaded");
+    let mut s = Server::new_async().await;
+    let _head = s.mock("HEAD", format!("/api/blobs/sha256:{digest}").as_str())
+        .with_status(200).create_async().await;
+    let upload = s.mock("POST", format!("/api/blobs/sha256:{digest}").as_str())
+        .with_status(201).expect(0).create_async().await;
+    let _create = s.mock("POST", "/api/create")
         .with_status(200)
         .with_body("{\"status\":\"success\"}\n")
-        .create_async()
-        .await;
-    ollama_create(&s.url(), "phi-test", "FROM /tmp/x.gguf\n").await.unwrap();
-    m.assert_async().await;
+        .create_async().await;
+    ollama_create(&s.url(), "qmtest:latest", &spec(f.path().to_path_buf()), |_| {})
+        .await.expect("create succeeds without upload");
+    upload.assert_async().await;
 }
 
 #[tokio::test]
-async fn create_http_500_returns_inference_error_with_status() {
+async fn create_http_500_returns_inference_error() {
+    let (f, digest) = gguf_fixture(b"x");
     let mut s = Server::new_async().await;
-    let _m = s.mock("POST", "/api/create").with_status(500).create_async().await;
-    match ollama_create(&s.url(), "x", "FROM /tmp/x.gguf\n").await {
-        Err(AppError::Inference(msg)) => assert!(msg.contains("500"), "msg: {msg}"),
+    let _h = s.mock("HEAD", format!("/api/blobs/sha256:{digest}").as_str())
+        .with_status(200).create_async().await;
+    let _c = s.mock("POST", "/api/create").with_status(500).create_async().await;
+    match ollama_create(&s.url(), "x:latest", &spec(f.path().to_path_buf()), |_| {}).await {
+        Err(AppError::Inference(msg)) => assert!(msg.contains("500"), "got: {msg}"),
         other => panic!("expected Inference, got {other:?}"),
     }
 }
 
 #[tokio::test]
-async fn create_chunk_with_error_field_aborts_and_propagates_message() {
+async fn create_chunk_with_error_aborts_and_propagates_message() {
+    let (f, digest) = gguf_fixture(b"y");
     let mut s = Server::new_async().await;
-    let body = "{\"status\":\"reading model\"}\n\
-                {\"error\":\"unsupported quant\"}\n";
-    let _m = s.mock("POST", "/api/create")
+    let _h = s.mock("HEAD", format!("/api/blobs/sha256:{digest}").as_str())
+        .with_status(200).create_async().await;
+    let _c = s.mock("POST", "/api/create")
         .with_status(200)
-        .with_body(body)
-        .create_async()
-        .await;
-    match ollama_create(&s.url(), "x", "FROM /tmp/x.gguf\n").await {
-        Err(AppError::Inference(msg)) => assert!(msg.contains("unsupported quant"), "msg: {msg}"),
+        .with_body("{\"status\":\"reading\"}\n{\"error\":\"unsupported quant\"}\n")
+        .create_async().await;
+    match ollama_create(&s.url(), "x:latest", &spec(f.path().to_path_buf()), |_| {}).await {
+        Err(AppError::Inference(msg)) => assert!(msg.contains("unsupported quant"), "got: {msg}"),
         other => panic!("expected Inference, got {other:?}"),
     }
-}
-
-#[tokio::test]
-async fn create_stream_ending_without_success_returns_ok_anyway() {
-    // Some Ollama versions end the stream after a final non-"success"
-    // status. We treat clean stream end as ok; the caller can verify
-    // via a subsequent list_models check if it cares.
-    let mut s = Server::new_async().await;
-    let body = "{\"status\":\"reading model\"}\n{\"status\":\"creating layer\"}\n";
-    let _m = s.mock("POST", "/api/create")
-        .with_status(200)
-        .with_body(body)
-        .create_async()
-        .await;
-    ollama_create(&s.url(), "x", "FROM /tmp/x.gguf\n").await.expect("ok on clean end");
 }
