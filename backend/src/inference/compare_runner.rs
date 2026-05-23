@@ -1,8 +1,6 @@
 #![deny(clippy::unwrap_used)]
 use crate::commands::compare::CompareRunState;
-use crate::commands::compare_payloads::{
-    CompareTokenPayload, EVENT_COMPARE_RUN_DONE, EVENT_COMPARE_TOKEN,
-};
+use crate::commands::compare_payloads::{CompareTokenPayload, EVENT_COMPARE_RUN_DONE, EVENT_COMPARE_TOKEN};
 use crate::commands::prompt_handler::make_token_handler;
 use crate::errors::AppError;
 use crate::inference::compare_runner_finalize::{emit, finalize_row, CompareEmit};
@@ -37,6 +35,33 @@ pub async fn run_sequential(
         if run_cancel.is_cancelled() { break; }
         run_one_row(&emit_fn, state, endpoint, row, prompt).await;
     }
+    *state.run_cancel.lock_recover() = None;
+    state.rows.lock_recover().clear();
+    emit(&emit_fn, EVENT_COMPARE_RUN_DONE, &serde_json::json!({}));
+    Ok(())
+}
+
+pub async fn run_parallel(
+    emit_fn: CompareEmit,
+    state: &CompareRunState,
+    endpoint: &str,
+    models: &[String],
+    prompt: &str,
+) -> Result<(), AppError> {
+    let rows = rows_for(models);
+    *state.run_cancel.lock_recover() = Some(CancellationToken::new());
+    let endpoint_owned = endpoint.to_string();
+    let prompt_owned = prompt.to_string();
+    let handles: Vec<_> = rows.into_iter().map(|row| {
+        let emit_clone = emit_fn.clone();
+        let state_clone = state.clone();
+        let endpoint = endpoint_owned.clone();
+        let prompt = prompt_owned.clone();
+        tokio::spawn(async move {
+            run_one_row(&emit_clone, &state_clone, &endpoint, &row, &prompt).await;
+        })
+    }).collect();
+    let _ = futures_util::future::join_all(handles).await;
     *state.run_cancel.lock_recover() = None;
     state.rows.lock_recover().clear();
     emit(&emit_fn, EVENT_COMPARE_RUN_DONE, &serde_json::json!({}));

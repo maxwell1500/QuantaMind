@@ -1,7 +1,7 @@
 #![deny(clippy::unwrap_used)]
 use crate::commands::compare_payloads::Strategy;
 use crate::errors::{AppError, AppResult};
-use crate::inference::compare_runner::run_sequential;
+use crate::inference::compare_runner::{run_parallel, run_sequential};
 use crate::inference::compare_runner_finalize::CompareEmit;
 use crate::sync::MutexExt;
 use std::collections::HashMap;
@@ -12,10 +12,10 @@ use uuid::Uuid;
 
 const DEFAULT_OLLAMA: &str = "http://localhost:11434";
 
-#[derive(Default)]
+#[derive(Default, Clone)]
 pub struct CompareRunState {
-    pub rows: Mutex<HashMap<Uuid, CancellationToken>>,
-    pub run_cancel: Mutex<Option<CancellationToken>>,
+    pub rows: Arc<Mutex<HashMap<Uuid, CancellationToken>>>,
+    pub run_cancel: Arc<Mutex<Option<CancellationToken>>>,
 }
 
 fn make_emit(app: AppHandle) -> CompareEmit {
@@ -48,7 +48,7 @@ pub async fn run_compare(
         Strategy::Sequential =>
             run_sequential(emit, state.inner(), DEFAULT_OLLAMA, &models, &prompt).await,
         Strategy::Parallel =>
-            Err(AppError::Validation("parallel strategy lands in a later step".into())),
+            run_parallel(emit, state.inner(), DEFAULT_OLLAMA, &models, &prompt).await,
         Strategy::SequentialSkippable =>
             Err(AppError::Validation("sequential_skippable lands in a later step".into())),
     }
