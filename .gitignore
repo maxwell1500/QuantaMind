@@ -4,6 +4,10 @@ dist
 dist-ssr
 *.local
 
+# Claude
+.claude
+.claude/**
+
 # Logs
 logs
 *.log
