@@ -85,4 +85,18 @@ describe("StatusBar", () => {
     fireEvent.click(screen.getByRole("button", { name: "mistral:7b" }));
     expect(onClick).toHaveBeenCalledTimes(1);
   });
+
+  it("writes ollamaHealthy into workspaceStore on each health tick", async () => {
+    useWorkspaceStore.setState({ ollamaHealthy: null });
+    vi.mocked(checkOllamaHealth).mockResolvedValue({ available: true, version: "0.24.0" });
+    render(<StatusBar model={null} />);
+    await waitFor(() => expect(useWorkspaceStore.getState().ollamaHealthy).toBe(true));
+  });
+
+  it("writes false on health failure (catch path)", async () => {
+    useWorkspaceStore.setState({ ollamaHealthy: null });
+    vi.mocked(checkOllamaHealth).mockRejectedValue(new Error("connect refused"));
+    render(<StatusBar model={null} />);
+    await waitFor(() => expect(useWorkspaceStore.getState().ollamaHealthy).toBe(false));
+  });
 });
