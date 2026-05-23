@@ -42,7 +42,7 @@ describe("LocalFilePreview (M.8)", () => {
 
   it("Import disabled when name has illegal chars; valid name enables it", () => {
     const { onImport } = setup({ name: "bad name with spaces" });
-    const importBtn = screen.getByRole("button", { name: /^import$/i });
+    const importBtn = screen.getByRole("button", { name: /^import/i });
     expect(importBtn).toBeDisabled();
     expect(screen.getByTestId("name-invalid")).toBeInTheDocument();
     fireEvent.click(importBtn);
@@ -52,7 +52,7 @@ describe("LocalFilePreview (M.8)", () => {
   it("conflict prop renders replace warning (does not disable Import)", () => {
     setup({ conflict: true });
     expect(screen.getByTestId("name-conflict")).toHaveTextContent(/already exists/);
-    expect(screen.getByRole("button", { name: /^import$/i })).not.toBeDisabled();
+    expect(screen.getByRole("button", { name: /^import/i })).not.toBeDisabled();
   });
 
   it("busy disables both buttons and shows Importing… label", () => {
@@ -70,7 +70,7 @@ describe("LocalFilePreview (M.8)", () => {
     const { onCancel, onImport, onNameChange } = setup();
     fireEvent.click(screen.getByRole("button", { name: /cancel/i }));
     expect(onCancel).toHaveBeenCalledOnce();
-    fireEvent.click(screen.getByRole("button", { name: /^import$/i }));
+    fireEvent.click(screen.getByRole("button", { name: /^import/i }));
     expect(onImport).toHaveBeenCalledOnce();
     fireEvent.change(screen.getByLabelText("Model name"), { target: { value: "new-name" } });
     expect(onNameChange).toHaveBeenLastCalledWith("new-name");

@@ -73,6 +73,11 @@ export function LocalFilePreview({
           type="button"
           onClick={onImport}
           disabled={!nameValid || busy}
+          aria-disabled={!nameValid || busy}
+          aria-label={
+            !nameValid ? "Import (fix the model name first)"
+            : busy ? "Importing — please wait" : "Import"
+          }
           className="text-xs border rounded px-2 py-1 bg-blue-600 text-white disabled:opacity-50"
         >
           {busy ? "Importing…" : "Import"}
