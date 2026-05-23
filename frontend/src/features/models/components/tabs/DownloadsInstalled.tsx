@@ -46,45 +46,38 @@ export function DownloadsInstalled() {
     );
   }
 
+  const pendingSize = pending
+    ? models.find((m) => m.name === pending)?.size_bytes ?? 0
+    : 0;
+
   return (
     <div className="flex flex-col gap-2" data-testid="downloads-installed-list">
       {error && <div role="alert" className="text-red-600 text-xs">{error}</div>}
       <ul className="divide-y border rounded">
         {models.map((m) => (
-          <li
-            key={m.name}
-            data-testid={`download-installed-${m.name}`}
-            className="px-3 py-2 flex items-center justify-between gap-2"
-          >
+          <li key={m.name} data-testid={`download-installed-${m.name}`}
+            className="px-3 py-2 flex items-center justify-between gap-2">
             <div className="min-w-0">
               <div className="text-sm truncate">{m.name}</div>
               <div className="text-[11px] text-gray-500">
                 {m.family} · {m.parameter_size} · {m.quantization} · {formatBytes(m.size_bytes)}
               </div>
             </div>
-            <button
-              type="button"
-              onClick={() => setPending(m.name)}
+            <button type="button" onClick={() => setPending(m.name)}
               className="text-xs border rounded px-2 py-1"
-              aria-label={`Delete ${m.name}`}
-            >
-              Delete
-            </button>
+              aria-label={`Delete ${m.name}`}>Delete</button>
           </li>
         ))}
       </ul>
-      {pending && (() => {
-        const pendingSize = models.find((m) => m.name === pending)?.size_bytes ?? 0;
-        return (
-          <div role="alertdialog" data-testid="downloads-confirm-delete" className="border rounded p-3 bg-amber-50 text-xs">
-            Remove <strong>{pending}</strong>? This will free {formatBytes(pendingSize)}.
-            <div className="flex gap-2 mt-2">
-              <button type="button" onClick={() => onDelete(pending)} className="border rounded px-2 py-1 bg-red-600 text-white">Remove</button>
-              <button type="button" onClick={() => setPending(null)} className="border rounded px-2 py-1">Cancel</button>
-            </div>
+      {pending && (
+        <div role="alertdialog" data-testid="downloads-confirm-delete" className="border rounded p-3 bg-amber-50 text-xs">
+          Remove <strong>{pending}</strong>? This will free {formatBytes(pendingSize)}.
+          <div className="flex gap-2 mt-2">
+            <button type="button" onClick={() => onDelete(pending)} className="border rounded px-2 py-1 bg-red-600 text-white">Remove</button>
+            <button type="button" onClick={() => setPending(null)} className="border rounded px-2 py-1">Cancel</button>
           </div>
-        );
-      })()}
+        </div>
+      )}
     </div>
   );
 }

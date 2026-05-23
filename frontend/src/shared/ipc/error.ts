@@ -17,8 +17,9 @@ export function formatIpcError(e: unknown): string {
     if (typeof m === "string") return friendly(m);
   }
   try {
-    return JSON.stringify(e);
-  } catch {
-    return String(e);
-  }
+    const json = JSON.stringify(e);
+    if (json !== undefined && json !== "{}") return json;
+  } catch { /* fall through to String() */ }
+  const str = String(e);
+  return str === "[object Object]" ? "[unknown error]" : str;
 }

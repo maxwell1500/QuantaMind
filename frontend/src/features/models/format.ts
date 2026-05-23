@@ -1,3 +1,10 @@
+/// Derive the Ollama model name from an HF GGUF filename. Strips the
+/// `.gguf` suffix and lowercases. The HF detail page and the install
+/// dispatch both call this so they stay in sync.
+export function hfVariantModelName(filename: string): string {
+  return filename.replace(/\.gguf$/i, "").toLowerCase();
+}
+
 /// Format a byte count as "1.3GB", "850MB", "12KB", "999B" (1 decimal,
 /// no space before unit). Matches the audit's data-quality requirement.
 export function formatBytes(n: number): string {

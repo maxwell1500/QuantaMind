@@ -19,9 +19,16 @@ describe("formatIpcError", () => {
     expect(formatIpcError({ foo: "bar" })).toBe('{"foo":"bar"}');
   });
 
-  it("falls back to String() for non-serializable values", () => {
+  it("falls back to '[unknown error]' for non-serializable values that would stringify to [object Object]", () => {
     const circular: Record<string, unknown> = {};
     circular.self = circular;
-    expect(formatIpcError(circular)).toBe("[object Object]");
+    expect(formatIpcError(circular)).toBe("[unknown error]");
+  });
+
+  it("preserves a meaningful String() result when not '[object Object]'", () => {
+    class CustomError {
+      toString() { return "CustomError: oops"; }
+    }
+    expect(formatIpcError(new CustomError())).toBe("CustomError: oops");
   });
 });
