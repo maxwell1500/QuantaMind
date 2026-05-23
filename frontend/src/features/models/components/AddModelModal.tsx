@@ -57,13 +57,18 @@ export function AddModelModal({ isOpen, onClose }: Props) {
 
   if (!isOpen) return null;
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 backdrop-blur-sm">
+    <div
+      onClick={onClose}
+      data-testid="add-model-backdrop"
+      className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 backdrop-blur-sm"
+    >
       <div
         ref={modalRef}
         role="dialog"
         aria-modal="true"
         aria-labelledby="add-model-title"
         data-testid="add-model-modal"
+        onClick={(e) => e.stopPropagation()}
         className="bg-white rounded-lg shadow-xl w-[720px] h-[540px] flex flex-col"
       >
         <header className="flex items-center justify-between px-4 py-3 border-b">

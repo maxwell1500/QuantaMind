@@ -1,4 +1,5 @@
 use crate::metrics::timing::RunTiming;
+use crate::sync::MutexExt;
 use std::sync::{Arc, Mutex};
 use tokio_util::sync::CancellationToken;
 
@@ -12,7 +13,7 @@ where
 {
     move |t| match emit(t) {
         Ok(()) => {
-            timing.lock().unwrap().record_token();
+            timing.lock_recover().record_token();
         }
         Err(()) => {
             cancel.cancel();

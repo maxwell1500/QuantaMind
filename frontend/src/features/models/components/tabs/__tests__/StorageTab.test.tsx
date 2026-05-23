@@ -38,11 +38,13 @@ describe("StorageTab (M.5)", () => {
     expect(screen.getByTestId("installed-qwen2.5:7b")).toBeInTheDocument();
   });
 
-  it("shows 'No models installed.' when the list is empty", async () => {
+  it("shows an actionable empty-state message when the list is empty", async () => {
     mockInstalled([]);
     render(<StorageTab />);
     await waitFor(() =>
-      expect(screen.getByTestId("installed-list")).toHaveTextContent("No models installed."),
+      expect(screen.getByTestId("installed-list")).toHaveTextContent(
+        /No models installed yet.*Ollama Library.*Hugging Face.*Local File/,
+      ),
     );
   });
 

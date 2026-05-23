@@ -55,7 +55,10 @@ export function StorageTab() {
       {error && <div role="alert" className="text-red-600 text-xs">{error}</div>}
       <ul className="flex-1 overflow-auto divide-y" data-testid="installed-list">
         {models.length === 0 && (
-          <li className="text-xs text-gray-500 py-2">No models installed.</li>
+          <li className="text-xs text-gray-500 py-2">
+            No models installed yet. Switch to the Ollama Library, Hugging Face,
+            or Local File tab to add one.
+          </li>
         )}
         {models.map((m) => (
           <li

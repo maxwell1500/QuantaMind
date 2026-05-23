@@ -40,7 +40,8 @@ export function DownloadsInstalled() {
   if (models.length === 0) {
     return (
       <div className="text-xs text-gray-500" data-testid="downloads-empty-installed">
-        No installed models yet.
+        No installed models yet. Browse the Ollama Library, Hugging Face,
+        or Local File tabs to install one.
       </div>
     );
   }
