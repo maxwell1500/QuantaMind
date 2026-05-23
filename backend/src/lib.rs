@@ -16,6 +16,7 @@ pub fn run() {
         .invoke_handler(tauri::generate_handler![
             commands::feasibility::check_install_feasibility,
             commands::gguf_cmd::inspect_gguf,
+            commands::hardware::get_hardware_snapshot,
             commands::gguf_cmd::install_local_gguf,
             commands::hf_browse::hf_search,
             commands::hf_browse::hf_repo_files,

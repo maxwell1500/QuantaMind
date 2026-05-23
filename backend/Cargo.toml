@@ -24,7 +24,7 @@ tokio = { version = "1", features = ["macros", "rt-multi-thread", "sync", "fs", 
 tokio-util = { version = "0.7", features = ["io"] }
 futures-util = "0.3"
 uuid = { version = "1", features = ["v4"] }
-sysinfo = { version = "0.32", default-features = false, features = ["disk"] }
+sysinfo = { version = "0.32", default-features = false, features = ["disk", "system"] }
 sha2 = "0.10"
 bytes = "1"
 

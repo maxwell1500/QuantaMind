@@ -9,6 +9,7 @@
 
 pub mod feasibility;
 pub mod gguf_cmd;
+pub mod hardware;
 pub mod health;
 pub mod hf_browse;
 pub mod hf_install;
