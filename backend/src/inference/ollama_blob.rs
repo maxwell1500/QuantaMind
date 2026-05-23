@@ -1,7 +1,7 @@
 use crate::errors::{AppError, AppResult};
+use crate::inference::http::{probe_client, streaming_client};
 use bytes::Bytes;
 use futures_util::TryStreamExt;
-use reqwest::Client;
 use sha2::{Digest, Sha256};
 use std::path::Path;
 use std::sync::atomic::{AtomicU64, Ordering};
@@ -29,7 +29,7 @@ where F: Fn(u64, u64) + Send,
 }
 
 pub async fn blob_exists(endpoint: &str, digest: &str) -> AppResult<bool> {
-    let client = Client::new();
+    let client = probe_client()?;
     let resp = client.head(format!("{endpoint}/api/blobs/sha256:{digest}"))
         .send().await.map_err(|e| AppError::Inference(e.to_string()))?;
     Ok(resp.status().is_success())
@@ -48,7 +48,7 @@ where F: Fn(u64, u64) + Send + Sync + 'static,
         chunk
     });
     let body = reqwest::Body::wrap_stream(stream);
-    let client = Client::new();
+    let client = streaming_client()?;
     let resp = client.post(format!("{endpoint}/api/blobs/sha256:{digest}"))
         .body(body)
         .send().await.map_err(|e| AppError::Inference(e.to_string()))?;

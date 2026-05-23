@@ -1,6 +1,6 @@
 use crate::errors::{AppError, AppResult};
+use crate::inference::http::streaming_client;
 use reqwest::{Client, StatusCode};
-use std::time::Duration;
 
 /// Validate `namespace/repo-name`. Names allow ASCII alphanumeric plus
 /// `_`, `-`, `.`. Empty parts or extra slashes reject.
@@ -34,8 +34,5 @@ pub fn map_status(s: StatusCode, repo: &str) -> Option<AppError> {
 }
 
 pub fn build_client() -> AppResult<Client> {
-    Client::builder()
-        .connect_timeout(Duration::from_secs(60))
-        .build()
-        .map_err(|e| AppError::Internal(e.to_string()))
+    streaming_client()
 }
