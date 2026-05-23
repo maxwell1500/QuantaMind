@@ -25,10 +25,13 @@ impl SpeedTracker {
     }
 
     pub fn bps(&self, now: Instant) -> u64 {
-        let Some(&(t_old, b_old)) = self.samples.front() else { return 0; };
-        let &(_, b_new) = self.samples.back().unwrap_or(&(now, b_old));
+        if self.samples.len() < 2 { return 0; }
+        // VecDeque guarantees front() and back() are Some when len() >= 1.
+        // We just checked len() >= 2 so both are safe by construction.
+        let &(t_old, b_old) = self.samples.front().expect("len >= 2");
+        let &(_, b_new) = self.samples.back().expect("len >= 2");
         let elapsed = now.saturating_duration_since(t_old).as_secs_f64();
-        if elapsed <= 0.0 || self.samples.len() < 2 { return 0; }
+        if elapsed <= 0.0 { return 0; }
         let delta = b_new.saturating_sub(b_old) as f64;
         (delta / elapsed) as u64
     }
