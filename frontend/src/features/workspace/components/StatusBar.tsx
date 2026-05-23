@@ -13,6 +13,7 @@ type Props = {
 
 export function StatusBar({ model, onModelClick }: Props) {
   const metrics = useWorkspaceStore((s) => s.lastRunMetrics);
+  const setOllamaHealthy = useWorkspaceStore((s) => s.setOllamaHealthy);
   const [health, setHealth] = useState<HealthStatus | null>(null);
 
   useEffect(() => {
@@ -20,9 +21,9 @@ export function StatusBar({ model, onModelClick }: Props) {
     const tick = async () => {
       try {
         const h = await checkOllamaHealth();
-        if (!cancelled) setHealth(h);
+        if (!cancelled) { setHealth(h); setOllamaHealthy(h.available); }
       } catch {
-        if (!cancelled) setHealth({ available: false, version: null });
+        if (!cancelled) { setHealth({ available: false, version: null }); setOllamaHealthy(false); }
       }
     };
     tick();
@@ -31,7 +32,7 @@ export function StatusBar({ model, onModelClick }: Props) {
       cancelled = true;
       clearInterval(id);
     };
-  }, []);
+  }, [setOllamaHealthy]);
 
   const healthy = health?.available === true;
   const healthLabel = health === null

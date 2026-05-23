@@ -1,7 +1,8 @@
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { listen } from "@tauri-apps/api/event";
 import { listModels } from "../../../shared/ipc/client";
 import { formatIpcError } from "../../../shared/ipc/error";
+import { useWorkspaceStore } from "../state/workspaceStore";
 
 type Props = {
   value: string | null;
@@ -14,6 +15,8 @@ const EVENT_MODELS_CHANGED = "models-changed";
 export function ModelPicker({ value, onChange, onAddClick }: Props) {
   const [models, setModels] = useState<string[]>([]);
   const [error, setError] = useState<string | null>(null);
+  const ollamaHealthy = useWorkspaceStore((s) => s.ollamaHealthy);
+  const wasHealthy = useRef<boolean | null>(null);
 
   useEffect(() => {
     let cancelled = false;
@@ -43,6 +46,16 @@ export function ModelPicker({ value, onChange, onAddClick }: Props) {
       unsub?.();
     };
   }, []);
+
+  // When StatusBar detects Ollama has come back up, refresh once.
+  useEffect(() => {
+    if (ollamaHealthy === true && wasHealthy.current !== true) {
+      listModels()
+        .then((list) => { setModels(list); setError(null); })
+        .catch((e) => setError(formatIpcError(e)));
+    }
+    wasHealthy.current = ollamaHealthy;
+  }, [ollamaHealthy]);
 
   return (
     <div className="flex gap-2 items-center">

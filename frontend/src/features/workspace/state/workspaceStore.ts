@@ -6,10 +6,14 @@ import type { DonePayload } from "../../../shared/ipc/events";
 // architecture.md rule 6.
 export interface WorkspaceStore {
   lastRunMetrics: DonePayload | null;
+  ollamaHealthy: boolean | null;
   setLastRunMetrics: (m: DonePayload) => void;
+  setOllamaHealthy: (h: boolean) => void;
 }
 
 export const useWorkspaceStore = create<WorkspaceStore>((set) => ({
   lastRunMetrics: null,
+  ollamaHealthy: null,
   setLastRunMetrics: (m) => set({ lastRunMetrics: m }),
+  setOllamaHealthy: (h) => set({ ollamaHealthy: h }),
 }));
