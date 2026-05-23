@@ -1,10 +1,13 @@
 import { useCompareStore } from "../state/compareStore";
 import { ModelMultiSelect } from "./ModelMultiSelect";
 import { HardwareSummary } from "./HardwareSummary";
+import { CompareToolbar } from "./CompareToolbar";
+import { CompareColumn } from "./CompareColumn";
 
 export function CompareTab() {
   const prompt = useCompareStore((s) => s.prompt);
   const setPrompt = useCompareStore((s) => s.setPrompt);
+  const rows = useCompareStore((s) => s.rows);
 
   return (
     <section data-testid="tab-compare" className="space-y-3">
@@ -22,6 +25,12 @@ export function CompareTab() {
         rows={4}
         data-testid="compare-prompt"
       />
+      <CompareToolbar />
+      {rows.length > 0 && (
+        <div className="flex gap-2 overflow-x-auto" data-testid="compare-columns">
+          {rows.map((r) => <CompareColumn key={r.model} row={r} />)}
+        </div>
+      )}
     </section>
   );
 }
