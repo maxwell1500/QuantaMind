@@ -22,7 +22,7 @@ export function CompareToolbar() {
         <button
           type="button"
           disabled={!canRun}
-          onClick={() => void start("sequential")}
+          onClick={() => void start()}
           className="text-sm border rounded px-3 py-1 disabled:opacity-50"
           data-testid="compare-run"
         >

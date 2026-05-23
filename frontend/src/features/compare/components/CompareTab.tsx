@@ -1,6 +1,7 @@
 import { useCompareStore } from "../state/compareStore";
 import { ModelMultiSelect } from "./ModelMultiSelect";
 import { HardwareSummary } from "./HardwareSummary";
+import { RunStrategyPicker } from "./RunStrategyPicker";
 import { CompareToolbar } from "./CompareToolbar";
 import { CompareColumn } from "./CompareColumn";
 
@@ -17,6 +18,7 @@ export function CompareTab() {
       </p>
       <ModelMultiSelect />
       <HardwareSummary />
+      <RunStrategyPicker />
       <textarea
         value={prompt}
         onChange={(e) => setPrompt(e.target.value)}

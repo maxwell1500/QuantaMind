@@ -1,5 +1,6 @@
 import { create } from "zustand";
 import type { HardwareSnapshot } from "../../../shared/ipc/hardware";
+import type { StrategyId } from "./strategy";
 
 export type CompareModel = { name: string; size_bytes: number };
 export type RowStatus = "pending" | "running" | "done" | "cancelled" | "error";
@@ -19,11 +20,13 @@ interface CompareStore {
   selectedModels: CompareModel[];
   prompt: string;
   hardwareSnapshot: HardwareSnapshot | null;
+  strategy: StrategyId;
   rows: CompareRow[];
   isRunning: boolean;
   setSelectedModels: (m: CompareModel[]) => void;
   setPrompt: (p: string) => void;
   setHardwareSnapshot: (s: HardwareSnapshot | null) => void;
+  setStrategy: (s: StrategyId) => void;
   initRun: (models: CompareModel[]) => void;
   appendToken: (model: string, modelId: string, text: string) => void;
   setRowDone: (p: { model: string; ttft_ms: number | null; tokens_per_sec: number | null; token_count: number }) => void;
@@ -45,11 +48,13 @@ export const useCompareStore = create<CompareStore>((set) => ({
   selectedModels: [],
   prompt: "",
   hardwareSnapshot: null,
+  strategy: "sequential",
   rows: [],
   isRunning: false,
   setSelectedModels: (selectedModels) => set({ selectedModels }),
   setPrompt: (prompt) => set({ prompt }),
   setHardwareSnapshot: (hardwareSnapshot) => set({ hardwareSnapshot }),
+  setStrategy: (strategy) => set({ strategy }),
   initRun: (models) =>
     set({ rows: models.map((m) => newRow(m.name)), isRunning: true }),
   appendToken: (model, modelId, text) =>
@@ -82,5 +87,8 @@ export const useCompareStore = create<CompareStore>((set) => ({
       isRunning: false,
       rows: s.rows.map((r) => r.status === "pending" ? { ...r, status: "cancelled", endedAt: new Date().toISOString() } : r),
     })),
-  reset: () => set({ selectedModels: [], prompt: "", hardwareSnapshot: null, rows: [], isRunning: false }),
+  reset: () => set({
+    selectedModels: [], prompt: "", hardwareSnapshot: null,
+    strategy: "sequential", rows: [], isRunning: false,
+  }),
 }));
