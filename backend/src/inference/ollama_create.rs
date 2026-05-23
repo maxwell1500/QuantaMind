@@ -48,8 +48,10 @@ where F: Fn(CreatePhase) + Send + Sync + 'static,
         .json(&body)
         .send().await
         .map_err(|e| AppError::Inference(e.to_string()))?;
-    if !resp.status().is_success() {
-        return Err(AppError::Inference(format!("HTTP {}", resp.status())));
+    let status = resp.status();
+    if !status.is_success() {
+        let body_text = resp.text().await.unwrap_or_default();
+        return Err(AppError::Inference(format!("create HTTP {status}: {body_text}")));
     }
     consume_ndjson(resp).await
 }

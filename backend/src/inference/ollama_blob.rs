@@ -52,8 +52,10 @@ where F: Fn(u64, u64) + Send + Sync + 'static,
     let resp = client.post(format!("{endpoint}/api/blobs/sha256:{digest}"))
         .body(body)
         .send().await.map_err(|e| AppError::Inference(e.to_string()))?;
-    if !resp.status().is_success() {
-        return Err(AppError::Inference(format!("blob upload: HTTP {}", resp.status())));
+    let status = resp.status();
+    if !status.is_success() {
+        let body_text = resp.text().await.unwrap_or_default();
+        return Err(AppError::Inference(format!("blob upload HTTP {status}: {body_text}")));
     }
     Ok(())
 }

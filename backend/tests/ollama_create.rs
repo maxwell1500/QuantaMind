@@ -65,6 +65,25 @@ async fn create_http_500_returns_inference_error() {
 }
 
 #[tokio::test]
+async fn create_http_400_includes_ollama_response_body() {
+    let (f, digest) = gguf_fixture(b"z");
+    let mut s = Server::new_async().await;
+    let _h = s.mock("HEAD", format!("/api/blobs/sha256:{digest}").as_str())
+        .with_status(200).create_async().await;
+    let _c = s.mock("POST", "/api/create")
+        .with_status(400)
+        .with_body(r#"{"error":"unknown field 'files'"}"#)
+        .create_async().await;
+    match ollama_create(&s.url(), "x:latest", &spec(f.path().to_path_buf()), |_| {}).await {
+        Err(AppError::Inference(msg)) => {
+            assert!(msg.contains("400"), "got: {msg}");
+            assert!(msg.contains("unknown field 'files'"), "got: {msg}");
+        }
+        other => panic!("expected Inference, got {other:?}"),
+    }
+}
+
+#[tokio::test]
 async fn create_chunk_with_error_aborts_and_propagates_message() {
     let (f, digest) = gguf_fixture(b"y");
     let mut s = Server::new_async().await;

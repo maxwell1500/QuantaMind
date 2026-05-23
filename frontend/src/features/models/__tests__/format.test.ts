@@ -1,5 +1,23 @@
 import { describe, it, expect } from "vitest";
-import { formatBytes, formatDuration } from "../format";
+import { formatBytes, formatDuration, hfVariantModelName } from "../format";
+
+describe("hfVariantModelName (M.5)", () => {
+  it("returns lowercase base without tag when no quantization given", () => {
+    expect(hfVariantModelName("Foo-Bar.gguf")).toBe("foo-bar");
+  });
+  it("encodes <base>:<quant> and strips a trailing -<quant> from the base", () => {
+    expect(hfVariantModelName("Llama-3.2-1B-Instruct-Q4_K_M.gguf", "Q4_K_M"))
+      .toBe("llama-3.2-1b-instruct:q4_k_m");
+  });
+  it("strips a trailing .<quant> from the base", () => {
+    expect(hfVariantModelName("CodeLlama-7b-Instruct-hf.Q4_K_M.gguf", "Q4_K_M"))
+      .toBe("codellama-7b-instruct-hf:q4_k_m");
+  });
+  it("leaves the base alone if no trailing quant is found", () => {
+    expect(hfVariantModelName("gemma-2-9b-it.gguf", "Q4_K_M"))
+      .toBe("gemma-2-9b-it:q4_k_m");
+  });
+});
 
 describe("formatBytes (M.2)", () => {
   it.each([

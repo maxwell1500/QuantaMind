@@ -9,8 +9,7 @@ import { formatIpcError } from "../../../shared/ipc/error";
 type Props = { entry: HfRepoEntry; onBack: () => void };
 
 const EVENT_MODELS_CHANGED = "models-changed";
-const variantName = (v: HfVariant) => hfVariantModelName(v.filename);
-const bareName = (n: string) => n.split(":")[0];
+const variantName = (v: HfVariant) => hfVariantModelName(v.filename, v.quantization);
 
 export function HuggingFaceRepoDetail({ entry, onBack }: Props) {
   const { state, install, cancel, reset } = useHfInstall();
@@ -21,7 +20,7 @@ export function HuggingFaceRepoDetail({ entry, onBack }: Props) {
     let cancelled = false;
     let unsub: (() => void) | null = null;
     const refresh = () => listModels()
-      .then((list) => { if (!cancelled) setInstalled(new Set(list.map(bareName))); })
+      .then((list) => { if (!cancelled) setInstalled(new Set(list)); })
       .catch((e) => console.error("HuggingFaceRepoDetail: listModels failed —", formatIpcError(e)));
     refresh();
     (async () => {
