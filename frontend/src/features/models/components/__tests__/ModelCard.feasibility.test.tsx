@@ -22,7 +22,7 @@ beforeEach(() => {
   vi.mocked(invoke).mockReset();
   __resetDownloadEventBusForTests();
   useModelStore.setState({
-    activeTab: "ollama", installInFlight: null,
+    activeTab: "ollama",
     downloads: {}, pullNames: {}, activeHfName: null,
   });
 });

@@ -44,7 +44,7 @@ beforeEach(() => {
   });
   __resetDownloadEventBusForTests();
   useModelStore.setState({
-    activeTab: "ollama", installInFlight: null,
+    activeTab: "ollama",
     downloads: {}, pullNames: {}, activeHfName: null,
   });
 });
@@ -72,7 +72,7 @@ describe("ModelCard (M.4)", () => {
     expect(invoke).toHaveBeenCalledWith("pull_model", { name: "phi3.5:latest" });
   });
 
-  it("during pull, card shows 'Installing · N%' and updates modelStore.installInFlight", async () => {
+  it("during pull, card shows the progress bar + cancel and the store entry advances", async () => {
     render(<ModelCard model={PHI} isInstalled={false} />);
     await act(async () => {
       fireEvent.click(screen.getByRole("button", { name: /install/i }));
@@ -86,18 +86,17 @@ describe("ModelCard (M.4)", () => {
     expect(installing).toHaveTextContent("25%");
     expect(installing.querySelector("progress")).toHaveAttribute("value", "25");
     expect(installing.querySelector('button')).toHaveTextContent(/Cancel/);
-    expect(useModelStore.getState().installInFlight?.name).toBe("phi3.5:latest");
-    expect(useModelStore.getState().installInFlight?.progress).toBe(25);
+    expect(useModelStore.getState().downloads["phi3.5:latest"]?.percent).toBe(25);
   });
 
-  it("after success, badge swaps to Installed and installInFlight clears", async () => {
+  it("after success, badge swaps to Installed and the store entry transitions to success", async () => {
     render(<ModelCard model={PHI} isInstalled={false} />);
     await act(async () => {
       fireEvent.click(screen.getByRole("button", { name: /install/i }));
     });
     act(() => fire("pull-progress", { pull_id: "pid-1", name: "phi3.5:latest", progress: { phase: "success" } }));
     expect(screen.getByTestId("installed-badge")).toBeInTheDocument();
-    expect(useModelStore.getState().installInFlight).toBeNull();
+    expect(useModelStore.getState().downloads["phi3.5:latest"]?.status).toBe("success");
   });
 
 });

@@ -18,7 +18,6 @@ beforeEach(() => {
   useModelStore.setState({
     downloads: {},
     activeTab: "downloads",
-    installInFlight: null,
     pendingLocalPath: null,
   });
   vi.mocked(getInstalledModelsWithStats).mockReset();

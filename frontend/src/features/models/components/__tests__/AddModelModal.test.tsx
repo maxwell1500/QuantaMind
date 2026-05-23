@@ -10,7 +10,7 @@ import { AddModelModal } from "../AddModelModal";
 import { useModelStore } from "../../state/modelStore";
 
 beforeEach(() => {
-  useModelStore.setState({ activeTab: "ollama", installInFlight: null });
+  useModelStore.setState({ activeTab: "ollama", downloads: {} });
 });
 
 describe("AddModelModal (M.3)", () => {
@@ -77,10 +77,15 @@ describe("AddModelModal (M.3)", () => {
     expect(screen.queryByTestId("model-grid")).toBeNull();
   });
 
-  it("installInFlight from store renders in footer", () => {
+  it("active download from store renders in footer", () => {
     useModelStore.setState({
       activeTab: "ollama",
-      installInFlight: { source: "ollama", name: "phi3.5:latest", progress: 47 },
+      downloads: {
+        "phi3.5:latest": {
+          id: "phi3.5:latest", source: "ollama", name: "phi3.5:latest",
+          status: "downloading", percent: 47,
+        },
+      },
     });
     render(<AddModelModal isOpen onClose={() => {}} />);
     const footer = screen.getByTestId("modal-footer");

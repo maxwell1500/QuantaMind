@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useState } from "react";
 import { useModelInstall } from "../hooks/useModelInstall";
 import { useModelStore } from "../state/modelStore";
 import type { ModelCatalogEntry } from "../data/ollama-catalog";
@@ -12,18 +12,8 @@ type Props = { model: ModelCatalogEntry; isInstalled: boolean };
 
 export function ModelCard({ model, isInstalled }: Props) {
   const { state, install, cancel: cancelInstall } = useModelInstall(model.name);
-  const setInstallInFlight = useModelStore((s) => s.setInstallInFlight);
   const removeDownload = useModelStore((s) => s.removeDownload);
   const [pending, setPending] = useState<InstallFeasibility | null>(null);
-
-  const pct = Math.round(state.progress?.percentComplete ?? 0);
-  useEffect(() => {
-    if (state.status === "pulling") {
-      setInstallInFlight({ source: "ollama", name: model.name, progress: pct });
-    } else if (state.status !== "idle") {
-      setInstallInFlight(null);
-    }
-  }, [state.status, pct, model.name, setInstallInFlight]);
 
   const installed = isInstalled || state.status === "success";
   const pulling = state.status === "pulling";

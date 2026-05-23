@@ -22,7 +22,7 @@ beforeEach(() => {
     return Promise.resolve();
   });
   useModelStore.setState({
-    activeTab: "local", installInFlight: null, pendingLocalPath: null,
+    activeTab: "local", pendingLocalPath: null,
   });
 });
 

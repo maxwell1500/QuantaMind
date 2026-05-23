@@ -23,7 +23,7 @@ beforeEach(() => {
   __resetDownloadEventBusForTests();
   useModelStore.setState({
     downloads: {}, pullNames: {}, activeHfName: null,
-    activeTab: "ollama", installInFlight: null, pendingLocalPath: null,
+    activeTab: "ollama", pendingLocalPath: null,
   });
 });
 

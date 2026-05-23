@@ -1,18 +1,18 @@
 import { describe, it, expect, beforeEach } from "vitest";
-import { useModelStore } from "../modelStore";
+import { findActiveDownload, useModelStore } from "../modelStore";
 
 beforeEach(() => {
-  useModelStore.setState({ activeTab: "ollama", installInFlight: null });
+  useModelStore.setState({ activeTab: "ollama", downloads: {} });
 });
 
 describe("modelStore (M.3)", () => {
-  it("starts with activeTab=ollama and no install in flight", () => {
+  it("starts with activeTab=ollama and an empty downloads map", () => {
     const s = useModelStore.getState();
     expect(s.activeTab).toBe("ollama");
-    expect(s.installInFlight).toBeNull();
+    expect(s.downloads).toEqual({});
   });
 
-  it("setActiveTab transitions through all three valid values", () => {
+  it("setActiveTab transitions through all valid values", () => {
     const { setActiveTab } = useModelStore.getState();
     setActiveTab("huggingface");
     expect(useModelStore.getState().activeTab).toBe("huggingface");
@@ -22,11 +22,17 @@ describe("modelStore (M.3)", () => {
     expect(useModelStore.getState().activeTab).toBe("ollama");
   });
 
-  it("setInstallInFlight stores then clears", () => {
-    const { setInstallInFlight } = useModelStore.getState();
-    setInstallInFlight({ source: "ollama", name: "phi3.5:latest", progress: 0 });
-    expect(useModelStore.getState().installInFlight?.name).toBe("phi3.5:latest");
-    setInstallInFlight(null);
-    expect(useModelStore.getState().installInFlight).toBeNull();
+  it("findActiveDownload returns the first downloading/installing entry", () => {
+    const { upsertDownload } = useModelStore.getState();
+    upsertDownload({ id: "a", source: "ollama", name: "a", status: "success", percent: 100 });
+    expect(findActiveDownload(useModelStore.getState().downloads)).toBeUndefined();
+    upsertDownload({ id: "b", source: "ollama", name: "b", status: "downloading", percent: 30 });
+    const active = findActiveDownload(useModelStore.getState().downloads);
+    expect(active?.name).toBe("b");
+    expect(active?.percent).toBe(30);
+  });
+
+  it("findActiveDownload returns undefined for an empty map", () => {
+    expect(findActiveDownload({})).toBeUndefined();
   });
 });

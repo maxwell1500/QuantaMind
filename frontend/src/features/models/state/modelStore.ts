@@ -31,22 +31,14 @@ export interface DownloadEntry {
   phaseLabel?: string;
 }
 
-export interface InstallInFlight {
-  source: string;
-  name: string;
-  progress: number;
-}
-
 export interface ModelStore {
   activeTab: TabId;
-  installInFlight: InstallInFlight | null;
   pendingLocalPath: string | null;
   downloads: Record<string, DownloadEntry>;
   activeHfName: string | null;
   activeLocalName: string | null;
   pullNames: Record<string, string>;
   setActiveTab: (t: TabId) => void;
-  setInstallInFlight: (i: InstallInFlight | null) => void;
   setPendingLocalPath: (p: string | null) => void;
   upsertDownload: (entry: DownloadEntry) => void;
   removeDownload: (id: string) => void;
@@ -58,14 +50,12 @@ export interface ModelStore {
 
 export const useModelStore = create<ModelStore>((set) => ({
   activeTab: "ollama",
-  installInFlight: null,
   pendingLocalPath: null,
   downloads: {},
   activeHfName: null,
   activeLocalName: null,
   pullNames: {},
   setActiveTab: (t) => set({ activeTab: t }),
-  setInstallInFlight: (i) => set({ installInFlight: i }),
   setPendingLocalPath: (p) => set({ pendingLocalPath: p }),
   upsertDownload: (entry) =>
     set((s) => ({ downloads: { ...s.downloads, [entry.id]: entry } })),
@@ -86,3 +76,15 @@ export const useModelStore = create<ModelStore>((set) => ({
       return { pullNames: next };
     }),
 }));
+
+/// Pick the first download entry that's actively in flight, if any.
+/// Used by AddModelModal's footer and any other "one summary line"
+/// surface; replaces the legacy `installInFlight` slot.
+export function findActiveDownload(
+  downloads: Record<string, DownloadEntry>,
+): DownloadEntry | undefined {
+  for (const d of Object.values(downloads)) {
+    if (d.status === "downloading" || d.status === "installing") return d;
+  }
+  return undefined;
+}

@@ -1,5 +1,5 @@
 import { useEffect, useRef } from "react";
-import { useModelStore, type TabId } from "../state/modelStore";
+import { findActiveDownload, useModelStore, type TabId } from "../state/modelStore";
 import { useModalDragDrop } from "../hooks/useModalDragDrop";
 import { OllamaLibraryTab } from "./tabs/OllamaLibraryTab";
 import { HuggingFaceTab } from "./tabs/HuggingFaceTab";
@@ -21,7 +21,7 @@ const FOCUSABLE = 'button, [href], input, select, textarea, [tabindex]:not([tabi
 export function AddModelModal({ isOpen, onClose }: Props) {
   const activeTab = useModelStore((s) => s.activeTab);
   const setActiveTab = useModelStore((s) => s.setActiveTab);
-  const installInFlight = useModelStore((s) => s.installInFlight);
+  const active = useModelStore((s) => findActiveDownload(s.downloads));
   const modalRef = useRef<HTMLDivElement>(null);
   const previousFocus = useRef<HTMLElement | null>(null);
   useModalDragDrop(isOpen);
@@ -96,7 +96,7 @@ export function AddModelModal({ isOpen, onClose }: Props) {
           {activeTab === "storage" && <StorageTab />}
         </main>
         <footer className="px-4 py-2 border-t text-xs text-gray-500" data-testid="modal-footer">
-          {installInFlight ? `Installing ${installInFlight.name} · ${installInFlight.progress}%` : ""}
+          {active ? `Installing ${active.name} · ${active.percent}%` : ""}
         </footer>
       </div>
     </div>
