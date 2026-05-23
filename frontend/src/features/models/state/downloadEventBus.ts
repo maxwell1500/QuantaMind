@@ -23,20 +23,22 @@ function onHf(payload: unknown) {
   }
   const { activeHfName, upsertDownload } = useModelStore.getState();
   if (!activeHfName) return;
+  const base = { id: activeHfName, source: "huggingface" as const, name: activeHfName };
   if (p.data.phase === "downloading") {
     const total = p.data.bytes_total;
     const done = p.data.bytes_completed;
     const percent = total > 0 ? Math.min(100, Math.round((done / total) * 100)) : 0;
-    upsertDownload({
-      id: activeHfName, source: "huggingface", name: activeHfName,
-      status: "downloading", percent, bytesCompleted: done, bytesTotal: total,
-    });
+    upsertDownload({ ...base, status: "downloading", percent, bytesCompleted: done, bytesTotal: total, phaseLabel: "Downloading" });
     return;
   }
-  upsertDownload({
-    id: activeHfName, source: "huggingface", name: activeHfName,
-    status: "installing", percent: 100,
-  });
+  if (p.data.phase === "hashing" || p.data.phase === "uploading") {
+    const { bytes_completed, bytes_total } = p.data;
+    const percent = bytes_total > 0 ? Math.min(100, Math.round((bytes_completed / bytes_total) * 100)) : 0;
+    const phaseLabel = p.data.phase === "hashing" ? "Hashing" : "Uploading to Ollama";
+    upsertDownload({ ...base, status: "installing", percent, bytesCompleted: bytes_completed, bytesTotal: bytes_total, phaseLabel });
+    return;
+  }
+  upsertDownload({ ...base, status: "installing", percent: 100, phaseLabel: "Creating model" });
 }
 
 function onPull(payload: unknown) {

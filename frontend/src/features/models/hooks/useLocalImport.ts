@@ -54,18 +54,22 @@ export function useLocalImport() {
     setActiveLocalName(null);
   }, [setActiveLocalName]);
 
+  const upsert = useModelStore((st) => st.upsertDownload);
   const doImport = useCallback(async () => {
     if (!path) return;
     setError(null);
     setActiveLocalName(name);
     try {
       await installLocalGguf(path, name);
+      upsert({ id: name, source: "local", name, status: "success", percent: 100 });
       cancel();
     } catch (e) {
-      setError(formatIpcError(e));
+      const msg = formatIpcError(e);
+      setError(msg);
+      upsert({ id: name, source: "local", name, status: "error", percent: 0, error: msg });
       setActiveLocalName(null);
     }
-  }, [path, name, cancel, setActiveLocalName]);
+  }, [path, name, cancel, setActiveLocalName, upsert]);
 
   const busy = !!entry && entry.status === "installing";
   const percent = entry?.percent ?? 0;
