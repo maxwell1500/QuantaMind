@@ -7,7 +7,8 @@ vi.mock("@tauri-apps/api/event", () => ({ listen: vi.fn() }));
 import { invoke } from "@tauri-apps/api/core";
 import { listen, type EventCallback } from "@tauri-apps/api/event";
 import { OllamaLibraryTab } from "../OllamaLibraryTab";
-import { OllamaCatalog } from "../../../data/ollama-catalog";
+import { useModelStore } from "../../../state/modelStore";
+import { __resetDownloadEventBusForTests } from "../../../state/downloadEventBus";
 
 const handlers: Record<string, EventCallback<unknown>> = {};
 
@@ -19,61 +20,54 @@ beforeEach(() => {
     handlers[event] = cb as EventCallback<unknown>;
     return Promise.resolve(() => { delete handlers[event]; });
   });
-  vi.mocked(invoke).mockResolvedValue([]);
+  vi.mocked(invoke).mockImplementation((cmd: string) => {
+    if (cmd === "list_models") return Promise.resolve(["mistral:7b"]);
+    if (cmd === "pull_model") return Promise.resolve("pull-1");
+    if (cmd === "cancel_pull") return Promise.resolve(undefined);
+    return Promise.reject(new Error(`unknown ${cmd}`));
+  });
+  __resetDownloadEventBusForTests();
+  useModelStore.setState({ downloads: {}, pullNames: {}, activeHfName: null });
 });
 
-const cardCount = () => screen.getByTestId("model-grid").querySelectorAll('[data-testid^="model-card-"]').length;
-
-describe("OllamaLibraryTab (M.4)", () => {
-  it("renders the full catalog when no search or filter", async () => {
+describe("OllamaLibraryTab (free-text install)", () => {
+  it("renders the input and a disabled Install button when empty", () => {
     render(<OllamaLibraryTab />);
-    await waitFor(() => expect(cardCount()).toBe(OllamaCatalog.length));
+    expect(screen.getByTestId("ollama-name-input")).toBeInTheDocument();
+    expect(screen.getByTestId("ollama-install")).toBeDisabled();
   });
 
-  it("search 'llama' filters to Llama-family rows only", async () => {
+  it("typing an installed model name shows the Installed badge", async () => {
     render(<OllamaLibraryTab />);
-    await waitFor(() => expect(cardCount()).toBe(OllamaCatalog.length));
-    fireEvent.change(screen.getByLabelText("Search Ollama library"), {
-      target: { value: "llama" },
+    await waitFor(() => expect(invoke).toHaveBeenCalledWith("list_models"));
+    fireEvent.change(screen.getByTestId("ollama-name-input"), { target: { value: "mistral:7b" } });
+    await screen.findByText(/Installed/);
+  });
+
+  it("clicking Install invokes pull_model with the typed name", async () => {
+    render(<OllamaLibraryTab />);
+    fireEvent.change(screen.getByTestId("ollama-name-input"), { target: { value: "qwen2.5:14b" } });
+    fireEvent.click(screen.getByTestId("ollama-install"));
+    await waitFor(() => expect(invoke).toHaveBeenCalledWith("pull_model", { name: "qwen2.5:14b" }));
+  });
+
+  it("surfaces a pull_model rejection as a friendly error", async () => {
+    vi.mocked(invoke).mockImplementation((cmd: string) => {
+      if (cmd === "list_models") return Promise.resolve([]);
+      if (cmd === "pull_model") return Promise.reject({ kind: "not_found", message: "model foo" });
+      return Promise.reject(new Error(`unknown ${cmd}`));
     });
-    const visible = OllamaCatalog.filter((m) =>
-      `${m.name} ${m.description} ${m.tags.join(" ")}`.toLowerCase().includes("llama"),
-    );
-    expect(cardCount()).toBe(visible.length);
-    expect(visible.length).toBeGreaterThan(0);
+    render(<OllamaLibraryTab />);
+    fireEvent.change(screen.getByTestId("ollama-name-input"), { target: { value: "foo" } });
+    fireEvent.click(screen.getByTestId("ollama-install"));
+    expect(await screen.findByTestId("ollama-error")).toHaveTextContent(/model foo/);
   });
 
-  it("'Coding' pill narrows grid to coding-tagged rows", async () => {
+  it("Enter triggers the install when the name is non-empty", async () => {
     render(<OllamaLibraryTab />);
-    await waitFor(() => expect(cardCount()).toBe(OllamaCatalog.length));
-    fireEvent.click(screen.getByRole("button", { name: "Coding" }));
-    const expected = OllamaCatalog.filter((m) => m.tags.includes("coding"));
-    expect(cardCount()).toBe(expected.length);
-    expect(expected.length).toBeGreaterThan(0);
-  });
-
-  it("search + pill intersect (not union)", async () => {
-    render(<OllamaLibraryTab />);
-    await waitFor(() => expect(cardCount()).toBe(OllamaCatalog.length));
-    fireEvent.change(screen.getByLabelText("Search Ollama library"), {
-      target: { value: "qwen" },
-    });
-    fireEvent.click(screen.getByRole("button", { name: "Coding" }));
-    const expected = OllamaCatalog.filter((m) =>
-      m.tags.includes("coding") &&
-      `${m.name} ${m.description} ${m.tags.join(" ")}`.toLowerCase().includes("qwen"),
-    );
-    expect(cardCount()).toBe(expected.length);
-    expect(expected.length).toBeGreaterThan(0);
-  });
-
-  it("models returned by list_models render with the installed badge", async () => {
-    vi.mocked(invoke).mockResolvedValue(["phi3.5:latest", "qwen2.5:7b"]);
-    render(<OllamaLibraryTab />);
-    await waitFor(() =>
-      expect(screen.getByTestId("model-card-phi3.5:latest")).toBeInTheDocument(),
-    );
-    const phi = screen.getByTestId("model-card-phi3.5:latest");
-    expect(phi.querySelector('[data-testid="installed-badge"]')).not.toBeNull();
+    const input = screen.getByTestId("ollama-name-input");
+    fireEvent.change(input, { target: { value: "phi3:mini" } });
+    fireEvent.keyDown(input, { key: "Enter" });
+    await waitFor(() => expect(invoke).toHaveBeenCalledWith("pull_model", { name: "phi3:mini" }));
   });
 });

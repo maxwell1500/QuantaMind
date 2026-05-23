@@ -55,8 +55,9 @@ describe("AddModelModal (M.3)", () => {
 
   it("Tab on last focusable wraps to first; Shift+Tab on first wraps to last", () => {
     render(<AddModelModal isOpen onClose={() => {}} />);
-    // The focus trap queries all <button> elements, including role="tab"
-    // (which ARIA-role queries treat as "tab" not "button").
+    // Type a name so the Install button is enabled — disabled buttons
+    // can't receive focus and would invalidate the wrap assertion.
+    fireEvent.change(screen.getByTestId("ollama-name-input"), { target: { value: "x" } });
     const modal = screen.getByTestId("add-model-modal");
     const buttons = modal.querySelectorAll<HTMLButtonElement>("button");
     const first = buttons[0];
@@ -71,10 +72,10 @@ describe("AddModelModal (M.3)", () => {
 
   it("renders the correct tab content for each active tab", () => {
     render(<AddModelModal isOpen onClose={() => {}} />);
-    expect(screen.getByTestId("model-grid")).toBeInTheDocument();
+    expect(screen.getByTestId("tab-ollama")).toBeInTheDocument();
     fireEvent.click(screen.getByRole("tab", { name: "Hugging Face" }));
     expect(screen.getByTestId("tab-huggingface")).toBeInTheDocument();
-    expect(screen.queryByTestId("model-grid")).toBeNull();
+    expect(screen.queryByTestId("tab-ollama")).toBeNull();
   });
 
   it("active download from store renders in footer", () => {
