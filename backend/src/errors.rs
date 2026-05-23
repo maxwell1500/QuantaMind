@@ -36,7 +36,8 @@ impl AppError {
         let looks_like_ollama_down = s.contains("Connection refused")
             || s.contains("error trying to connect")
             || s.contains("os error 61")
-            || s.contains("tcp connect error");
+            || s.contains("tcp connect error")
+            || (s.contains("error sending request") && s.contains("localhost:11434"));
         if looks_like_ollama_down {
             return "Ollama is not running. Start Ollama and try again.".to_string();
         }

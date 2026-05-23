@@ -2,7 +2,8 @@ function friendly(msg: string): string {
   if (msg.includes("Connection refused")
       || msg.includes("error trying to connect")
       || msg.includes("os error 61")
-      || msg.includes("tcp connect error")) {
+      || msg.includes("tcp connect error")
+      || (msg.includes("error sending request") && msg.includes("localhost:11434"))) {
     return "Ollama is not running. Start Ollama and try again.";
   }
   return msg;
