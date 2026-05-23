@@ -10,6 +10,7 @@
 pub mod feasibility;
 pub mod gguf_cmd;
 pub mod health;
+pub mod hf_browse;
 pub mod hf_install;
 pub mod models;
 pub mod models_pull;

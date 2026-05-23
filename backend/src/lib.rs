@@ -17,6 +17,7 @@ pub fn run() {
             commands::feasibility::check_install_feasibility,
             commands::gguf_cmd::inspect_gguf,
             commands::gguf_cmd::install_local_gguf,
+            commands::hf_browse::hf_search,
             commands::hf_install::install_hf_gguf,
             commands::hf_install::cancel_hf_install,
             commands::health::check_ollama_health,
