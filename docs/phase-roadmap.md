@@ -46,13 +46,13 @@ partial files or temp Modelfiles after success/cancel paths.
 
 Step ledger lives in `03_phaseM_implementation.md`.
 
-## Phase M.5 — Live browsing (in progress)
+## Phase M.5 — Live browsing + Compare (in progress)
 
-Drops the Phase M bundled catalogs in favour of live data — HF tab
-calls `huggingface.co/api`, Ollama tab becomes free-text install (no
-public search API to scrape). Full design + file list in
-`live-browsing.md`. Exit: catalog JSONs removed; offline renders error
-+ Retry, never a stale list.
+Live HF/Ollama browsing replaces bundled catalogs (`live-browsing.md`),
+and a top-level **Compare** tab is added: multi-model selection,
+hardware gate, three run strategies, per-model streaming, MD+JSON
+export (`compare-feature.md`). Compare graduates to Phase 3 / `features/
+bench/` once a second inference backend lands.
 
 ## Phase 2 — Settings + Persistence
 
