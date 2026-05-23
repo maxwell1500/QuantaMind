@@ -31,7 +31,11 @@ pub fn assess(free_bytes: u64, estimated_bytes: u64) -> InstallFeasibility {
             free_after_bytes: free_bytes,
         };
     }
-    let margin = estimated_bytes.saturating_mul(SAFETY_MARGIN_PCT) / 100;
+    // Compute via u128 so the multiply can't lose precision for any u64
+    // input (saturating_mul above would silently round u64::MAX to itself).
+    let margin = u64::try_from(
+        (estimated_bytes as u128 * SAFETY_MARGIN_PCT as u128) / 100u128,
+    ).unwrap_or(u64::MAX);
     let needed = estimated_bytes.saturating_add(margin);
     let free_after = free_bytes.saturating_sub(needed);
     if free_after < BLOCK_THRESHOLD_BYTES {
