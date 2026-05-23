@@ -45,12 +45,10 @@ pub async fn run_compare(
     validate(&models, &prompt)?;
     let emit = make_emit(app);
     match strategy {
-        Strategy::Sequential =>
+        Strategy::Sequential | Strategy::SequentialSkippable =>
             run_sequential(emit, state.inner(), DEFAULT_OLLAMA, &models, &prompt).await,
         Strategy::Parallel =>
             run_parallel(emit, state.inner(), DEFAULT_OLLAMA, &models, &prompt).await,
-        Strategy::SequentialSkippable =>
-            Err(AppError::Validation("sequential_skippable lands in a later step".into())),
     }
 }
 
@@ -59,6 +57,10 @@ pub fn stop_compare(
     state: tauri::State<'_, CompareRunState>,
     model_id: Option<String>,
 ) -> Result<(), AppError> {
+    stop_compare_inner(state.inner(), model_id)
+}
+
+pub fn stop_compare_inner(state: &CompareRunState, model_id: Option<String>) -> AppResult<()> {
     match model_id {
         Some(id_str) => {
             let id = id_str.parse::<Uuid>()
