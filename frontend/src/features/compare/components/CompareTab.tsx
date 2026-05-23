@@ -1,7 +1,8 @@
 import { useCompareStore } from "../state/compareStore";
+import { ModelMultiSelect } from "./ModelMultiSelect";
+import { HardwareSummary } from "./HardwareSummary";
 
 export function CompareTab() {
-  const selectedModels = useCompareStore((s) => s.selectedModels);
   const prompt = useCompareStore((s) => s.prompt);
   const setPrompt = useCompareStore((s) => s.setPrompt);
 
@@ -11,12 +12,8 @@ export function CompareTab() {
       <p className="text-xs text-gray-600">
         Pick multiple models, write one prompt, run them side-by-side.
       </p>
-      <p className="text-xs text-gray-500" data-testid="compare-selected-summary">
-        Selected:{" "}
-        {selectedModels.length === 0
-          ? "none yet"
-          : selectedModels.map((m) => m.name).join(", ")}
-      </p>
+      <ModelMultiSelect />
+      <HardwareSummary />
       <textarea
         value={prompt}
         onChange={(e) => setPrompt(e.target.value)}
