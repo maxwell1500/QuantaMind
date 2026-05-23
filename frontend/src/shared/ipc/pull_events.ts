@@ -13,6 +13,7 @@ const DownloadingSchema = z.object({
 const VerifyingSchema = z.object({ phase: z.literal("verifying") });
 const WritingSchema = z.object({ phase: z.literal("writing") });
 const SuccessSchema = z.object({ phase: z.literal("success") });
+const FailedSchema = z.object({ phase: z.literal("failed"), message: z.string() });
 
 export const PullProgressSchema = z.discriminatedUnion("phase", [
   PullingManifestSchema,
@@ -20,6 +21,7 @@ export const PullProgressSchema = z.discriminatedUnion("phase", [
   VerifyingSchema,
   WritingSchema,
   SuccessSchema,
+  FailedSchema,
 ]);
 
 export const PullProgressEventSchema = z.object({

@@ -28,6 +28,22 @@ pub enum AppError {
 
 pub type AppResult<T> = Result<T, AppError>;
 
+impl AppError {
+    /// Translate well-known connection failures into actionable copy.
+    /// Keeps the original string when there's no friendlier match.
+    pub fn friendly(&self) -> String {
+        let s = self.to_string();
+        let looks_like_ollama_down = s.contains("Connection refused")
+            || s.contains("error trying to connect")
+            || s.contains("os error 61")
+            || s.contains("tcp connect error");
+        if looks_like_ollama_down {
+            return "Ollama is not running. Start Ollama and try again.".to_string();
+        }
+        s
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;

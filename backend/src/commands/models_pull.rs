@@ -54,6 +54,13 @@ pub async fn pull_model(
         .await;
         if let Err(e) = &result {
             eprintln!("pull_model({pid}) failed: {e:?}");
+            let _ = emit_app.emit(
+                EVENT_PULL_PROGRESS,
+                PullProgressEvent {
+                    pull_id: pid.clone(),
+                    progress: PullProgress::Failed { message: e.friendly() },
+                },
+            );
         } else {
             let _ = emit_app.emit(EVENT_MODELS_CHANGED, ());
         }

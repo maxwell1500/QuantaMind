@@ -8,6 +8,7 @@ pub enum PullProgress {
     Verifying,
     Writing,
     Success,
+    Failed { message: String },
 }
 
 #[derive(Serialize)]

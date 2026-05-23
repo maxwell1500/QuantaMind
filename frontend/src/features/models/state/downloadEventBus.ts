@@ -51,6 +51,14 @@ function onPull(payload: unknown) {
   const name = pullNames[p.data.pull_id];
   if (!name) return;
   const prog = p.data.progress;
+  if (prog.phase === "failed") {
+    upsertDownload({
+      id: name, source: "ollama", name,
+      status: "error", percent: 0, error: prog.message,
+      pullId: p.data.pull_id,
+    });
+    return;
+  }
   const isSuccess = prog.phase === "success";
   const percent = prog.phase === "downloading" && prog.total > 0
     ? Math.min(100, Math.round((prog.completed / prog.total) * 100))

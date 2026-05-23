@@ -13,6 +13,7 @@ type Props = { model: ModelCatalogEntry; isInstalled: boolean };
 export function ModelCard({ model, isInstalled }: Props) {
   const { state, install, cancel: cancelInstall } = useModelInstall(model.name);
   const setInstallInFlight = useModelStore((s) => s.setInstallInFlight);
+  const removeDownload = useModelStore((s) => s.removeDownload);
   const [pending, setPending] = useState<InstallFeasibility | null>(null);
 
   const pct = Math.round(state.progress?.percentComplete ?? 0);
@@ -26,7 +27,9 @@ export function ModelCard({ model, isInstalled }: Props) {
 
   const installed = isInstalled || state.status === "success";
   const pulling = state.status === "pulling";
+  const errored = state.status === "error";
   const percent = state.progress ? Math.round(state.progress.percentComplete) : 0;
+  const dismissError = () => removeDownload(model.name);
 
   const handleInstall = async () => {
     const sizeBytes = Math.round(model.estimatedDiskGB * 1024 ** 3);
@@ -68,6 +71,14 @@ export function ModelCard({ model, isInstalled }: Props) {
           </button>
         )}
       </div>
+      {errored && state.error && (
+        <div role="alert" data-testid="model-card-error" className="text-red-600 text-xs mt-1">
+          {state.error}
+          <button type="button" onClick={dismissError} className="ml-2 underline">
+            dismiss
+          </button>
+        </div>
+      )}
       {pending && (
         <InstallFeasibilityDialog
           feasibility={pending}
