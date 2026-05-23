@@ -33,7 +33,18 @@ export function StoragePathSection() {
     }
   };
 
-  if (!info) return <div className="text-xs text-gray-500">Loading storage settings…</div>;
+  if (!info) {
+    if (error) {
+      return (
+        <section data-testid="storage-path-section" className="border rounded p-3">
+          <div role="alert" className="text-red-600 text-xs">
+            Couldn't load storage settings: {error}
+          </div>
+        </section>
+      );
+    }
+    return <div className="text-xs text-gray-500">Loading storage settings…</div>;
+  }
 
   const ok = check && check.exists && check.is_dir && check.writable && check.sufficient;
 
