@@ -1,5 +1,7 @@
 pub mod chat_template_data;
 pub mod chat_templates;
+pub mod compare_runner;
+pub mod compare_runner_finalize;
 pub mod gguf;
 pub mod gguf_family;
 pub mod gguf_quant;
