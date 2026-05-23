@@ -63,6 +63,22 @@ describe("downloadEventBus", () => {
     });
   });
 
+  it("startDownloadEventBus retries after a transient listen() rejection", async () => {
+    // First call: listen rejects → bus singleton resets.
+    vi.mocked(listen).mockRejectedValueOnce(new Error("tauri not ready"));
+    const consoleSpy = vi.spyOn(console, "error").mockImplementation(() => {});
+    await expect(startDownloadEventBus()).rejects.toThrow("tauri not ready");
+    await new Promise((r) => setTimeout(r, 0)); // let the .catch() reset starting
+    // Second call: listen resolves → fresh subscription completes.
+    vi.mocked(listen).mockImplementation((event, cb) => {
+      handlers[event] = cb as EventCallback<unknown>;
+      return Promise.resolve(() => { delete handlers[event]; });
+    });
+    await startDownloadEventBus();
+    expect(handlers["pull-progress"]).toBeDefined();
+    consoleSpy.mockRestore();
+  });
+
   it("Pull-progress success phase flips status to success at 100%", async () => {
     await startDownloadEventBus();
     useModelStore.getState().recordPullName("pid-9", "qwen2.5:7b");
