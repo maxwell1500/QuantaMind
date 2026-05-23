@@ -58,7 +58,10 @@ pub async fn pull_model(
                         speed.add(Instant::now(), c);
                         speed.bps(Instant::now())
                     } else { 0 };
-                    if let Some(p) = classify(&chunk, bps) { on_progress(p); }
+                    match classify(&chunk, bps) {
+                        Some(p) => on_progress(p),
+                        None => eprintln!("pull: unrecognised status '{}', dropping", chunk.status),
+                    }
                     if cancel.is_cancelled() { return Ok(()); }
                     if chunk.status == "success" { return Ok(()); }
                 }

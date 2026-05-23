@@ -77,8 +77,9 @@ pub async fn pull_model(
                 emit_failed(&emit_app, &pid, &name_outer, format!("internal error: {msg}"));
             }
         }
-        if let Some(state) = emit_app.try_state::<PullState>() {
-            state.active.lock_recover().remove(&pid);
+        match emit_app.try_state::<PullState>() {
+            Some(state) => { state.active.lock_recover().remove(&pid); }
+            None => eprintln!("pull_model({pid}): PullState unavailable on cleanup — token leak"),
         }
     });
 
