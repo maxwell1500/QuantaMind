@@ -84,3 +84,4 @@ fn unsupported_file_type_yields_none_quant_without_filename_context() {
     let m = inspect_gguf_bytes(&bytes).expect("parse");
     assert_eq!(m.quantization, None);
 }
+
