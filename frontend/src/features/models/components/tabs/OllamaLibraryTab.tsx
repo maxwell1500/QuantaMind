@@ -78,7 +78,11 @@ export function OllamaLibraryTab() {
         className="flex-1 overflow-auto grid grid-cols-2 gap-2"
         data-testid="model-grid"
       >
-        {visible.map((m) => (
+        {visible.length === 0 ? (
+          <div className="col-span-2 text-xs text-gray-500 py-6 text-center" data-testid="ollama-no-results">
+            No models match. Try a different keyword or clear the filters.
+          </div>
+        ) : visible.map((m) => (
           <ModelCard key={m.name} model={m} isInstalled={installed.has(m.name)} />
         ))}
       </div>

@@ -30,7 +30,11 @@ export function HuggingFaceTab() {
         className="border rounded px-2 py-1 text-sm"
       />
       <div className="flex-1 overflow-auto grid grid-cols-2 gap-2" data-testid="hf-grid">
-        {visible.map((e) => (
+        {visible.length === 0 ? (
+          <div className="col-span-2 text-xs text-gray-500 py-6 text-center" data-testid="hf-no-results">
+            No repos match. Try a different keyword.
+          </div>
+        ) : visible.map((e) => (
           <button
             key={e.repo}
             type="button"
