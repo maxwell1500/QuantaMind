@@ -13,7 +13,7 @@ fn spec_minimal() -> CreateSpec {
 
 #[test]
 fn minimal_body_has_model_and_files() {
-    let body = build_create_body(&spec_minimal(), "qmtest:latest", "abcdef");
+    let body = build_create_body(&spec_minimal(), "qmtest:latest", "abcdef").unwrap();
     let obj = body.as_object().unwrap();
     assert_eq!(obj["model"], "qmtest:latest");
     let files = obj["files"].as_object().unwrap();
@@ -25,7 +25,7 @@ fn minimal_body_has_model_and_files() {
 #[test]
 fn template_carries_string_and_stops_into_parameters() {
     let spec = CreateSpec { chat_template: Some(LLAMA3), ..spec_minimal() };
-    let body = build_create_body(&spec, "x:latest", "deadbeef");
+    let body = build_create_body(&spec, "x:latest", "deadbeef").unwrap();
     let obj = body.as_object().unwrap();
     assert_eq!(obj["template"], LLAMA3.template_string);
     let stops = obj["parameters"]["stop"].as_array().unwrap();
@@ -43,7 +43,7 @@ fn user_parameters_round_trip() {
         },
         ..spec_minimal()
     };
-    let body = build_create_body(&spec, "x:latest", "00");
+    let body = build_create_body(&spec, "x:latest", "00").unwrap();
     let p = &body["parameters"];
     let approx = |v: &serde_json::Value, want: f64| (v.as_f64().unwrap() - want).abs() < 1e-5;
     assert!(approx(&p["temperature"], 0.7));
@@ -51,4 +51,18 @@ fn user_parameters_round_trip() {
     assert_eq!(p["top_k"], 40);
     assert!(approx(&p["repeat_penalty"], 1.1));
     assert_eq!(p["stop"][0], "</s>");
+}
+
+#[test]
+fn path_with_no_filename_errors_with_validation() {
+    let spec = CreateSpec {
+        gguf_path: PathBuf::from("/"),
+        chat_template: None,
+        parameters: CreateParameters::default(),
+    };
+    match build_create_body(&spec, "x:latest", "00") {
+        Err(splice_lib::errors::AppError::Validation(msg)) =>
+            assert!(msg.contains("no filename"), "msg: {msg}"),
+        other => panic!("expected Validation, got {other:?}"),
+    }
 }

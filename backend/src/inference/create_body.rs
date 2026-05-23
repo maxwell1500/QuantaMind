@@ -1,3 +1,4 @@
+use crate::errors::{AppError, AppResult};
 use crate::inference::create_spec::{CreateParameters, CreateSpec};
 use serde_json::{json, Map, Value};
 
@@ -11,10 +12,12 @@ fn parameters_to_json(p: &CreateParameters) -> Map<String, Value> {
     m
 }
 
-pub fn build_create_body(spec: &CreateSpec, model_name: &str, digest: &str) -> Value {
+pub fn build_create_body(spec: &CreateSpec, model_name: &str, digest: &str) -> AppResult<Value> {
     let filename = spec.gguf_path.file_name()
         .and_then(|n| n.to_str())
-        .unwrap_or("model.gguf")
+        .ok_or_else(|| AppError::Validation(format!(
+            "GGUF path has no filename: {}", spec.gguf_path.display()
+        )))?
         .to_string();
 
     let mut body = Map::new();
@@ -34,5 +37,5 @@ pub fn build_create_body(spec: &CreateSpec, model_name: &str, digest: &str) -> V
         let params = parameters_to_json(&spec.parameters);
         if !params.is_empty() { body.insert("parameters".into(), Value::Object(params)); }
     }
-    Value::Object(body)
+    Ok(Value::Object(body))
 }
