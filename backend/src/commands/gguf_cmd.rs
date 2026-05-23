@@ -32,8 +32,11 @@ where F: Fn(CreatePhase) + Send + Sync + 'static,
         return Err(AppError::Validation(format!("not a .gguf file: {path}")));
     }
     let meta = inspect(&p)?;
+    let canonical = p.canonicalize().map_err(|e| AppError::Io(
+        format!("cannot resolve absolute path for {path}: {e}")
+    ))?;
     let spec = CreateSpec {
-        gguf_path: p.canonicalize().unwrap_or(p.clone()),
+        gguf_path: canonical,
         chat_template: detect_template(name, Some(&meta.architecture)),
         parameters: CreateParameters::default(),
     };
