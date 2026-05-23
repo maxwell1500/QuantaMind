@@ -1,50 +1,50 @@
-import { useState } from "react";
-import { invoke } from "@tauri-apps/api/core";
-import { cancelHfInstall } from "../../../../shared/ipc/hf_install";
+import { useEffect, useState } from "react";
 import {
   useModelStore,
   type DownloadEntry,
 } from "../../state/modelStore";
 import { formatBytes } from "../../format";
 import { formatIpcError } from "../../../../shared/ipc/error";
+import { cancelEntry } from "./cancelEntry";
 
 const ACTIVE_STATUSES = new Set(["downloading", "installing"]);
-
-async function cancelEntry(entry: DownloadEntry): Promise<Error | null> {
-  try {
-    if (entry.source === "huggingface") {
-      await cancelHfInstall();
-    } else if (entry.source === "ollama" && entry.pullId) {
-      await invoke("cancel_pull", { pullId: entry.pullId });
-    }
-    return null;
-  } catch (e) {
-    return e instanceof Error ? e : new Error(String(e));
-  }
-}
 
 export function DownloadsActive() {
   const downloads = useModelStore((s) => s.downloads);
   const removeDownload = useModelStore((s) => s.removeDownload);
   const [cancelError, setCancelError] = useState<string | null>(null);
+  const [cancelToast, setCancelToast] = useState<string | null>(null);
   const active = Object.values(downloads).filter((d) =>
     ACTIVE_STATUSES.has(d.status),
   );
 
+  useEffect(() => {
+    if (!cancelToast) return;
+    const id = setTimeout(() => setCancelToast(null), 3000);
+    return () => clearTimeout(id);
+  }, [cancelToast]);
+
   const onCancelClick = async (d: DownloadEntry) => {
     setCancelError(null);
+    setCancelToast(null);
     const err = await cancelEntry(d);
     if (err) {
       setCancelError(`Cancel for ${d.name} failed: ${formatIpcError(err)}`);
       return;
     }
     removeDownload(d.id);
+    setCancelToast(`Cancelled ${d.name} — partial files cleaned.`);
   };
 
   if (active.length === 0) {
     return (
-      <div className="text-xs text-gray-500" data-testid="downloads-empty-active">
-        No active downloads.
+      <div className="flex flex-col gap-2">
+        {cancelToast && (
+          <div role="status" data-testid="cancel-toast" className="text-green-700 text-xs">{cancelToast}</div>
+        )}
+        <div className="text-xs text-gray-500" data-testid="downloads-empty-active">
+          No active downloads.
+        </div>
       </div>
     );
   }
@@ -53,6 +53,9 @@ export function DownloadsActive() {
     <div className="flex flex-col gap-2">
       {cancelError && (
         <div role="alert" data-testid="cancel-error" className="text-red-600 text-xs">{cancelError}</div>
+      )}
+      {cancelToast && (
+        <div role="status" data-testid="cancel-toast" className="text-green-700 text-xs">{cancelToast}</div>
       )}
       <ul className="flex flex-col gap-2" data-testid="downloads-active-list">
         {active.map((d) => (
