@@ -57,11 +57,14 @@ export function ModelPicker({ value, onChange, onAddClick }: Props) {
     wasHealthy.current = ollamaHealthy;
   }, [ollamaHealthy]);
 
+  const effectiveError = error
+    ?? (ollamaHealthy === false ? "Ollama is not running. Start Ollama and try again." : null);
+
   return (
     <div className="flex gap-2 items-center">
-      {error ? (
+      {effectiveError ? (
         <div role="alert" className="text-red-600 text-sm flex-1">
-          {error}
+          {effectiveError}
         </div>
       ) : (
         <select
