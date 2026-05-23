@@ -46,7 +46,11 @@ export function useModelInstall(modelName?: string) {
       const pullId = await invoke<string>("pull_model", { name });
       pullIdRef.current = pullId;
       recordPullName(pullId, name);
-      upsert({ id: name, source: "ollama", name, status: "downloading", percent: 0, pullId });
+      // Don't blindly overwrite — by the time invoke returns the bus may have
+      // already written a Failed event (connection-refused is fast). Merge
+      // pullId into whatever entry exists.
+      const current = useModelStore.getState().downloads[name];
+      if (current) upsert({ ...current, pullId });
     } catch (e) {
       const msg = formatIpcError(e);
       setLocal({ status: "error", phase: null, error: msg });
