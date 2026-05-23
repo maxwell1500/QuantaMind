@@ -31,11 +31,18 @@ pub fn get_storage_path() -> StoragePathInfo {
     StoragePathInfo { current_path: path.to_string_lossy().into_owned(), from_env }
 }
 
+/// Test that the directory supports both write AND rename, since the
+/// HF download resume flow needs to rename `<file>.partial` → `<file>`
+/// at the end of every download. Probes both operations; any failure
+/// fails the check.
 fn test_writable(p: &Path) -> bool {
     let probe = p.join(".quatamind-write-probe");
-    let ok = std::fs::write(&probe, b"").is_ok();
+    let renamed = p.join(".quatamind-rename-probe");
+    let write_ok = std::fs::write(&probe, b"").is_ok();
+    let rename_ok = write_ok && std::fs::rename(&probe, &renamed).is_ok();
     let _ = std::fs::remove_file(&probe);
-    ok
+    let _ = std::fs::remove_file(&renamed);
+    write_ok && rename_ok
 }
 
 #[tauri::command]
