@@ -2,6 +2,7 @@ use crate::commands::gguf_cmd::install_local_gguf_inner;
 use crate::errors::{AppError, AppResult};
 use crate::inference::create_spec::CreatePhase;
 use crate::inference::hf_download::{download_gguf, DownloadProgress};
+use crate::inference::hf_resume::partial_path;
 use crate::inference::pull::validate_name;
 use crate::sync::MutexExt;
 use serde::Serialize;
@@ -55,6 +56,7 @@ pub async fn install_hf_gguf_inner(
     if token.is_cancelled() {
         *state.current.lock_recover() = None;
         let _ = fs::remove_file(&dest);
+        let _ = fs::remove_file(partial_path(&dest));
         return Err(AppError::Validation("install cancelled".into()));
     }
     dl?;
@@ -71,8 +73,9 @@ pub async fn install_hf_gguf_inner(
         let _ = install_app.emit(EVENT_HF_PROGRESS, mapped);
     };
     let result = install_local_gguf_inner(DEFAULT_OLLAMA, &dest.to_string_lossy(), name, on_install).await;
+    let _ = fs::remove_file(&dest);
+    let _ = fs::remove_file(partial_path(&dest));
     if result.is_ok() {
-        let _ = fs::remove_file(&dest);
         let _ = app.emit("models-changed", ());
     }
     *state.current.lock_recover() = None;
