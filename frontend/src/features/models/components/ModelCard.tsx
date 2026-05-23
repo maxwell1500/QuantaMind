@@ -15,17 +15,14 @@ export function ModelCard({ model, isInstalled }: Props) {
   const setInstallInFlight = useModelStore((s) => s.setInstallInFlight);
   const [pending, setPending] = useState<InstallFeasibility | null>(null);
 
+  const pct = Math.round(state.progress?.percentComplete ?? 0);
   useEffect(() => {
     if (state.status === "pulling") {
-      setInstallInFlight({
-        source: "ollama",
-        name: model.name,
-        progress: Math.round(state.progress?.percentComplete ?? 0),
-      });
+      setInstallInFlight({ source: "ollama", name: model.name, progress: pct });
     } else if (state.status !== "idle") {
       setInstallInFlight(null);
     }
-  }, [state, model.name, setInstallInFlight]);
+  }, [state.status, pct, model.name, setInstallInFlight]);
 
   const installed = isInstalled || state.status === "success";
   const pulling = state.status === "pulling";
