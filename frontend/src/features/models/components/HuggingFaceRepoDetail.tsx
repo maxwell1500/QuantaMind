@@ -2,14 +2,14 @@ import { useEffect, useState } from "react";
 import { listen } from "@tauri-apps/api/event";
 import type { HfRepoEntry, HfVariant } from "../data/huggingface-catalog";
 import { useHfInstall } from "../hooks/useHfInstall";
-import { formatBytes } from "../format";
+import { formatBytes, hfVariantModelName } from "../format";
 import { listModels } from "../../../shared/ipc/client";
 import { formatIpcError } from "../../../shared/ipc/error";
 
 type Props = { entry: HfRepoEntry; onBack: () => void };
 
 const EVENT_MODELS_CHANGED = "models-changed";
-const variantName = (v: HfVariant) => v.filename.replace(/\.gguf$/i, "").toLowerCase();
+const variantName = (v: HfVariant) => hfVariantModelName(v.filename);
 const bareName = (n: string) => n.split(":")[0];
 
 export function HuggingFaceRepoDetail({ entry, onBack }: Props) {
@@ -25,8 +25,12 @@ export function HuggingFaceRepoDetail({ entry, onBack }: Props) {
       .catch((e) => console.error("HuggingFaceRepoDetail: listModels failed —", formatIpcError(e)));
     refresh();
     (async () => {
-      const u = await listen(EVENT_MODELS_CHANGED, () => refresh());
-      if (cancelled) u(); else unsub = u;
+      try {
+        const u = await listen(EVENT_MODELS_CHANGED, () => refresh());
+        if (cancelled) u(); else unsub = u;
+      } catch (e) {
+        console.error("HuggingFaceRepoDetail: listen(models-changed) failed —", formatIpcError(e));
+      }
     })();
     return () => { cancelled = true; unsub?.(); };
   }, []);
