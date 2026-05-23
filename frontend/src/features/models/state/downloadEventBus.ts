@@ -48,7 +48,7 @@ function onPull(payload: unknown) {
     return;
   }
   const { pullNames, upsertDownload } = useModelStore.getState();
-  const name = pullNames[p.data.pull_id];
+  const name = pullNames[p.data.pull_id] ?? p.data.name;
   if (!name) return;
   const prog = p.data.progress;
   if (prog.phase === "failed") {

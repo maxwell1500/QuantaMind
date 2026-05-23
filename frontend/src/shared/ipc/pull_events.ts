@@ -26,6 +26,7 @@ export const PullProgressSchema = z.discriminatedUnion("phase", [
 
 export const PullProgressEventSchema = z.object({
   pull_id: z.string(),
+  name: z.string(),
   progress: PullProgressSchema,
 });
 

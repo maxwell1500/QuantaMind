@@ -43,6 +43,7 @@ describe("downloadEventBus", () => {
     useModelStore.getState().recordPullName("pid-1", "phi3.5:latest");
     fire("pull-progress", {
       pull_id: "pid-1",
+      name: "phi3.5:latest",
       progress: { phase: "downloading", digest: "sha", total: 1000, completed: 750, speed_bps: 100 },
     });
     expect(useModelStore.getState().downloads["phi3.5:latest"]).toMatchObject({
@@ -50,18 +51,22 @@ describe("downloadEventBus", () => {
     });
   });
 
-  it("Pull-progress with no matching pullId is silently ignored", async () => {
+  it("Pull-progress with an unknown pullId still routes via the payload name (race-safe)", async () => {
     await startDownloadEventBus();
     fire("pull-progress", {
-      pull_id: "unknown", progress: { phase: "success" },
+      pull_id: "unknown", name: "ghost",
+      progress: { phase: "failed", message: "Ollama is not running. Start Ollama and try again." },
     });
-    expect(useModelStore.getState().downloads).toEqual({});
+    expect(useModelStore.getState().downloads["ghost"]).toMatchObject({
+      source: "ollama", status: "error",
+      error: "Ollama is not running. Start Ollama and try again.",
+    });
   });
 
   it("Pull-progress success phase flips status to success at 100%", async () => {
     await startDownloadEventBus();
     useModelStore.getState().recordPullName("pid-9", "qwen2.5:7b");
-    fire("pull-progress", { pull_id: "pid-9", progress: { phase: "success" } });
+    fire("pull-progress", { pull_id: "pid-9", name: "qwen2.5:7b", progress: { phase: "success" } });
     expect(useModelStore.getState().downloads["qwen2.5:7b"]).toMatchObject({
       status: "success", percent: 100,
     });

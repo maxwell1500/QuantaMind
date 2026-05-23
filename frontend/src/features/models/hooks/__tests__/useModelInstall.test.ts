@@ -47,7 +47,7 @@ describe("useModelInstall (M.2)", () => {
       { phase: "success" },
     ];
     for (const progress of phases) {
-      act(() => fire("pull-progress", { pull_id: "pid-1", progress }));
+      act(() => fire("pull-progress", { pull_id: "pid-1", name: "llama3.2:1b", progress }));
     }
     expect(result.current.state.status).toBe("success");
   });
@@ -57,7 +57,7 @@ describe("useModelInstall (M.2)", () => {
     const { result } = renderHook(() => useModelInstall("x"));
     await ready();
     await act(async () => { await result.current.install("x"); });
-    act(() => fire("pull-progress", { pull_id: "pid-other", progress: { phase: "verifying" } }));
+    act(() => fire("pull-progress", { pull_id: "pid-other", name: "other", progress: { phase: "verifying" } }));
     expect(result.current.state.status).toBe("pulling");
   });
 
@@ -66,7 +66,7 @@ describe("useModelInstall (M.2)", () => {
     const { result } = renderHook(() => useModelInstall("x"));
     await ready();
     await act(async () => { await result.current.install("x"); });
-    act(() => fire("pull-progress", { pull_id: "pid-1", progress: { phase: "downloading", digest: "x" } }));
+    act(() => fire("pull-progress", { pull_id: "pid-1", name: "x", progress: { phase: "downloading", digest: "x" } }));
     expect(result.current.state.status).toBe("pulling");
     expect(consoleError).toHaveBeenCalled();
   });

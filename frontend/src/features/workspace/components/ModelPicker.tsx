@@ -1,6 +1,7 @@
 import { useEffect, useState } from "react";
 import { listen } from "@tauri-apps/api/event";
 import { listModels } from "../../../shared/ipc/client";
+import { formatIpcError } from "../../../shared/ipc/error";
 
 type Props = {
   value: string | null;
@@ -27,7 +28,7 @@ export function ModelPicker({ value, onChange, onAddClick }: Props) {
           }
         })
         .catch((e) => {
-          if (!cancelled) setError(String(e));
+          if (!cancelled) setError(formatIpcError(e));
         });
 
     refresh();

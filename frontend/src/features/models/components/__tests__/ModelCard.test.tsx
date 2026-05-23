@@ -79,6 +79,7 @@ describe("ModelCard (M.4)", () => {
     });
     act(() => fire("pull-progress", {
       pull_id: "pid-1",
+      name: "phi3.5:latest",
       progress: { phase: "downloading", digest: "sha256:x", total: 1000, completed: 250, speed_bps: 100 },
     }));
     const installing = screen.getByTestId("installing-state");
@@ -94,7 +95,7 @@ describe("ModelCard (M.4)", () => {
     await act(async () => {
       fireEvent.click(screen.getByRole("button", { name: /install/i }));
     });
-    act(() => fire("pull-progress", { pull_id: "pid-1", progress: { phase: "success" } }));
+    act(() => fire("pull-progress", { pull_id: "pid-1", name: "phi3.5:latest", progress: { phase: "success" } }));
     expect(screen.getByTestId("installed-badge")).toBeInTheDocument();
     expect(useModelStore.getState().installInFlight).toBeNull();
   });

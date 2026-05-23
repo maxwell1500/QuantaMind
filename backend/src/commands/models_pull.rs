@@ -21,6 +21,7 @@ pub struct PullState {
 #[derive(Serialize, Clone)]
 struct PullProgressEvent {
     pull_id: String,
+    name: String,
     progress: PullProgress,
 }
 
@@ -36,9 +37,11 @@ pub async fn pull_model(
     state.active.lock_recover().insert(pull_id.clone(), token.clone());
 
     let pid = pull_id.clone();
+    let name_outer = name.clone();
     let emit_app = app.clone();
     tokio::spawn(async move {
         let pid_event = pid.clone();
+        let name_event = name_outer.clone();
         let emit_inner = emit_app.clone();
         let result = run_pull(
             DEFAULT_OLLAMA,
@@ -46,7 +49,11 @@ pub async fn pull_model(
             move |progress| {
                 let _ = emit_inner.emit(
                     EVENT_PULL_PROGRESS,
-                    PullProgressEvent { pull_id: pid_event.clone(), progress },
+                    PullProgressEvent {
+                        pull_id: pid_event.clone(),
+                        name: name_event.clone(),
+                        progress,
+                    },
                 );
             },
             token,
@@ -58,6 +65,7 @@ pub async fn pull_model(
                 EVENT_PULL_PROGRESS,
                 PullProgressEvent {
                     pull_id: pid.clone(),
+                    name: name_outer.clone(),
                     progress: PullProgress::Failed { message: e.friendly() },
                 },
             );
