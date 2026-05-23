@@ -42,7 +42,11 @@ pub async fn install_hf_gguf_inner(
     let token = CancellationToken::new();
     {
         let mut g = state.current.lock_recover();
-        if let Some(prev) = g.take() { prev.cancel(); }
+        if g.is_some() {
+            return Err(AppError::Validation(
+                "another HF install is already in progress — cancel it first".into(),
+            ));
+        }
         *g = Some(token.clone());
     }
 
