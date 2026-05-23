@@ -23,6 +23,12 @@ pub struct DownloadResult {
     pub sha256: Option<String>,
 }
 
+fn parse_content_length(h: Option<&reqwest::header::HeaderValue>, repo: &str) -> AppResult<u64> {
+    let v = h.ok_or_else(|| AppError::Inference(format!("{repo}: missing Content-Length")))?;
+    let s = v.to_str().map_err(|e| AppError::Inference(format!("{repo}: non-ASCII Content-Length: {e}")))?;
+    s.parse().map_err(|e| AppError::Inference(format!("{repo}: unparseable Content-Length '{s}': {e}")))
+}
+
 pub async fn download_gguf(
     endpoint: &str,
     repo: &str,
@@ -43,9 +49,7 @@ pub async fn download_gguf(
 
     let head = client.head(&url).send().await.map_err(|e| AppError::Inference(e.to_string()))?;
     if let Some(err) = map_status(head.status(), repo) { return Err(err); }
-    let total: u64 = head.headers().get("content-length")
-        .and_then(|v| v.to_str().ok()).and_then(|s| s.parse().ok())
-        .ok_or_else(|| AppError::Inference(format!("{repo}: missing Content-Length")))?;
+    let total = parse_content_length(head.headers().get("content-length"), repo)?;
 
     let partial = partial_path(dest_path);
     if matches!(decide(local_size(&partial), total), ResumeStrategy::RedownloadAfterDelete) {
