@@ -41,6 +41,19 @@ export function useHfInstall() {
     : local;
 
   const install = useCallback(async (repo: string, filename: string, name: string) => {
+    // Guard: backend only supports one HF install at a time (cancels
+    // the prior token). If another install is already in flight,
+    // refuse rather than silently clobbering activeHfName — the old
+    // download's events would route onto the new entry.
+    const store = useModelStore.getState();
+    if (store.activeHfName && store.activeHfName !== name) {
+      const cur = store.downloads[store.activeHfName];
+      if (cur && (cur.status === "downloading" || cur.status === "installing")) {
+        const msg = `Another download is in progress (${store.activeHfName}). Cancel it first.`;
+        upsertDownload({ id: name, source: "huggingface", name, status: "error", percent: 0, error: msg });
+        return;
+      }
+    }
     setActiveHfName(name);
     upsertDownload({ id: name, source: "huggingface", name, status: "downloading", percent: 0 });
     try {
