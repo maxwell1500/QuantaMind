@@ -73,15 +73,18 @@ export function DownloadsInstalled() {
           </li>
         ))}
       </ul>
-      {pending && (
-        <div role="alertdialog" data-testid="downloads-confirm-delete" className="border rounded p-3 bg-amber-50 text-xs">
-          Remove <strong>{pending}</strong>?
-          <div className="flex gap-2 mt-2">
-            <button type="button" onClick={() => onDelete(pending)} className="border rounded px-2 py-1 bg-red-600 text-white">Remove</button>
-            <button type="button" onClick={() => setPending(null)} className="border rounded px-2 py-1">Cancel</button>
+      {pending && (() => {
+        const pendingSize = models.find((m) => m.name === pending)?.size_bytes ?? 0;
+        return (
+          <div role="alertdialog" data-testid="downloads-confirm-delete" className="border rounded p-3 bg-amber-50 text-xs">
+            Remove <strong>{pending}</strong>? This will free {formatBytes(pendingSize)}.
+            <div className="flex gap-2 mt-2">
+              <button type="button" onClick={() => onDelete(pending)} className="border rounded px-2 py-1 bg-red-600 text-white">Remove</button>
+              <button type="button" onClick={() => setPending(null)} className="border rounded px-2 py-1">Cancel</button>
+            </div>
           </div>
-        </div>
-      )}
+        );
+      })()}
     </div>
   );
 }
