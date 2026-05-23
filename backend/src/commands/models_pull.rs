@@ -3,8 +3,10 @@ use crate::errors::{AppError, AppResult};
 use crate::inference::pull::{pull_model as run_pull, validate_name};
 use crate::inference::pull_progress::PullProgress;
 use crate::sync::MutexExt;
+use futures_util::FutureExt;
 use serde::Serialize;
 use std::collections::HashMap;
+use std::panic::AssertUnwindSafe;
 use std::sync::Mutex;
 use tauri::{AppHandle, Emitter, Manager};
 use tokio_util::sync::CancellationToken;
@@ -25,6 +27,19 @@ struct PullProgressEvent {
     progress: PullProgress,
 }
 
+fn panic_message(p: Box<dyn std::any::Any + Send>) -> String {
+    if let Some(s) = p.downcast_ref::<&str>() { return (*s).to_string(); }
+    if let Some(s) = p.downcast_ref::<String>() { return s.clone(); }
+    "unknown panic".to_string()
+}
+
+fn emit_failed(app: &AppHandle, pid: &str, name: &str, message: String) {
+    let _ = app.emit(EVENT_PULL_PROGRESS, PullProgressEvent {
+        pull_id: pid.into(), name: name.into(),
+        progress: PullProgress::Failed { message },
+    });
+}
+
 #[tauri::command]
 pub async fn pull_model(
     app: AppHandle,
@@ -43,34 +58,24 @@ pub async fn pull_model(
         let pid_event = pid.clone();
         let name_event = name_outer.clone();
         let emit_inner = emit_app.clone();
-        let result = run_pull(
-            DEFAULT_OLLAMA,
-            &name,
-            move |progress| {
-                let _ = emit_inner.emit(
-                    EVENT_PULL_PROGRESS,
-                    PullProgressEvent {
-                        pull_id: pid_event.clone(),
-                        name: name_event.clone(),
-                        progress,
-                    },
-                );
-            },
-            token,
-        )
-        .await;
-        if let Err(e) = &result {
-            eprintln!("pull_model({pid}) failed: {e:?}");
-            let _ = emit_app.emit(
-                EVENT_PULL_PROGRESS,
-                PullProgressEvent {
-                    pull_id: pid.clone(),
-                    name: name_outer.clone(),
-                    progress: PullProgress::Failed { message: e.friendly() },
-                },
-            );
-        } else {
-            let _ = emit_app.emit(EVENT_MODELS_CHANGED, ());
+        let task = async move {
+            run_pull(DEFAULT_OLLAMA, &name, move |progress| {
+                let _ = emit_inner.emit(EVENT_PULL_PROGRESS, PullProgressEvent {
+                    pull_id: pid_event.clone(), name: name_event.clone(), progress,
+                });
+            }, token).await
+        };
+        match AssertUnwindSafe(task).catch_unwind().await {
+            Ok(Ok(())) => { let _ = emit_app.emit(EVENT_MODELS_CHANGED, ()); }
+            Ok(Err(e)) => {
+                eprintln!("pull_model({pid}) failed: {e:?}");
+                emit_failed(&emit_app, &pid, &name_outer, e.friendly());
+            }
+            Err(panic) => {
+                let msg = panic_message(panic);
+                eprintln!("pull_model({pid}) PANICKED: {msg}");
+                emit_failed(&emit_app, &pid, &name_outer, format!("internal error: {msg}"));
+            }
         }
         if let Some(state) = emit_app.try_state::<PullState>() {
             state.active.lock_recover().remove(&pid);
