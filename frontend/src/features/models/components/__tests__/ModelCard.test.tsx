@@ -8,6 +8,7 @@ import { invoke } from "@tauri-apps/api/core";
 import { listen, type EventCallback } from "@tauri-apps/api/event";
 import { ModelCard } from "../ModelCard";
 import { useModelStore } from "../../state/modelStore";
+import { __resetDownloadEventBusForTests } from "../../state/downloadEventBus";
 import type { ModelCatalogEntry } from "../../data/ollama-catalog";
 
 const PHI: ModelCatalogEntry = {
@@ -41,7 +42,11 @@ beforeEach(() => {
     handlers[event] = cb as EventCallback<unknown>;
     return Promise.resolve(() => { delete handlers[event]; });
   });
-  useModelStore.setState({ activeTab: "ollama", installInFlight: null });
+  __resetDownloadEventBusForTests();
+  useModelStore.setState({
+    activeTab: "ollama", installInFlight: null,
+    downloads: {}, pullNames: {}, activeHfName: null,
+  });
 });
 
 describe("ModelCard (M.4)", () => {

@@ -1013,6 +1013,21 @@ Issues surfaced while driving the smoke and the in-commit fixes:
   (`get_installed_models_with_stats` results with Delete +
   confirmation). Both react to the `models-changed` event for
   auto-refresh after install/uninstall. ⌘1–⌘5 jump tabs.
+- **Progress listener moved out of components.** Even after lifting
+  the install registry into the store, switching tabs still
+  appeared to freeze downloads: each hook owned its own
+  `listen(EVENT_*_PROGRESS, …)` subscription that unmounted with
+  the component, so the live progress events from the still-running
+  backend task were dropped. Extracted to a module-level
+  `state/downloadEventBus.ts` started idempotently on first hook
+  mount; routes HF events via `activeHfName` and Ollama events via
+  a `pullNames: Record<pullId, name>` map kept in the store. The
+  listener now lives for the session, so the registry keeps ticking
+  no matter which tab is visible. Hooks (`useHfInstall`,
+  `useModelInstall`) became thin: install/cancel actions plus
+  derived state from `downloads[name]`. The card UI re-attaches to
+  the in-flight install on remount because `useModelInstall(modelName)`
+  reads the entry by name.
 
 ---
 

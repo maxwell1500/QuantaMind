@@ -7,6 +7,8 @@ vi.mock("@tauri-apps/api/event", () => ({ listen: vi.fn() }));
 import { invoke } from "@tauri-apps/api/core";
 import { listen, type EventCallback } from "@tauri-apps/api/event";
 import { useModelInstall } from "../useModelInstall";
+import { useModelStore } from "../../state/modelStore";
+import { __resetDownloadEventBusForTests } from "../../state/downloadEventBus";
 
 const handlers: Record<string, EventCallback<unknown>> = {};
 const fire = (event: string, payload: unknown) =>
@@ -22,6 +24,8 @@ beforeEach(() => {
     handlers[event] = cb as EventCallback<unknown>;
     return Promise.resolve(() => { delete handlers[event]; });
   });
+  __resetDownloadEventBusForTests();
+  useModelStore.setState({ downloads: {}, pullNames: {}, activeHfName: null });
   consoleError = vi.spyOn(console, "error").mockImplementation(() => {});
 });
 afterEach(() => consoleError.mockRestore());
@@ -32,7 +36,7 @@ const ready = async () =>
 describe("useModelInstall (M.2)", () => {
   it("walks all phases ending in success; downloading carries progress", async () => {
     vi.mocked(invoke).mockResolvedValue("pid-1");
-    const { result } = renderHook(() => useModelInstall());
+    const { result } = renderHook(() => useModelInstall("llama3.2:1b"));
     await ready();
     await act(async () => { await result.current.install("llama3.2:1b"); });
     const phases: unknown[] = [
@@ -46,31 +50,30 @@ describe("useModelInstall (M.2)", () => {
       act(() => fire("pull-progress", { pull_id: "pid-1", progress }));
     }
     expect(result.current.state.status).toBe("success");
-    expect(result.current.state.phase).toBeNull();
   });
 
   it("ignores events from a different pull_id", async () => {
     vi.mocked(invoke).mockResolvedValue("pid-1");
-    const { result } = renderHook(() => useModelInstall());
+    const { result } = renderHook(() => useModelInstall("x"));
     await ready();
     await act(async () => { await result.current.install("x"); });
     act(() => fire("pull-progress", { pull_id: "pid-other", progress: { phase: "verifying" } }));
-    expect(result.current.state.phase).toBeNull();
+    expect(result.current.state.status).toBe("pulling");
   });
 
-  it("rejects malformed payloads (missing downloading fields); state unchanged", async () => {
+  it("rejects malformed payloads; state unchanged and console.error called", async () => {
     vi.mocked(invoke).mockResolvedValue("pid-1");
-    const { result } = renderHook(() => useModelInstall());
+    const { result } = renderHook(() => useModelInstall("x"));
     await ready();
     await act(async () => { await result.current.install("x"); });
     act(() => fire("pull-progress", { pull_id: "pid-1", progress: { phase: "downloading", digest: "x" } }));
-    expect(result.current.state.phase).toBeNull();
+    expect(result.current.state.status).toBe("pulling");
     expect(consoleError).toHaveBeenCalled();
   });
 
   it("cancel invokes cancel_pull with pullId; status -> cancelled", async () => {
     vi.mocked(invoke).mockResolvedValue("pid-1");
-    const { result } = renderHook(() => useModelInstall());
+    const { result } = renderHook(() => useModelInstall("x"));
     await ready();
     await act(async () => { await result.current.install("x"); });
     await act(async () => { await result.current.cancel(); });
@@ -80,7 +83,7 @@ describe("useModelInstall (M.2)", () => {
 
   it("unmount mid-pull does NOT cancel — download keeps running in background", async () => {
     vi.mocked(invoke).mockResolvedValue("pid-1");
-    const { result, unmount } = renderHook(() => useModelInstall());
+    const { result, unmount } = renderHook(() => useModelInstall("x"));
     await ready();
     await act(async () => { await result.current.install("x"); });
     vi.mocked(invoke).mockClear();
@@ -90,7 +93,7 @@ describe("useModelInstall (M.2)", () => {
 
   it("install rejection transitions to error with the error message", async () => {
     vi.mocked(invoke).mockRejectedValue(new Error("name has illegal char: foo bar"));
-    const { result } = renderHook(() => useModelInstall());
+    const { result } = renderHook(() => useModelInstall("foo bar"));
     await ready();
     await act(async () => { await result.current.install("foo bar"); });
     expect(result.current.state.status).toBe("error");

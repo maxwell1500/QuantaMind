@@ -1,84 +1,68 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import { invoke } from "@tauri-apps/api/core";
-import { listen } from "@tauri-apps/api/event";
 import {
-  EVENT_PULL_PROGRESS,
-  PullProgressEventSchema,
-} from "../../../shared/ipc/pull_events";
-import {
-  applyProgress,
   IDLE,
   type ModelInstallState,
 } from "../state/install_state";
 import { formatIpcError } from "../../../shared/ipc/error";
-import { useModelStore, type DownloadStatus } from "../state/modelStore";
+import { useModelStore } from "../state/modelStore";
+import { startDownloadEventBus } from "../state/downloadEventBus";
 
-const statusOf = (s: ModelInstallState): DownloadStatus =>
-  s.status === "success" ? "success"
-  : s.status === "error" ? "error"
-  : s.status === "cancelled" ? "cancelled"
-  : "downloading";
-
-export function useModelInstall() {
-  const [state, setState] = useState<ModelInstallState>(IDLE);
+export function useModelInstall(modelName?: string) {
+  const [local, setLocal] = useState<ModelInstallState>(IDLE);
   const pullIdRef = useRef<string | null>(null);
-  const nameRef = useRef<string | null>(null);
+  const nameRef = useRef<string | null>(modelName ?? null);
+  const entry = useModelStore((s) => (nameRef.current ? s.downloads[nameRef.current] : null));
   const upsert = useModelStore((s) => s.upsertDownload);
+  const recordPullName = useModelStore((s) => s.recordPullName);
+  const removePullName = useModelStore((s) => s.removePullName);
 
-  useEffect(() => {
-    let cancelled = false;
-    let unsub: (() => void) | null = null;
-    (async () => {
-      const u = await listen<unknown>(EVENT_PULL_PROGRESS, (e) => {
-        const p = PullProgressEventSchema.safeParse(e.payload);
-        if (!p.success) {
-          console.error("invalid pull-progress payload", p.error.issues);
-          return;
-        }
-        if (p.data.pull_id !== pullIdRef.current) return;
-        setState((s) => {
-          const next = applyProgress(s, p.data.progress);
-          const name = nameRef.current;
-          if (name) upsert({
-            id: name, source: "ollama", name,
-            status: statusOf(next),
-            percent: Math.round(next.progress?.percentComplete ?? (next.status === "success" ? 100 : 0)),
-            bytesCompleted: next.progress?.bytesCompleted,
-            bytesTotal: next.progress?.bytesTotal,
-          });
-          return next;
-        });
-      });
-      if (cancelled) { u(); return; } else unsub = u;
-    })();
-    return () => { cancelled = true; unsub?.(); };
-  }, [upsert]);
+  useEffect(() => { void startDownloadEventBus(); }, []);
+
+  const state: ModelInstallState = entry
+    ? {
+        status: entry.status === "downloading" ? "pulling"
+          : entry.status === "success" ? "success"
+          : entry.status === "error" ? "error"
+          : entry.status === "cancelled" ? "cancelled"
+          : "idle",
+        phase: entry.status === "downloading" ? "downloading" : null,
+        progress: entry.bytesTotal !== undefined ? {
+          bytesCompleted: entry.bytesCompleted ?? 0,
+          bytesTotal: entry.bytesTotal,
+          speedBps: 0,
+          percentComplete: entry.percent,
+          etaSeconds: 0,
+        } : undefined,
+        error: entry.error ?? undefined,
+      }
+    : local;
 
   const install = useCallback(async (name: string) => {
     nameRef.current = name;
-    setState({ status: "pulling", phase: null });
+    setLocal({ status: "pulling", phase: null });
     upsert({ id: name, source: "ollama", name, status: "downloading", percent: 0 });
     try {
       const pullId = await invoke<string>("pull_model", { name });
       pullIdRef.current = pullId;
+      recordPullName(pullId, name);
       upsert({ id: name, source: "ollama", name, status: "downloading", percent: 0, pullId });
     } catch (e) {
-      pullIdRef.current = null;
       const msg = formatIpcError(e);
-      setState({ status: "error", phase: null, error: msg });
+      setLocal({ status: "error", phase: null, error: msg });
       upsert({ id: name, source: "ollama", name, status: "error", percent: 0, error: msg });
     }
-  }, [upsert]);
+  }, [upsert, recordPullName]);
 
   const cancel = useCallback(async () => {
     const pid = pullIdRef.current;
     if (!pid) return;
     try { await invoke("cancel_pull", { pullId: pid }); } catch { /* best-effort */ }
+    removePullName(pid);
     pullIdRef.current = null;
     const name = nameRef.current;
-    setState((s) => ({ ...s, status: "cancelled", phase: null }));
     if (name) upsert({ id: name, source: "ollama", name, status: "cancelled", percent: 0 });
-  }, [upsert]);
+  }, [upsert, removePullName]);
 
   return { state, install, cancel };
 }

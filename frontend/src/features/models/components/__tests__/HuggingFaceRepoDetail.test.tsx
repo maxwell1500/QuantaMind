@@ -8,6 +8,8 @@ import { invoke } from "@tauri-apps/api/core";
 import { listen, type EventCallback } from "@tauri-apps/api/event";
 import { HuggingFaceRepoDetail } from "../HuggingFaceRepoDetail";
 import type { HfRepoEntry } from "../../data/huggingface-catalog";
+import { useModelStore } from "../../state/modelStore";
+import { __resetDownloadEventBusForTests } from "../../state/downloadEventBus";
 
 const ENTRY: HfRepoEntry = {
   repo: "bartowski/Test-7B-Instruct-GGUF",
@@ -33,6 +35,8 @@ beforeEach(() => {
     handlers[event] = cb as EventCallback<unknown>;
     return Promise.resolve(() => { delete handlers[event]; });
   });
+  __resetDownloadEventBusForTests();
+  useModelStore.setState({ downloads: {}, pullNames: {}, activeHfName: null });
 });
 
 describe("HuggingFaceRepoDetail (M.11)", () => {

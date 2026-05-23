@@ -9,6 +9,7 @@ vi.mock("@tauri-apps/api/event", () => ({
 import { invoke } from "@tauri-apps/api/core";
 import { ModelCard } from "../ModelCard";
 import { useModelStore } from "../../state/modelStore";
+import { __resetDownloadEventBusForTests } from "../../state/downloadEventBus";
 import type { ModelCatalogEntry } from "../../data/ollama-catalog";
 
 const PHI: ModelCatalogEntry = {
@@ -19,7 +20,11 @@ const PHI: ModelCatalogEntry = {
 
 beforeEach(() => {
   vi.mocked(invoke).mockReset();
-  useModelStore.setState({ activeTab: "ollama", installInFlight: null });
+  __resetDownloadEventBusForTests();
+  useModelStore.setState({
+    activeTab: "ollama", installInFlight: null,
+    downloads: {}, pullNames: {}, activeHfName: null,
+  });
 });
 
 describe("ModelCard — feasibility gating (M.6)", () => {

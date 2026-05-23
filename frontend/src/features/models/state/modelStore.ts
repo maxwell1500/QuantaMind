@@ -41,11 +41,16 @@ export interface ModelStore {
   installInFlight: InstallInFlight | null;
   pendingLocalPath: string | null;
   downloads: Record<string, DownloadEntry>;
+  activeHfName: string | null;
+  pullNames: Record<string, string>;
   setActiveTab: (t: TabId) => void;
   setInstallInFlight: (i: InstallInFlight | null) => void;
   setPendingLocalPath: (p: string | null) => void;
   upsertDownload: (entry: DownloadEntry) => void;
   removeDownload: (id: string) => void;
+  setActiveHfName: (n: string | null) => void;
+  recordPullName: (pullId: string, name: string) => void;
+  removePullName: (pullId: string) => void;
 }
 
 export const useModelStore = create<ModelStore>((set) => ({
@@ -53,6 +58,8 @@ export const useModelStore = create<ModelStore>((set) => ({
   installInFlight: null,
   pendingLocalPath: null,
   downloads: {},
+  activeHfName: null,
+  pullNames: {},
   setActiveTab: (t) => set({ activeTab: t }),
   setInstallInFlight: (i) => set({ installInFlight: i }),
   setPendingLocalPath: (p) => set({ pendingLocalPath: p }),
@@ -63,5 +70,14 @@ export const useModelStore = create<ModelStore>((set) => ({
       const next = { ...s.downloads };
       delete next[id];
       return { downloads: next };
+    }),
+  setActiveHfName: (n) => set({ activeHfName: n }),
+  recordPullName: (pullId, name) =>
+    set((s) => ({ pullNames: { ...s.pullNames, [pullId]: name } })),
+  removePullName: (pullId) =>
+    set((s) => {
+      const next = { ...s.pullNames };
+      delete next[pullId];
+      return { pullNames: next };
     }),
 }));

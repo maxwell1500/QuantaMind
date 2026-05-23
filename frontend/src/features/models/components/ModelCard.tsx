@@ -11,7 +11,7 @@ import { InstallFeasibilityDialog } from "./InstallFeasibilityDialog";
 type Props = { model: ModelCatalogEntry; isInstalled: boolean };
 
 export function ModelCard({ model, isInstalled }: Props) {
-  const { state, install, cancel: cancelInstall } = useModelInstall();
+  const { state, install, cancel: cancelInstall } = useModelInstall(model.name);
   const setInstallInFlight = useModelStore((s) => s.setInstallInFlight);
   const [pending, setPending] = useState<InstallFeasibility | null>(null);
 
