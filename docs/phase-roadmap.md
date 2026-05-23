@@ -46,6 +46,19 @@ partial files or temp Modelfiles after success/cancel paths.
 
 Step ledger lives in `03_phaseM_implementation.md`.
 
+## Phase M.5 — Live browsing (in progress)
+
+Replaces the Phase M bundled catalogs with live data. See
+`live-browsing.md` for the full design.
+
+- HF tab → live `hf_search` + `hf_repo_files` against `huggingface.co/api`.
+- Ollama tab → free-text install (no public search API to browse).
+- Ollama 4xx errors carry the server response body for diagnostics.
+- HF install names encoded as `<base>:<quant>` for Ollama 0.24+.
+
+Exit criteria: catalog JSONs removed; offline renders error + Retry,
+never a stale list.
+
 ## Phase 2 — Settings + Persistence
 
 Goal: persistent user settings, model defaults, history of recent runs.
