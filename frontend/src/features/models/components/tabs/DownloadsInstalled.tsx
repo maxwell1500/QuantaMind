@@ -5,7 +5,7 @@ import {
   removeModel,
   type InstalledModelInfo,
 } from "../../../../shared/ipc/storage";
-import { formatBytes } from "../../format";
+import { formatBytes } from "../../../../shared/format/bytes";
 import { formatIpcError } from "../../../../shared/ipc/error";
 
 const EVENT_MODELS_CHANGED = "models-changed";

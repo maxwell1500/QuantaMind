@@ -2,7 +2,8 @@ import { useEffect, useState } from "react";
 import { listen } from "@tauri-apps/api/event";
 import { useHfInstall } from "../hooks/useHfInstall";
 import { useHfRepoVariants, type HfVariantView } from "../hooks/useHfRepoVariants";
-import { formatBytes, hfVariantModelName } from "../format";
+import { hfVariantModelName } from "../format";
+import { formatBytes } from "../../../shared/format/bytes";
 import { listModels } from "../../../shared/ipc/client";
 import { formatIpcError } from "../../../shared/ipc/error";
 
