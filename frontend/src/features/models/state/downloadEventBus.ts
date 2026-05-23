@@ -4,6 +4,10 @@ import {
   HfPhaseSchema,
 } from "../../../shared/ipc/hf_install";
 import {
+  EVENT_LOCAL_INSTALL_PROGRESS,
+  LocalInstallPhaseSchema,
+} from "../../../shared/ipc/local_install";
+import {
   EVENT_PULL_PROGRESS,
   PullProgressEventSchema,
 } from "../../../shared/ipc/pull_events";
@@ -59,11 +63,31 @@ function onPull(payload: unknown) {
   });
 }
 
+function onLocal(payload: unknown) {
+  const p = LocalInstallPhaseSchema.safeParse(payload);
+  if (!p.success) {
+    console.error("invalid local-install-progress payload", p.error.issues);
+    return;
+  }
+  const { activeLocalName, upsertDownload } = useModelStore.getState();
+  if (!activeLocalName) return;
+  const base = { id: activeLocalName, source: "local" as const, name: activeLocalName };
+  if (p.data.phase === "hashing" || p.data.phase === "uploading") {
+    const { bytes_completed, bytes_total } = p.data;
+    const percent = bytes_total > 0 ? Math.min(100, Math.round((bytes_completed / bytes_total) * 100)) : 0;
+    const phaseLabel = p.data.phase === "hashing" ? "Hashing" : "Uploading to Ollama";
+    upsertDownload({ ...base, status: "installing", percent, bytesCompleted: bytes_completed, bytesTotal: bytes_total, phaseLabel });
+    return;
+  }
+  upsertDownload({ ...base, status: "installing", percent: 100, phaseLabel: "Creating model" });
+}
+
 export function startDownloadEventBus(): Promise<void> {
   if (starting) return starting;
   starting = (async () => {
     await listen<unknown>(EVENT_HF_PROGRESS, (e) => onHf(e.payload));
     await listen<unknown>(EVENT_PULL_PROGRESS, (e) => onPull(e.payload));
+    await listen<unknown>(EVENT_LOCAL_INSTALL_PROGRESS, (e) => onLocal(e.payload));
   })();
   return starting;
 }

@@ -1,5 +1,4 @@
 import type { GgufMetadata } from "../../../shared/ipc/gguf";
-import type { LocalInstallPhase } from "../../../shared/ipc/local_install";
 
 type Props = {
   path: string;
@@ -9,27 +8,17 @@ type Props = {
   onImport: () => void;
   onCancel: () => void;
   busy: boolean;
+  percent: number;
+  phaseLabel: string | null;
   error: string | null;
   conflict: boolean;
-  phase: LocalInstallPhase | null;
 };
-
-function phaseLabel(p: LocalInstallPhase): string {
-  if (p.phase === "hashing") {
-    const pct = p.bytes_total > 0 ? Math.round((p.bytes_completed / p.bytes_total) * 100) : 0;
-    return `Hashing ${pct}%`;
-  }
-  if (p.phase === "uploading") {
-    const pct = p.bytes_total > 0 ? Math.round((p.bytes_completed / p.bytes_total) * 100) : 0;
-    return `Uploading to Ollama ${pct}%`;
-  }
-  return "Creating model…";
-}
 
 const NAME_RE = /^[A-Za-z0-9_\-.:]+$/;
 
 export function LocalFilePreview({
-  path, meta, name, onNameChange, onImport, onCancel, busy, error, conflict, phase,
+  path, meta, name, onNameChange, onImport, onCancel,
+  busy, percent, phaseLabel, error, conflict,
 }: Props) {
   const filename = path.split("/").pop() ?? path;
   const nameValid = NAME_RE.test(name) && name.length > 0 && name.length <= 64;
@@ -66,9 +55,12 @@ export function LocalFilePreview({
           </span>
         )}
       </label>
-      {busy && phase && (
-        <div data-testid="import-phase" className="text-xs text-gray-700">
-          {phaseLabel(phase)}
+      {busy && (
+        <div data-testid="import-phase" className="flex items-center gap-2 text-xs">
+          <progress value={percent} max={100} className="flex-1 h-2" />
+          <span className="tabular-nums w-24 text-right">
+            {phaseLabel ? `${phaseLabel} ${percent}%` : `${percent}%`}
+          </span>
         </div>
       )}
       {error && (

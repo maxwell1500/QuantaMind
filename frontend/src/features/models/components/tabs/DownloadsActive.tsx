@@ -52,14 +52,16 @@ export function DownloadsActive() {
               <span className="text-xs tabular-nums w-10 text-right">{d.percent}%</span>
             </div>
           </div>
-          <button
-            type="button"
-            onClick={() => { void cancelEntry(d); removeDownload(d.id); }}
-            className="text-xs border rounded px-2 py-1"
-            aria-label={`Cancel ${d.name}`}
-          >
-            Cancel
-          </button>
+          {d.source !== "local" && (
+            <button
+              type="button"
+              onClick={() => { void cancelEntry(d); removeDownload(d.id); }}
+              className="text-xs border rounded px-2 py-1"
+              aria-label={`Cancel ${d.name}`}
+            >
+              Cancel
+            </button>
+          )}
         </li>
       ))}
     </ul>

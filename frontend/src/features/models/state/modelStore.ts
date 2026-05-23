@@ -28,6 +28,7 @@ export interface DownloadEntry {
   bytesTotal?: number;
   error?: string | null;
   pullId?: string;
+  phaseLabel?: string;
 }
 
 export interface InstallInFlight {
@@ -42,6 +43,7 @@ export interface ModelStore {
   pendingLocalPath: string | null;
   downloads: Record<string, DownloadEntry>;
   activeHfName: string | null;
+  activeLocalName: string | null;
   pullNames: Record<string, string>;
   setActiveTab: (t: TabId) => void;
   setInstallInFlight: (i: InstallInFlight | null) => void;
@@ -49,6 +51,7 @@ export interface ModelStore {
   upsertDownload: (entry: DownloadEntry) => void;
   removeDownload: (id: string) => void;
   setActiveHfName: (n: string | null) => void;
+  setActiveLocalName: (n: string | null) => void;
   recordPullName: (pullId: string, name: string) => void;
   removePullName: (pullId: string) => void;
 }
@@ -59,6 +62,7 @@ export const useModelStore = create<ModelStore>((set) => ({
   pendingLocalPath: null,
   downloads: {},
   activeHfName: null,
+  activeLocalName: null,
   pullNames: {},
   setActiveTab: (t) => set({ activeTab: t }),
   setInstallInFlight: (i) => set({ installInFlight: i }),
@@ -72,6 +76,7 @@ export const useModelStore = create<ModelStore>((set) => ({
       return { downloads: next };
     }),
   setActiveHfName: (n) => set({ activeHfName: n }),
+  setActiveLocalName: (n) => set({ activeLocalName: n }),
   recordPullName: (pullId, name) =>
     set((s) => ({ pullNames: { ...s.pullNames, [pullId]: name } })),
   removePullName: (pullId) =>

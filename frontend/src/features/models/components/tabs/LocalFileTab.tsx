@@ -1,8 +1,10 @@
 import { useLocalImport } from "../../hooks/useLocalImport";
 import { LocalFilePreview } from "../LocalFilePreview";
+import { useModelStore } from "../../state/modelStore";
 
 export function LocalFileTab() {
   const s = useLocalImport();
+  const activeLocalName = useModelStore((st) => st.activeLocalName);
 
   if (s.path && s.meta) {
     return (
@@ -14,10 +16,26 @@ export function LocalFileTab() {
         onImport={s.doImport}
         onCancel={s.cancel}
         busy={s.busy}
+        percent={s.percent}
+        phaseLabel={s.phaseLabel}
         error={s.error}
         conflict={s.conflict}
-        phase={s.phase}
       />
+    );
+  }
+
+  if (s.busy && activeLocalName) {
+    return (
+      <div data-testid="local-in-progress" className="border rounded p-3 flex flex-col gap-2">
+        <div className="text-xs text-gray-500">Importing</div>
+        <div className="text-sm font-medium">{activeLocalName}</div>
+        <div className="flex items-center gap-2 text-xs">
+          <progress value={s.percent} max={100} className="flex-1 h-2" />
+          <span className="tabular-nums w-24 text-right">
+            {s.phaseLabel ? `${s.phaseLabel} ${s.percent}%` : `${s.percent}%`}
+          </span>
+        </div>
+      </div>
     );
   }
 
