@@ -14,6 +14,7 @@ import {
   removeModel,
 } from "../../../../../shared/ipc/storage";
 import { DownloadsInstalled } from "../DownloadsInstalled";
+import { useInstalledModelsStore } from "../../../state/installedModelsStore";
 
 const FIXTURE = [
   { name: "phi3.5:latest", family: "phi", parameter_size: "3.8B",
@@ -23,6 +24,9 @@ const FIXTURE = [
 beforeEach(() => {
   vi.mocked(getInstalledModelsWithStats).mockReset();
   vi.mocked(removeModel).mockReset();
+  useInstalledModelsStore.setState({
+    list: [], status: "idle", error: null, lastRefreshedAt: null,
+  });
 });
 
 describe("DownloadsInstalled", () => {

@@ -6,6 +6,7 @@ vi.mock("@tauri-apps/api/core", () => ({ invoke: vi.fn() }));
 import { invoke } from "@tauri-apps/api/core";
 import { ModelMultiSelect } from "../components/ModelMultiSelect";
 import { useCompareStore } from "../state/compareStore";
+import { useInstalledModelsStore } from "../../models/state/installedModelsStore";
 
 const MODELS = [
   { name: "llama3.2:1b", size_bytes: 1_300_000_000, modified_at: "", family: "llama", parameter_size: "1B", quantization: "Q8_0" },
@@ -19,6 +20,9 @@ beforeEach(() => {
     return Promise.reject(new Error(`unknown ${cmd}`));
   });
   useCompareStore.getState().reset();
+  useInstalledModelsStore.setState({
+    list: [], status: "idle", error: null, lastRefreshedAt: null,
+  });
 });
 
 describe("ModelMultiSelect", () => {

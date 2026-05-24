@@ -1,5 +1,5 @@
 import { describe, it, expect, vi, beforeEach } from "vitest";
-import { render, screen, fireEvent } from "@testing-library/react";
+import { render, screen, fireEvent, waitFor } from "@testing-library/react";
 
 vi.mock("../../../shared/ipc/storage", () => ({
   getInstalledModelsWithStats: vi.fn(),
@@ -12,6 +12,7 @@ import { getInstalledModelsWithStats } from "../../../shared/ipc/storage";
 import { ModelPicker } from "../components/ModelPicker";
 import { useWorkspaceStore } from "../state/workspaceStore";
 import { useNavStore } from "../../../shared/state/navStore";
+import { useInstalledModelsStore } from "../../models/state/installedModelsStore";
 
 const M = (name: string, family = "llama") => ({
   name, size_bytes: 1_000_000_000, modified_at: "", family,
@@ -21,6 +22,10 @@ const M = (name: string, family = "llama") => ({
 describe("ModelPicker", () => {
   beforeEach(() => {
     vi.mocked(getInstalledModelsWithStats).mockReset();
+    useInstalledModelsStore.setState({
+      list: [], status: "idle", error: null, lastRefreshedAt: null,
+    });
+    useWorkspaceStore.setState({ ollamaHealthy: null });
   });
 
   it("renders each generative Ollama model name as an option", async () => {
@@ -80,10 +85,13 @@ describe("ModelPicker", () => {
     vi.mocked(getInstalledModelsWithStats).mockResolvedValue([]);
     useWorkspaceStore.setState({ ollamaHealthy: false });
     render(<ModelPicker value={null} onChange={() => {}} />);
+    // Let the initial-idle refresh resolve before clearing the mock —
+    // refresh() coalesces concurrent calls so the health flip would
+    // otherwise be a no-op while the first call is still in flight.
+    await waitFor(() => expect(useInstalledModelsStore.getState().status).toBe("ready"));
     vi.mocked(getInstalledModelsWithStats).mockClear();
     useWorkspaceStore.getState().setOllamaHealthy(true);
-    await new Promise((r) => setTimeout(r, 0));
-    expect(getInstalledModelsWithStats).toHaveBeenCalledTimes(1);
+    await waitFor(() => expect(getInstalledModelsWithStats).toHaveBeenCalledTimes(1));
   });
 
   it("Add Model button navigates the top tab to 'models' via navStore", async () => {

@@ -1,35 +1,24 @@
-import { useEffect, useState } from "react";
-import { listen } from "@tauri-apps/api/event";
-import { listModels } from "../../../../shared/ipc/client";
-import { formatIpcError } from "../../../../shared/ipc/error";
+import { useEffect, useMemo, useState } from "react";
+import { useInstalledModelsStore } from "../../state/installedModelsStore";
 import { useModelInstall } from "../../hooks/useModelInstall";
 
-const EVENT_MODELS_CHANGED = "models-changed";
 const LIBRARY_URL = "https://ollama.com/library";
 
 export function OllamaLibraryTab() {
   const [name, setName] = useState("");
   const trimmed = name.trim();
   const { state, install, cancel } = useModelInstall(trimmed || undefined);
-  const [installed, setInstalled] = useState<Set<string>>(new Set());
+  const list = useInstalledModelsStore((s) => s.list);
+  const status = useInstalledModelsStore((s) => s.status);
+  const refresh = useInstalledModelsStore((s) => s.refresh);
+  const installed = useMemo(
+    () => new Set(list.map((m) => m.name)),
+    [list],
+  );
 
   useEffect(() => {
-    let cancelled = false;
-    let unsub: (() => void) | null = null;
-    const refresh = () => listModels()
-      .then((list) => { if (!cancelled) setInstalled(new Set(list)); })
-      .catch((e) => console.error("OllamaLibraryTab: listModels failed —", formatIpcError(e)));
-    refresh();
-    (async () => {
-      try {
-        const u = await listen(EVENT_MODELS_CHANGED, () => refresh());
-        if (cancelled) u(); else unsub = u;
-      } catch (e) {
-        console.error("OllamaLibraryTab: listen(models-changed) failed —", formatIpcError(e));
-      }
-    })();
-    return () => { cancelled = true; unsub?.(); };
-  }, []);
+    if (status === "idle") void refresh();
+  }, [status, refresh]);
 
   const isInstalled = !!trimmed && installed.has(trimmed);
   const pulling = state.status === "pulling";

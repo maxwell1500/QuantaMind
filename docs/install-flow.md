@@ -119,7 +119,28 @@ While splitting, the variant table was also extracted into
 `HfVariantTable.tsx` — `HuggingFaceRepoDetail.tsx` had drifted to
 112 lines (over the 100-line ceiling) and is now back at 95.
 
-## (Fix 6 — Centralized models-changed bus, pending)
+## Centralized models-changed bus
+
+`installedModelsBus.ts` mirrors the `downloadEventBus` pattern: one
+shared `listen("models-changed")` subscription that calls
+`installedModelsStore.refresh()`. Idempotent, retry-safe on transient
+`listen()` rejection. Mounted once in `App.tsx` at startup.
+
+Per-component `listen("models-changed")` calls were removed. All five
+consumers now subscribe to `useInstalledModelsStore` and fall back to
+calling `refresh()` themselves when `status === "idle"` (covers the
+edge case where the component mounts before the App-level effect
+runs):
+
+- `DownloadsInstalled`
+- `ModelPicker` (Workspace)
+- `OllamaLibraryTab`
+- `HuggingFaceRepoDetail`
+- `ModelMultiSelect` (Compare)
+
+This eliminates the listener-registration race (events emitted while
+five separate `listen()` promises resolved) and drops the duplicate
+`/api/tags` fetches per refresh signal from 5 to 1.
 
 ## (Fix 7 — useModelInstall nameRef sync, pending)
 

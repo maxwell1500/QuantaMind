@@ -1,10 +1,5 @@
-import { useEffect, useRef, useState } from "react";
-import { listen } from "@tauri-apps/api/event";
-import {
-  getInstalledModelsWithStats,
-  type InstalledModelInfo,
-} from "../../../shared/ipc/storage";
-import { formatIpcError } from "../../../shared/ipc/error";
+import { useEffect } from "react";
+import { useInstalledModelsStore } from "../../models/state/installedModelsStore";
 import { isEmbeddingModel } from "../../../shared/models/classify";
 import { useWorkspaceStore } from "../state/workspaceStore";
 import { useNavStore } from "../../../shared/state/navStore";
@@ -14,42 +9,30 @@ type Props = {
   onChange: (model: string) => void;
 };
 
-const EVENT_MODELS_CHANGED = "models-changed";
-
 export function ModelPicker({ value, onChange }: Props) {
   const goToModels = useNavStore((s) => s.setTopView);
-  const [models, setModels] = useState<InstalledModelInfo[]>([]);
-  const [error, setError] = useState<string | null>(null);
+  const list = useInstalledModelsStore((s) => s.list);
+  const status = useInstalledModelsStore((s) => s.status);
+  const error = useInstalledModelsStore((s) => s.error);
+  const refresh = useInstalledModelsStore((s) => s.refresh);
   const ollamaHealthy = useWorkspaceStore((s) => s.ollamaHealthy);
-  const wasHealthy = useRef<boolean | null>(null);
 
   useEffect(() => {
-    let cancelled = false;
-    let unsub: (() => void) | null = null;
-    const refresh = () =>
-      getInstalledModelsWithStats()
-        .then((list) => { if (!cancelled) { setModels(list); setError(null); } })
-        .catch((e) => { if (!cancelled) setError(formatIpcError(e)); });
-    refresh();
-    (async () => {
-      const u = await listen(EVENT_MODELS_CHANGED, () => { refresh(); });
-      if (cancelled) u(); else unsub = u;
-    })();
-    return () => { cancelled = true; unsub?.(); };
-  }, []);
+    if (status === "idle") void refresh();
+  }, [status, refresh]);
 
+  // Re-fetch when Ollama transitions to healthy — the user may have just
+  // started it.
   useEffect(() => {
-    if (ollamaHealthy === true && wasHealthy.current !== true) {
-      getInstalledModelsWithStats()
-        .then((list) => { setModels(list); setError(null); })
-        .catch((e) => setError(formatIpcError(e)));
-    }
-    wasHealthy.current = ollamaHealthy;
-  }, [ollamaHealthy]);
+    if (ollamaHealthy === true) void refresh();
+  }, [ollamaHealthy, refresh]);
 
-  const effectiveError = error
-    ?? (ollamaHealthy === false ? "Ollama is not running. Start Ollama and try again." : null);
-  const generative = models.filter((m) => !isEmbeddingModel(m));
+  const effectiveError =
+    error ??
+    (ollamaHealthy === false
+      ? "Ollama is not running. Start Ollama and try again."
+      : null);
+  const generative = list.filter((m) => !isEmbeddingModel(m));
 
   return (
     <div className="flex gap-2 items-center flex-wrap">
@@ -64,9 +47,13 @@ export function ModelPicker({ value, onChange }: Props) {
           onChange={(e) => onChange(e.target.value)}
           className="border rounded px-2 py-1 text-sm"
         >
-          <option value="" disabled>Pick a model</option>
+          <option value="" disabled>
+            Pick a model
+          </option>
           {generative.map((m) => (
-            <option key={m.name} value={m.name}>{m.name}</option>
+            <option key={m.name} value={m.name}>
+              {m.name}
+            </option>
           ))}
         </select>
       )}

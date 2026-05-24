@@ -8,7 +8,13 @@ import { invoke } from "@tauri-apps/api/core";
 import { listen, type EventCallback } from "@tauri-apps/api/event";
 import { OllamaLibraryTab } from "../OllamaLibraryTab";
 import { useModelStore } from "../../../state/modelStore";
+import { useInstalledModelsStore } from "../../../state/installedModelsStore";
 import { __resetDownloadEventBusForTests } from "../../../state/downloadEventBus";
+
+const STATS = (names: string[]) => names.map((n) => ({
+  name: n, size_bytes: 1_000_000, modified_at: "",
+  family: "x", parameter_size: "", quantization: "",
+}));
 
 const handlers: Record<string, EventCallback<unknown>> = {};
 
@@ -21,13 +27,16 @@ beforeEach(() => {
     return Promise.resolve(() => { delete handlers[event]; });
   });
   vi.mocked(invoke).mockImplementation((cmd: string) => {
-    if (cmd === "list_models") return Promise.resolve(["mistral:7b"]);
+    if (cmd === "get_installed_models_with_stats") return Promise.resolve(STATS(["mistral:7b"]));
     if (cmd === "pull_model") return Promise.resolve("pull-1");
     if (cmd === "cancel_pull") return Promise.resolve(undefined);
     return Promise.reject(new Error(`unknown ${cmd}`));
   });
   __resetDownloadEventBusForTests();
   useModelStore.setState({ downloads: {}, pullNames: {}, activeHfName: null });
+  useInstalledModelsStore.setState({
+    list: [], status: "idle", error: null, lastRefreshedAt: null,
+  });
 });
 
 describe("OllamaLibraryTab (free-text install)", () => {
@@ -39,7 +48,7 @@ describe("OllamaLibraryTab (free-text install)", () => {
 
   it("typing an installed model name shows the Installed badge", async () => {
     render(<OllamaLibraryTab />);
-    await waitFor(() => expect(invoke).toHaveBeenCalledWith("list_models"));
+    await waitFor(() => expect(invoke).toHaveBeenCalledWith("get_installed_models_with_stats"));
     fireEvent.change(screen.getByTestId("ollama-name-input"), { target: { value: "mistral:7b" } });
     await screen.findByText(/Installed/);
   });
@@ -53,7 +62,7 @@ describe("OllamaLibraryTab (free-text install)", () => {
 
   it("surfaces a pull_model rejection as a friendly error", async () => {
     vi.mocked(invoke).mockImplementation((cmd: string) => {
-      if (cmd === "list_models") return Promise.resolve([]);
+      if (cmd === "get_installed_models_with_stats") return Promise.resolve([]);
       if (cmd === "pull_model") return Promise.reject({ kind: "not_found", message: "model foo" });
       return Promise.reject(new Error(`unknown ${cmd}`));
     });
