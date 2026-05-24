@@ -41,6 +41,12 @@ describe("friendlyInstallError", () => {
     expect(friendlyInstallError(e)).toMatch(/unsupported|format/i);
   });
 
+  it("silent-rollback-after-success → friendly rollback explanation", () => {
+    const e = E("inference", "Ollama reported success but `tinyllama-1.1b-chat-v1.0:q8_0` is not in /api/tags — registration was silently rolled back");
+    expect(friendlyInstallError(e)).toMatch(/silently rolled back|didn't actually register/i);
+    expect(friendlyInstallError(e)).toMatch(/server\.log/);
+  });
+
   it("silent-success stream → mmproj / adapter explanation", () => {
     const e = E("inference", "ollama create: stream ended without success (last status: writing manifest)");
     expect(friendlyInstallError(e)).toMatch(/projection.*adapter|mmproj|standalone model/i);
