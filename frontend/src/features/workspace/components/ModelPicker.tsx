@@ -50,7 +50,6 @@ export function ModelPicker({ value, onChange }: Props) {
   const effectiveError = error
     ?? (ollamaHealthy === false ? "Ollama is not running. Start Ollama and try again." : null);
   const generative = models.filter((m) => !isEmbeddingModel(m));
-  const hidden = models.length - generative.length;
 
   return (
     <div className="flex gap-2 items-center flex-wrap">
