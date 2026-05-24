@@ -35,4 +35,18 @@ describe("modelStore (M.3)", () => {
   it("findActiveDownload returns undefined for an empty map", () => {
     expect(findActiveDownload({})).toBeUndefined();
   });
+
+  it("hfSearchQuery defaults to empty and round-trips via setHfSearchQuery", () => {
+    expect(useModelStore.getState().hfSearchQuery).toBe("");
+    useModelStore.getState().setHfSearchQuery("llama");
+    expect(useModelStore.getState().hfSearchQuery).toBe("llama");
+  });
+
+  it("hfSelectedRepo defaults to null and round-trips via setHfSelectedRepo", () => {
+    expect(useModelStore.getState().hfSelectedRepo).toBeNull();
+    useModelStore.getState().setHfSelectedRepo("bartowski/Test-GGUF");
+    expect(useModelStore.getState().hfSelectedRepo).toBe("bartowski/Test-GGUF");
+    useModelStore.getState().setHfSelectedRepo(null);
+    expect(useModelStore.getState().hfSelectedRepo).toBeNull();
+  });
 });
