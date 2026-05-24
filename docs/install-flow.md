@@ -56,7 +56,27 @@ but the call site dropped the `?`, so Ollama was receiving
 `{"Ok": {"model": ..., ...}}` instead of the unwrapped body. The new
 code uses `build_create_body(...)?`.
 
-## (Fix 3 — Downloads terminal states, pending)
+## Downloads terminal states stay visible
+
+`frontend/src/features/models/components/tabs/DownloadsActive.tsx` +
+`DownloadEntryRow.tsx`.
+
+The "In progress" list previously filtered to
+`["downloading","installing"]` only, so the entry vanished from the UI
+the instant the status flipped to `success` or `error`. Combined with
+the `/api/tags` refresh race, the model literally disappeared — present
+in no list.
+
+The list now retains `success` and `error` entries with a green
+"Installed ✓" or red "Failed" badge plus a Dismiss button. The error
+message renders inline. Success entries auto-clear after 5 s; error
+entries persist until dismissed so the user has a record of what
+broke.
+
+Three test files cover this surface: active rows + cancel flows
+(`DownloadsActive.test.tsx`), terminal-state rendering
+(`DownloadsActive.terminal.test.tsx`), and timer-based auto-clear
+(`DownloadsActive.autoclear.test.tsx`, fake-timer isolated).
 
 ## (Fix 4 — Proactive refresh in install hooks, pending)
 
