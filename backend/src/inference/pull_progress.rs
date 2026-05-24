@@ -19,7 +19,8 @@ pub(crate) struct PullRequest<'a> {
 
 #[derive(Deserialize)]
 pub(crate) struct PullChunk {
-    pub status: String,
+    #[serde(default)] pub status: Option<String>,
+    #[serde(default)] pub error: Option<String>,
     #[serde(default)] pub digest: Option<String>,
     #[serde(default)] pub total: Option<u64>,
     #[serde(default)] pub completed: Option<u64>,
@@ -31,7 +32,7 @@ pub(crate) fn classify(chunk: &PullChunk, speed_bps: u64) -> Option<PullProgress
             digest: d.clone(), total: t, completed: c, speed_bps,
         });
     }
-    let s = chunk.status.as_str();
+    let s = chunk.status.as_deref().unwrap_or("");
     if s.starts_with("pulling manifest") { Some(PullProgress::PullingManifest) }
     else if s.contains("verifying") { Some(PullProgress::Verifying) }
     else if s.contains("writing") { Some(PullProgress::Writing) }
@@ -43,16 +44,19 @@ pub(crate) fn classify(chunk: &PullChunk, speed_bps: u64) -> Option<PullProgress
 mod tests {
     use super::*;
 
+    fn chunk(status: &str) -> PullChunk {
+        PullChunk { status: Some(status.into()), error: None, digest: None, total: None, completed: None }
+    }
+
     #[test]
     fn manifest_status_classifies() {
-        let c = PullChunk { status: "pulling manifest".into(), digest: None, total: None, completed: None };
-        assert_eq!(classify(&c, 0), Some(PullProgress::PullingManifest));
+        assert_eq!(classify(&chunk("pulling manifest"), 0), Some(PullProgress::PullingManifest));
     }
 
     #[test]
     fn downloading_carries_speed_bps_through() {
         let c = PullChunk {
-            status: "pulling sha256:abc".into(),
+            status: Some("pulling sha256:abc".into()), error: None,
             digest: Some("sha256:abc".into()),
             total: Some(1_000_000),
             completed: Some(250_000),
@@ -65,8 +69,15 @@ mod tests {
 
     #[test]
     fn unknown_status_classifies_as_none() {
-        let c = PullChunk { status: "removing unused layers".into(), digest: None, total: None, completed: None };
-        assert_eq!(classify(&c, 0), None);
+        assert_eq!(classify(&chunk("removing unused layers"), 0), None);
+    }
+
+    #[test]
+    fn parses_error_chunk_without_panicking_on_missing_status() {
+        let raw = r#"{"error":"file does not exist"}"#;
+        let parsed: PullChunk = serde_json::from_str(raw).expect("error-only chunks must deserialize");
+        assert!(parsed.status.is_none());
+        assert_eq!(parsed.error.as_deref(), Some("file does not exist"));
     }
 
     #[test]
