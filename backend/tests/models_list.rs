@@ -1,6 +1,6 @@
 use mockito::Server;
-use splice_lib::commands::models::fetch_models;
-use splice_lib::errors::AppError;
+use quantamind_lib::commands::models::fetch_models;
+use quantamind_lib::errors::AppError;
 
 #[tokio::test]
 async fn list_is_sorted_deduped_and_exact() {

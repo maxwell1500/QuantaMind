@@ -1,5 +1,5 @@
-use splice_lib::commands::workspace::{load_prompt_from_file, save_prompt_to_file};
-use splice_lib::errors::AppError;
+use quantamind_lib::commands::workspace::{load_prompt_from_file, save_prompt_to_file};
+use quantamind_lib::errors::AppError;
 use tempfile::tempdir;
 
 #[test]

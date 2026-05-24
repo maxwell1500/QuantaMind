@@ -1,5 +1,5 @@
-use splice_lib::commands::models::fetch_models_with_timeout;
-use splice_lib::errors::AppError;
+use quantamind_lib::commands::models::fetch_models_with_timeout;
+use quantamind_lib::errors::AppError;
 use std::net::TcpListener;
 use std::thread;
 use std::time::Duration;

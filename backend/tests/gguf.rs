@@ -1,5 +1,5 @@
-use splice_lib::errors::AppError;
-use splice_lib::inference::gguf::inspect_gguf_bytes;
+use quantamind_lib::errors::AppError;
+use quantamind_lib::inference::gguf::inspect_gguf_bytes;
 
 fn write_str(b: &mut Vec<u8>, s: &str) {
     b.extend_from_slice(&(s.len() as u64).to_le_bytes());

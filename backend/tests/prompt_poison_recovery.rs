@@ -1,6 +1,6 @@
-use splice_lib::commands::prompt_payloads::done_payload_or_zero;
-use splice_lib::metrics::timing::RunTiming;
-use splice_lib::sync::MutexExt;
+use quantamind_lib::commands::prompt_payloads::done_payload_or_zero;
+use quantamind_lib::metrics::timing::RunTiming;
+use quantamind_lib::sync::MutexExt;
 use std::sync::{Arc, Mutex};
 use std::thread;
 

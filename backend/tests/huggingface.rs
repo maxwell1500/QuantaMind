@@ -1,5 +1,5 @@
 use mockito::Server;
-use splice_lib::inference::hf_download::download_gguf;
+use quantamind_lib::inference::hf_download::download_gguf;
 use std::fs;
 use tokio_util::sync::CancellationToken;
 

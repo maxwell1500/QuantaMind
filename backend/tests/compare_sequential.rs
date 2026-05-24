@@ -1,10 +1,10 @@
 use mockito::{Matcher, Server};
-use splice_lib::commands::compare::CompareRunState;
-use splice_lib::commands::compare_payloads::{
+use quantamind_lib::commands::compare::CompareRunState;
+use quantamind_lib::commands::compare_payloads::{
     EVENT_COMPARE_DONE, EVENT_COMPARE_ERROR, EVENT_COMPARE_RUN_DONE, EVENT_COMPARE_TOKEN,
 };
-use splice_lib::inference::compare_runner::run_sequential;
-use splice_lib::inference::compare_runner_finalize::CompareEmit;
+use quantamind_lib::inference::compare_runner::run_sequential;
+use quantamind_lib::inference::compare_runner_finalize::CompareEmit;
 use std::sync::{Arc, Mutex};
 
 type EventLog = Arc<Mutex<Vec<(String, serde_json::Value)>>>;

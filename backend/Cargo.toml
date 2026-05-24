@@ -1,12 +1,12 @@
 [package]
-name = "splice"
+name = "quantamind"
 version = "0.1.0"
-description = "Splice — local LLM workspace"
-authors = ["splice-dev"]
+description = "QuantaMind — local LLM workspace"
+authors = ["quantamind-dev"]
 edition = "2021"
 
 [lib]
-name = "splice_lib"
+name = "quantamind_lib"
 crate-type = ["staticlib", "cdylib", "rlib"]
 
 [build-dependencies]

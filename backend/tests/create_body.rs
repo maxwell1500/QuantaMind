@@ -1,6 +1,6 @@
-use splice_lib::inference::chat_template_data::LLAMA3;
-use splice_lib::inference::create_body::build_create_body;
-use splice_lib::inference::create_spec::{CreateParameters, CreateSpec};
+use quantamind_lib::inference::chat_template_data::LLAMA3;
+use quantamind_lib::inference::create_body::build_create_body;
+use quantamind_lib::inference::create_spec::{CreateParameters, CreateSpec};
 use std::path::PathBuf;
 
 fn spec_minimal() -> CreateSpec {
@@ -61,7 +61,7 @@ fn path_with_no_filename_errors_with_validation() {
         parameters: CreateParameters::default(),
     };
     match build_create_body(&spec, "x:latest", "00") {
-        Err(splice_lib::errors::AppError::Validation(msg)) =>
+        Err(quantamind_lib::errors::AppError::Validation(msg)) =>
             assert!(msg.contains("no filename"), "msg: {msg}"),
         other => panic!("expected Validation, got {other:?}"),
     }

@@ -1,6 +1,6 @@
 use mockito::Server;
-use splice_lib::commands::gguf_cmd::verify_model_registered;
-use splice_lib::errors::AppError;
+use quantamind_lib::commands::gguf_cmd::verify_model_registered;
+use quantamind_lib::errors::AppError;
 
 const TAGS_WITH: &str = r#"{"models":[
     {"name":"tinyllama-1.1b-chat-v1.0:q8_0","size":1100000000,"modified_at":"2026-05-23T00:00:00Z","details":null},

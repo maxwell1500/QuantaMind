@@ -1,5 +1,5 @@
-use splice_lib::commands::compare::{stop_compare_inner, CompareRunState};
-use splice_lib::errors::AppError;
+use quantamind_lib::commands::compare::{stop_compare_inner, CompareRunState};
+use quantamind_lib::errors::AppError;
 use tokio_util::sync::CancellationToken;
 use uuid::Uuid;
 

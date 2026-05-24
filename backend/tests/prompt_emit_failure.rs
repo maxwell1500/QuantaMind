@@ -1,7 +1,7 @@
 use mockito::Server;
-use splice_lib::commands::prompt::run_prompt_inner;
-use splice_lib::commands::prompt_handler::make_token_handler;
-use splice_lib::metrics::timing::RunTiming;
+use quantamind_lib::commands::prompt::run_prompt_inner;
+use quantamind_lib::commands::prompt_handler::make_token_handler;
+use quantamind_lib::metrics::timing::RunTiming;
 use std::sync::atomic::{AtomicUsize, Ordering};
 use std::sync::{Arc, Mutex};
 use tokio_util::sync::CancellationToken;

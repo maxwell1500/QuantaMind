@@ -1,6 +1,6 @@
 use mockito::Server;
-use splice_lib::errors::AppError;
-use splice_lib::inference::ollama::stream_generate;
+use quantamind_lib::errors::AppError;
+use quantamind_lib::inference::ollama::stream_generate;
 use tokio_util::sync::CancellationToken;
 
 #[tokio::test]

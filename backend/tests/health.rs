@@ -1,5 +1,5 @@
 use mockito::Server;
-use splice_lib::commands::health::probe_health;
+use quantamind_lib::commands::health::probe_health;
 
 #[tokio::test]
 async fn available_with_version_on_200() {

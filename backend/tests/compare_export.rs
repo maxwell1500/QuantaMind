@@ -1,5 +1,5 @@
-use splice_lib::commands::compare_export::save_inner;
-use splice_lib::errors::AppError;
+use quantamind_lib::commands::compare_export::save_inner;
+use quantamind_lib::errors::AppError;
 use tempfile::tempdir;
 
 #[test]

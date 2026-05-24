@@ -1,6 +1,6 @@
 use mockito::Server;
-use splice_lib::commands::prompt::run_prompt_inner;
-use splice_lib::errors::AppError;
+use quantamind_lib::commands::prompt::run_prompt_inner;
+use quantamind_lib::errors::AppError;
 use tokio_util::sync::CancellationToken;
 
 #[tokio::test]

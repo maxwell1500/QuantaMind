@@ -1,6 +1,6 @@
 use mockito::{Matcher, Server};
-use splice_lib::errors::AppError;
-use splice_lib::inference::hf_browse::repo_gguf_files;
+use quantamind_lib::errors::AppError;
+use quantamind_lib::inference::hf_browse::repo_gguf_files;
 
 #[tokio::test]
 async fn returns_only_gguf_files_with_sizes() {
