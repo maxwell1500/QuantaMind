@@ -35,7 +35,7 @@ async fn emit_failure_cancels_stream_and_metrics_match_real_emits() {
     };
     let handler = make_token_handler(fake_emit, cancel.clone(), timing.clone());
 
-    let result = run_prompt_inner(&server.url(), "m", "p", cancel.clone(), handler).await;
+    let result = run_prompt_inner(&server.url(), "m", "p", None, cancel.clone(), handler).await;
 
     assert!(result.is_ok(), "stream should exit cleanly on emit-failure cancel");
     assert!(cancel.is_cancelled(), "emit failure must have triggered cancel");

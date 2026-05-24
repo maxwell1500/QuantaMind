@@ -11,6 +11,7 @@ import { AddModelModal } from "../../models/components/AddModelModal";
 
 export function Workspace() {
   const [model, setModel] = useState<string | null>(null);
+  const [systemPrompt, setSystemPrompt] = useState("");
   const [prompt, setPrompt] = useState("");
   const [modalOpen, setModalOpen] = useState(false);
   const { output, status, error, metrics, cancelledInfo, start, cancel } =
@@ -26,11 +27,23 @@ export function Workspace() {
         />
       </div>
       <AddModelModal isOpen={modalOpen} onClose={() => setModalOpen(false)} />
-      <PromptEditor value={prompt} onChange={setPrompt} />
+      <PromptEditor
+        value={systemPrompt}
+        onChange={setSystemPrompt}
+        label="System prompt (optional)"
+        testId="system-prompt-editor"
+        height="120px"
+      />
+      <PromptEditor
+        value={prompt}
+        onChange={setPrompt}
+        label="User prompt"
+        testId="user-prompt-editor"
+      />
       <RunControls
         status={status}
         canRun={!!model && prompt.trim().length > 0}
-        onRun={() => model && start(model, prompt)}
+        onRun={() => model && start(model, prompt, systemPrompt)}
         onCancel={cancel}
       />
       <OutputStream output={output} />

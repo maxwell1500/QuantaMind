@@ -1,5 +1,5 @@
 import { describe, it, expect, vi, beforeEach } from "vitest";
-import { render, screen, fireEvent, waitFor, act } from "@testing-library/react";
+import { render, screen, fireEvent, waitFor, act, within } from "@testing-library/react";
 
 vi.mock("@tauri-apps/api/core", () => ({ invoke: vi.fn() }));
 vi.mock("@tauri-apps/api/event", () => ({ listen: vi.fn() }));
@@ -74,8 +74,9 @@ describe("Phase 1 E2E smoke — edit → run → save → load → re-run", () =
       expect(handlers["prompt-token"]).toBeDefined(),
     );
 
-    // 1. EDIT
-    const editor = await screen.findByTestId("prompt-input");
+    // 1. EDIT — Workspace now has two PromptEditors (system + user); scope to user
+    const userEditorWrap = await screen.findByTestId("user-prompt-editor");
+    const editor = within(userEditorWrap).getByTestId("prompt-input");
     fireEvent.change(editor, { target: { value: "Why is the sky blue?" } });
     const select = (await screen.findByRole("combobox", {
       name: /model/i,
@@ -125,9 +126,9 @@ describe("Phase 1 E2E smoke — edit → run → save → load → re-run", () =
     fireEvent.change(editor, { target: { value: "scratch" } });
     fireEvent.click(screen.getByRole("button", { name: /load/i }));
     await waitFor(() =>
-      expect((screen.getByTestId("prompt-input") as HTMLTextAreaElement).value).toBe(
-        "Why is the sky blue?",
-      ),
+      expect(
+        (within(screen.getByTestId("user-prompt-editor")).getByTestId("prompt-input") as HTMLTextAreaElement).value,
+      ).toBe("Why is the sky blue?"),
     );
     expect(select.value).toBe("llama3.2:1b");
 
@@ -142,7 +143,8 @@ describe("Phase 1 E2E smoke — edit → run → save → load → re-run", () =
   it("cancel mid-stream produces a distinct cancelled terminal state", async () => {
     render(<App />);
     await waitFor(() => expect(handlers["prompt-cancelled"]).toBeDefined());
-    fireEvent.change(await screen.findByTestId("prompt-input"), {
+    const userWrap = await screen.findByTestId("user-prompt-editor");
+    fireEvent.change(within(userWrap).getByTestId("prompt-input"), {
       target: { value: "x" },
     });
     await screen.findByRole("option", { name: "llama3.2:1b" });

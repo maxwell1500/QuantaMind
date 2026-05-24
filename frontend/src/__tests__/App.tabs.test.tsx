@@ -1,5 +1,5 @@
 import { describe, it, expect, vi, beforeEach } from "vitest";
-import { render, screen, fireEvent } from "@testing-library/react";
+import { render, screen, fireEvent, within } from "@testing-library/react";
 
 vi.mock("@tauri-apps/api/core", () => ({ invoke: vi.fn() }));
 vi.mock("@tauri-apps/api/event", () => ({ listen: vi.fn().mockResolvedValue(() => {}) }));
@@ -52,12 +52,15 @@ describe("App tab strip", () => {
 
   it("Workspace's own React state also survives the toggle (both views kept mounted)", () => {
     render(<App />);
-    // Workspace owns its prompt in useState; mock Monaco renders a textarea
-    // we can type into to verify it survives the round-trip.
-    const wsPrompt = screen.getByTestId("prompt-input") as HTMLTextAreaElement;
-    fireEvent.change(wsPrompt, { target: { value: "ws value" } });
+    // Workspace owns its prompts in useState; scope to the user-prompt
+    // editor (there are now two: system + user).
+    const userEditor = within(screen.getByTestId("user-prompt-editor"))
+      .getByTestId("prompt-input") as HTMLTextAreaElement;
+    fireEvent.change(userEditor, { target: { value: "ws value" } });
     fireEvent.click(screen.getByTestId("view-tab-compare"));
     fireEvent.click(screen.getByTestId("view-tab-workspace"));
-    expect((screen.getByTestId("prompt-input") as HTMLTextAreaElement).value).toBe("ws value");
+    const afterToggle = within(screen.getByTestId("user-prompt-editor"))
+      .getByTestId("prompt-input") as HTMLTextAreaElement;
+    expect(afterToggle.value).toBe("ws value");
   });
 });

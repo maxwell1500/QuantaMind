@@ -70,14 +70,17 @@ export function useStreamingRun() {
     };
   }, []);
 
-  const start = useCallback(async (model: string, prompt: string) => {
+  const start = useCallback(async (model: string, prompt: string, system?: string) => {
     setOutput("");
     setMetrics(null);
     setCancelledInfo(null);
     setError(null);
     setStatus("running");
     try {
-      const call = invoke("run_prompt", { model, prompt });
+      const args: Record<string, unknown> = { model, prompt };
+      const trimmed = system?.trim();
+      if (trimmed) args.system = trimmed;
+      const call = invoke("run_prompt", args);
       await withTimeout(call, RUN_PROMPT_TIMEOUT_MS, "run_prompt");
     } catch (e) {
       setError(formatIpcError(e));

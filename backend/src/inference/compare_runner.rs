@@ -93,7 +93,7 @@ pub(crate) async fn run_one_row(
         row_token.clone(),
         timing.clone(),
     );
-    let result = stream_generate(endpoint, &row.model, prompt, row_token.clone(), handler).await;
+    let result = stream_generate(endpoint, &row.model, prompt, None, row_token.clone(), handler).await;
     state.rows.lock_recover().remove(&row.model_id);
     finalize_row(emit_fn, row, &timing, &row_token, result);
 }

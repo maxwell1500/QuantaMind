@@ -36,11 +36,12 @@ pub async fn run_prompt_inner(
     endpoint: &str,
     model: &str,
     prompt: &str,
+    system: Option<&str>,
     cancel: CancellationToken,
     on_token: impl FnMut(&str),
 ) -> AppResult<()> {
     validate(model, prompt)?;
-    stream_generate(endpoint, model, prompt, cancel, on_token).await
+    stream_generate(endpoint, model, prompt, system, cancel, on_token).await
 }
 
 #[tauri::command]
@@ -49,6 +50,7 @@ pub async fn run_prompt(
     state: tauri::State<'_, RunState>,
     model: String,
     prompt: String,
+    system: Option<String>,
 ) -> Result<(), AppError> {
     let token = CancellationToken::new();
     {
@@ -66,7 +68,10 @@ pub async fn run_prompt(
         token.clone(),
         timing.clone(),
     );
-    let result = run_prompt_inner(DEFAULT_OLLAMA, &model, &prompt, token.clone(), handler).await;
+    let system_trim = system.as_deref().map(str::trim).filter(|s| !s.is_empty());
+    let result = run_prompt_inner(
+        DEFAULT_OLLAMA, &model, &prompt, system_trim, token.clone(), handler,
+    ).await;
 
     *state.current.lock_recover() = None;
 

@@ -8,6 +8,8 @@ use tokio_util::sync::CancellationToken;
 struct GenerateRequest<'a> {
     model: &'a str,
     prompt: &'a str,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    system: Option<&'a str>,
     stream: bool,
 }
 
@@ -22,11 +24,12 @@ pub async fn stream_generate(
     endpoint: &str,
     model: &str,
     prompt: &str,
+    system: Option<&str>,
     cancel: CancellationToken,
     mut on_token: impl FnMut(&str),
 ) -> AppResult<()> {
     let client = streaming_client()?;
-    let body = GenerateRequest { model, prompt, stream: true };
+    let body = GenerateRequest { model, prompt, system, stream: true };
     let resp = client
         .post(format!("{endpoint}/api/generate"))
         .json(&body)
