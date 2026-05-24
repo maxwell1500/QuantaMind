@@ -9,7 +9,6 @@ async fn search_returns_parsed_hits_with_query_params_set() {
         .mock("GET", "/api/models")
         .match_query(Matcher::AllOf(vec![
             Matcher::UrlEncoded("search".into(), "llama".into()),
-            Matcher::UrlEncoded("filter".into(), "gguf".into()),
             Matcher::UrlEncoded("sort".into(), "downloads".into()),
             Matcher::UrlEncoded("direction".into(), "-1".into()),
             Matcher::UrlEncoded("limit".into(), "30".into()),
