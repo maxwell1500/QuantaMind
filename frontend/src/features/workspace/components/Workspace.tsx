@@ -7,26 +7,19 @@ import { WorkspaceIO } from "./WorkspaceIO";
 import { StatusBar } from "./StatusBar";
 import { useStreamingRun } from "../hooks/useStreamingRun";
 import { formatMetrics } from "../format";
-import { AddModelModal } from "../../models/components/AddModelModal";
 
 export function Workspace() {
   const [model, setModel] = useState<string | null>(null);
   const [systemPrompt, setSystemPrompt] = useState("");
   const [prompt, setPrompt] = useState("");
-  const [modalOpen, setModalOpen] = useState(false);
   const { output, status, error, metrics, cancelledInfo, start, cancel } =
     useStreamingRun();
   const pickerRef = useRef<HTMLDivElement>(null);
   return (
     <div className="space-y-3">
       <div ref={pickerRef}>
-        <ModelPicker
-          value={model}
-          onChange={setModel}
-          onAddClick={() => setModalOpen(true)}
-        />
+        <ModelPicker value={model} onChange={setModel} />
       </div>
-      <AddModelModal isOpen={modalOpen} onClose={() => setModalOpen(false)} />
       <PromptEditor
         value={systemPrompt}
         onChange={setSystemPrompt}

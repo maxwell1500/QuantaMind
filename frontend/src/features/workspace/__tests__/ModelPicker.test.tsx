@@ -11,6 +11,7 @@ vi.mock("@tauri-apps/api/event", () => ({
 import { getInstalledModelsWithStats } from "../../../shared/ipc/storage";
 import { ModelPicker } from "../components/ModelPicker";
 import { useWorkspaceStore } from "../state/workspaceStore";
+import { useNavStore } from "../../../shared/state/navStore";
 
 const M = (name: string, family = "llama") => ({
   name, size_bytes: 1_000_000_000, modified_at: "", family,
@@ -83,5 +84,13 @@ describe("ModelPicker", () => {
     useWorkspaceStore.getState().setOllamaHealthy(true);
     await new Promise((r) => setTimeout(r, 0));
     expect(getInstalledModelsWithStats).toHaveBeenCalledTimes(1);
+  });
+
+  it("Add Model button navigates the top tab to 'models' via navStore", async () => {
+    vi.mocked(getInstalledModelsWithStats).mockResolvedValue([]);
+    useNavStore.setState({ topView: "workspace" });
+    render(<ModelPicker value={null} onChange={() => {}} />);
+    fireEvent.click(screen.getByTestId("add-model-button"));
+    expect(useNavStore.getState().topView).toBe("models");
   });
 });

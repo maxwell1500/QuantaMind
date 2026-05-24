@@ -7,16 +7,17 @@ import {
 import { formatIpcError } from "../../../shared/ipc/error";
 import { isEmbeddingModel } from "../../../shared/models/classify";
 import { useWorkspaceStore } from "../state/workspaceStore";
+import { useNavStore } from "../../../shared/state/navStore";
 
 type Props = {
   value: string | null;
   onChange: (model: string) => void;
-  onAddClick?: () => void;
 };
 
 const EVENT_MODELS_CHANGED = "models-changed";
 
-export function ModelPicker({ value, onChange, onAddClick }: Props) {
+export function ModelPicker({ value, onChange }: Props) {
+  const goToModels = useNavStore((s) => s.setTopView);
   const [models, setModels] = useState<InstalledModelInfo[]>([]);
   const [error, setError] = useState<string | null>(null);
   const ollamaHealthy = useWorkspaceStore((s) => s.ollamaHealthy);
@@ -70,16 +71,14 @@ export function ModelPicker({ value, onChange, onAddClick }: Props) {
           ))}
         </select>
       )}
-      {onAddClick && (
-        <button
-          type="button"
-          onClick={onAddClick}
-          className="border rounded px-3 py-1 text-sm hover:bg-gray-50"
-          data-testid="add-model-button"
-        >
-          Add Model
-        </button>
-      )}
+      <button
+        type="button"
+        onClick={() => goToModels("models")}
+        className="border rounded px-3 py-1 text-sm hover:bg-gray-50"
+        data-testid="add-model-button"
+      >
+        Add Model
+      </button>
     </div>
   );
 }
