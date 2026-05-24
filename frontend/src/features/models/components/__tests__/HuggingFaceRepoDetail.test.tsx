@@ -69,6 +69,25 @@ describe("HuggingFaceRepoDetail (live variants)", () => {
     expect(screen.getByRole("button", { name: /retry/i })).toBeInTheDocument();
   });
 
+  it("shows 'Not supported' for mmproj projection variants instead of an Install button", async () => {
+    vi.mocked(invoke).mockImplementation((cmd: string) => {
+      if (cmd === "hf_repo_files") return Promise.resolve([
+        { path: "Test-7B-Q4_K_M.gguf", size_bytes: 4_000_000_000 },
+        { path: "mmproj-gemma-4-26b-a4b-it-bf16.gguf", size_bytes: 1_100_000_000 },
+      ]);
+      if (cmd === "list_models") return Promise.resolve([]);
+      return Promise.reject(new Error(`unknown ${cmd}`));
+    });
+    render(<HuggingFaceRepoDetail repo={REPO} onBack={() => {}} />);
+    // Standalone variant still has an Install button
+    await screen.findByTestId("variant-Q4_K_M");
+    expect(screen.getByRole("button", { name: /install/i })).toBeInTheDocument();
+    // mmproj variant is blocked with a "Not supported" label
+    const blocked = await screen.findByTestId("variant-blocked-BF16");
+    expect(blocked).toHaveTextContent(/Projection layer.*Not supported/);
+    expect(blocked).toHaveAttribute("title", expect.stringMatching(/multimodal|projection/i));
+  });
+
   it("installing event flips status to 'Installing…'", async () => {
     vi.mocked(invoke).mockImplementation((cmd: string) => {
       if (cmd === "hf_repo_files") return Promise.resolve(FILES);

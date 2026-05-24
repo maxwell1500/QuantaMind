@@ -3,6 +3,7 @@ import { listen } from "@tauri-apps/api/event";
 import { useHfInstall } from "../hooks/useHfInstall";
 import { useHfRepoVariants, type HfVariantView } from "../hooks/useHfRepoVariants";
 import { hfVariantModelName } from "../format";
+import { classifyHfVariant } from "../classify_variant";
 import { formatBytes } from "../../../shared/format/bytes";
 import { listModels } from "../../../shared/ipc/client";
 import { formatIpcError } from "../../../shared/ipc/error";
@@ -61,6 +62,8 @@ export function HuggingFaceRepoDetail({ repo, onBack }: Props) {
           <tbody>
             {variants.map((v) => {
               const isInstalled = installed.has(variantName(v));
+              const klass = classifyHfVariant(v.filename);
+              const blocked = klass.kind !== "model";
               return (
                 <tr key={v.filename} className="border-t" data-testid={`variant-${v.quantization}`}>
                   <td className="py-1 pr-2 break-all">{v.filename}</td>
@@ -69,6 +72,14 @@ export function HuggingFaceRepoDetail({ repo, onBack }: Props) {
                   <td className="py-1">
                     {isInstalled ? (
                       <span className="text-xs text-green-600" data-testid={`variant-installed-${v.quantization}`}>Installed ✓</span>
+                    ) : blocked ? (
+                      <span
+                        className="text-xs text-amber-700"
+                        title={klass.reason}
+                        data-testid={`variant-blocked-${v.quantization}`}
+                      >
+                        {klass.label} · Not supported
+                      </span>
                     ) : (
                       <button type="button" disabled={busy} onClick={() => handleInstall(v)} className="text-xs border rounded px-2 py-1 disabled:opacity-50">
                         {busy ? "…" : "Install"}
