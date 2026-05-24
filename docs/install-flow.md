@@ -157,4 +157,17 @@ The lookup now reads `modelName` directly:
 name of the pull we kicked off so `cancel()` still targets the right
 entry even if the input changed after Install was clicked.
 
-## (Fix 8 — remove_model emits models-changed, pending)
+## remove_model emits models-changed
+
+`backend/src/commands/storage.rs`.
+
+Removal was the symmetric blind spot to the install paths: a
+successful `DELETE /api/delete` returned silently without telling
+the frontend to refresh. The `installedModelsStore`-driven UI would
+keep showing the deleted model until the user navigated.
+
+`remove_model` now takes an `AppHandle` and emits
+`EVENT_MODELS_CHANGED` after a successful inner call, mirroring the
+pattern used by `install_local_gguf` and `install_hf_gguf`. The
+centralized `installedModelsBus` catches the event and drives
+`installedModelsStore.refresh()`, so every consumer re-fetches once.
