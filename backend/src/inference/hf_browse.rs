@@ -44,7 +44,12 @@ pub async fn search_models(endpoint: &str, query: &str, limit: u32) -> AppResult
         .get(format!("{endpoint}/api/models"))
         .query(&[
             ("search", query.to_string()),
-            ("library", "gguf".to_string()),
+            // `filter=gguf` matches the `gguf` tag (set on every GGUF
+            // mirror repo on HF). `library=gguf` only matches repos that
+            // explicitly set library_name="gguf" in their metadata,
+            // which most mirrors leave unset — so the wider filter is
+            // the one that actually gets us GGUF-only results.
+            ("filter", "gguf".to_string()),
             ("sort", "downloads".to_string()),
             ("direction", "-1".to_string()),
             ("limit", limit.to_string()),
@@ -54,10 +59,16 @@ pub async fn search_models(endpoint: &str, query: &str, limit: u32) -> AppResult
     if let Some(err) = map_status(resp.status(), "hf search") { return Err(err); }
     let raw: Vec<RawHit> = resp.json().await
         .map_err(|e| AppError::Inference(format!("bad HF search body: {e}")))?;
-    Ok(raw.into_iter().map(|h| HfSearchHit {
-        id: h.id, downloads: h.downloads, likes: h.likes,
-        tags: h.tags, last_modified: h.last_modified,
-    }).collect())
+    // Defense-in-depth: HF occasionally returns repos missing the gguf
+    // tag despite the filter (stale index). Drop any hit that doesn't
+    // carry the tag so the user only ever sees GGUF-ready repos.
+    Ok(raw.into_iter()
+        .filter(|h| h.tags.iter().any(|t| t.eq_ignore_ascii_case("gguf")))
+        .map(|h| HfSearchHit {
+            id: h.id, downloads: h.downloads, likes: h.likes,
+            tags: h.tags, last_modified: h.last_modified,
+        })
+        .collect())
 }
 
 /// Lists `.gguf` files in the repo at `main`, with file sizes from the

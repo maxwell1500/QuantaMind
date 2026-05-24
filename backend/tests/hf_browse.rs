@@ -9,7 +9,7 @@ async fn search_returns_parsed_hits_with_query_params_set() {
         .mock("GET", "/api/models")
         .match_query(Matcher::AllOf(vec![
             Matcher::UrlEncoded("search".into(), "llama".into()),
-            Matcher::UrlEncoded("library".into(), "gguf".into()),
+            Matcher::UrlEncoded("filter".into(), "gguf".into()),
             Matcher::UrlEncoded("sort".into(), "downloads".into()),
             Matcher::UrlEncoded("direction".into(), "-1".into()),
             Matcher::UrlEncoded("limit".into(), "30".into()),
@@ -30,6 +30,23 @@ async fn search_returns_parsed_hits_with_query_params_set() {
     assert_eq!(hits[0].last_modified.as_deref(), Some("2024-09-25T00:00:00.000Z"));
     assert_eq!(hits[1].id, "other/Model-GGUF");
     assert!(hits[1].last_modified.is_none());
+}
+
+#[tokio::test]
+async fn drops_results_that_do_not_carry_the_gguf_tag() {
+    let mut s = Server::new_async().await;
+    let _m = s.mock("GET", "/api/models")
+        .match_query(Matcher::Any)
+        .with_status(200)
+        .with_body(r#"[
+            {"id":"a/GGUF","downloads":1,"likes":0,"tags":["gguf"]},
+            {"id":"b/no-gguf","downloads":1,"likes":0,"tags":["transformers"]},
+            {"id":"c/GGUF","downloads":1,"likes":0,"tags":["GGUF"]}
+        ]"#)
+        .create_async().await;
+    let hits = search_models(&s.url(), "x", 30).await.expect("ok");
+    let ids: Vec<&str> = hits.iter().map(|h| h.id.as_str()).collect();
+    assert_eq!(ids, vec!["a/GGUF", "c/GGUF"], "non-gguf hit must be filtered");
 }
 
 #[tokio::test]
