@@ -41,6 +41,11 @@ describe("friendlyInstallError", () => {
     expect(friendlyInstallError(e)).toMatch(/unsupported|format/i);
   });
 
+  it("silent-success stream → mmproj / adapter explanation", () => {
+    const e = E("inference", "ollama create: stream ended without success (last status: writing manifest)");
+    expect(friendlyInstallError(e)).toMatch(/projection.*adapter|mmproj|standalone model/i);
+  });
+
   it("timeout kind → network hint", () => {
     expect(friendlyInstallError(E("timeout", "run_prompt timed out after 30000ms"))).toMatch(/timed out.*network/i);
   });

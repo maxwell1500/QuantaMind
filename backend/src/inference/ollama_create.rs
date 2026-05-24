@@ -59,6 +59,7 @@ where F: Fn(CreatePhase) + Send + Sync + 'static,
 async fn consume_ndjson(resp: reqwest::Response) -> AppResult<()> {
     let mut bytes = resp.bytes_stream();
     let mut buf: Vec<u8> = Vec::new();
+    let mut last_status = String::new();
     while let Some(piece) = bytes.next().await {
         let piece = piece.map_err(|e| AppError::Inference(e.to_string()))?;
         buf.extend_from_slice(&piece);
@@ -72,7 +73,15 @@ async fn consume_ndjson(resp: reqwest::Response) -> AppResult<()> {
                 return Err(AppError::Inference(format!("ollama create: {err}")));
             }
             if chunk.status == "success" { return Ok(()); }
+            if !chunk.status.is_empty() { last_status = chunk.status; }
         }
     }
-    Ok(())
+    // Stream ended without an explicit `{"status":"success"}`. Treat as
+    // failure — otherwise we'd report a fake success to the UI for cases
+    // like uploading an mmproj-only or LoRA-only GGUF that Ollama
+    // accepts the bytes for but never registers as a usable model.
+    Err(AppError::Inference(format!(
+        "ollama create: stream ended without success (last status: {})",
+        if last_status.is_empty() { "<none>" } else { &last_status },
+    )))
 }

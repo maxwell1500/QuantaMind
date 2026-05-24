@@ -45,6 +45,9 @@ export function friendlyInstallError(raw: unknown): string {
   if (kind === "timeout" || lower.includes("timed out")) {
     return "The install timed out. Check your network and try again.";
   }
+  if (lower.includes("stream ended without success")) {
+    return "Ollama accepted the upload but never confirmed the model was registered — this usually means the file is a projection / adapter / LoRA fragment (e.g. mmproj-*) rather than a standalone model. Look for a full-model variant in the same repo.";
+  }
   if (lower.includes("create http 400") || lower.includes("create http 422")) {
     return `Ollama rejected the model definition: ${msg.split(": ").slice(-1)[0] ?? msg}`;
   }

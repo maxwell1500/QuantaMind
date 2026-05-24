@@ -84,6 +84,43 @@ async fn create_http_400_includes_ollama_response_body() {
 }
 
 #[tokio::test]
+async fn create_stream_without_success_marker_returns_inference_error() {
+    // mmproj-only / lora-only GGUFs reproduce this: Ollama accepts the
+    // upload, streams a couple of progress chunks, then closes the
+    // connection without ever emitting `{"status":"success"}`. The old
+    // code returned Ok here, falsely reporting success to the UI.
+    let (f, digest) = gguf_fixture(b"mmproj");
+    let mut s = Server::new_async().await;
+    let _h = s.mock("HEAD", format!("/api/blobs/sha256:{digest}").as_str())
+        .with_status(200).create_async().await;
+    let _c = s.mock("POST", "/api/create")
+        .with_status(200)
+        .with_body("{\"status\":\"reading model\"}\n{\"status\":\"writing manifest\"}\n")
+        .create_async().await;
+    match ollama_create(&s.url(), "mmproj:latest", &spec(f.path().to_path_buf()), |_| {}).await {
+        Err(AppError::Inference(msg)) => {
+            assert!(msg.contains("stream ended without success"), "got: {msg}");
+            assert!(msg.contains("writing manifest"), "should surface last status: {msg}");
+        }
+        other => panic!("expected Inference for silent stream end, got {other:?}"),
+    }
+}
+
+#[tokio::test]
+async fn create_empty_stream_returns_inference_error_with_none_status() {
+    let (f, digest) = gguf_fixture(b"empty");
+    let mut s = Server::new_async().await;
+    let _h = s.mock("HEAD", format!("/api/blobs/sha256:{digest}").as_str())
+        .with_status(200).create_async().await;
+    let _c = s.mock("POST", "/api/create")
+        .with_status(200).with_body("").create_async().await;
+    match ollama_create(&s.url(), "x:latest", &spec(f.path().to_path_buf()), |_| {}).await {
+        Err(AppError::Inference(msg)) => assert!(msg.contains("<none>"), "got: {msg}"),
+        other => panic!("expected Inference, got {other:?}"),
+    }
+}
+
+#[tokio::test]
 async fn create_chunk_with_error_aborts_and_propagates_message() {
     let (f, digest) = gguf_fixture(b"y");
     let mut s = Server::new_async().await;
