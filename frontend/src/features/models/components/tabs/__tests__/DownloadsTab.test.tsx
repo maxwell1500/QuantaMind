@@ -17,7 +17,6 @@ import { useModelStore } from "../../../state/modelStore";
 beforeEach(() => {
   useModelStore.setState({
     downloads: {},
-    activeTab: "downloads",
     pendingLocalPath: null,
   });
   vi.mocked(getInstalledModelsWithStats).mockReset();

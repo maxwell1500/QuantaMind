@@ -1,16 +1,10 @@
 import { create } from "zustand";
 import { z } from "zod";
 
-// Narrowed to the three Add-Model sub-tabs in Phase M.5.8's cleanup.
-// Until AddModelModal goes away, the schema accepts the five legacy
-// values so existing tests don't break.
-export const TabIdSchema = z.enum([
-  "ollama",
-  "huggingface",
-  "local",
-  "downloads",
-  "storage",
-]);
+// Narrowed to the three Add-Model sub-tabs now that AddModelModal is
+// gone (M.5.81). Downloads and Storage are top-level tabs via
+// `navStore.topView`, not sub-tabs of the Models page.
+export const TabIdSchema = z.enum(["ollama", "huggingface", "local"]);
 export type TabId = z.infer<typeof TabIdSchema>;
 
 export type DownloadStatus =
