@@ -5,6 +5,7 @@ import {
 } from "../../../shared/ipc/storage";
 import { formatIpcError } from "../../../shared/ipc/error";
 import { formatBytes } from "../../../shared/format/bytes";
+import { isEmbeddingModel } from "../../../shared/models/classify";
 import { useCompareStore } from "../state/compareStore";
 
 type Status = "loading" | "ready" | "error";
@@ -50,25 +51,36 @@ export function ModelMultiSelect() {
           No models installed yet. Add one from the Workspace.
         </div>
       )}
-      {status === "ready" && available.length > 0 && (
-        <div className="flex flex-wrap gap-1">
-          {available.map((m) => {
-            const isSelected = selected.some((s) => s.name === m.name);
-            return (
-              <button
-                key={m.name}
-                type="button"
-                onClick={() => toggle(m)}
-                aria-pressed={isSelected}
-                data-testid={`model-chip-${m.name}`}
-                className={`text-xs border rounded px-2 py-1 ${isSelected ? "bg-blue-600 text-white" : "hover:bg-gray-100"}`}
-              >
-                {m.name} · {formatBytes(m.size_bytes)}
-              </button>
-            );
-          })}
-        </div>
-      )}
+      {status === "ready" && available.length > 0 && (() => {
+        const generative = available.filter((m) => !isEmbeddingModel(m));
+        const hidden = available.length - generative.length;
+        return (
+          <>
+            <div className="flex flex-wrap gap-1">
+              {generative.map((m) => {
+                const isSelected = selected.some((s) => s.name === m.name);
+                return (
+                  <button
+                    key={m.name}
+                    type="button"
+                    onClick={() => toggle(m)}
+                    aria-pressed={isSelected}
+                    data-testid={`model-chip-${m.name}`}
+                    className={`text-xs border rounded px-2 py-1 ${isSelected ? "bg-blue-600 text-white" : "hover:bg-gray-100"}`}
+                  >
+                    {m.name} · {formatBytes(m.size_bytes)}
+                  </button>
+                );
+              })}
+            </div>
+            {hidden > 0 && (
+              <div className="text-xs text-gray-500" data-testid="multi-hidden-count">
+                {hidden} embedding-only model{hidden === 1 ? "" : "s"} hidden
+              </div>
+            )}
+          </>
+        );
+      })()}
     </div>
   );
 }

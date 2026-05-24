@@ -1,81 +1,87 @@
 import { describe, it, expect, vi, beforeEach } from "vitest";
 import { render, screen, fireEvent } from "@testing-library/react";
 
-vi.mock("../../../shared/ipc/client", () => ({
-  listModels: vi.fn(),
+vi.mock("../../../shared/ipc/storage", () => ({
+  getInstalledModelsWithStats: vi.fn(),
 }));
 vi.mock("@tauri-apps/api/event", () => ({
   listen: vi.fn().mockResolvedValue(() => {}),
 }));
 
-import { listModels } from "../../../shared/ipc/client";
+import { getInstalledModelsWithStats } from "../../../shared/ipc/storage";
 import { ModelPicker } from "../components/ModelPicker";
 import { useWorkspaceStore } from "../state/workspaceStore";
 
+const M = (name: string, family = "llama") => ({
+  name, size_bytes: 1_000_000_000, modified_at: "", family,
+  parameter_size: "", quantization: "",
+});
+
 describe("ModelPicker", () => {
   beforeEach(() => {
-    vi.mocked(listModels).mockReset();
+    vi.mocked(getInstalledModelsWithStats).mockReset();
   });
 
-  it("renders each Ollama model name as an option", async () => {
-    vi.mocked(listModels).mockResolvedValue(["llama3.2:1b", "mistral:7b"]);
+  it("renders each generative Ollama model name as an option", async () => {
+    vi.mocked(getInstalledModelsWithStats).mockResolvedValue([M("llama3.2:1b"), M("mistral:7b")]);
     render(<ModelPicker value={null} onChange={() => {}} />);
-    expect(
-      await screen.findByRole("option", { name: "llama3.2:1b" }),
-    ).toBeInTheDocument();
-    expect(
-      screen.getByRole("option", { name: "mistral:7b" }),
-    ).toBeInTheDocument();
+    expect(await screen.findByRole("option", { name: "llama3.2:1b" })).toBeInTheDocument();
+    expect(screen.getByRole("option", { name: "mistral:7b" })).toBeInTheDocument();
+  });
+
+  it("hides embedding models from the dropdown and shows a hidden-count hint", async () => {
+    vi.mocked(getInstalledModelsWithStats).mockResolvedValue([
+      M("llama3.2:1b"),
+      M("nomic-embed-text:latest", "nomic-bert"),
+      M("snowflake-arctic-embed:l", "bert"),
+    ]);
+    render(<ModelPicker value={null} onChange={() => {}} />);
+    await screen.findByRole("option", { name: "llama3.2:1b" });
+    expect(screen.queryByRole("option", { name: "nomic-embed-text:latest" })).toBeNull();
+    expect(screen.queryByRole("option", { name: "snowflake-arctic-embed:l" })).toBeNull();
+    expect(screen.getByTestId("picker-hidden-count")).toHaveTextContent("2 embedding-only models hidden");
   });
 
   it("fires onChange with the selected model name", async () => {
-    vi.mocked(listModels).mockResolvedValue(["llama3.2:1b", "mistral:7b"]);
+    vi.mocked(getInstalledModelsWithStats).mockResolvedValue([M("llama3.2:1b"), M("mistral:7b")]);
     const onChange = vi.fn();
     render(<ModelPicker value={null} onChange={onChange} />);
     await screen.findByRole("option", { name: "mistral:7b" });
-    const select = screen.getByRole("combobox", {
-      name: /model/i,
-    }) as HTMLSelectElement;
+    const select = screen.getByRole("combobox", { name: /model/i }) as HTMLSelectElement;
     fireEvent.change(select, { target: { value: "mistral:7b" } });
     expect(onChange).toHaveBeenCalledWith("mistral:7b");
   });
 
   it("controlled value persists across rerenders", async () => {
-    vi.mocked(listModels).mockResolvedValue(["llama3.2:1b", "mistral:7b"]);
-    const { rerender } = render(
-      <ModelPicker value={null} onChange={() => {}} />,
-    );
+    vi.mocked(getInstalledModelsWithStats).mockResolvedValue([M("llama3.2:1b"), M("mistral:7b")]);
+    const { rerender } = render(<ModelPicker value={null} onChange={() => {}} />);
     await screen.findByRole("option", { name: "mistral:7b" });
     rerender(<ModelPicker value="mistral:7b" onChange={() => {}} />);
-    const select = screen.getByRole("combobox", {
-      name: /model/i,
-    }) as HTMLSelectElement;
+    const select = screen.getByRole("combobox", { name: /model/i }) as HTMLSelectElement;
     expect(select.value).toBe("mistral:7b");
   });
 
-  it("shows an error message when listModels rejects", async () => {
-    vi.mocked(listModels).mockRejectedValue(new Error("HTTP 503"));
+  it("shows an error message when the IPC rejects", async () => {
+    vi.mocked(getInstalledModelsWithStats).mockRejectedValue(new Error("HTTP 503"));
     render(<ModelPicker value={null} onChange={() => {}} />);
     expect(await screen.findByRole("alert")).toHaveTextContent("HTTP 503");
   });
 
-  it("shows friendly Ollama-down message when StatusBar marks health=false even if listModels succeeded", async () => {
-    vi.mocked(listModels).mockResolvedValue(["llama3.2:1b"]);
+  it("shows friendly Ollama-down message when StatusBar marks health=false", async () => {
+    vi.mocked(getInstalledModelsWithStats).mockResolvedValue([M("llama3.2:1b")]);
     render(<ModelPicker value={null} onChange={() => {}} />);
     await screen.findByRole("option", { name: "llama3.2:1b" });
     useWorkspaceStore.getState().setOllamaHealthy(false);
-    expect(await screen.findByRole("alert")).toHaveTextContent(
-      /Ollama is not running/,
-    );
+    expect(await screen.findByRole("alert")).toHaveTextContent(/Ollama is not running/);
   });
 
-  it("refreshes listModels once when health flips from false to true", async () => {
-    vi.mocked(listModels).mockResolvedValue([]);
+  it("refreshes the model list once when health flips from false to true", async () => {
+    vi.mocked(getInstalledModelsWithStats).mockResolvedValue([]);
     useWorkspaceStore.setState({ ollamaHealthy: false });
     render(<ModelPicker value={null} onChange={() => {}} />);
-    vi.mocked(listModels).mockClear();
+    vi.mocked(getInstalledModelsWithStats).mockClear();
     useWorkspaceStore.getState().setOllamaHealthy(true);
     await new Promise((r) => setTimeout(r, 0));
-    expect(listModels).toHaveBeenCalledTimes(1);
+    expect(getInstalledModelsWithStats).toHaveBeenCalledTimes(1);
   });
 });
