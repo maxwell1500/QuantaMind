@@ -59,6 +59,33 @@ async fn http_error_returns_inference_app_error() {
 }
 
 #[tokio::test]
+async fn http_400_includes_ollama_response_body() {
+    let mut server = Server::new_async().await;
+    let _mock = server
+        .mock("POST", "/api/generate")
+        .with_status(400)
+        .with_body(r#"{"error":"model is an embedding model and does not support /api/generate"}"#)
+        .create_async()
+        .await;
+
+    let result = stream_generate(
+        &server.url(),
+        "snowflake-arctic-embed:l",
+        "p",
+        CancellationToken::new(),
+        |_| {},
+    )
+    .await;
+    match result {
+        Err(AppError::Inference(msg)) => {
+            assert!(msg.contains("400"), "msg: {msg}");
+            assert!(msg.contains("embedding model"), "msg should include body: {msg}");
+        }
+        other => panic!("expected Inference err, got {other:?}"),
+    }
+}
+
+#[tokio::test]
 async fn cancellation_mid_stream_stops_emission_no_orphans() {
     let mut server = Server::new_async().await;
     let body = "{\"model\":\"x\",\"response\":\"A\",\"done\":false}\n\

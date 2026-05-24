@@ -1,11 +1,8 @@
 use crate::errors::{AppError, AppResult};
+use crate::inference::http::streaming_client;
 use futures_util::StreamExt;
-use reqwest::Client;
 use serde::{Deserialize, Serialize};
-use std::time::Duration;
 use tokio_util::sync::CancellationToken;
-
-const CONNECT_TIMEOUT: Duration = Duration::from_secs(60);
 
 #[derive(Serialize)]
 struct GenerateRequest<'a> {
@@ -28,10 +25,7 @@ pub async fn stream_generate(
     cancel: CancellationToken,
     mut on_token: impl FnMut(&str),
 ) -> AppResult<()> {
-    let client = Client::builder()
-        .connect_timeout(CONNECT_TIMEOUT)
-        .build()
-        .map_err(|e| AppError::Internal(e.to_string()))?;
+    let client = streaming_client()?;
     let body = GenerateRequest { model, prompt, stream: true };
     let resp = client
         .post(format!("{endpoint}/api/generate"))
@@ -46,8 +40,10 @@ pub async fn stream_generate(
             }
         })?;
 
-    if !resp.status().is_success() {
-        return Err(AppError::Inference(format!("HTTP {}", resp.status())));
+    let status = resp.status();
+    if !status.is_success() {
+        let body_text = resp.text().await.unwrap_or_default();
+        return Err(AppError::Inference(format!("generate HTTP {status}: {body_text}")));
     }
 
     let mut bytes = resp.bytes_stream();
