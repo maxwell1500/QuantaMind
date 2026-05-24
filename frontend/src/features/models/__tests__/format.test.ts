@@ -17,4 +17,14 @@ describe("hfVariantModelName", () => {
     expect(hfVariantModelName("gemma-2-9b-it.gguf", "Q4_K_M"))
       .toBe("gemma-2-9b-it:q4_k_m");
   });
+
+  it("rewrites a subdirectory path's slash into a dash so the name passes validate_name", () => {
+    expect(hfVariantModelName("bert-bge-small/ggml-model-f16-big-endian.gguf", "F16"))
+      .toBe("bert-bge-small-ggml-model-f16-big-endian:f16");
+  });
+
+  it("sanitizes other illegal chars (backslash, whitespace, quotes) into dashes", () => {
+    expect(hfVariantModelName("weird name with\\backslash.gguf"))
+      .toBe("weird-name-with-backslash");
+  });
 });
