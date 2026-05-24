@@ -29,7 +29,7 @@ describe("ModelPicker", () => {
     expect(screen.getByRole("option", { name: "mistral:7b" })).toBeInTheDocument();
   });
 
-  it("hides embedding models from the dropdown and shows a hidden-count hint", async () => {
+  it("silently hides embedding models from the dropdown with no visible hint", async () => {
     vi.mocked(getInstalledModelsWithStats).mockResolvedValue([
       M("llama3.2:1b"),
       M("nomic-embed-text:latest", "nomic-bert"),
@@ -39,7 +39,7 @@ describe("ModelPicker", () => {
     await screen.findByRole("option", { name: "llama3.2:1b" });
     expect(screen.queryByRole("option", { name: "nomic-embed-text:latest" })).toBeNull();
     expect(screen.queryByRole("option", { name: "snowflake-arctic-embed:l" })).toBeNull();
-    expect(screen.getByTestId("picker-hidden-count")).toHaveTextContent("2 embedding-only models hidden");
+    expect(screen.queryByTestId("picker-hidden-count")).toBeNull();
   });
 
   it("fires onChange with the selected model name", async () => {

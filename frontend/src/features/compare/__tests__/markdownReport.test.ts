@@ -27,7 +27,7 @@ describe("toMarkdown", () => {
       now: FIXED,
     });
     const md = toMarkdown(r);
-    expect(md).toContain("# Splice Compare Report");
+    expect(md).toContain("# QuantaMind Compare Report");
     expect(md).toContain("Strategy: sequential");
     expect(md).toContain("Apple Silicon, unified");
     expect(md).toContain("## Prompt");

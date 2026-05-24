@@ -37,7 +37,7 @@ const modelSection = (m: CompareReportModel): string[] => {
 };
 
 export function toMarkdown(r: CompareReport): string {
-  const lines: string[] = ["# Splice Compare Report"];
+  const lines: string[] = ["# QuantaMind Compare Report"];
   lines.push(`- Run at: ${r.generated_at}`);
   lines.push(`- Strategy: ${r.strategy}`);
   const hw = hardwareLine(r);

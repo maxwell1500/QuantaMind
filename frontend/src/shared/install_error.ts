@@ -25,7 +25,7 @@ export function friendlyInstallError(raw: unknown): string {
     return "Ollama isn't running. Start Ollama and try again.";
   }
   if (kind === "auth_required") {
-    return "This Hugging Face repo is gated. Approve access on huggingface.co — Splice doesn't carry HF tokens yet.";
+    return "This Hugging Face repo is gated. Approve access on huggingface.co — QuantaMind doesn't carry HF tokens yet.";
   }
   if (lower.includes("rate limited") || lower.includes("http 429")) {
     return "Hugging Face is rate-limiting requests. Wait a minute and try again.";

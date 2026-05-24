@@ -24,9 +24,9 @@ beforeEach(() => {
 });
 
 describe("App after Workspace extraction", () => {
-  it("renders the Splice heading and the model picker", async () => {
+  it("renders the QuantaMind heading and the model picker", async () => {
     render(<App />);
-    expect(screen.getByRole("heading", { name: "Splice" })).toBeTruthy();
+    expect(screen.getByRole("heading", { name: "QuantaMind" })).toBeTruthy();
     expect(
       await screen.findByRole("combobox", { name: /model/i }),
     ).toBeTruthy();

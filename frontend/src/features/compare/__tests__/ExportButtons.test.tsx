@@ -38,7 +38,7 @@ describe("ExportButtons", () => {
     const call = vi.mocked(invoke).mock.calls.find(([cmd]) => cmd === "save_compare_report");
     expect(call).toBeDefined();
     expect(call![1]).toMatchObject({ path: "/tmp/out.md", format: "md" });
-    expect((call![1] as { contents: string }).contents).toMatch(/^# Splice Compare Report/);
+    expect((call![1] as { contents: string }).contents).toMatch(/^# QuantaMind Compare Report/);
   });
 
   it("Export JSON invokes save_compare_report with .json path and parseable JSON contents", async () => {

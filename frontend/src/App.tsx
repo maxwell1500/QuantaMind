@@ -13,7 +13,10 @@ export default function App() {
   const [view, setView] = useState<View>("workspace");
   return (
     <main className="min-h-screen p-6 pb-14 font-sans space-y-3">
-      <h1 className="text-2xl font-semibold">Splice</h1>
+      <div className="flex items-center gap-2">
+        <img src="/Small_logo.png" alt="QuantaMind" className="h-8 w-8 object-contain" />
+        <h1 className="text-2xl font-semibold">QuantaMind</h1>
+      </div>
       <nav className="flex gap-1 border-b" role="tablist">
         <button
           type="button"

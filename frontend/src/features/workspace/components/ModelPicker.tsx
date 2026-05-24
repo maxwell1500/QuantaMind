@@ -70,11 +70,6 @@ export function ModelPicker({ value, onChange, onAddClick }: Props) {
           ))}
         </select>
       )}
-      {hidden > 0 && !effectiveError && (
-        <span className="text-xs text-gray-500" data-testid="picker-hidden-count">
-          {hidden} embedding-only model{hidden === 1 ? "" : "s"} hidden
-        </span>
-      )}
       {onAddClick && (
         <button
           type="button"
