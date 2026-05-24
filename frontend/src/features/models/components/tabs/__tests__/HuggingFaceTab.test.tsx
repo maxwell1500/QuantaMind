@@ -1,51 +1,79 @@
 import { describe, it, expect, vi, beforeEach } from "vitest";
-import { render, screen, fireEvent } from "@testing-library/react";
+import { render, screen, fireEvent, waitFor, act } from "@testing-library/react";
 
 vi.mock("@tauri-apps/api/core", () => ({ invoke: vi.fn() }));
 vi.mock("@tauri-apps/api/event", () => ({ listen: vi.fn().mockResolvedValue(() => {}) }));
 
+import { invoke } from "@tauri-apps/api/core";
 import { HuggingFaceTab } from "../HuggingFaceTab";
-import { HuggingFaceCatalog } from "../../../data/huggingface-catalog";
+import { useModelStore } from "../../../state/modelStore";
 
-const cardCount = () =>
-  screen.getByTestId("hf-grid").querySelectorAll('[data-testid^="hf-card-"]').length;
+const HIT = (id: string, downloads = 100) => ({
+  id, downloads, likes: 1, tags: ["gguf"], last_modified: null,
+});
 
-beforeEach(() => {});
+beforeEach(() => {
+  vi.mocked(invoke).mockReset();
+  vi.mocked(invoke).mockImplementation((cmd: string) => {
+    if (cmd === "hf_search")
+      return Promise.resolve([HIT("bartowski/Llama-GGUF", 1234), HIT("other/Repo-GGUF", 42)]);
+    if (cmd === "hf_repo_files") return Promise.resolve([]);
+    if (cmd === "list_models") return Promise.resolve([]);
+    return Promise.reject(new Error(`unknown ${cmd}`));
+  });
+  // Reset the persisted HF state so tests don't leak query/selected across runs.
+  useModelStore.setState({ hfSearchQuery: "", hfSelectedRepo: null });
+});
 
-describe("HuggingFaceTab (M.11)", () => {
-  it("renders the full HF catalog when no search", () => {
+describe("HuggingFaceTab (live search)", () => {
+  it("starts in the idle state with a hint and no cards", () => {
     render(<HuggingFaceTab />);
-    expect(cardCount()).toBe(HuggingFaceCatalog.length);
+    expect(screen.getByTestId("hf-idle")).toBeInTheDocument();
+    expect(screen.queryByTestId("hf-card-bartowski/Llama-GGUF")).toBeNull();
   });
 
-  it("search 'qwen' filters to Qwen-family rows only", () => {
+  it("typing triggers an hf_search and renders result cards", async () => {
     render(<HuggingFaceTab />);
-    fireEvent.change(screen.getByLabelText("Search Hugging Face"), {
-      target: { value: "qwen" },
-    });
-    const expected = HuggingFaceCatalog.filter((e) =>
-      `${e.repo} ${e.baseModel} ${e.family} ${e.description}`.toLowerCase().includes("qwen"),
+    fireEvent.change(screen.getByLabelText("Search Hugging Face"), { target: { value: "llama" } });
+    await waitFor(
+      () => expect(invoke).toHaveBeenCalledWith("hf_search", { query: "llama", limit: 30 }),
+      { timeout: 1000 },
     );
-    expect(cardCount()).toBe(expected.length);
-    expect(expected.length).toBeGreaterThan(0);
+    await screen.findByTestId("hf-card-bartowski/Llama-GGUF");
+    expect(screen.getByTestId("hf-card-other/Repo-GGUF")).toBeInTheDocument();
   });
 
-  it("clicking a card opens the repo detail with variant table", () => {
+  it("renders an error state when hf_search rejects", async () => {
+    vi.mocked(invoke).mockImplementation((cmd: string) => {
+      if (cmd === "hf_search") return Promise.reject({ kind: "inference", message: "HF down" });
+      return Promise.resolve([]);
+    });
     render(<HuggingFaceTab />);
-    const first = HuggingFaceCatalog[0];
-    fireEvent.click(screen.getByTestId(`hf-card-${first.repo}`));
+    fireEvent.change(screen.getByLabelText("Search Hugging Face"), { target: { value: "x" } });
+    await screen.findByTestId("hf-error-search", undefined, { timeout: 1000 });
+    expect(screen.getByTestId("hf-error-search")).toHaveTextContent(/HF down/);
+  });
+
+  it("clicking a card opens the repo detail with the right repo", async () => {
+    render(<HuggingFaceTab />);
+    fireEvent.change(screen.getByLabelText("Search Hugging Face"), { target: { value: "llama" } });
+    const card = await screen.findByTestId("hf-card-bartowski/Llama-GGUF", undefined, { timeout: 1000 });
+    fireEvent.click(card);
     expect(screen.getByTestId("hf-repo-detail")).toBeInTheDocument();
-    expect(screen.getByTestId("variant-table")).toBeInTheDocument();
-    for (const v of first.variants) {
-      expect(screen.getByTestId(`variant-${v.quantization}`)).toBeInTheDocument();
-    }
+    expect(screen.getByTestId("hf-repo-detail")).toHaveTextContent("bartowski/Llama-GGUF");
+    expect(useModelStore.getState().hfSelectedRepo).toBe("bartowski/Llama-GGUF");
   });
 
-  it("Back returns from detail view to grid", () => {
+  it("the search query survives a select-then-back round-trip", async () => {
     render(<HuggingFaceTab />);
-    fireEvent.click(screen.getByTestId(`hf-card-${HuggingFaceCatalog[0].repo}`));
-    fireEvent.click(screen.getByRole("button", { name: /back/i }));
-    expect(screen.getByTestId("hf-grid")).toBeInTheDocument();
-    expect(screen.queryByTestId("hf-repo-detail")).toBeNull();
+    fireEvent.change(screen.getByLabelText("Search Hugging Face"), { target: { value: "llama" } });
+    const card = await screen.findByTestId("hf-card-bartowski/Llama-GGUF", undefined, { timeout: 1000 });
+    fireEvent.click(card);
+    // Programmatically clear hfSelectedRepo (the back button's effect).
+    await act(async () => useModelStore.getState().setHfSelectedRepo(null));
+    expect(useModelStore.getState().hfSearchQuery).toBe("llama");
+    // After back the search input shows the query and the cards re-render.
+    expect((screen.getByLabelText("Search Hugging Face") as HTMLInputElement).value).toBe("llama");
+    expect(await screen.findByTestId("hf-card-bartowski/Llama-GGUF")).toBeInTheDocument();
   });
 });

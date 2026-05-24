@@ -1,6 +1,6 @@
 use mockito::Server;
 use sha2::{Digest, Sha256};
-use splice_lib::inference::ollama_blob::{blob_exists, sha256_file, upload_blob};
+use quantamind_lib::inference::ollama_blob::{blob_exists, sha256_file, upload_blob};
 use std::io::Write;
 use std::sync::{Arc, Mutex};
 use tempfile::NamedTempFile;
@@ -71,7 +71,7 @@ async fn upload_blob_5xx_returns_inference_error_with_status() {
     let _m = s.mock("POST", format!("/api/blobs/sha256:{digest}").as_str())
         .with_status(503).create_async().await;
     match upload_blob(&s.url(), &digest, f.path(), |_, _| {}).await {
-        Err(splice_lib::errors::AppError::Inference(msg)) =>
+        Err(quantamind_lib::errors::AppError::Inference(msg)) =>
             assert!(msg.contains("503"), "msg: {msg}"),
         other => panic!("expected Inference, got {other:?}"),
     }

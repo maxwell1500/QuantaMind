@@ -6,7 +6,7 @@ import {
   type DiskUsage,
   type InstalledModelInfo,
 } from "../../../../shared/ipc/storage";
-import { formatBytes } from "../../format";
+import { formatBytes } from "../../../../shared/format/bytes";
 import { StoragePathSection } from "../StoragePathSection";
 import { formatIpcError } from "../../../../shared/ipc/error";
 

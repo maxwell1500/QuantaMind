@@ -46,6 +46,14 @@ partial files or temp Modelfiles after success/cancel paths.
 
 Step ledger lives in `03_phaseM_implementation.md`.
 
+## Phase M.5 — Live browsing + Compare (in progress)
+
+Live HF/Ollama browsing replaces bundled catalogs (`live-browsing.md`),
+and a top-level **Compare** tab is added: multi-model selection,
+hardware gate, three run strategies, per-model streaming, MD+JSON
+export (`compare-feature.md`). Compare graduates to Phase 3 / `features/
+bench/` once a second inference backend lands.
+
 ## Phase 2 — Settings + Persistence
 
 Goal: persistent user settings, model defaults, history of recent runs.

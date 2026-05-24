@@ -6,7 +6,7 @@ import {
   type PathValidation,
   type StoragePathInfo,
 } from "../../../shared/ipc/settings";
-import { formatBytes } from "../format";
+import { formatBytes } from "../../../shared/format/bytes";
 import { formatIpcError } from "../../../shared/ipc/error";
 
 export function StoragePathSection() {

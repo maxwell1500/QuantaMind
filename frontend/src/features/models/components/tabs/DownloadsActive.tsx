@@ -3,7 +3,7 @@ import {
   useModelStore,
   type DownloadEntry,
 } from "../../state/modelStore";
-import { formatBytes } from "../../format";
+import { formatBytes } from "../../../../shared/format/bytes";
 import { formatIpcError } from "../../../../shared/ipc/error";
 import { cancelEntry } from "./cancelEntry";
 

@@ -1,13 +1,10 @@
 import { create } from "zustand";
 import { z } from "zod";
 
-export const TabIdSchema = z.enum([
-  "ollama",
-  "huggingface",
-  "local",
-  "downloads",
-  "storage",
-]);
+// Narrowed to the three Add-Model sub-tabs now that AddModelModal is
+// gone (M.5.81). Downloads and Storage are top-level tabs via
+// `navStore.topView`, not sub-tabs of the Models page.
+export const TabIdSchema = z.enum(["ollama", "huggingface", "local"]);
 export type TabId = z.infer<typeof TabIdSchema>;
 
 export type DownloadStatus =
@@ -38,6 +35,8 @@ export interface ModelStore {
   activeHfName: string | null;
   activeLocalName: string | null;
   pullNames: Record<string, string>;
+  hfSearchQuery: string;
+  hfSelectedRepo: string | null;
   setActiveTab: (t: TabId) => void;
   setPendingLocalPath: (p: string | null) => void;
   upsertDownload: (entry: DownloadEntry) => void;
@@ -46,6 +45,8 @@ export interface ModelStore {
   setActiveLocalName: (n: string | null) => void;
   recordPullName: (pullId: string, name: string) => void;
   removePullName: (pullId: string) => void;
+  setHfSearchQuery: (q: string) => void;
+  setHfSelectedRepo: (repo: string | null) => void;
 }
 
 export const useModelStore = create<ModelStore>((set) => ({
@@ -55,6 +56,8 @@ export const useModelStore = create<ModelStore>((set) => ({
   activeHfName: null,
   activeLocalName: null,
   pullNames: {},
+  hfSearchQuery: "",
+  hfSelectedRepo: null,
   setActiveTab: (t) => set({ activeTab: t }),
   setPendingLocalPath: (p) => set({ pendingLocalPath: p }),
   upsertDownload: (entry) =>
@@ -75,11 +78,13 @@ export const useModelStore = create<ModelStore>((set) => ({
       delete next[pullId];
       return { pullNames: next };
     }),
+  setHfSearchQuery: (q) => set({ hfSearchQuery: q }),
+  setHfSelectedRepo: (repo) => set({ hfSelectedRepo: repo }),
 }));
 
 /// Pick the first download entry that's actively in flight, if any.
-/// Used by AddModelModal's footer and any other "one summary line"
-/// surface; replaces the legacy `installInFlight` slot.
+/// Used by any "one summary line" surface (the page footer, status bar,
+/// etc.); replaces the legacy `installInFlight` slot.
 export function findActiveDownload(
   downloads: Record<string, DownloadEntry>,
 ): DownloadEntry | undefined {

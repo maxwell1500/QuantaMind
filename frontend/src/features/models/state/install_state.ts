@@ -73,5 +73,7 @@ export function applyProgress(
       return { ...state, status: "pulling", phase: "writing" };
     case "success":
       return { ...state, status: "success", phase: null };
+    case "failed":
+      return { ...state, status: "error", phase: null, error: progress.message };
   }
 }

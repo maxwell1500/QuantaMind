@@ -1,7 +1,7 @@
 use mockito::Server;
-use splice_lib::commands::storage::{fetch_installed_with_stats, remove_model_inner};
-use splice_lib::commands::storage_disk::compute_disk_usage;
-use splice_lib::errors::AppError;
+use quantamind_lib::commands::storage::{fetch_installed_with_stats, remove_model_inner};
+use quantamind_lib::commands::storage_disk::compute_disk_usage;
+use quantamind_lib::errors::AppError;
 use std::path::Path;
 
 #[tokio::test]

@@ -1,6 +1,6 @@
 use mockito::Server;
-use splice_lib::commands::prompt::run_prompt_inner;
-use splice_lib::errors::AppError;
+use quantamind_lib::commands::prompt::run_prompt_inner;
+use quantamind_lib::errors::AppError;
 use tokio_util::sync::CancellationToken;
 
 #[tokio::test]
@@ -23,6 +23,7 @@ async fn tokens_arrive_in_order_and_concat_to_fixture() {
         &server.url(),
         "x",
         "Why is the sky blue?",
+        None,
         CancellationToken::new(),
         |t| tokens.push(t.to_string()),
     )
@@ -46,6 +47,7 @@ async fn empty_prompt_rejected_before_http() {
         &server.url(),
         "x",
         "   ",
+        None,
         CancellationToken::new(),
         |_| {},
     )
@@ -66,7 +68,7 @@ async fn empty_model_rejected_before_http() {
         .create_async()
         .await;
 
-    match run_prompt_inner(&server.url(), "", "hi", CancellationToken::new(), |_| {}).await {
+    match run_prompt_inner(&server.url(), "", "hi", None, CancellationToken::new(), |_| {}).await {
         Err(AppError::Validation(msg)) => assert!(msg.contains("model"), "msg: {msg}"),
         other => panic!("expected Validation err, got {other:?}"),
     }

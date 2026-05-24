@@ -21,6 +21,8 @@ function setup(overrides: Partial<React.ComponentProps<typeof LocalFilePreview>>
     name: "llama3-8b-q4_k_m",
     onNameChange, onImport, onCancel,
     busy: false,
+    percent: 0,
+    phaseLabel: null as string | null,
     error: null as string | null,
     conflict: false,
     ...overrides,

@@ -4,7 +4,7 @@ import {
   installHfGguf,
   type HfPhase,
 } from "../../../shared/ipc/hf_install";
-import { formatIpcError } from "../../../shared/ipc/error";
+import { friendlyInstallError } from "../../../shared/install_error";
 import { useModelStore } from "../state/modelStore";
 import { startDownloadEventBus } from "../state/downloadEventBus";
 
@@ -60,7 +60,7 @@ export function useHfInstall() {
       await installHfGguf(repo, filename, name);
       upsertDownload({ id: name, source: "huggingface", name, status: "success", percent: 100 });
     } catch (e) {
-      const msg = formatIpcError(e);
+      const msg = friendlyInstallError(e);
       upsertDownload({ id: name, source: "huggingface", name, status: "error", percent: 0, error: msg });
     }
   }, [setActiveHfName, upsertDownload]);

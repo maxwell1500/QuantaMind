@@ -1,65 +1,52 @@
-import { useRef, useState } from "react";
-import { ModelPicker } from "./features/workspace/components/ModelPicker";
-import { PromptEditor } from "./features/workspace/components/PromptEditor";
-import { OutputStream } from "./features/workspace/components/OutputStream";
-import { RunControls } from "./features/workspace/components/RunControls";
-import { WorkspaceIO } from "./features/workspace/components/WorkspaceIO";
-import { StatusBar } from "./features/workspace/components/StatusBar";
-import { useStreamingRun } from "./features/workspace/hooks/useStreamingRun";
-import { formatMetrics } from "./features/workspace/format";
-import { AddModelModal } from "./features/models/components/AddModelModal";
+import { Workspace } from "./features/workspace/components/Workspace";
+import { CompareTab } from "./features/compare/components/CompareTab";
+import { ModelsPage } from "./features/models/components/ModelsPage";
+import { DownloadsPage } from "./features/models/components/DownloadsPage";
+import { StoragePage } from "./features/models/components/StoragePage";
+import { useNavStore, type TopView } from "./shared/state/navStore";
+
+const TABS: { id: TopView; label: string }[] = [
+  { id: "workspace", label: "Workspace" },
+  { id: "compare", label: "Compare" },
+  { id: "models", label: "Models" },
+  { id: "downloads", label: "Downloads" },
+  { id: "storage", label: "Storage" },
+];
+
+const tabClass = (active: boolean) =>
+  active
+    ? "border-b-2 border-blue-600 px-3 py-1 text-sm font-medium"
+    : "px-3 py-1 text-sm text-gray-600 hover:text-black";
 
 export default function App() {
-  const [model, setModel] = useState<string | null>(null);
-  const [prompt, setPrompt] = useState("");
-  const [modalOpen, setModalOpen] = useState(false);
-  const { output, status, error, metrics, cancelledInfo, start, cancel } =
-    useStreamingRun();
-  const pickerRef = useRef<HTMLDivElement>(null);
+  const view = useNavStore((s) => s.topView);
+  const setView = useNavStore((s) => s.setTopView);
   return (
     <main className="min-h-screen p-6 pb-14 font-sans space-y-3">
-      <h1 className="text-2xl font-semibold">Splice</h1>
-      <div ref={pickerRef}>
-        <ModelPicker
-          value={model}
-          onChange={setModel}
-          onAddClick={() => setModalOpen(true)}
-        />
+      <div className="flex items-center gap-2">
+        <img src="/Small_logo.png" alt="QuantaMind" className="h-8 w-8 object-contain" />
+        <h1 className="text-2xl font-semibold">QuantaMind</h1>
       </div>
-      <AddModelModal isOpen={modalOpen} onClose={() => setModalOpen(false)} />
-      <PromptEditor value={prompt} onChange={setPrompt} />
-      <RunControls
-        status={status}
-        canRun={!!model && prompt.trim().length > 0}
-        onRun={() => model && start(model, prompt)}
-        onCancel={cancel}
-      />
-      <OutputStream output={output} />
-      {metrics && (
-        <p className="text-xs text-gray-600" data-testid="metrics">
-          {formatMetrics(metrics)}
-        </p>
-      )}
-      {cancelledInfo && (
-        <p className="text-xs text-amber-700" data-testid="cancelled-info">
-          Cancelled · {cancelledInfo.token_count} tokens
-        </p>
-      )}
-      {error && <p className="text-red-600 text-sm">{error}</p>}
-      <WorkspaceIO
-        model={model}
-        prompt={prompt}
-        onLoad={(m, p) => {
-          setModel(m);
-          setPrompt(p);
-        }}
-      />
-      <StatusBar
-        model={model}
-        onModelClick={() =>
-          pickerRef.current?.scrollIntoView({ behavior: "smooth" })
-        }
-      />
+      <nav className="flex gap-1 border-b" role="tablist">
+        {TABS.map((t) => (
+          <button
+            key={t.id}
+            type="button"
+            role="tab"
+            aria-selected={view === t.id}
+            onClick={() => setView(t.id)}
+            className={tabClass(view === t.id)}
+            data-testid={`view-tab-${t.id}`}
+          >
+            {t.label}
+          </button>
+        ))}
+      </nav>
+      <div hidden={view !== "workspace"} data-testid="view-workspace"><Workspace /></div>
+      <div hidden={view !== "compare"} data-testid="view-compare"><CompareTab /></div>
+      <div hidden={view !== "models"} data-testid="view-models"><ModelsPage /></div>
+      <div hidden={view !== "downloads"} data-testid="view-downloads"><DownloadsPage /></div>
+      <div hidden={view !== "storage"} data-testid="view-storage"><StoragePage /></div>
     </main>
   );
 }

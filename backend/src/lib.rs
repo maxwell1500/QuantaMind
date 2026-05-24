@@ -13,10 +13,17 @@ pub fn run() {
         .manage(commands::prompt::RunState::default())
         .manage(commands::models_pull::PullState::default())
         .manage(commands::hf_install::HfInstallState::default())
+        .manage(commands::compare::CompareRunState::default())
         .invoke_handler(tauri::generate_handler![
             commands::feasibility::check_install_feasibility,
             commands::gguf_cmd::inspect_gguf,
+            commands::hardware::get_hardware_snapshot,
+            commands::compare::run_compare,
+            commands::compare::stop_compare,
+            commands::compare_export::save_compare_report,
             commands::gguf_cmd::install_local_gguf,
+            commands::hf_browse::hf_search,
+            commands::hf_browse::hf_repo_files,
             commands::hf_install::install_hf_gguf,
             commands::hf_install::cancel_hf_install,
             commands::health::check_ollama_health,

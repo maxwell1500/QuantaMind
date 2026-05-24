@@ -1,4 +1,4 @@
-use splice_lib::commands::settings::validate_storage_path;
+use quantamind_lib::commands::settings::validate_storage_path;
 use std::io::Write;
 
 #[test]

@@ -1,92 +1,88 @@
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useState } from "react";
+import { listen } from "@tauri-apps/api/event";
 import { listModels } from "../../../../shared/ipc/client";
 import { formatIpcError } from "../../../../shared/ipc/error";
-import { OllamaCatalog, type Tag } from "../../data/ollama-catalog";
-import { ModelCard } from "../ModelCard";
+import { useModelInstall } from "../../hooks/useModelInstall";
 
-const PILLS: Array<{ id: Tag | "all"; label: string }> = [
-  { id: "all", label: "All" },
-  { id: "chat", label: "Chat" },
-  { id: "coding", label: "Coding" },
-  { id: "embedding", label: "Embedding" },
-  { id: "vision", label: "Vision" },
-  { id: "small", label: "Small (<4B)" },
-  { id: "medium", label: "Medium (4–13B)" },
-  { id: "large", label: "Large (>13B)" },
-];
+const EVENT_MODELS_CHANGED = "models-changed";
+const LIBRARY_URL = "https://ollama.com/library";
 
 export function OllamaLibraryTab() {
-  const [search, setSearch] = useState("");
-  const [activeTags, setActiveTags] = useState<Set<Tag>>(new Set());
+  const [name, setName] = useState("");
+  const trimmed = name.trim();
+  const { state, install, cancel } = useModelInstall(trimmed || undefined);
   const [installed, setInstalled] = useState<Set<string>>(new Set());
 
   useEffect(() => {
     let cancelled = false;
-    listModels()
-      .then((m) => { if (!cancelled) setInstalled(new Set(m)); })
+    let unsub: (() => void) | null = null;
+    const refresh = () => listModels()
+      .then((list) => { if (!cancelled) setInstalled(new Set(list)); })
       .catch((e) => console.error("OllamaLibraryTab: listModels failed —", formatIpcError(e)));
-    return () => { cancelled = true; };
+    refresh();
+    (async () => {
+      try {
+        const u = await listen(EVENT_MODELS_CHANGED, () => refresh());
+        if (cancelled) u(); else unsub = u;
+      } catch (e) {
+        console.error("OllamaLibraryTab: listen(models-changed) failed —", formatIpcError(e));
+      }
+    })();
+    return () => { cancelled = true; unsub?.(); };
   }, []);
 
-  const togglePill = (tag: Tag) =>
-    setActiveTags((prev) => {
-      const next = new Set(prev);
-      next.has(tag) ? next.delete(tag) : next.add(tag);
-      return next;
-    });
-
-  const visible = useMemo(() => {
-    const q = search.trim().toLowerCase();
-    return OllamaCatalog.filter((m) => {
-      if (q) {
-        const hay = `${m.name} ${m.description} ${m.tags.join(" ")}`.toLowerCase();
-        if (!hay.includes(q)) return false;
-      }
-      for (const t of activeTags) if (!m.tags.includes(t)) return false;
-      return true;
-    });
-  }, [search, activeTags]);
+  const isInstalled = !!trimmed && installed.has(trimmed);
+  const pulling = state.status === "pulling";
+  const errored = state.status === "error";
+  const percent = state.progress ? Math.round(state.progress.percentComplete) : 0;
+  const canInstall = !!trimmed && !pulling && !isInstalled;
 
   return (
-    <div className="flex flex-col gap-3 h-full">
-      <input
-        type="search"
-        aria-label="Search Ollama library"
-        placeholder="Search Ollama library..."
-        value={search}
-        onChange={(e) => setSearch(e.target.value)}
-        className="border rounded px-2 py-1 text-sm"
-      />
-      <div className="flex flex-wrap gap-1" data-testid="pills">
-        {PILLS.map((p) => {
-          const active = p.id === "all"
-            ? activeTags.size === 0
-            : activeTags.has(p.id as Tag);
-          return (
-            <button
-              key={p.id}
-              type="button"
-              aria-pressed={active}
-              onClick={() => p.id === "all" ? setActiveTags(new Set()) : togglePill(p.id as Tag)}
-              className={`text-xs px-2 py-1 rounded border ${active ? "bg-blue-600 text-white" : ""}`}
-            >
-              {p.label}
-            </button>
-          );
-        })}
+    <div data-testid="tab-ollama" className="flex flex-col gap-3 h-full">
+      <p className="text-xs text-gray-600">
+        Type any Ollama model name (e.g. <code>mistral:7b</code>, <code>qwen2.5:14b</code>). Browse all available models at{" "}
+        <a href={LIBRARY_URL} target="_blank" rel="noreferrer" className="underline">
+          ollama.com/library
+        </a>.
+      </p>
+      <div className="flex gap-2">
+        <input
+          type="text"
+          aria-label="Ollama model name"
+          placeholder="namespace/name:tag"
+          value={name}
+          onChange={(e) => setName(e.target.value)}
+          onKeyDown={(e) => { if (e.key === "Enter" && canInstall) install(trimmed); }}
+          className="flex-1 border rounded px-2 py-1 text-sm font-mono"
+          data-testid="ollama-name-input"
+        />
+        {pulling ? (
+          <button type="button" onClick={() => void cancel()} className="text-xs border rounded px-3" data-testid="ollama-cancel">
+            Cancel
+          </button>
+        ) : (
+          <button
+            type="button"
+            disabled={!canInstall}
+            onClick={() => install(trimmed)}
+            className="text-xs border rounded px-3 disabled:opacity-50"
+            data-testid="ollama-install"
+          >
+            {isInstalled ? "Installed ✓" : "Install"}
+          </button>
+        )}
       </div>
-      <div
-        className="flex-1 overflow-auto grid grid-cols-2 gap-2"
-        data-testid="model-grid"
-      >
-        {visible.length === 0 ? (
-          <div className="col-span-2 text-xs text-gray-500 py-6 text-center" data-testid="ollama-no-results">
-            No models match. Try a different keyword or clear the filters.
-          </div>
-        ) : visible.map((m) => (
-          <ModelCard key={m.name} model={m} isInstalled={installed.has(m.name)} />
-        ))}
-      </div>
+      {pulling && (
+        <div data-testid="ollama-pulling" className="flex items-center gap-2">
+          <progress value={percent} max={100} className="flex-1 h-2" />
+          <span className="text-xs tabular-nums w-10 text-right">{percent}%</span>
+        </div>
+      )}
+      {errored && state.error && (
+        <div role="alert" data-testid="ollama-error" className="text-red-600 text-xs">
+          {state.error}
+        </div>
+      )}
     </div>
   );
 }

@@ -1,12 +1,12 @@
 [package]
-name = "splice"
+name = "quantamind"
 version = "0.1.0"
-description = "Splice — local LLM workspace"
-authors = ["splice-dev"]
+description = "QuantaMind — local LLM workspace"
+authors = ["quantamind-dev"]
 edition = "2021"
 
 [lib]
-name = "splice_lib"
+name = "quantamind_lib"
 crate-type = ["staticlib", "cdylib", "rlib"]
 
 [build-dependencies]
@@ -24,7 +24,7 @@ tokio = { version = "1", features = ["macros", "rt-multi-thread", "sync", "fs", 
 tokio-util = { version = "0.7", features = ["io"] }
 futures-util = "0.3"
 uuid = { version = "1", features = ["v4"] }
-sysinfo = { version = "0.32", default-features = false, features = ["disk"] }
+sysinfo = { version = "0.32", default-features = false, features = ["disk", "system"] }
 sha2 = "0.10"
 bytes = "1"
 

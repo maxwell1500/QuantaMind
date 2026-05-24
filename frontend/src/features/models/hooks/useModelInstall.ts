@@ -4,7 +4,7 @@ import {
   IDLE,
   type ModelInstallState,
 } from "../state/install_state";
-import { formatIpcError } from "../../../shared/ipc/error";
+import { friendlyInstallError } from "../../../shared/install_error";
 import { useModelStore } from "../state/modelStore";
 import { startDownloadEventBus } from "../state/downloadEventBus";
 
@@ -52,7 +52,7 @@ export function useModelInstall(modelName?: string) {
       const current = useModelStore.getState().downloads[name];
       if (current) upsert({ ...current, pullId });
     } catch (e) {
-      const msg = formatIpcError(e);
+      const msg = friendlyInstallError(e);
       setLocal({ status: "error", phase: null, error: msg });
       upsert({ id: name, source: "ollama", name, status: "error", percent: 0, error: msg });
     }

@@ -54,16 +54,19 @@ pub async fn pull_model(
                     if trimmed.is_empty() { continue; }
                     let chunk: PullChunk = serde_json::from_slice(trimmed)
                         .map_err(|e| AppError::Inference(format!("bad chunk: {e}")))?;
+                    if let Some(err_msg) = &chunk.error {
+                        return Err(AppError::Inference(format!("ollama pull: {err_msg}")));
+                    }
                     let bps = if let Some(c) = chunk.completed {
                         speed.add(Instant::now(), c);
                         speed.bps(Instant::now())
                     } else { 0 };
                     match classify(&chunk, bps) {
                         Some(p) => on_progress(p),
-                        None => eprintln!("pull: unrecognised status '{}', dropping", chunk.status),
+                        None => eprintln!("pull: unrecognised status {:?}, dropping", chunk.status),
                     }
                     if cancel.is_cancelled() { return Ok(()); }
-                    if chunk.status == "success" { return Ok(()); }
+                    if chunk.status.as_deref() == Some("success") { return Ok(()); }
                 }
             }
         }

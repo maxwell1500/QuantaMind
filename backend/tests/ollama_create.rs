@@ -1,8 +1,8 @@
 use mockito::Server;
 use sha2::{Digest, Sha256};
-use splice_lib::errors::AppError;
-use splice_lib::inference::create_spec::{CreateParameters, CreateSpec};
-use splice_lib::inference::ollama_create::ollama_create;
+use quantamind_lib::errors::AppError;
+use quantamind_lib::inference::create_spec::{CreateParameters, CreateSpec};
+use quantamind_lib::inference::ollama_create::ollama_create;
 use std::io::Write;
 use tempfile::NamedTempFile;
 
@@ -60,6 +60,62 @@ async fn create_http_500_returns_inference_error() {
     let _c = s.mock("POST", "/api/create").with_status(500).create_async().await;
     match ollama_create(&s.url(), "x:latest", &spec(f.path().to_path_buf()), |_| {}).await {
         Err(AppError::Inference(msg)) => assert!(msg.contains("500"), "got: {msg}"),
+        other => panic!("expected Inference, got {other:?}"),
+    }
+}
+
+#[tokio::test]
+async fn create_http_400_includes_ollama_response_body() {
+    let (f, digest) = gguf_fixture(b"z");
+    let mut s = Server::new_async().await;
+    let _h = s.mock("HEAD", format!("/api/blobs/sha256:{digest}").as_str())
+        .with_status(200).create_async().await;
+    let _c = s.mock("POST", "/api/create")
+        .with_status(400)
+        .with_body(r#"{"error":"unknown field 'files'"}"#)
+        .create_async().await;
+    match ollama_create(&s.url(), "x:latest", &spec(f.path().to_path_buf()), |_| {}).await {
+        Err(AppError::Inference(msg)) => {
+            assert!(msg.contains("400"), "got: {msg}");
+            assert!(msg.contains("unknown field 'files'"), "got: {msg}");
+        }
+        other => panic!("expected Inference, got {other:?}"),
+    }
+}
+
+#[tokio::test]
+async fn create_stream_without_success_marker_returns_inference_error() {
+    // mmproj-only / lora-only GGUFs reproduce this: Ollama accepts the
+    // upload, streams a couple of progress chunks, then closes the
+    // connection without ever emitting `{"status":"success"}`. The old
+    // code returned Ok here, falsely reporting success to the UI.
+    let (f, digest) = gguf_fixture(b"mmproj");
+    let mut s = Server::new_async().await;
+    let _h = s.mock("HEAD", format!("/api/blobs/sha256:{digest}").as_str())
+        .with_status(200).create_async().await;
+    let _c = s.mock("POST", "/api/create")
+        .with_status(200)
+        .with_body("{\"status\":\"reading model\"}\n{\"status\":\"writing manifest\"}\n")
+        .create_async().await;
+    match ollama_create(&s.url(), "mmproj:latest", &spec(f.path().to_path_buf()), |_| {}).await {
+        Err(AppError::Inference(msg)) => {
+            assert!(msg.contains("stream ended without success"), "got: {msg}");
+            assert!(msg.contains("writing manifest"), "should surface last status: {msg}");
+        }
+        other => panic!("expected Inference for silent stream end, got {other:?}"),
+    }
+}
+
+#[tokio::test]
+async fn create_empty_stream_returns_inference_error_with_none_status() {
+    let (f, digest) = gguf_fixture(b"empty");
+    let mut s = Server::new_async().await;
+    let _h = s.mock("HEAD", format!("/api/blobs/sha256:{digest}").as_str())
+        .with_status(200).create_async().await;
+    let _c = s.mock("POST", "/api/create")
+        .with_status(200).with_body("").create_async().await;
+    match ollama_create(&s.url(), "x:latest", &spec(f.path().to_path_buf()), |_| {}).await {
+        Err(AppError::Inference(msg)) => assert!(msg.contains("<none>"), "got: {msg}"),
         other => panic!("expected Inference, got {other:?}"),
     }
 }

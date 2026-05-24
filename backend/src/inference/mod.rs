@@ -1,10 +1,13 @@
 pub mod chat_template_data;
 pub mod chat_templates;
+pub mod compare_runner;
+pub mod compare_runner_finalize;
 pub mod gguf;
 pub mod gguf_family;
 pub mod gguf_quant;
 pub mod gguf_reader;
 pub mod gguf_value;
+pub mod hf_browse;
 pub mod hf_download;
 pub mod hf_request;
 pub mod hf_resume;

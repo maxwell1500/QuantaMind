@@ -1,0 +1,30 @@
+import { describe, it, expect } from "vitest";
+import { toJson } from "../format/jsonReport";
+import { buildReport } from "../format/buildReport";
+
+const FIXED = () => new Date("2026-05-23T14:01:22.000Z");
+
+describe("toJson", () => {
+  it("produces parseable JSON with the expected top-level keys", () => {
+    const json = toJson(buildReport({
+      prompt: "hi", strategy: "parallel",
+      hardwareSnapshot: { total_memory_bytes: 1, available_memory_bytes: 1, is_apple_silicon: false },
+      selectedModels: [], rows: [], now: FIXED,
+    }));
+    const parsed = JSON.parse(json);
+    expect(Object.keys(parsed).sort()).toEqual(
+      ["generated_at", "hardware_snapshot", "models", "prompt", "schema_version", "strategy"],
+    );
+    expect(parsed.schema_version).toBe(1);
+    expect(parsed.prompt).toBe("hi");
+    expect(parsed.strategy).toBe("parallel");
+  });
+
+  it("indents with 2 spaces", () => {
+    const json = toJson(buildReport({
+      prompt: "x", strategy: "sequential", hardwareSnapshot: null,
+      selectedModels: [], rows: [], now: FIXED,
+    }));
+    expect(json).toContain('  "schema_version":');
+  });
+});

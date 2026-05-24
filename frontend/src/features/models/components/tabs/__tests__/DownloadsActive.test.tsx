@@ -14,7 +14,7 @@ import { useModelStore } from "../../../state/modelStore";
 beforeEach(() => {
   vi.mocked(invoke).mockReset();
   vi.mocked(cancelHfInstall).mockReset();
-  useModelStore.setState({ downloads: {}, activeTab: "downloads" });
+  useModelStore.setState({ downloads: {} });
 });
 
 describe("DownloadsActive", () => {

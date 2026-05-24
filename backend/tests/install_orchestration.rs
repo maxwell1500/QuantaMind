@@ -1,5 +1,5 @@
-use splice_lib::commands::gguf_cmd::install_local_gguf_inner;
-use splice_lib::errors::AppError;
+use quantamind_lib::commands::gguf_cmd::install_local_gguf_inner;
+use quantamind_lib::errors::AppError;
 
 #[tokio::test]
 async fn install_local_gguf_nonexistent_path_rejected_before_http() {

@@ -7,9 +7,14 @@
 // - phase-1.5/1.5.1: prompt_handler::make_token_handler
 // - phase-1.5/1.5.5: prompt_payloads (split out of prompt.rs)
 
+pub mod compare;
+pub mod compare_export;
+pub mod compare_payloads;
 pub mod feasibility;
 pub mod gguf_cmd;
+pub mod hardware;
 pub mod health;
+pub mod hf_browse;
 pub mod hf_install;
 pub mod models;
 pub mod models_pull;
