@@ -8,6 +8,7 @@ import { invoke } from "@tauri-apps/api/core";
 import { listen, type EventCallback } from "@tauri-apps/api/event";
 import { HuggingFaceRepoDetail } from "../HuggingFaceRepoDetail";
 import { useModelStore } from "../../state/modelStore";
+import { useInstalledModelsStore } from "../../state/installedModelsStore";
 import { __resetDownloadEventBusForTests } from "../../state/downloadEventBus";
 
 const REPO = "bartowski/Test-7B-Instruct-GGUF";
@@ -28,13 +29,16 @@ beforeEach(() => {
   });
   vi.mocked(invoke).mockImplementation((cmd: string) => {
     if (cmd === "hf_repo_files") return Promise.resolve(FILES);
-    if (cmd === "list_models") return Promise.resolve([]);
+    if (cmd === "get_installed_models_with_stats") return Promise.resolve([]);
     if (cmd === "install_hf_gguf") return Promise.resolve(undefined);
     if (cmd === "cancel_hf_install") return Promise.resolve(undefined);
     return Promise.reject(new Error(`unknown ${cmd}`));
   });
   __resetDownloadEventBusForTests();
   useModelStore.setState({ downloads: {}, pullNames: {}, activeHfName: null });
+  useInstalledModelsStore.setState({
+    list: [], status: "idle", error: null, lastRefreshedAt: null,
+  });
 });
 
 describe("HuggingFaceRepoDetail (live variants)", () => {

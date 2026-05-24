@@ -1,0 +1,173 @@
+# Install Flow — HF / Ollama / Local GGUF
+
+Three entry points, one shared invariant: **a successful install must be
+observable in the UI before the install hook returns "success"**. The
+flow is forensic-hardened against a known Ollama 0.24+ race where
+`/api/tags` lags the `/api/create` "success" frame.
+
+## Backend pipeline (HF install)
+
+```
+install_hf_gguf
+ └─ download_gguf            → emits hf-progress phase=downloading
+ └─ install_local_gguf_inner
+    ├─ ollama_create         → emits hashing/uploading/creating
+    └─ verify_model_registered  ← retries with backoff
+ └─ app.emit("models-changed")  (only on success)
+```
+
+## verify_model_registered — retry with backoff
+
+`backend/src/commands/verify_install.rs`
+
+Ollama 0.24+ streams `{"status":"success"}` from `/api/create` BEFORE
+the model is reflected in `/api/tags`. Observed lag: 50–800 ms. A
+one-shot check races and reports a false "silently rolled back" even
+though the install succeeded.
+
+The verifier polls `/api/tags` on a backoff ladder (50, 100, 200, 400,
+800, 1500 ms) plus a final confirmation read. Only after **all seven
+checks miss** does it return the "rolled back" error.
+
+Tests use `verify_with_delays` with a fast `&[1, 1, 1]` ladder against
+a `mockito` server. See `verify_install_tests.rs`.
+
+## NDJSON tail-buffer flush
+
+`backend/src/inference/ndjson.rs` (helpers), `consume_create.rs` (create),
+`pull.rs` (pull).
+
+The shared NDJSON parser used by both `/api/create` and `/api/pull`
+previously required every line — including the terminal `success` —
+to be newline-terminated. Ollama 0.24+ has been observed to close
+the connection with the final `{"status":"success"}` un-flushed,
+causing a successful install to be reported as
+"stream ended without success".
+
+Both consumers now flush the un-terminated remainder via
+`ndjson::tail(&buf)` after the stream closes and re-run the same
+chunk parser. Five integration tests in `consume_create_tests.rs`
+cover the with-newline and without-newline success paths plus the
+error/no-success cases.
+
+While unwinding `ollama_create.rs` for size, a latent serialization
+bug was also fixed: `build_create_body(...)` returns `AppResult<Value>`
+but the call site dropped the `?`, so Ollama was receiving
+`{"Ok": {"model": ..., ...}}` instead of the unwrapped body. The new
+code uses `build_create_body(...)?`.
+
+## Downloads terminal states stay visible
+
+`frontend/src/features/models/components/tabs/DownloadsActive.tsx` +
+`DownloadEntryRow.tsx`.
+
+The "In progress" list previously filtered to
+`["downloading","installing"]` only, so the entry vanished from the UI
+the instant the status flipped to `success` or `error`. Combined with
+the `/api/tags` refresh race, the model literally disappeared — present
+in no list.
+
+The list now retains `success` and `error` entries with a green
+"Installed ✓" or red "Failed" badge plus a Dismiss button. The error
+message renders inline. Success entries auto-clear after 5 s; error
+entries persist until dismissed so the user has a record of what
+broke.
+
+Three test files cover this surface: active rows + cancel flows
+(`DownloadsActive.test.tsx`), terminal-state rendering
+(`DownloadsActive.terminal.test.tsx`), and timer-based auto-clear
+(`DownloadsActive.autoclear.test.tsx`, fake-timer isolated).
+
+## Proactive refresh — installedModelsStore
+
+`frontend/src/features/models/state/installedModelsStore.ts` — single
+source of truth for the installed-models list. Holds `list`, `status`,
+`error`, `lastRefreshedAt` plus a `refresh()` action that calls
+`getInstalledModelsWithStats()` and coalesces concurrent calls.
+
+All three install hooks call `refresh()` themselves on success
+(`useHfInstall`, `useLocalImport` immediately; `useModelInstall`
+1.5 s later — the Ollama pull task runs spawned-async, so the success
+frame from the backend stream is what gates the pull. The delayed
+refresh covers any /api/tags lag).
+
+Self-healing: even if Tauri's `models-changed` broadcast is dropped
+(listener-registration race, navigation between mounts, etc.), the
+hooks themselves force the store to refetch.
+
+Fix 6 will mount a `models-changed` bus that drives the same
+`refresh()`, and migrate consumers to subscribe to this store
+instead of fetching directly.
+
+## Explicit success UI
+
+`HfInstallStatus.tsx` (new, extracted from `HuggingFaceRepoDetail.tsx`),
+`OllamaLibraryTab.tsx`.
+
+Previously the HF detail page rendered `state.status === "downloading"`,
+`"installing"`, and `"error"` but had **no branch for `"success"`** —
+the "Installing into Ollama…" element vanished with no replacement, so
+the user had no positive confirmation that anything had happened.
+
+Now both surfaces render a green "Installed ✓ — open Workspace or
+Compare to use it." banner with a dismiss button on success. The HF
+status block is also factored out into its own `HfInstallStatus`
+component, with isolated tests for each of the five states
+(idle/downloading/installing/success/error).
+
+While splitting, the variant table was also extracted into
+`HfVariantTable.tsx` — `HuggingFaceRepoDetail.tsx` had drifted to
+112 lines (over the 100-line ceiling) and is now back at 95.
+
+## Centralized models-changed bus
+
+`installedModelsBus.ts` mirrors the `downloadEventBus` pattern: one
+shared `listen("models-changed")` subscription that calls
+`installedModelsStore.refresh()`. Idempotent, retry-safe on transient
+`listen()` rejection. Mounted once in `App.tsx` at startup.
+
+Per-component `listen("models-changed")` calls were removed. All five
+consumers now subscribe to `useInstalledModelsStore` and fall back to
+calling `refresh()` themselves when `status === "idle"` (covers the
+edge case where the component mounts before the App-level effect
+runs):
+
+- `DownloadsInstalled`
+- `ModelPicker` (Workspace)
+- `OllamaLibraryTab`
+- `HuggingFaceRepoDetail`
+- `ModelMultiSelect` (Compare)
+
+This eliminates the listener-registration race (events emitted while
+five separate `listen()` promises resolved) and drops the duplicate
+`/api/tags` fetches per refresh signal from 5 to 1.
+
+## useModelInstall — entry lookup follows the modelName prop
+
+`frontend/src/features/models/hooks/useModelInstall.ts`.
+
+Previously the hook stashed `useRef(modelName ?? null)` and used
+`nameRef.current` to look up the install entry in the store. Because
+`useRef` only honours its initial value, typing a new name in the
+input did not update the lookup — the rendered `state` stayed pinned
+to whatever the first-render `modelName` was.
+
+The lookup now reads `modelName` directly:
+`s.downloads[modelName]`. A separate `inflightNameRef` records the
+name of the pull we kicked off so `cancel()` still targets the right
+entry even if the input changed after Install was clicked.
+
+## remove_model emits models-changed
+
+`backend/src/commands/storage.rs`.
+
+Removal was the symmetric blind spot to the install paths: a
+successful `DELETE /api/delete` returned silently without telling
+the frontend to refresh. The `installedModelsStore`-driven UI would
+keep showing the deleted model until the user navigated.
+
+`remove_model` now takes an `AppHandle` and emits
+`EVENT_MODELS_CHANGED` after a successful inner call, mirroring the
+pattern used by `install_local_gguf` and `install_hf_gguf`. The
+centralized `installedModelsBus` catches the event and drives
+`installedModelsStore.refresh()`, so every consumer re-fetches once.

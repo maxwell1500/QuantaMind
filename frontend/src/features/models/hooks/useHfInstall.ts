@@ -6,6 +6,7 @@ import {
 } from "../../../shared/ipc/hf_install";
 import { friendlyInstallError } from "../../../shared/install_error";
 import { useModelStore } from "../state/modelStore";
+import { useInstalledModelsStore } from "../state/installedModelsStore";
 import { startDownloadEventBus } from "../state/downloadEventBus";
 
 export type HfStatus = "idle" | "downloading" | "installing" | "success" | "error";
@@ -59,6 +60,10 @@ export function useHfInstall() {
     try {
       await installHfGguf(repo, filename, name);
       upsertDownload({ id: name, source: "huggingface", name, status: "success", percent: 100 });
+      // Don't rely solely on the Tauri `models-changed` broadcast — refresh
+      // the installed-models store ourselves so consumers see the new model
+      // even if the event is dropped (listener race or /api/tags lag).
+      void useInstalledModelsStore.getState().refresh();
     } catch (e) {
       const msg = friendlyInstallError(e);
       upsertDownload({ id: name, source: "huggingface", name, status: "error", percent: 0, error: msg });

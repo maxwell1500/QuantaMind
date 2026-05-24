@@ -13,6 +13,7 @@ vi.mock("../../../../../shared/ipc/storage", () => ({
 import { getInstalledModelsWithStats } from "../../../../../shared/ipc/storage";
 import { DownloadsTab } from "../DownloadsTab";
 import { useModelStore } from "../../../state/modelStore";
+import { useInstalledModelsStore } from "../../../state/installedModelsStore";
 
 beforeEach(() => {
   useModelStore.setState({
@@ -20,6 +21,9 @@ beforeEach(() => {
     pendingLocalPath: null,
   });
   vi.mocked(getInstalledModelsWithStats).mockReset();
+  useInstalledModelsStore.setState({
+    list: [], status: "idle", error: null, lastRefreshedAt: null,
+  });
 });
 
 describe("DownloadsTab", () => {

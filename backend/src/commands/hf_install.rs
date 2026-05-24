@@ -3,7 +3,7 @@ use crate::errors::{AppError, AppResult};
 use crate::inference::create_spec::CreatePhase;
 use crate::inference::hf_download::{download_gguf, DownloadProgress};
 use crate::inference::hf_resume::partial_path;
-use crate::inference::pull::validate_name;
+use crate::inference::pull_name::validate_name;
 use crate::sync::MutexExt;
 use serde::Serialize;
 use std::fs;

@@ -69,4 +69,5 @@ describe("DownloadsActive", () => {
     render(<DownloadsActive />);
     expect(screen.queryByRole("button", { name: /cancel localmodel/i })).toBeNull();
   });
+
 });
