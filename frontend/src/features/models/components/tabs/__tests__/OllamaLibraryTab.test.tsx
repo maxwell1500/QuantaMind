@@ -60,7 +60,8 @@ describe("OllamaLibraryTab (free-text install)", () => {
     render(<OllamaLibraryTab />);
     fireEvent.change(screen.getByTestId("ollama-name-input"), { target: { value: "foo" } });
     fireEvent.click(screen.getByTestId("ollama-install"));
-    expect(await screen.findByTestId("ollama-error")).toHaveTextContent(/model foo/);
+    // not_found kind now renders as a friendly "model wasn't found / check the tag" hint
+    expect(await screen.findByTestId("ollama-error")).toHaveTextContent(/wasn't found/i);
   });
 
   it("Enter triggers the install when the name is non-empty", async () => {
