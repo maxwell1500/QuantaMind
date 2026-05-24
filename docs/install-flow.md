@@ -78,7 +78,26 @@ Three test files cover this surface: active rows + cancel flows
 (`DownloadsActive.terminal.test.tsx`), and timer-based auto-clear
 (`DownloadsActive.autoclear.test.tsx`, fake-timer isolated).
 
-## (Fix 4 — Proactive refresh in install hooks, pending)
+## Proactive refresh — installedModelsStore
+
+`frontend/src/features/models/state/installedModelsStore.ts` — single
+source of truth for the installed-models list. Holds `list`, `status`,
+`error`, `lastRefreshedAt` plus a `refresh()` action that calls
+`getInstalledModelsWithStats()` and coalesces concurrent calls.
+
+All three install hooks call `refresh()` themselves on success
+(`useHfInstall`, `useLocalImport` immediately; `useModelInstall`
+1.5 s later — the Ollama pull task runs spawned-async, so the success
+frame from the backend stream is what gates the pull. The delayed
+refresh covers any /api/tags lag).
+
+Self-healing: even if Tauri's `models-changed` broadcast is dropped
+(listener-registration race, navigation between mounts, etc.), the
+hooks themselves force the store to refetch.
+
+Fix 6 will mount a `models-changed` bus that drives the same
+`refresh()`, and migrate consumers to subscribe to this store
+instead of fetching directly.
 
 ## (Fix 5 — Explicit success UI, pending)
 

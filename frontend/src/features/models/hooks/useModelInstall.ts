@@ -6,6 +6,7 @@ import {
 } from "../state/install_state";
 import { friendlyInstallError } from "../../../shared/install_error";
 import { useModelStore } from "../state/modelStore";
+import { useInstalledModelsStore } from "../state/installedModelsStore";
 import { startDownloadEventBus } from "../state/downloadEventBus";
 
 export function useModelInstall(modelName?: string) {
@@ -51,6 +52,10 @@ export function useModelInstall(modelName?: string) {
       // pullId into whatever entry exists.
       const current = useModelStore.getState().downloads[name];
       if (current) upsert({ ...current, pullId });
+      // Schedule a refresh once the spawned pull task completes. Backend
+      // emits `models-changed` then; we'd rather not race the listener
+      // registration, so also kick off a refresh after a brief delay.
+      setTimeout(() => { void useInstalledModelsStore.getState().refresh(); }, 1500);
     } catch (e) {
       const msg = friendlyInstallError(e);
       setLocal({ status: "error", phase: null, error: msg });

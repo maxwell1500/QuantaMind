@@ -7,6 +7,7 @@ import {
   type GgufMetadata,
 } from "../../../shared/ipc/gguf";
 import { useModelStore } from "../state/modelStore";
+import { useInstalledModelsStore } from "../state/installedModelsStore";
 import { formatIpcError } from "../../../shared/ipc/error";
 import { startDownloadEventBus } from "../state/downloadEventBus";
 
@@ -64,6 +65,8 @@ export function useLocalImport() {
     try {
       await installLocalGguf(path, name);
       upsert({ id: name, source: "local", name, status: "success", percent: 100 });
+      // Self-heal — don't trust the broadcast event alone.
+      void useInstalledModelsStore.getState().refresh();
       cancel();
     } catch (e) {
       const msg = formatIpcError(e);
