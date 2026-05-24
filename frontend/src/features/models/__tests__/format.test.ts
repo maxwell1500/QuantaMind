@@ -18,9 +18,14 @@ describe("hfVariantModelName", () => {
       .toBe("gemma-2-9b-it:q4_k_m");
   });
 
-  it("rewrites a subdirectory path's slash into a dash so the name passes validate_name", () => {
+  it("uses just the basename when the HF rfilename carries a subdirectory", () => {
     expect(hfVariantModelName("bert-bge-small/ggml-model-f16-big-endian.gguf", "F16"))
-      .toBe("bert-bge-small-ggml-model-f16-big-endian:f16");
+      .toBe("ggml-model-f16-big-endian:f16");
+  });
+
+  it("strips deep subdirectory paths down to the basename", () => {
+    expect(hfVariantModelName("a/b/c/Model-Q4_0.gguf", "Q4_0"))
+      .toBe("model:q4_0");
   });
 
   it("sanitizes other illegal chars (backslash, whitespace, quotes) into dashes", () => {

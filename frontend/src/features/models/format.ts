@@ -7,10 +7,13 @@
 /// dispatch both call this so they stay in sync.
 ///
 /// Some HF repos publish GGUFs inside a subdirectory (e.g.
-/// `bert-bge-small/ggml-model-f16-big-endian.gguf`) — the slash would
-/// be rejected by the backend's `validate_name`. We sanitize any char
-/// in the backend's bad-char set (path separators, quotes, whitespace,
-/// nulls) into `-`, keeping the `:` tag separator intact.
+/// `bert-bge-small/ggml-model-f16-big-endian.gguf`). We use only the
+/// basename — the subdirectory inflates the name past Ollama 0.24's
+/// internal length/pattern thresholds (which produce a generic
+/// "invalid model name" 400) and the basename is what carries the
+/// meaningful identity. Any other illegal char in the resulting
+/// segment (whitespace, quotes, nulls, residual separators) is
+/// sanitized to `-`, keeping the `:` tag separator intact.
 
 const ILLEGAL_NAME_CHARS = /[\/\\\0"' \t\n]/g;
 
@@ -18,8 +21,14 @@ function sanitizeNameSegment(s: string): string {
   return s.replace(ILLEGAL_NAME_CHARS, "-");
 }
 
+function basename(path: string): string {
+  const slash = path.lastIndexOf("/");
+  return slash >= 0 ? path.slice(slash + 1) : path;
+}
+
 export function hfVariantModelName(filename: string, quantization?: string): string {
-  const base = sanitizeNameSegment(filename.replace(/\.gguf$/i, "").toLowerCase());
+  const stem = basename(filename).replace(/\.gguf$/i, "").toLowerCase();
+  const base = sanitizeNameSegment(stem);
   if (!quantization) return base;
   const q = sanitizeNameSegment(quantization.toLowerCase());
   const stripped = base.replace(new RegExp(`[._-]${q}$`), "");
