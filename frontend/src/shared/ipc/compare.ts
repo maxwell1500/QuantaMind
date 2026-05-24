@@ -6,6 +6,7 @@ export interface RunCompareArgs {
   models: string[];
   prompt: string;
   strategy: CompareStrategy;
+  system?: string;
 }
 
 export async function runCompare(args: RunCompareArgs): Promise<void> {

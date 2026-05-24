@@ -9,6 +9,8 @@ import { ExportButtons } from "./ExportButtons";
 export function CompareTab() {
   const prompt = useCompareStore((s) => s.prompt);
   const setPrompt = useCompareStore((s) => s.setPrompt);
+  const systemPrompt = useCompareStore((s) => s.systemPrompt);
+  const setSystemPrompt = useCompareStore((s) => s.setSystemPrompt);
   const rows = useCompareStore((s) => s.rows);
 
   return (
@@ -20,14 +22,28 @@ export function CompareTab() {
       <ModelMultiSelect />
       <HardwareSummary />
       <RunStrategyPicker />
-      <textarea
-        value={prompt}
-        onChange={(e) => setPrompt(e.target.value)}
-        placeholder="Type the prompt to run against all selected models…"
-        className="w-full border rounded p-2 text-sm font-mono"
-        rows={4}
-        data-testid="compare-prompt"
-      />
+      <div className="space-y-1">
+        <div className="text-xs text-gray-600">System prompt (optional)</div>
+        <textarea
+          value={systemPrompt}
+          onChange={(e) => setSystemPrompt(e.target.value)}
+          placeholder="Set the system role used for every model…"
+          className="w-full border rounded p-2 text-sm font-mono"
+          rows={2}
+          data-testid="compare-system-prompt"
+        />
+      </div>
+      <div className="space-y-1">
+        <div className="text-xs text-gray-600">User prompt</div>
+        <textarea
+          value={prompt}
+          onChange={(e) => setPrompt(e.target.value)}
+          placeholder="Type the prompt to run against all selected models…"
+          className="w-full border rounded p-2 text-sm font-mono"
+          rows={4}
+          data-testid="compare-prompt"
+        />
+      </div>
       <CompareToolbar />
       {rows.length > 0 && (
         <>

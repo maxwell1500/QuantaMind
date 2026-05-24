@@ -27,13 +27,14 @@ pub async fn run_sequential(
     endpoint: &str,
     models: &[String],
     prompt: &str,
+    system: Option<&str>,
 ) -> Result<(), AppError> {
     let rows = rows_for(models);
     let run_cancel = CancellationToken::new();
     *state.run_cancel.lock_recover() = Some(run_cancel.clone());
     for row in &rows {
         if run_cancel.is_cancelled() { break; }
-        run_one_row(&emit_fn, state, endpoint, row, prompt).await;
+        run_one_row(&emit_fn, state, endpoint, row, prompt, system).await;
     }
     *state.run_cancel.lock_recover() = None;
     state.rows.lock_recover().clear();
@@ -47,18 +48,21 @@ pub async fn run_parallel(
     endpoint: &str,
     models: &[String],
     prompt: &str,
+    system: Option<&str>,
 ) -> Result<(), AppError> {
     let rows = rows_for(models);
     *state.run_cancel.lock_recover() = Some(CancellationToken::new());
     let endpoint_owned = endpoint.to_string();
     let prompt_owned = prompt.to_string();
+    let system_owned = system.map(str::to_string);
     let handles: Vec<_> = rows.into_iter().map(|row| {
         let emit_clone = emit_fn.clone();
         let state_clone = state.clone();
         let endpoint = endpoint_owned.clone();
         let prompt = prompt_owned.clone();
+        let system = system_owned.clone();
         tokio::spawn(async move {
-            run_one_row(&emit_clone, &state_clone, &endpoint, &row, &prompt).await;
+            run_one_row(&emit_clone, &state_clone, &endpoint, &row, &prompt, system.as_deref()).await;
         })
     }).collect();
     let _ = futures_util::future::join_all(handles).await;
@@ -74,6 +78,7 @@ pub(crate) async fn run_one_row(
     endpoint: &str,
     row: &RowSpec,
     prompt: &str,
+    system: Option<&str>,
 ) {
     let row_token = CancellationToken::new();
     state.rows.lock_recover().insert(row.model_id, row_token.clone());
@@ -93,7 +98,7 @@ pub(crate) async fn run_one_row(
         row_token.clone(),
         timing.clone(),
     );
-    let result = stream_generate(endpoint, &row.model, prompt, None, row_token.clone(), handler).await;
+    let result = stream_generate(endpoint, &row.model, prompt, system, row_token.clone(), handler).await;
     state.rows.lock_recover().remove(&row.model_id);
     finalize_row(emit_fn, row, &timing, &row_token, result);
 }

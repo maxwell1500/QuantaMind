@@ -41,14 +41,16 @@ pub async fn run_compare(
     models: Vec<String>,
     prompt: String,
     strategy: Strategy,
+    system: Option<String>,
 ) -> Result<(), AppError> {
     validate(&models, &prompt)?;
     let emit = make_emit(app);
+    let system_trim = system.as_deref().map(str::trim).filter(|s| !s.is_empty());
     match strategy {
         Strategy::Sequential | Strategy::SequentialSkippable =>
-            run_sequential(emit, state.inner(), DEFAULT_OLLAMA, &models, &prompt).await,
+            run_sequential(emit, state.inner(), DEFAULT_OLLAMA, &models, &prompt, system_trim).await,
         Strategy::Parallel =>
-            run_parallel(emit, state.inner(), DEFAULT_OLLAMA, &models, &prompt).await,
+            run_parallel(emit, state.inner(), DEFAULT_OLLAMA, &models, &prompt, system_trim).await,
     }
 }
 

@@ -19,12 +19,14 @@ export interface CompareRow {
 interface CompareStore {
   selectedModels: CompareModel[];
   prompt: string;
+  systemPrompt: string;
   hardwareSnapshot: HardwareSnapshot | null;
   strategy: StrategyId;
   rows: CompareRow[];
   isRunning: boolean;
   setSelectedModels: (m: CompareModel[]) => void;
   setPrompt: (p: string) => void;
+  setSystemPrompt: (p: string) => void;
   setHardwareSnapshot: (s: HardwareSnapshot | null) => void;
   setStrategy: (s: StrategyId) => void;
   initRun: (models: CompareModel[]) => void;
@@ -47,12 +49,14 @@ const updateRow = (rows: CompareRow[], model: string, patch: Partial<CompareRow>
 export const useCompareStore = create<CompareStore>((set) => ({
   selectedModels: [],
   prompt: "",
+  systemPrompt: "",
   hardwareSnapshot: null,
   strategy: "sequential",
   rows: [],
   isRunning: false,
   setSelectedModels: (selectedModels) => set({ selectedModels }),
   setPrompt: (prompt) => set({ prompt }),
+  setSystemPrompt: (systemPrompt) => set({ systemPrompt }),
   setHardwareSnapshot: (hardwareSnapshot) => set({ hardwareSnapshot }),
   setStrategy: (strategy) => set({ strategy }),
   initRun: (models) =>
@@ -88,7 +92,7 @@ export const useCompareStore = create<CompareStore>((set) => ({
       rows: s.rows.map((r) => r.status === "pending" ? { ...r, status: "cancelled", endedAt: new Date().toISOString() } : r),
     })),
   reset: () => set({
-    selectedModels: [], prompt: "", hardwareSnapshot: null,
+    selectedModels: [], prompt: "", systemPrompt: "", hardwareSnapshot: null,
     strategy: "sequential", rows: [], isRunning: false,
   }),
 }));

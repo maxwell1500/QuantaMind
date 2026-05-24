@@ -59,12 +59,20 @@ describe("compareStore reducer", () => {
   it("reset clears everything", () => {
     useCompareStore.getState().setSelectedModels([M("a")]);
     useCompareStore.getState().setPrompt("hi");
+    useCompareStore.getState().setSystemPrompt("you are concise");
     useCompareStore.getState().initRun([M("a")]);
     useCompareStore.getState().reset();
     const s = useCompareStore.getState();
     expect(s.selectedModels).toEqual([]);
     expect(s.prompt).toBe("");
+    expect(s.systemPrompt).toBe("");
     expect(s.rows).toEqual([]);
     expect(s.isRunning).toBe(false);
+  });
+
+  it("systemPrompt defaults to empty and round-trips via setSystemPrompt", () => {
+    expect(useCompareStore.getState().systemPrompt).toBe("");
+    useCompareStore.getState().setSystemPrompt("be terse");
+    expect(useCompareStore.getState().systemPrompt).toBe("be terse");
   });
 });

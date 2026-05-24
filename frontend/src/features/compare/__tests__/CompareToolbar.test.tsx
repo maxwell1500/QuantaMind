@@ -46,6 +46,32 @@ describe("CompareToolbar", () => {
     expect(useCompareStore.getState().rows.map((r) => r.model)).toEqual(["a", "b"]);
   });
 
+  it("when systemPrompt is set, run_compare receives the system field", async () => {
+    useCompareStore.setState({
+      prompt: "ping",
+      systemPrompt: "You are terse.",
+      selectedModels: [{ name: "a", size_bytes: 1 }],
+    });
+    render(<CompareToolbar />);
+    await act(async () => { fireEvent.click(screen.getByTestId("compare-run")); });
+    await waitFor(() => expect(invoke).toHaveBeenCalledWith("run_compare", {
+      models: ["a"], prompt: "ping", strategy: "sequential", system: "You are terse.",
+    }));
+  });
+
+  it("when systemPrompt is empty/whitespace, run_compare omits the system field", async () => {
+    useCompareStore.setState({
+      prompt: "ping",
+      systemPrompt: "   ",
+      selectedModels: [{ name: "a", size_bytes: 1 }],
+    });
+    render(<CompareToolbar />);
+    await act(async () => { fireEvent.click(screen.getByTestId("compare-run")); });
+    await waitFor(() => expect(invoke).toHaveBeenCalledWith("run_compare", {
+      models: ["a"], prompt: "ping", strategy: "sequential",
+    }));
+  });
+
   it("after start the Cancel-all button appears and invokes stop_compare", async () => {
     vi.mocked(invoke).mockImplementation((cmd: string) => {
       if (cmd === "run_compare") return new Promise(() => {}); // never resolves

@@ -13,7 +13,7 @@ export function useCompareRun() {
   useEffect(() => { void startCompareEventBus(); }, []);
 
   const start = useCallback(async () => {
-    const { selectedModels, prompt, strategy, hardwareSnapshot, initRun, finishRun } = useCompareStore.getState();
+    const { selectedModels, prompt, systemPrompt, strategy, hardwareSnapshot, initRun, finishRun } = useCompareStore.getState();
     if (selectedModels.length === 0) { setStartError("Pick at least one model."); return; }
     if (prompt.trim().length === 0) { setStartError("Type a prompt first."); return; }
     const matrix = assessStrategies(selectedModels, hardwareSnapshot);
@@ -26,7 +26,13 @@ export function useCompareRun() {
     setStartError(null);
     initRun(selectedModels);
     try {
-      await runCompare({ models: selectedModels.map((m) => m.name), prompt, strategy });
+      const system = systemPrompt.trim();
+      await runCompare({
+        models: selectedModels.map((m) => m.name),
+        prompt,
+        strategy,
+        ...(system ? { system } : {}),
+      });
     } catch (e) {
       setStartError(formatIpcError(e));
       finishRun();
