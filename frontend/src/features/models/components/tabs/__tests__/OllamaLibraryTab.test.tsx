@@ -71,4 +71,18 @@ describe("OllamaLibraryTab (free-text install)", () => {
     fireEvent.keyDown(input, { key: "Enter" });
     await waitFor(() => expect(invoke).toHaveBeenCalledWith("pull_model", { name: "phi3:mini" }));
   });
+
+  it("shows an explicit success banner once the pull-progress success arrives", async () => {
+    render(<OllamaLibraryTab />);
+    fireEvent.change(screen.getByTestId("ollama-name-input"), { target: { value: "qwen2.5:7b" } });
+    fireEvent.click(screen.getByTestId("ollama-install"));
+    await waitFor(() => expect(invoke).toHaveBeenCalledWith("pull_model", { name: "qwen2.5:7b" }));
+    // Simulate the pull-progress success event arriving via the bus.
+    useModelStore.getState().upsertDownload({
+      id: "qwen2.5:7b", source: "ollama", name: "qwen2.5:7b",
+      status: "success", percent: 100, pullId: "pull-1",
+    });
+    expect(await screen.findByTestId("ollama-success"))
+      .toHaveTextContent(/Installed qwen2\.5:7b ✓/);
+  });
 });

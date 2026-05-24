@@ -34,6 +34,7 @@ export function OllamaLibraryTab() {
   const isInstalled = !!trimmed && installed.has(trimmed);
   const pulling = state.status === "pulling";
   const errored = state.status === "error";
+  const succeeded = state.status === "success";
   const percent = state.progress ? Math.round(state.progress.percentComplete) : 0;
   const canInstall = !!trimmed && !pulling && !isInstalled;
 
@@ -81,6 +82,11 @@ export function OllamaLibraryTab() {
       {errored && state.error && (
         <div role="alert" data-testid="ollama-error" className="text-red-600 text-xs">
           {state.error}
+        </div>
+      )}
+      {succeeded && trimmed && (
+        <div role="status" data-testid="ollama-success" className="text-green-700 text-xs">
+          Installed {trimmed} ✓ — open Workspace or Compare to use it.
         </div>
       )}
     </div>

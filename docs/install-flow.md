@@ -99,7 +99,25 @@ Fix 6 will mount a `models-changed` bus that drives the same
 `refresh()`, and migrate consumers to subscribe to this store
 instead of fetching directly.
 
-## (Fix 5 — Explicit success UI, pending)
+## Explicit success UI
+
+`HfInstallStatus.tsx` (new, extracted from `HuggingFaceRepoDetail.tsx`),
+`OllamaLibraryTab.tsx`.
+
+Previously the HF detail page rendered `state.status === "downloading"`,
+`"installing"`, and `"error"` but had **no branch for `"success"`** —
+the "Installing into Ollama…" element vanished with no replacement, so
+the user had no positive confirmation that anything had happened.
+
+Now both surfaces render a green "Installed ✓ — open Workspace or
+Compare to use it." banner with a dismiss button on success. The HF
+status block is also factored out into its own `HfInstallStatus`
+component, with isolated tests for each of the five states
+(idle/downloading/installing/success/error).
+
+While splitting, the variant table was also extracted into
+`HfVariantTable.tsx` — `HuggingFaceRepoDetail.tsx` had drifted to
+112 lines (over the 100-line ceiling) and is now back at 95.
 
 ## (Fix 6 — Centralized models-changed bus, pending)
 
