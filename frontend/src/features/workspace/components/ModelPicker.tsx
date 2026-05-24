@@ -74,10 +74,10 @@ export function ModelPicker({ value, onChange, onAddClick }: Props) {
         <button
           type="button"
           onClick={onAddClick}
-          aria-label="Add model"
-          className="border rounded px-2 py-1 text-sm leading-none"
+          className="border rounded px-3 py-1 text-sm hover:bg-gray-50"
+          data-testid="add-model-button"
         >
-          +
+          Add Model
         </button>
       )}
     </div>
