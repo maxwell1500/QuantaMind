@@ -2,16 +2,19 @@ import { useEffect, useRef, useState } from "react";
 import { hfSearch, type HfSearchHit } from "../../../../shared/ipc/hf_browse";
 import { formatIpcError } from "../../../../shared/ipc/error";
 import { HuggingFaceRepoDetail } from "../HuggingFaceRepoDetail";
+import { useModelStore } from "../../state/modelStore";
 
 const DEBOUNCE_MS = 300;
 type Status = "idle" | "loading" | "ready" | "error";
 
 export function HuggingFaceTab() {
-  const [query, setQuery] = useState("");
+  const query = useModelStore((s) => s.hfSearchQuery);
+  const setQuery = useModelStore((s) => s.setHfSearchQuery);
+  const selected = useModelStore((s) => s.hfSelectedRepo);
+  const setSelected = useModelStore((s) => s.setHfSelectedRepo);
   const [hits, setHits] = useState<HfSearchHit[]>([]);
   const [status, setStatus] = useState<Status>("idle");
   const [error, setError] = useState<string | null>(null);
-  const [selected, setSelected] = useState<string | null>(null);
   const seq = useRef(0);
 
   useEffect(() => {
@@ -60,7 +63,7 @@ export function HuggingFaceTab() {
         {status === "error" && (
           <div className="col-span-2 text-xs text-red-600 py-6 text-center" role="alert" data-testid="hf-error-search">
             {error}
-            <button type="button" onClick={() => setQuery((q) => q + " ")} className="ml-2 underline">Retry</button>
+            <button type="button" onClick={() => setQuery(query + " ")} className="ml-2 underline">Retry</button>
           </div>
         )}
         {status === "ready" && hits.length === 0 && (

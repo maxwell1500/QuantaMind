@@ -1,11 +1,12 @@
 import { describe, it, expect, vi, beforeEach } from "vitest";
-import { render, screen, fireEvent, waitFor } from "@testing-library/react";
+import { render, screen, fireEvent, waitFor, act } from "@testing-library/react";
 
 vi.mock("@tauri-apps/api/core", () => ({ invoke: vi.fn() }));
 vi.mock("@tauri-apps/api/event", () => ({ listen: vi.fn().mockResolvedValue(() => {}) }));
 
 import { invoke } from "@tauri-apps/api/core";
 import { HuggingFaceTab } from "../HuggingFaceTab";
+import { useModelStore } from "../../../state/modelStore";
 
 const HIT = (id: string, downloads = 100) => ({
   id, downloads, likes: 1, tags: ["gguf"], last_modified: null,
@@ -20,6 +21,8 @@ beforeEach(() => {
     if (cmd === "list_models") return Promise.resolve([]);
     return Promise.reject(new Error(`unknown ${cmd}`));
   });
+  // Reset the persisted HF state so tests don't leak query/selected across runs.
+  useModelStore.setState({ hfSearchQuery: "", hfSelectedRepo: null });
 });
 
 describe("HuggingFaceTab (live search)", () => {
@@ -58,5 +61,19 @@ describe("HuggingFaceTab (live search)", () => {
     fireEvent.click(card);
     expect(screen.getByTestId("hf-repo-detail")).toBeInTheDocument();
     expect(screen.getByTestId("hf-repo-detail")).toHaveTextContent("bartowski/Llama-GGUF");
+    expect(useModelStore.getState().hfSelectedRepo).toBe("bartowski/Llama-GGUF");
+  });
+
+  it("the search query survives a select-then-back round-trip", async () => {
+    render(<HuggingFaceTab />);
+    fireEvent.change(screen.getByLabelText("Search Hugging Face"), { target: { value: "llama" } });
+    const card = await screen.findByTestId("hf-card-bartowski/Llama-GGUF", undefined, { timeout: 1000 });
+    fireEvent.click(card);
+    // Programmatically clear hfSelectedRepo (the back button's effect).
+    await act(async () => useModelStore.getState().setHfSelectedRepo(null));
+    expect(useModelStore.getState().hfSearchQuery).toBe("llama");
+    // After back the search input shows the query and the cards re-render.
+    expect((screen.getByLabelText("Search Hugging Face") as HTMLInputElement).value).toBe("llama");
+    expect(await screen.findByTestId("hf-card-bartowski/Llama-GGUF")).toBeInTheDocument();
   });
 });
