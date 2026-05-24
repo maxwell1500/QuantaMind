@@ -142,6 +142,19 @@ This eliminates the listener-registration race (events emitted while
 five separate `listen()` promises resolved) and drops the duplicate
 `/api/tags` fetches per refresh signal from 5 to 1.
 
-## (Fix 7 — useModelInstall nameRef sync, pending)
+## useModelInstall — entry lookup follows the modelName prop
+
+`frontend/src/features/models/hooks/useModelInstall.ts`.
+
+Previously the hook stashed `useRef(modelName ?? null)` and used
+`nameRef.current` to look up the install entry in the store. Because
+`useRef` only honours its initial value, typing a new name in the
+input did not update the lookup — the rendered `state` stayed pinned
+to whatever the first-render `modelName` was.
+
+The lookup now reads `modelName` directly:
+`s.downloads[modelName]`. A separate `inflightNameRef` records the
+name of the pull we kicked off so `cancel()` still targets the right
+entry even if the input changed after Install was clicked.
 
 ## (Fix 8 — remove_model emits models-changed, pending)

@@ -12,8 +12,12 @@ import { startDownloadEventBus } from "../state/downloadEventBus";
 export function useModelInstall(modelName?: string) {
   const [local, setLocal] = useState<ModelInstallState>(IDLE);
   const pullIdRef = useRef<string | null>(null);
-  const nameRef = useRef<string | null>(modelName ?? null);
-  const entry = useModelStore((s) => (nameRef.current ? s.downloads[nameRef.current] : null));
+  // Tracks the name of the install we kicked off, separate from the
+  // `modelName` prop (which follows whatever the user is typing). Cancel
+  // operates on the in-flight install, not on what's currently in the
+  // input.
+  const inflightNameRef = useRef<string | null>(null);
+  const entry = useModelStore((s) => (modelName ? s.downloads[modelName] : null));
   const upsert = useModelStore((s) => s.upsertDownload);
   const recordPullName = useModelStore((s) => s.recordPullName);
   const removePullName = useModelStore((s) => s.removePullName);
@@ -40,7 +44,7 @@ export function useModelInstall(modelName?: string) {
     : local;
 
   const install = useCallback(async (name: string) => {
-    nameRef.current = name;
+    inflightNameRef.current = name;
     setLocal({ status: "pulling", phase: null });
     upsert({ id: name, source: "ollama", name, status: "downloading", percent: 0 });
     try {
@@ -60,6 +64,7 @@ export function useModelInstall(modelName?: string) {
       const msg = friendlyInstallError(e);
       setLocal({ status: "error", phase: null, error: msg });
       upsert({ id: name, source: "ollama", name, status: "error", percent: 0, error: msg });
+      inflightNameRef.current = null;
     }
   }, [upsert, recordPullName]);
 
@@ -69,8 +74,9 @@ export function useModelInstall(modelName?: string) {
     try { await invoke("cancel_pull", { pullId: pid }); } catch { /* best-effort */ }
     removePullName(pid);
     pullIdRef.current = null;
-    const name = nameRef.current;
+    const name = inflightNameRef.current;
     if (name) upsert({ id: name, source: "ollama", name, status: "cancelled", percent: 0 });
+    inflightNameRef.current = null;
   }, [upsert, removePullName]);
 
   return { state, install, cancel };

@@ -42,9 +42,7 @@ describe("useModelInstall (M.2)", () => {
     const phases: unknown[] = [
       { phase: "pulling_manifest" },
       { phase: "downloading", digest: "sha256:abc", total: 1000, completed: 250, speed_bps: 100 },
-      { phase: "verifying" },
-      { phase: "writing" },
-      { phase: "success" },
+      { phase: "verifying" }, { phase: "writing" }, { phase: "success" },
     ];
     for (const progress of phases) {
       act(() => fire("pull-progress", { pull_id: "pid-1", name: "llama3.2:1b", progress }));
