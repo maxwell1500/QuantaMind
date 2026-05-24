@@ -1,6 +1,7 @@
 use crate::commands::gguf_cmd::EVENT_MODELS_CHANGED;
 use crate::errors::{AppError, AppResult};
-use crate::inference::pull::{pull_model as run_pull, validate_name};
+use crate::inference::pull::pull_model as run_pull;
+use crate::inference::pull_name::validate_name;
 use crate::inference::pull_progress::PullProgress;
 use crate::sync::MutexExt;
 use futures_util::FutureExt;

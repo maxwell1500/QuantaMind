@@ -4,7 +4,7 @@ use crate::inference::chat_templates::detect_template;
 use crate::inference::create_spec::{CreateParameters, CreatePhase, CreateSpec};
 use crate::inference::gguf::{inspect_gguf as inspect, GgufMetadata};
 use crate::inference::ollama_create::ollama_create;
-use crate::inference::pull::validate_name;
+use crate::inference::pull_name::validate_name;
 use std::path::PathBuf;
 use tauri::{AppHandle, Emitter};
 

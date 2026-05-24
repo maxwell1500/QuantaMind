@@ -32,7 +32,29 @@ checks miss** does it return the "rolled back" error.
 Tests use `verify_with_delays` with a fast `&[1, 1, 1]` ladder against
 a `mockito` server. See `verify_install_tests.rs`.
 
-## (Fix 2 — NDJSON tail flush, pending)
+## NDJSON tail-buffer flush
+
+`backend/src/inference/ndjson.rs` (helpers), `consume_create.rs` (create),
+`pull.rs` (pull).
+
+The shared NDJSON parser used by both `/api/create` and `/api/pull`
+previously required every line — including the terminal `success` —
+to be newline-terminated. Ollama 0.24+ has been observed to close
+the connection with the final `{"status":"success"}` un-flushed,
+causing a successful install to be reported as
+"stream ended without success".
+
+Both consumers now flush the un-terminated remainder via
+`ndjson::tail(&buf)` after the stream closes and re-run the same
+chunk parser. Five integration tests in `consume_create_tests.rs`
+cover the with-newline and without-newline success paths plus the
+error/no-success cases.
+
+While unwinding `ollama_create.rs` for size, a latent serialization
+bug was also fixed: `build_create_body(...)` returns `AppResult<Value>`
+but the call site dropped the `?`, so Ollama was receiving
+`{"Ok": {"model": ..., ...}}` instead of the unwrapped body. The new
+code uses `build_create_body(...)?`.
 
 ## (Fix 3 — Downloads terminal states, pending)
 
