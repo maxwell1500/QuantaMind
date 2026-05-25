@@ -17,7 +17,7 @@ describe("WorkspaceIO", () => {
     fireEvent.click(screen.getByRole("button", { name: /save/i }));
     await waitFor(() =>
       expect(invoke).toHaveBeenCalledWith("save_prompt", {
-        path: "./splice-current.yaml",
+        path: "./quantamind-current.yaml",
         model: "llama3.2:1b",
         prompt: "hi",
       }),
@@ -44,7 +44,7 @@ describe("WorkspaceIO", () => {
     fireEvent.click(screen.getByRole("button", { name: /load/i }));
     await waitFor(() =>
       expect(invoke).toHaveBeenCalledWith("load_prompt", {
-        path: "./splice-current.yaml",
+        path: "./quantamind-current.yaml",
       }),
     );
     expect(onLoad).toHaveBeenCalledWith("mistral:7b", "loaded body");

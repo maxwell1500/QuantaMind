@@ -16,12 +16,12 @@ xcode-select --install
 
 ```sh
 pnpm create tauri-app@latest
-# Project name: splice
-# Identifier: dev.splice.app
+# Project name: quantamind
+# Identifier: dev.quantamind.app
 # Frontend: TypeScript
 # Package manager: pnpm
 # UI template: React (TypeScript flavor)
-cd splice
+cd quantamind
 ```
 
 ## 3. Install frontend dependencies
@@ -63,7 +63,7 @@ Create `lefthook.yml` (see CONTRIBUTING.md for content).
 ## 6. GitHub repo
 
 ```sh
-gh repo create splice-dev/splice --public --source=. --remote=origin --push
+gh repo create quantamind-dev/quantamind --public --source=. --remote=origin --push
 gh repo edit --enable-discussions
 ```
 

@@ -8,7 +8,7 @@ type Props = {
   onLoad: (model: string, prompt: string) => void;
 };
 
-const DEFAULT_PATH = "./splice-current.yaml";
+const DEFAULT_PATH = "./quantamind-current.yaml";
 
 export function WorkspaceIO({ model, prompt, onLoad }: Props) {
   const [path, setPath] = useState(DEFAULT_PATH);

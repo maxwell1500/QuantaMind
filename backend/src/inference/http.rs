@@ -4,7 +4,7 @@ use std::time::Duration;
 
 const CONNECT_TIMEOUT: Duration = Duration::from_secs(60);
 const PROBE_TIMEOUT: Duration = Duration::from_secs(30);
-const USER_AGENT: &str = concat!("splice/", env!("CARGO_PKG_VERSION"));
+const USER_AGENT: &str = concat!("quantamind/", env!("CARGO_PKG_VERSION"));
 
 /// HTTP client for short request/response cycles where a stalled
 /// endpoint should fail fast rather than wedge the install. Use for

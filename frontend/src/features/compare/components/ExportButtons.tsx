@@ -17,7 +17,7 @@ export function ExportButtons() {
   const exportAs = async (format: CompareReportFormat) => {
     setError(null);
     const path = await save({
-      defaultPath: `splice-compare-${Date.now()}.${format}`,
+      defaultPath: `quantamind-compare-${Date.now()}.${format}`,
       filters: [{ name: FORMAT_LABEL[format], extensions: [format] }],
     });
     if (!path) return;
