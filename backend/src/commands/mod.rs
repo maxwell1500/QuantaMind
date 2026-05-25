@@ -11,6 +11,7 @@ pub mod compare;
 pub mod compare_export;
 pub mod compare_payloads;
 pub mod feasibility;
+pub mod feedback;
 pub mod gguf_cmd;
 pub mod hardware;
 pub mod health;

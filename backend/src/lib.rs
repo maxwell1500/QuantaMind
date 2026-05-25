@@ -19,6 +19,7 @@ pub fn run() {
         .manage(commands::ollama_start::OllamaStartState::default())
         .invoke_handler(tauri::generate_handler![
             commands::feasibility::check_install_feasibility,
+            commands::feedback::submit_feedback,
             commands::gguf_cmd::inspect_gguf,
             commands::hardware::get_hardware_snapshot,
             commands::compare::run_compare,

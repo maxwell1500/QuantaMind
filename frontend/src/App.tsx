@@ -6,6 +6,8 @@ import { DownloadsPage } from "./features/models/components/DownloadsPage";
 import { StoragePage } from "./features/models/components/StoragePage";
 import { startInstalledModelsBus } from "./features/models/state/installedModelsBus";
 import { useModelSettingsStore } from "./features/models/state/modelSettingsStore";
+import { FeedbackButton } from "./features/feedback/components/FeedbackButton";
+import { ToastHost } from "./shared/ui/Toast";
 import { useNavStore, type TopView } from "./shared/state/navStore";
 
 const TABS: { id: TopView; label: string }[] = [
@@ -56,6 +58,8 @@ export default function App() {
       <div hidden={view !== "models"} data-testid="view-models"><ModelsPage /></div>
       <div hidden={view !== "downloads"} data-testid="view-downloads"><DownloadsPage /></div>
       <div hidden={view !== "storage"} data-testid="view-storage"><StoragePage /></div>
+      <FeedbackButton />
+      <ToastHost />
     </main>
   );
 }
