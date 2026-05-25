@@ -8,7 +8,10 @@
     "dialog:default",
     {
       "identifier": "shell:allow-open",
-      "allow": [{ "url": "https://ollama.com/download" }]
+      "allow": [
+        { "url": "https://ollama.com/download" },
+        { "url": "https://ollama.com/library" }
+      ]
     }
   ]
 }

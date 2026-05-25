@@ -37,6 +37,7 @@ pub fn run() {
             commands::models_pull::pull_model,
             commands::models_pull::cancel_pull,
             commands::ollama_start::start_ollama,
+            commands::ollama_start::stop_ollama,
             commands::settings::get_storage_path,
             commands::settings::validate_storage_path,
             commands::storage::get_installed_models_with_stats,
