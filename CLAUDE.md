@@ -1,4 +1,4 @@
-# CLAUDE.md — QM-Dev (Splice)
+# CLAUDE.md — QM-Dev (QuantaMind)
 
 Project guide for Claude Code sessions. Read this top-to-bottom before any work.
 

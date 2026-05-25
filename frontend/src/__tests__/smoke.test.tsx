@@ -23,7 +23,7 @@ describe("phase 1.2 — deps wired up", () => {
 
   it("zod validates a schema", () => {
     const schema = z.object({ name: z.string().min(1) });
-    expect(schema.parse({ name: "splice" }).name).toBe("splice");
+    expect(schema.parse({ name: "quantamind" }).name).toBe("quantamind");
     expect(() => schema.parse({ name: "" })).toThrow();
   });
 

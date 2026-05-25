@@ -1,13 +1,13 @@
 # Architecture
 
-Splice is a Tauri desktop app: React/TS frontend, Rust backend, JSON IPC,
+QuantaMind is a Tauri desktop app: React/TS frontend, Rust backend, JSON IPC,
 HTTP to a local Ollama server.
 
 ## Mental model
 
 ```
 ┌─────────────────────────────────────────────────────────────┐
-│                    Splice Desktop App                       │
+│                  QuantaMind Desktop App                     │
 │                                                             │
 │  ┌────────────────────────────────────────────────────┐    │
 │  │            React + TypeScript Frontend             │    │
