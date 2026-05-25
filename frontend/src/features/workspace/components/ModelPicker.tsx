@@ -5,6 +5,7 @@ import { useWorkspaceStore } from "../state/workspaceStore";
 import { useNavStore } from "../../../shared/state/navStore";
 import { ModelTemperaturePopover } from "./ModelTemperaturePopover";
 import { OllamaEmptyState } from "./OllamaEmptyState";
+import { useStopOllama } from "../hooks/useStopOllama";
 
 type Props = {
   value: string | null;
@@ -18,6 +19,7 @@ export function ModelPicker({ value, onChange }: Props) {
   const error = useInstalledModelsStore((s) => s.error);
   const refresh = useInstalledModelsStore((s) => s.refresh);
   const ollamaHealthy = useWorkspaceStore((s) => s.ollamaHealthy);
+  const { status: stopStatus, stop } = useStopOllama();
 
   useEffect(() => {
     if (status === "idle") void refresh();
@@ -57,6 +59,19 @@ export function ModelPicker({ value, onChange }: Props) {
             ))}
           </select>
           <ModelTemperaturePopover modelName={value} />
+          <button
+            type="button"
+            onClick={() => void stop()}
+            disabled={stopStatus === "stopping"}
+            aria-label="Stop Ollama server"
+            title="Stop Ollama server"
+            data-testid="ollama-stop-button"
+            className="border rounded p-1 text-sm hover:bg-red-50 disabled:opacity-40"
+          >
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="currentColor" aria-hidden>
+              <rect x="6" y="6" width="12" height="12" rx="1" />
+            </svg>
+          </button>
         </>
       )}
       <button

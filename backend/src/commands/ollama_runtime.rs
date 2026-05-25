@@ -79,3 +79,14 @@ pub async fn wait_until_ready() -> bool {
     }
     false
 }
+
+#[cfg(target_os = "macos")]
+pub fn kill_serve() -> Result<(), String> {
+    // pkill exit code 1 means "no process matched" — treat as success
+    // (caller wanted Ollama stopped; it already is).
+    Command::new("pkill").arg("-f").arg("ollama serve")
+        .status().map(|_| ()).map_err(|e| e.to_string())
+}
+
+#[cfg(not(target_os = "macos"))]
+pub fn kill_serve() -> Result<(), String> { Err(UNSUPPORTED_OS_MSG.into()) }

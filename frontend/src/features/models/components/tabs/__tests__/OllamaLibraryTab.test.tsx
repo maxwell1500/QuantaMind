@@ -3,9 +3,11 @@ import { render, screen, fireEvent, waitFor } from "@testing-library/react";
 
 vi.mock("@tauri-apps/api/core", () => ({ invoke: vi.fn() }));
 vi.mock("@tauri-apps/api/event", () => ({ listen: vi.fn() }));
+vi.mock("@tauri-apps/plugin-shell", () => ({ open: vi.fn().mockResolvedValue(undefined) }));
 
 import { invoke } from "@tauri-apps/api/core";
 import { listen, type EventCallback } from "@tauri-apps/api/event";
+import { open as openExternal } from "@tauri-apps/plugin-shell";
 import { OllamaLibraryTab } from "../OllamaLibraryTab";
 import { useModelStore } from "../../../state/modelStore";
 import { useInstalledModelsStore } from "../../../state/installedModelsStore";
@@ -79,6 +81,14 @@ describe("OllamaLibraryTab (free-text install)", () => {
     fireEvent.change(input, { target: { value: "phi3:mini" } });
     fireEvent.keyDown(input, { key: "Enter" });
     await waitFor(() => expect(invoke).toHaveBeenCalledWith("pull_model", { name: "phi3:mini" }));
+  });
+
+  it("clicking the ollama.com/library link opens it in the system browser", async () => {
+    render(<OllamaLibraryTab />);
+    fireEvent.click(screen.getByTestId("ollama-library-link"));
+    await waitFor(() =>
+      expect(openExternal).toHaveBeenCalledWith("https://ollama.com/library"),
+    );
   });
 
   it("shows an explicit success banner once the pull-progress success arrives", async () => {
