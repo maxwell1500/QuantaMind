@@ -53,7 +53,7 @@ pub async fn run_prompt(
     );
     let system_trim = system.as_deref().map(str::trim).filter(|s| !s.is_empty());
     let result = run_prompt_inner(
-        DEFAULT_OLLAMA, &model, &prompt, system_trim, temperature, token.clone(), handler,
+        DEFAULT_OLLAMA, &model, &prompt, system_trim, temperature, None, token.clone(), handler,
     ).await;
 
     *state.current.lock_recover() = None;

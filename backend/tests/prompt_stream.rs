@@ -25,6 +25,7 @@ async fn tokens_arrive_in_order_and_concat_to_fixture() {
         "Why is the sky blue?",
         None,
         None,
+        None,
         CancellationToken::new(),
         |t| tokens.push(t.to_string()),
     )
@@ -50,6 +51,7 @@ async fn empty_prompt_rejected_before_http() {
         "   ",
         None,
         None,
+        None,
         CancellationToken::new(),
         |_| {},
     )
@@ -70,7 +72,7 @@ async fn empty_model_rejected_before_http() {
         .create_async()
         .await;
 
-    match run_prompt_inner(&server.url(), "", "hi", None, None, CancellationToken::new(), |_| {}).await {
+    match run_prompt_inner(&server.url(), "", "hi", None, None, None, CancellationToken::new(), |_| {}).await {
         Err(AppError::Validation(msg)) => assert!(msg.contains("model"), "msg: {msg}"),
         other => panic!("expected Validation err, got {other:?}"),
     }

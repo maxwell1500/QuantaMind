@@ -3,7 +3,12 @@ use serde::{Deserialize, Serialize};
 use std::time::Duration;
 
 const DEFAULT_OLLAMA: &str = "http://localhost:11434";
-const PROBE_TIMEOUT: Duration = Duration::from_millis(800);
+// 2500ms gives room for Ollama to respond while it's busy loading a
+// large model (which routinely pushes the response past 800ms). A
+// genuinely down server still fails fast via "Connection refused", so
+// the larger budget only kicks in on real load events, not for outage
+// detection latency.
+const PROBE_TIMEOUT: Duration = Duration::from_millis(2500);
 
 #[derive(Serialize, Clone, Debug, PartialEq)]
 pub struct HealthStatus {

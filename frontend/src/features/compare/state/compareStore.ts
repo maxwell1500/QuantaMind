@@ -3,7 +3,7 @@ import type { HardwareSnapshot } from "../../../shared/ipc/hardware";
 import type { StrategyId } from "./strategy";
 
 export type CompareModel = { name: string; size_bytes: number };
-export type RowStatus = "pending" | "running" | "done" | "cancelled" | "error";
+export type RowStatus = "pending" | "loading" | "running" | "done" | "cancelled" | "error";
 
 export interface CompareRow {
   model: string;
@@ -30,6 +30,7 @@ interface CompareStore {
   setHardwareSnapshot: (s: HardwareSnapshot | null) => void;
   setStrategy: (s: StrategyId) => void;
   initRun: (models: CompareModel[]) => void;
+  setRowLoading: (model: string, modelId: string) => void;
   appendToken: (model: string, modelId: string, text: string) => void;
   setRowDone: (p: { model: string; ttft_ms: number | null; tokens_per_sec: number | null; token_count: number }) => void;
   setRowCancelled: (p: { model: string; token_count: number }) => void;
@@ -61,6 +62,12 @@ export const useCompareStore = create<CompareStore>((set) => ({
   setStrategy: (strategy) => set({ strategy }),
   initRun: (models) =>
     set({ rows: models.map((m) => newRow(m.name)), isRunning: true }),
+  setRowLoading: (model, modelId) =>
+    set((s) => ({
+      rows: s.rows.map((r) => r.model === model && r.status === "pending"
+        ? { ...r, status: "loading", modelId: r.modelId ?? modelId }
+        : r),
+    })),
   appendToken: (model, modelId, text) =>
     set((s) => ({
       rows: s.rows.map((r) => r.model === model

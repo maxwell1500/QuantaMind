@@ -201,6 +201,77 @@ macOS only this release. On Windows/Linux, `resolve_ollama()` returns
 gates are `#[cfg(target_os = "macos")]`, so cross-compiling still
 builds cleanly.
 
+### Sequential vs parallel memory profile (`keep_alive`)
+
+Ollama keeps a model loaded in RAM for 5 minutes after a request
+finishes by default. That's snappy for re-runs of the same model in
+the Workspace, but it breaks the *intent* of Compare's sequential
+strategy: when the second row's request arrives, Ollama loads the new
+model **in addition** to the prior one, so for a few minutes both are
+resident. On RAM-constrained machines that triggers swap thrash or
+OOM with bigger models.
+
+Fix: the backend now sends `keep_alive: 0` in the `/api/generate`
+body for every sequential request (`Sequential` and
+`SequentialSkippable` strategies). Ollama unloads the model the
+instant the response stream ends, so the next row's model loads into
+a freed-up cache. Parallel keeps `keep_alive` unset (the caller wants
+all models loaded concurrently — that's the whole point). Workspace
+single-model `run_prompt` also keeps it unset so back-to-back runs
+of the same model stay snappy.
+
+Verify with `watch -n 0.5 'ollama ps'` while a sequential compare is
+in flight — only one row should show up at any moment, with the prior
+row's model disappearing before the next row's appears.
+
+### Model-loading indicator (UI)
+
+Big models (14B+, multi-GB GGUFs) take 10–30s loading weights into
+RAM before Ollama can stream the first token. Until the v0.1.0 fix,
+that window showed empty UI and looked like a hang.
+
+- **Compare:** the backend emits an `EVENT_COMPARE_LOADING` event for
+  the active row immediately before the `stream_generate` call. The
+  frontend (`compareEventBus`) flips that row into a new `"loading"`
+  `RowStatus`. `CompareColumn` renders an inline spinner +
+  "Loading model… large models can take 30+ seconds on first load."
+  The existing token handler transitions `loading → running` on the
+  first token.
+- **Workspace:** no extra event needed — the status is already
+  `"running"` before the first token arrives. `OutputStream` accepts
+  an optional `loading` prop; `Workspace.tsx` passes
+  `loading={status === "running" && !output}`. Same spinner +
+  placeholder copy; swaps to streaming text on first token.
+
+Spinner uses the existing Tailwind `animate-spin` pattern from
+`OllamaEmptyState::Spinner`. No new icon dependency.
+
+### Run-gate when Ollama is down
+
+When `ollamaHealthy === false` (because the user clicked Stop or
+because Ollama crashed), the model picker correctly swaps to the
+empty state — but the Run button below was still clickable if a
+model had been selected earlier and was still in the store. Clicking
+it produced a back-end error rather than a clear "you need to start
+Ollama" signal.
+
+Fix: `RunControls` accepts an `ollamaHealthy` prop and short-circuits
+`canRun` when it's not `true`. The Run button goes disabled and its
+hover `title` is "Start Ollama first" — the user's eyes land on the
+visible Start button in the empty state immediately above. When
+`ollamaHealthy` flips back to `true`, Run re-enables automatically.
+
+### Health-check timeout: 800ms → 2500ms
+
+`backend/src/commands/health.rs::PROBE_TIMEOUT` was 800ms. When
+Ollama was busy loading a big model, requests could exceed 800ms and
+the StatusBar would false-negatively flip `ollamaHealthy` to `false`.
+Every surface gated on that store value (Storage page, etc.) then
+said "Ollama is not running" — a lie. Bumping the timeout to 2500ms
+eliminates the false negative without slowing genuine-outage
+detection: a real down server still fails fast via "Connection
+refused," not via timeout.
+
 ### New dependency
 
 `tauri-plugin-shell` (Rust + JS) was added solely for the Install

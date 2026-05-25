@@ -3,10 +3,12 @@ import {
   CompareCancelledPayloadSchema,
   CompareDonePayloadSchema,
   CompareErrorPayloadSchema,
+  CompareLoadingPayloadSchema,
   CompareTokenPayloadSchema,
   EVENT_COMPARE_CANCELLED,
   EVENT_COMPARE_DONE,
   EVENT_COMPARE_ERROR,
+  EVENT_COMPARE_LOADING,
   EVENT_COMPARE_RUN_DONE,
   EVENT_COMPARE_TOKEN,
 } from "../../../shared/ipc/compare_events";
@@ -17,6 +19,10 @@ let starting: Promise<void> | null = null;
 export function startCompareEventBus(): Promise<void> {
   if (starting) return starting;
   starting = (async () => {
+    await listen<unknown>(EVENT_COMPARE_LOADING, (e) => {
+      const p = CompareLoadingPayloadSchema.safeParse(e.payload);
+      if (p.success) useCompareStore.getState().setRowLoading(p.data.model, p.data.model_id);
+    });
     await listen<unknown>(EVENT_COMPARE_TOKEN, (e) => {
       const p = CompareTokenPayloadSchema.safeParse(e.payload);
       if (p.success) useCompareStore.getState().appendToken(p.data.model, p.data.model_id, p.data.text);

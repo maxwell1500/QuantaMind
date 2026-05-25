@@ -12,6 +12,7 @@ import { formatMetrics } from "../format";
 export function Workspace() {
   const model = useWorkspaceStore((s) => s.selectedModel);
   const setModel = useWorkspaceStore((s) => s.setSelectedModel);
+  const ollamaHealthy = useWorkspaceStore((s) => s.ollamaHealthy);
   const [systemPrompt, setSystemPrompt] = useState("");
   const [prompt, setPrompt] = useState("");
   const { output, status, error, metrics, cancelledInfo, start, cancel } =
@@ -38,10 +39,11 @@ export function Workspace() {
       <RunControls
         status={status}
         canRun={!!model && prompt.trim().length > 0}
+        ollamaHealthy={ollamaHealthy}
         onRun={() => model && start(model, prompt, systemPrompt)}
         onCancel={cancel}
       />
-      <OutputStream output={output} />
+      <OutputStream output={output} loading={status === "running" && !output} />
       {metrics && (
         <p className="text-xs text-gray-600" data-testid="metrics">
           {formatMetrics(metrics)}

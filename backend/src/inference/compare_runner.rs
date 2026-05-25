@@ -1,6 +1,9 @@
 #![deny(clippy::unwrap_used)]
 use crate::commands::compare::CompareRunState;
-use crate::commands::compare_payloads::{CompareTokenPayload, EVENT_COMPARE_RUN_DONE, EVENT_COMPARE_TOKEN};
+use crate::commands::compare_payloads::{
+    CompareLoadingPayload, CompareTokenPayload,
+    EVENT_COMPARE_LOADING, EVENT_COMPARE_RUN_DONE, EVENT_COMPARE_TOKEN,
+};
 use crate::commands::prompt_handler::make_token_handler;
 use crate::errors::AppError;
 use crate::inference::compare_runner_finalize::{emit, finalize_row, CompareEmit};
@@ -31,12 +34,13 @@ pub async fn run_sequential(
     rows: Vec<RowSpec>,
     prompt: &str,
     system: Option<&str>,
+    keep_alive: Option<i32>,
 ) -> Result<(), AppError> {
     let run_cancel = CancellationToken::new();
     *state.run_cancel.lock_recover() = Some(run_cancel.clone());
     for row in &rows {
         if run_cancel.is_cancelled() { break; }
-        run_one_row(&emit_fn, state, endpoint, row, prompt, system).await;
+        run_one_row(&emit_fn, state, endpoint, row, prompt, system, keep_alive).await;
     }
     *state.run_cancel.lock_recover() = None;
     state.rows.lock_recover().clear();
@@ -51,6 +55,7 @@ pub async fn run_parallel(
     rows: Vec<RowSpec>,
     prompt: &str,
     system: Option<&str>,
+    keep_alive: Option<i32>,
 ) -> Result<(), AppError> {
     *state.run_cancel.lock_recover() = Some(CancellationToken::new());
     let endpoint_owned = endpoint.to_string();
@@ -63,7 +68,7 @@ pub async fn run_parallel(
         let prompt = prompt_owned.clone();
         let system = system_owned.clone();
         tokio::spawn(async move {
-            run_one_row(&emit_clone, &state_clone, &endpoint, &row, &prompt, system.as_deref()).await;
+            run_one_row(&emit_clone, &state_clone, &endpoint, &row, &prompt, system.as_deref(), keep_alive).await;
         })
     }).collect();
     let _ = futures_util::future::join_all(handles).await;
@@ -80,26 +85,27 @@ pub(crate) async fn run_one_row(
     row: &RowSpec,
     prompt: &str,
     system: Option<&str>,
+    keep_alive: Option<i32>,
 ) {
     let row_token = CancellationToken::new();
     state.rows.lock_recover().insert(row.model_id, row_token.clone());
+    let id_str = row.model_id.to_string();
+    emit(emit_fn, EVENT_COMPARE_LOADING, &CompareLoadingPayload {
+        model_id: id_str.clone(), model: row.model.clone(),
+    });
     let timing = Arc::new(Mutex::new(RunTiming::start()));
     let emit_clone = emit_fn.clone();
-    let id_for_token = row.model_id.to_string();
     let model_for_token = row.model.clone();
     let handler = make_token_handler(
         move |t| {
             emit(&emit_clone, EVENT_COMPARE_TOKEN, &CompareTokenPayload {
-                model_id: id_for_token.clone(),
-                model: model_for_token.clone(),
-                text: t.to_string(),
+                model_id: id_str.clone(), model: model_for_token.clone(), text: t.to_string(),
             });
             Ok(())
         },
-        row_token.clone(),
-        timing.clone(),
+        row_token.clone(), timing.clone(),
     );
-    let result = stream_generate(endpoint, &row.model, prompt, system, row.temperature, row_token.clone(), handler).await;
+    let result = stream_generate(endpoint, &row.model, prompt, system, row.temperature, keep_alive, row_token.clone(), handler).await;
     state.rows.lock_recover().remove(&row.model_id);
     finalize_row(emit_fn, row, &timing, &row_token, result);
 }

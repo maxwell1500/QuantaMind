@@ -5,6 +5,12 @@ export const EVENT_COMPARE_DONE = "compare-done";
 export const EVENT_COMPARE_CANCELLED = "compare-cancelled";
 export const EVENT_COMPARE_ERROR = "compare-error";
 export const EVENT_COMPARE_RUN_DONE = "compare-run-done";
+export const EVENT_COMPARE_LOADING = "compare-loading";
+
+export const CompareLoadingPayloadSchema = z.object({
+  model_id: z.string().min(1),
+  model: z.string().min(1),
+});
 
 export const CompareTokenPayloadSchema = z.object({
   model_id: z.string().min(1),
@@ -37,3 +43,4 @@ export type CompareTokenPayload = z.infer<typeof CompareTokenPayloadSchema>;
 export type CompareDonePayload = z.infer<typeof CompareDonePayloadSchema>;
 export type CompareCancelledPayload = z.infer<typeof CompareCancelledPayloadSchema>;
 export type CompareErrorPayload = z.infer<typeof CompareErrorPayloadSchema>;
+export type CompareLoadingPayload = z.infer<typeof CompareLoadingPayloadSchema>;
