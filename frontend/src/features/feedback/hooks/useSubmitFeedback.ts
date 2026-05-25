@@ -1,11 +1,12 @@
 import { useCallback, useState } from "react";
+import { open as openExternal } from "@tauri-apps/plugin-shell";
 import {
-  submitFeedback,
+  buildFeedbackMailto,
   type FeedbackInput,
 } from "../../../shared/ipc/feedback";
 import { formatIpcError } from "../../../shared/ipc/error";
 
-export type SubmitStatus = "idle" | "submitting" | "success" | "error";
+export type SubmitStatus = "idle" | "opening" | "success" | "error";
 
 export function useSubmitFeedback() {
   const [status, setStatus] = useState<SubmitStatus>("idle");
@@ -13,9 +14,9 @@ export function useSubmitFeedback() {
 
   const submit = useCallback(async (input: FeedbackInput): Promise<boolean> => {
     setError(null);
-    setStatus("submitting");
+    setStatus("opening");
     try {
-      await submitFeedback(input);
+      await openExternal(buildFeedbackMailto(input));
       setStatus("success");
       return true;
     } catch (e) {

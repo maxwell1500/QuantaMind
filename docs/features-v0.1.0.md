@@ -307,7 +307,7 @@ capability entry.
 
 ---
 
-## 4. In-app feedback (button + modal → Web3Forms)
+## 4. In-app feedback (button + modal → user's mail client)
 
 ### What the user sees
 
@@ -320,103 +320,77 @@ below modals at z-40). Click → modal opens:
 > missing, what you wish worked differently — directly shapes what
 > we build next.
 > [textarea]
-> Your email (optional — only if you want a reply)
-> [email input]
 > ☐ Include diagnostic info (app version, OS, current model)
-> Feedback goes to info@quantamind.co. We read every message.
-> [Cancel]  [Send]
+> Click **Open in mail app** and your default email client opens a
+> draft to **info@quantamind.co** with this message pre-filled. You
+> hit Send from there. We read every message.
+> [Cancel]  [Open in mail app]
 
-- **Send** is disabled until the trimmed message length is in
-  `[10, 5000]`.
-- **Esc** and clicking the backdrop close the modal (unless a
-  submission is in flight).
+- **Open in mail app** is disabled until the trimmed message length
+  is in `[10, 5000]`.
+- **Esc** and clicking the backdrop close the modal (unless the
+  mail-app launch is in flight).
 - **Success** → modal closes, toast at the bottom of the screen:
-  "Thanks — we read every message."
-- **Failure** → inline red error under the form, modal stays open,
-  retry by clicking Send again.
+  "Opened your mail app — review and hit Send."
+- **Failure** (no default mail client, OS denied the launch, …) →
+  inline red error under the form, modal stays open, retry by
+  clicking the button again.
+
+### Why mailto, not an HTTP relay
+
+The earlier v0.1.0 plan posted to a Web3Forms relay with a
+build-time access key. We replaced it with a `mailto:` flow because:
+
+- **No third-party account or build-time secret.** The app needs no
+  Web3Forms key, no env var at `cargo build` time, no rerun-if-
+  env-changed hook in `build.rs`. The dev / release builds are
+  identical.
+- **The user sees what they're sending before it goes out.** Mail
+  client opens, body pre-filled, user reviews, hits Send. No
+  surprises about what we transmit.
+- **From-address is automatic.** The user's mail client sends from
+  their address, so reply-to "just works" — we no longer need the
+  separate email input field that the old form had.
+- **One less network path that can fail.** No outbound POST, no
+  HTTP timeout, no third-party uptime. The only thing that can fail
+  is "the OS can't find a default mail client," which surfaces
+  cleanly via the shell.open rejection path.
 
 ### Diagnostics opt-in (what the checkbox actually does)
 
-Unchecked (default): the email contains only the message and the
-reply-to address. The `diagnostics` field on the payload is an empty
-string and is stripped before send.
-
-Checked: the backend builds a small three-line string:
+Unchecked (default): the email body is just the user's message.
+Checked: the frontend appends a small block to the body:
 
 ```
-app: QuantaMind v0.1.0
-os: macos (aarch64)
-model: <currently selected model>
+[user message]
+
+---
+Diagnostics (opt-in)
+App: QuantaMind v0.1.0
+User-Agent: <navigator.userAgent>
+Model: <currently selected model or "(none selected)">
 ```
 
-— from `env!("CARGO_PKG_VERSION")`, `std::env::consts::{OS, ARCH}`,
-and the frontend's currently-selected model (read from
-`useWorkspaceStore.selectedModel`, which `Workspace.tsx` writes via
-`setSelectedModel` whenever the picker changes). No logs, no IP, no
-identifying info beyond what the user typed plus that string. The
-checkbox is unchecked by default precisely so this is opt-in.
+The user can edit or delete it in their mail client before sending.
+No logs, no IP, no identifying info beyond what the user typed plus
+those three lines.
 
-### Build-time access key
-
-The Web3Forms access key is read at compile time via
-`option_env!("WEB3FORMS_ACCESS_KEY")`. **Builds succeed without it,**
-but `submit_feedback` returns a clear error if it wasn't set:
-
-> internal: feedback is disabled in this build (`WEB3FORMS_ACCESS_KEY`
-> was not set at compile time)
-
-To enable feedback for a release build:
-
-```sh
-WEB3FORMS_ACCESS_KEY=<your-key> pnpm tauri build
-```
-
-`backend/build.rs` declares
-`cargo:rerun-if-env-changed=WEB3FORMS_ACCESS_KEY` so the build
-re-runs when you swap keys.
-
-### Backend
-
-`backend/src/commands/feedback.rs::submit_feedback`:
-
-1. Trim message; validate length is in `[10, 5000]`, else
-   `AppError::Validation`.
-2. If `user_email` is set, validate with a small inline checker
-   (single `@`, no whitespace, dotted domain, no leading/trailing
-   dot in domain). Bad shape → `AppError::Validation`.
-3. If `include_diagnostics`, build the three-line string above.
-4. POST JSON to `https://api.web3forms.com/submit` via the existing
-   `inference::http::probe_client` (so the same 30s timeout and
-   QuantaMind User-Agent apply).
-5. Non-2xx → `AppError::Inference` with the response body included so
-   debugging isn't blind.
-
-Payload shape Web3Forms receives:
-
-```json
-{
-  "access_key": "<your key>",
-  "subject":    "QuantaMind Feedback",
-  "from_name":  "QuantaMind App",
-  "message":    "<user text>",
-  "reply_to":   "<user email or no-reply@quantamind.co>",
-  "diagnostics": "app: QuantaMind v0.1.0\nos: macos (aarch64)\nmodel: mistral:7b"
-}
-```
-
-Web3Forms takes that and emails it to the address registered at sign-up
-(currently **info@quantamind.co**).
-
-### Frontend wire
+### How it's wired
 
 | Concern | File |
 | --- | --- |
-| IPC wrapper | `frontend/src/shared/ipc/feedback.ts` |
-| State machine (`idle → submitting → success/error`) | `frontend/src/features/feedback/hooks/useSubmitFeedback.ts` |
+| mailto: URL builder + constants | `frontend/src/shared/ipc/feedback.ts` |
+| State machine (`idle → opening → success/error`) | `frontend/src/features/feedback/hooks/useSubmitFeedback.ts` |
 | Floating button | `frontend/src/features/feedback/components/FeedbackButton.tsx` |
 | Modal + form | `frontend/src/features/feedback/components/FeedbackModal.tsx` |
 | Minimal toast primitive (`Toast`, `useToast`, `<ToastHost />`) | `frontend/src/shared/ui/Toast.tsx` |
 | Mount point | `frontend/src/App.tsx` mounts both `<FeedbackButton />` and `<ToastHost />` at the root |
+| Capability allowlist | `backend/capabilities/default.json` grants `shell:allow-open` with a `mailto:**` scope alongside the two `ollama.com` URLs |
+
+There is **no backend command** for feedback. The mailto URL is
+built entirely in the renderer and handed off via
+`@tauri-apps/plugin-shell`'s `open()` — the same hand-off the
+Install Ollama and `ollama.com/library` buttons use.
 
 ### Cross-cutting
 
@@ -461,7 +435,6 @@ in-scope for "branding correctness":
 - `backend/src/commands/ollama_start.rs` + `ollama_start_tests.rs`
 - `backend/src/commands/ollama_runtime.rs` — process spawn / kill /
   probe / poll helpers
-- `backend/src/commands/feedback.rs` + `feedback_tests.rs`
 
 ### New frontend files
 
