@@ -26,3 +26,4 @@ target/
 
 # QuantaMind workspace state (saved by WorkspaceIO; per-user, not a project artifact)
 quantamind-current.yaml
+splice-current.yaml
