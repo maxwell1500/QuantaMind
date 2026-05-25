@@ -1,4 +1,5 @@
 import { HELP_SECTIONS } from "./helpSections";
+import { UpdateChecker } from "./UpdateChecker";
 
 export function HelpPage() {
   return (
@@ -10,6 +11,7 @@ export function HelpPage() {
           here is wrong or missing, use the Feedback button bottom-right.
         </p>
       </header>
+      <UpdateChecker />
       <nav
         aria-label="Help sections"
         data-testid="help-toc"

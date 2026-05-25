@@ -13,6 +13,8 @@
         { "url": "https://ollama.com/library" },
         { "url": "mailto:**" }
       ]
-    }
+    },
+    "updater:default",
+    "process:default"
   ]
 }

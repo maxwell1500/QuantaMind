@@ -14,6 +14,7 @@ are quoted so you can grep from here straight into the codebase.
 6. [Files added or modified](#6-files-added-or-modified)
 7. [How to verify each feature](#7-how-to-verify-each-feature)
 8. [What is intentionally out of scope](#8-what-is-intentionally-out-of-scope)
+9. [Self-update (Help tab → Check for updates)](#9-self-update-help-tab--check-for-updates)
 
 ---
 
@@ -563,3 +564,45 @@ think the user wants.
   into this release.
 - **Pre-existing `install_local_gguf_verify` test failure.** Out of
   scope — see test totals above.
+
+---
+
+## 9. Self-update (Help tab → Check for updates)
+
+QuantaMind v0.1.0 ships with the [`tauri-plugin-updater`][1] plugin.
+The first card on the Help tab is the in-app updater: it shows the
+current version and a **Check for updates** button. Click → the
+plugin polls `https://quantamind.co/releases/latest.json` and
+compares the manifest's `version` field to the running app's
+version.
+
+- **Up-to-date** → green "You're on the latest version" line.
+- **Available** → version + release notes + a **Download and
+  install** button. Click → the new bundle downloads, the embedded
+  public key (in `backend/tauri.conf.json` `plugins.updater.pubkey`)
+  verifies the signature, the app installs the bundle and
+  relaunches.
+- **Error** → red error message under the button (no default mail
+  client, network down, signature mismatch, etc.).
+
+Check is **manual only** in v0.1.0 — there's no background poll. If
+you want background checks later it's a 10-line addition to
+`useUpdater` that fires `check()` from `App.tsx`'s startup effect.
+
+| Concern | File |
+| --- | --- |
+| Plugin wiring (Rust) | `backend/src/lib.rs` registers `tauri_plugin_updater::Builder` + `tauri_plugin_process::init()` |
+| Manifest URL + public key | `backend/tauri.conf.json` under `plugins.updater` |
+| Capability | `backend/capabilities/default.json` (`updater:default` + `process:default`) |
+| IPC wrapper | `frontend/src/shared/ipc/updater.ts` |
+| State machine hook | `frontend/src/features/help/hooks/useUpdater.ts` |
+| UI card | `frontend/src/features/help/components/UpdateChecker.tsx` |
+| Release orchestrator | `scripts/release.sh` |
+| Release notes input | `RELEASE_NOTES.md` (top section is read into the manifest) |
+
+The signing key pair, hosting layout, manifest shape, and the
+per-release recipe are all documented in
+[`docs/release-process.md`](release-process.md). The versioning
+policy is in [`docs/versioning.md`](versioning.md).
+
+[1]: https://v2.tauri.app/plugin/updater/

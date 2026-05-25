@@ -67,4 +67,13 @@ export const HELP_SECTIONS: HelpSection[] = [
       "The status bar shows the selected model name, an Ollama health indicator (green dot = connected, red = not running), and the last run's metrics.",
     ],
   },
+  {
+    id: "updates",
+    title: "Updating QuantaMind",
+    body: [
+      "The card at the top of this Help tab is the in-app updater. Click 'Check for updates' and QuantaMind asks quantamind.co/releases/latest.json whether a newer version is available.",
+      "If one is, the dialog shows the release notes and a 'Download and install' button. Click it; the new bundle is downloaded, signature-verified, installed, and the app relaunches into the new version.",
+      "Macs without an Apple Developer signature show a Gatekeeper warning the first time after each install — right-click the app and pick Open. This goes away once we have notarization in place.",
+    ],
+  },
 ];
