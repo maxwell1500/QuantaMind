@@ -19,6 +19,8 @@ pub mod hf_install;
 pub mod model_settings;
 pub mod models;
 pub mod models_pull;
+pub mod ollama_runtime;
+pub mod ollama_start;
 pub mod prompt;
 pub mod prompt_handler;
 pub mod prompt_payloads;

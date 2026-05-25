@@ -10,11 +10,13 @@ pub mod validation;
 pub fn run() {
     tauri::Builder::default()
         .plugin(tauri_plugin_dialog::init())
+        .plugin(tauri_plugin_shell::init())
         .manage(commands::prompt::RunState::default())
         .manage(commands::models_pull::PullState::default())
         .manage(commands::hf_install::HfInstallState::default())
         .manage(commands::compare::CompareRunState::default())
         .manage(commands::model_settings::ModelSettingsState::default())
+        .manage(commands::ollama_start::OllamaStartState::default())
         .invoke_handler(tauri::generate_handler![
             commands::feasibility::check_install_feasibility,
             commands::gguf_cmd::inspect_gguf,
@@ -33,6 +35,7 @@ pub fn run() {
             commands::models::list_models,
             commands::models_pull::pull_model,
             commands::models_pull::cancel_pull,
+            commands::ollama_start::start_ollama,
             commands::settings::get_storage_path,
             commands::settings::validate_storage_path,
             commands::storage::get_installed_models_with_stats,
