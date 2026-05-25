@@ -1,4 +1,5 @@
 import { useEffect, useMemo, useState } from "react";
+import { open as openExternal } from "@tauri-apps/plugin-shell";
 import { useInstalledModelsStore } from "../../state/installedModelsStore";
 import { useModelInstall } from "../../hooks/useModelInstall";
 
@@ -31,9 +32,14 @@ export function OllamaLibraryTab() {
     <div data-testid="tab-ollama" className="flex flex-col gap-3 h-full">
       <p className="text-xs text-gray-600">
         Type any Ollama model name (e.g. <code>mistral:7b</code>, <code>qwen2.5:14b</code>). Browse all available models at{" "}
-        <a href={LIBRARY_URL} target="_blank" rel="noreferrer" className="underline">
+        <button
+          type="button"
+          onClick={() => void openExternal(LIBRARY_URL)}
+          className="underline text-blue-700 hover:text-blue-900"
+          data-testid="ollama-library-link"
+        >
           ollama.com/library
-        </a>.
+        </button>.
       </p>
       <div className="flex gap-2">
         <input

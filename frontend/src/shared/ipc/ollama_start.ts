@@ -13,3 +13,7 @@ export async function startOllama(): Promise<OllamaStartResult> {
   const raw = await invoke("start_ollama");
   return OllamaStartResultSchema.parse(raw);
 }
+
+export async function stopOllama(): Promise<void> {
+  await invoke("stop_ollama");
+}
