@@ -1,7 +1,8 @@
 #![deny(clippy::unwrap_used)]
 use crate::commands::compare_payloads::Strategy;
+use crate::commands::model_settings::ModelSettingsState;
 use crate::errors::{AppError, AppResult};
-use crate::inference::compare_runner::{run_parallel, run_sequential};
+use crate::inference::compare_runner::{rows_for, run_parallel, run_sequential};
 use crate::inference::compare_runner_finalize::CompareEmit;
 use crate::sync::MutexExt;
 use std::collections::HashMap;
@@ -38,19 +39,22 @@ fn validate(models: &[String], prompt: &str) -> AppResult<()> {
 pub async fn run_compare(
     app: AppHandle,
     state: tauri::State<'_, CompareRunState>,
+    settings: tauri::State<'_, ModelSettingsState>,
     models: Vec<String>,
     prompt: String,
     strategy: Strategy,
     system: Option<String>,
 ) -> Result<(), AppError> {
     validate(&models, &prompt)?;
+    settings.ensure_loaded(&app)?;
+    let rows = rows_for(&models, |m| Some(settings.temperature_for(m)));
     let emit = make_emit(app);
     let system_trim = system.as_deref().map(str::trim).filter(|s| !s.is_empty());
     match strategy {
         Strategy::Sequential | Strategy::SequentialSkippable =>
-            run_sequential(emit, state.inner(), DEFAULT_OLLAMA, &models, &prompt, system_trim).await,
+            run_sequential(emit, state.inner(), DEFAULT_OLLAMA, rows, &prompt, system_trim).await,
         Strategy::Parallel =>
-            run_parallel(emit, state.inner(), DEFAULT_OLLAMA, &models, &prompt, system_trim).await,
+            run_parallel(emit, state.inner(), DEFAULT_OLLAMA, rows, &prompt, system_trim).await,
     }
 }
 

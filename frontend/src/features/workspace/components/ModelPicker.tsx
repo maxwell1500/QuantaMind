@@ -3,6 +3,8 @@ import { useInstalledModelsStore } from "../../models/state/installedModelsStore
 import { isEmbeddingModel } from "../../../shared/models/classify";
 import { useWorkspaceStore } from "../state/workspaceStore";
 import { useNavStore } from "../../../shared/state/navStore";
+import { ModelTemperaturePopover } from "./ModelTemperaturePopover";
+import { OllamaEmptyState } from "./OllamaEmptyState";
 
 type Props = {
   value: string | null;
@@ -27,35 +29,35 @@ export function ModelPicker({ value, onChange }: Props) {
     if (ollamaHealthy === true) void refresh();
   }, [ollamaHealthy, refresh]);
 
-  const effectiveError =
-    error ??
-    (ollamaHealthy === false
-      ? "Ollama is not running. Start Ollama and try again."
-      : null);
   const generative = list.filter((m) => !isEmbeddingModel(m));
 
   return (
     <div className="flex gap-2 items-center flex-wrap">
-      {effectiveError ? (
+      {ollamaHealthy === false ? (
+        <OllamaEmptyState />
+      ) : error ? (
         <div role="alert" className="text-red-600 text-sm flex-1">
-          {effectiveError}
+          {error}
         </div>
       ) : (
-        <select
-          aria-label="Model"
-          value={value ?? ""}
-          onChange={(e) => onChange(e.target.value)}
-          className="border rounded px-2 py-1 text-sm"
-        >
-          <option value="" disabled>
-            Pick a model
-          </option>
-          {generative.map((m) => (
-            <option key={m.name} value={m.name}>
-              {m.name}
+        <>
+          <select
+            aria-label="Model"
+            value={value ?? ""}
+            onChange={(e) => onChange(e.target.value)}
+            className="border rounded px-2 py-1 text-sm"
+          >
+            <option value="" disabled>
+              Pick a model
             </option>
-          ))}
-        </select>
+            {generative.map((m) => (
+              <option key={m.name} value={m.name}>
+                {m.name}
+              </option>
+            ))}
+          </select>
+          <ModelTemperaturePopover modelName={value} />
+        </>
       )}
       <button
         type="button"

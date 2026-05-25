@@ -6,10 +6,12 @@ import { RunControls } from "./RunControls";
 import { WorkspaceIO } from "./WorkspaceIO";
 import { StatusBar } from "./StatusBar";
 import { useStreamingRun } from "../hooks/useStreamingRun";
+import { useWorkspaceStore } from "../state/workspaceStore";
 import { formatMetrics } from "../format";
 
 export function Workspace() {
-  const [model, setModel] = useState<string | null>(null);
+  const model = useWorkspaceStore((s) => s.selectedModel);
+  const setModel = useWorkspaceStore((s) => s.setSelectedModel);
   const [systemPrompt, setSystemPrompt] = useState("");
   const [prompt, setPrompt] = useState("");
   const { output, status, error, metrics, cancelledInfo, start, cancel } =

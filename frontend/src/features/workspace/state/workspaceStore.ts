@@ -7,13 +7,17 @@ import type { DonePayload } from "../../../shared/ipc/events";
 export interface WorkspaceStore {
   lastRunMetrics: DonePayload | null;
   ollamaHealthy: boolean | null;
+  selectedModel: string | null;
   setLastRunMetrics: (m: DonePayload) => void;
   setOllamaHealthy: (h: boolean) => void;
+  setSelectedModel: (m: string | null) => void;
 }
 
 export const useWorkspaceStore = create<WorkspaceStore>((set) => ({
   lastRunMetrics: null,
   ollamaHealthy: null,
+  selectedModel: null,
   setLastRunMetrics: (m) => set({ lastRunMetrics: m }),
   setOllamaHealthy: (h) => set({ ollamaHealthy: h }),
+  setSelectedModel: (m) => set({ selectedModel: m }),
 }));

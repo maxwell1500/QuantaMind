@@ -12,24 +12,26 @@ use tokio_util::sync::CancellationToken;
 use uuid::Uuid;
 
 #[derive(Clone)]
-pub(crate) struct RowSpec {
+pub struct RowSpec {
     pub model_id: Uuid,
     pub model: String,
+    pub temperature: Option<f32>,
 }
 
-pub(crate) fn rows_for(models: &[String]) -> Vec<RowSpec> {
-    models.iter().map(|m| RowSpec { model_id: Uuid::new_v4(), model: m.clone() }).collect()
+pub fn rows_for(models: &[String], temp_for: impl Fn(&str) -> Option<f32>) -> Vec<RowSpec> {
+    models.iter()
+        .map(|m| RowSpec { model_id: Uuid::new_v4(), model: m.clone(), temperature: temp_for(m) })
+        .collect()
 }
 
 pub async fn run_sequential(
     emit_fn: CompareEmit,
     state: &CompareRunState,
     endpoint: &str,
-    models: &[String],
+    rows: Vec<RowSpec>,
     prompt: &str,
     system: Option<&str>,
 ) -> Result<(), AppError> {
-    let rows = rows_for(models);
     let run_cancel = CancellationToken::new();
     *state.run_cancel.lock_recover() = Some(run_cancel.clone());
     for row in &rows {
@@ -46,11 +48,10 @@ pub async fn run_parallel(
     emit_fn: CompareEmit,
     state: &CompareRunState,
     endpoint: &str,
-    models: &[String],
+    rows: Vec<RowSpec>,
     prompt: &str,
     system: Option<&str>,
 ) -> Result<(), AppError> {
-    let rows = rows_for(models);
     *state.run_cancel.lock_recover() = Some(CancellationToken::new());
     let endpoint_owned = endpoint.to_string();
     let prompt_owned = prompt.to_string();
@@ -98,7 +99,7 @@ pub(crate) async fn run_one_row(
         row_token.clone(),
         timing.clone(),
     );
-    let result = stream_generate(endpoint, &row.model, prompt, system, row_token.clone(), handler).await;
+    let result = stream_generate(endpoint, &row.model, prompt, system, row.temperature, row_token.clone(), handler).await;
     state.rows.lock_recover().remove(&row.model_id);
     finalize_row(emit_fn, row, &timing, &row_token, result);
 }
