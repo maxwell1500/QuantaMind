@@ -3,7 +3,7 @@ use quantamind_lib::commands::compare::CompareRunState;
 use quantamind_lib::commands::compare_payloads::{
     EVENT_COMPARE_DONE, EVENT_COMPARE_ERROR, EVENT_COMPARE_RUN_DONE, EVENT_COMPARE_TOKEN,
 };
-use quantamind_lib::inference::compare_runner::run_sequential;
+use quantamind_lib::inference::compare_runner::{rows_for, run_sequential};
 use quantamind_lib::inference::compare_runner_finalize::CompareEmit;
 use std::sync::{Arc, Mutex};
 
@@ -31,7 +31,7 @@ async fn sequential_two_models_emits_token_done_per_row_then_final_run_done() {
 
     let (emit, log) = collector();
     let state = CompareRunState::default();
-    run_sequential(emit, &state, &s.url(), &["a".into(), "b".into()], "ping", None)
+    run_sequential(emit, &state, &s.url(), rows_for(&["a".into(), "b".into()], |_| None), "ping", None)
         .await.expect("run_sequential ok");
 
     let names: Vec<String> = log.lock().unwrap().iter().map(|(n, _)| n.clone()).collect();
@@ -57,7 +57,7 @@ async fn sequential_error_in_one_row_continues_to_next() {
 
     let (emit, log) = collector();
     let state = CompareRunState::default();
-    run_sequential(emit, &state, &s.url(), &["a".into(), "b".into()], "ping", None)
+    run_sequential(emit, &state, &s.url(), rows_for(&["a".into(), "b".into()], |_| None), "ping", None)
         .await.expect("run_sequential ok");
 
     let log = log.lock().unwrap();
@@ -77,7 +77,7 @@ async fn token_payload_carries_model_id_and_model_name() {
         .with_status(200).with_body(OK_BODY).create_async().await;
     let (emit, log) = collector();
     let state = CompareRunState::default();
-    run_sequential(emit, &state, &s.url(), &["llama3.2:1b".into()], "ping", None)
+    run_sequential(emit, &state, &s.url(), rows_for(&["llama3.2:1b".into()], |_| None), "ping", None)
         .await.expect("ok");
     let log = log.lock().unwrap();
     let tok = log.iter().find(|(n, _)| n == EVENT_COMPARE_TOKEN).expect("token");

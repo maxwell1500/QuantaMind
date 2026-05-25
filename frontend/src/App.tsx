@@ -5,6 +5,7 @@ import { ModelsPage } from "./features/models/components/ModelsPage";
 import { DownloadsPage } from "./features/models/components/DownloadsPage";
 import { StoragePage } from "./features/models/components/StoragePage";
 import { startInstalledModelsBus } from "./features/models/state/installedModelsBus";
+import { useModelSettingsStore } from "./features/models/state/modelSettingsStore";
 import { useNavStore, type TopView } from "./shared/state/navStore";
 
 const TABS: { id: TopView; label: string }[] = [
@@ -23,7 +24,12 @@ const tabClass = (active: boolean) =>
 export default function App() {
   const view = useNavStore((s) => s.topView);
   const setView = useNavStore((s) => s.setTopView);
-  useEffect(() => { void startInstalledModelsBus(); }, []);
+  useEffect(() => {
+    void startInstalledModelsBus();
+    void useModelSettingsStore.getState().load().catch((e) => {
+      console.error("model settings load failed:", e);
+    });
+  }, []);
   return (
     <main className="min-h-screen p-6 pb-14 font-sans space-y-3">
       <div className="flex items-center gap-2">

@@ -1,11 +1,12 @@
 #![deny(clippy::unwrap_used)]
 
+use crate::commands::model_settings::ModelSettingsState;
 use crate::commands::prompt_handler::make_token_handler;
 use crate::commands::prompt_payloads::{
     done_payload_or_zero, CancelledPayload, TokenPayload,
 };
-use crate::errors::{AppError, AppResult};
-use crate::inference::ollama::stream_generate;
+pub use crate::commands::prompt_run::run_prompt_inner;
+use crate::errors::AppError;
 use crate::metrics::timing::RunTiming;
 use crate::sync::MutexExt;
 use std::sync::{Arc, Mutex};
@@ -22,36 +23,18 @@ pub struct RunState {
     current: Mutex<Option<CancellationToken>>,
 }
 
-fn validate(model: &str, prompt: &str) -> AppResult<()> {
-    if model.trim().is_empty() {
-        return Err(AppError::Validation("model is empty".into()));
-    }
-    if prompt.trim().is_empty() {
-        return Err(AppError::Validation("prompt is empty".into()));
-    }
-    Ok(())
-}
-
-pub async fn run_prompt_inner(
-    endpoint: &str,
-    model: &str,
-    prompt: &str,
-    system: Option<&str>,
-    cancel: CancellationToken,
-    on_token: impl FnMut(&str),
-) -> AppResult<()> {
-    validate(model, prompt)?;
-    stream_generate(endpoint, model, prompt, system, cancel, on_token).await
-}
-
 #[tauri::command]
 pub async fn run_prompt(
     app: tauri::AppHandle,
     state: tauri::State<'_, RunState>,
+    settings: tauri::State<'_, ModelSettingsState>,
     model: String,
     prompt: String,
     system: Option<String>,
 ) -> Result<(), AppError> {
+    settings.ensure_loaded(&app)?;
+    let temperature = Some(settings.temperature_for(&model));
+
     let token = CancellationToken::new();
     {
         let mut guard = state.current.lock_recover();
@@ -70,7 +53,7 @@ pub async fn run_prompt(
     );
     let system_trim = system.as_deref().map(str::trim).filter(|s| !s.is_empty());
     let result = run_prompt_inner(
-        DEFAULT_OLLAMA, &model, &prompt, system_trim, token.clone(), handler,
+        DEFAULT_OLLAMA, &model, &prompt, system_trim, temperature, token.clone(), handler,
     ).await;
 
     *state.current.lock_recover() = None;

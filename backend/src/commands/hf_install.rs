@@ -34,7 +34,7 @@ pub async fn install_hf_gguf_inner(
     repo: &str, filename: &str, name: &str,
 ) -> AppResult<()> {
     validate_name(name)?;
-    let temp_dir = std::env::temp_dir().join("quatamind-hf");
+    let temp_dir = std::env::temp_dir().join("quantamind-hf");
     fs::create_dir_all(&temp_dir).map_err(|e| AppError::Io(e.to_string()))?;
     let safe = name.replace([':', '/'], "_");
     let dest = temp_dir.join(format!("{safe}.gguf"));

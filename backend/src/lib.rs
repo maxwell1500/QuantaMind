@@ -14,6 +14,7 @@ pub fn run() {
         .manage(commands::models_pull::PullState::default())
         .manage(commands::hf_install::HfInstallState::default())
         .manage(commands::compare::CompareRunState::default())
+        .manage(commands::model_settings::ModelSettingsState::default())
         .invoke_handler(tauri::generate_handler![
             commands::feasibility::check_install_feasibility,
             commands::gguf_cmd::inspect_gguf,
@@ -27,6 +28,8 @@ pub fn run() {
             commands::hf_install::install_hf_gguf,
             commands::hf_install::cancel_hf_install,
             commands::health::check_ollama_health,
+            commands::model_settings::get_model_settings,
+            commands::model_settings::set_model_temperature,
             commands::models::list_models,
             commands::models_pull::pull_model,
             commands::models_pull::cancel_pull,

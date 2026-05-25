@@ -78,7 +78,7 @@ export function StoragePathSection() {
             <div className="mt-1 text-gray-700">
               To make this permanent, add to your shell profile and restart Ollama:
               <pre className="bg-gray-100 rounded px-2 py-1 mt-1 text-[11px]">{`export OLLAMA_MODELS="${candidate}"\npkill ollama && ollama serve`}</pre>
-              Quatamind will not move existing models — re-pull them at the new path or move the blobs manually.
+              QuantaMind will not move existing models — re-pull them at the new path or move the blobs manually.
             </div>
           )}
         </div>
