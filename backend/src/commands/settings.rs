@@ -36,8 +36,8 @@ pub fn get_storage_path() -> StoragePathInfo {
 /// at the end of every download. Probes both operations; any failure
 /// fails the check.
 fn test_writable(p: &Path) -> bool {
-    let probe = p.join(".quatamind-write-probe");
-    let renamed = p.join(".quatamind-rename-probe");
+    let probe = p.join(".quantamind-write-probe");
+    let renamed = p.join(".quantamind-rename-probe");
     let write_ok = std::fs::write(&probe, b"").is_ok();
     let rename_ok = write_ok && std::fs::rename(&probe, &renamed).is_ok();
     let _ = std::fs::remove_file(&probe);

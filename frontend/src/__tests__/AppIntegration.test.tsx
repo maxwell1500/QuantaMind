@@ -116,7 +116,7 @@ describe("Phase 1 E2E smoke — edit → run → save → load → re-run", () =
     fireEvent.click(screen.getByRole("button", { name: /save/i }));
     await waitFor(() =>
       expect(invoke).toHaveBeenCalledWith("save_prompt", {
-        path: "./splice-current.yaml",
+        path: "./quantamind-current.yaml",
         model: "llama3.2:1b",
         prompt: "Why is the sky blue?",
       }),

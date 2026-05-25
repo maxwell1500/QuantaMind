@@ -1,8 +1,10 @@
 # Live model browsing
 
-How Splice surfaces the Hugging Face and Ollama Library tabs in the Add
+How QuantaMind surfaces the Hugging Face and Ollama Library tabs in the Add
 Model modal. Replaces the bundled-catalog approach used in Phase M
 through M.5.39.
+
+
 
 ## Why live
 
@@ -42,7 +44,7 @@ the "mismatch" problem this doc exists to prevent.
 
 ### User-Agent
 - All backend HTTP clients (`probe_client`, `streaming_client`) set
-  `User-Agent: splice/<CARGO_PKG_VERSION>`. HF behind Cloudflare can 400
+  `User-Agent: quantamind/<CARGO_PKG_VERSION>`. HF behind Cloudflare can 400
   on empty UA; this prevents that class of failure.
 
 ## Ollama Library — free-text install

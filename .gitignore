@@ -28,5 +28,5 @@ target/
 .env
 .env.local
 
-# Splice workspace state (saved by WorkspaceIO; per-user, not a project artifact)
-splice-current.yaml
+# QuantaMind workspace state (saved by WorkspaceIO; per-user, not a project artifact)
+quantamind-current.yaml

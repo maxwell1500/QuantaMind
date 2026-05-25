@@ -44,12 +44,11 @@ pub async fn search_models(endpoint: &str, query: &str, limit: u32) -> AppResult
         .get(format!("{endpoint}/api/models"))
         .query(&[
             ("search", query.to_string()),
-            // `filter=gguf` matches the `gguf` tag (set on every GGUF
-            // mirror repo on HF). `library=gguf` only matches repos that
-            // explicitly set library_name="gguf" in their metadata,
-            // which most mirrors leave unset — so the wider filter is
-            // the one that actually gets us GGUF-only results.
-            ("filter", "gguf".to_string()),
+            // No server-side tag filter — HF's `filter=gguf` index lags
+            // real-world tag state and silently misses legitimate GGUF
+            // mirrors. The post-filter below (`tags.contains("gguf")`)
+            // is the single source of truth for the "must be GGUF"
+            // invariant.
             ("sort", "downloads".to_string()),
             ("direction", "-1".to_string()),
             ("limit", limit.to_string()),
