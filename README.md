@@ -18,6 +18,8 @@ Built with Tauri, Rust, React, and Ollama. Local-first. No telemetry. No cloud.
 ![License](https://img.shields.io/badge/license-MIT-green)
 ![Status](https://img.shields.io/badge/status-active%20development-yellow)
 
+[![Repo](https://img.shields.io/badge/GitHub-QuantaMinds%2FQuantaMind-181717?logo=github)](https://github.com/QuantaMinds/QuantaMind)
+
 </div>
 
 ---
@@ -212,9 +214,6 @@ The two halves talk JSON over Tauri's IPC. Contracts are explicit in `shared/ipc
 
 ### Install
 
-> [!TIP]
-> Replace `<repo-url>` with your fork or this repo's URL.
-
 ```bash
 # 1) Toolchains (macOS shown; adapt for Linux/Windows)
 brew install rust node pnpm ollama
@@ -226,7 +225,7 @@ ollama pull llama3.2:1b
 curl http://localhost:11434/api/tags   # smoke-test that Ollama is up
 
 # 3) Clone and install
-git clone <repo-url> quantamind
+git clone https://github.com/QuantaMinds/QuantaMind.git quantamind
 cd quantamind/frontend
 pnpm install
 
@@ -710,7 +709,7 @@ Contributions welcome. Before you open a PR:
 | **No `unwrap()` in production paths** | Clippy `deny(unwrap_used)` enforced in critical files; mutex-poison paths recover instead of panicking |
 
 ### Reporting vulnerabilities
-Please open a private security advisory on the GitHub repo instead of filing a public issue.
+Please open a [private security advisory](https://github.com/QuantaMinds/QuantaMind/security/advisories/new) instead of filing a public issue.
 
 ---
 
