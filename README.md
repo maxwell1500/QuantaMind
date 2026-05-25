@@ -26,7 +26,6 @@ Built with Tauri, Rust, React, and Ollama. Local-first. No telemetry. No cloud.
 
 - [Overview](#overview)
 - [Why QuantaMind](#why-quantamind)
-- [Screenshots](#screenshots)
 - [Features](#features)
 - [Tech stack](#tech-stack)
 - [Architecture](#architecture)
@@ -41,7 +40,6 @@ Built with Tauri, Rust, React, and Ollama. Local-first. No telemetry. No cloud.
 - [Engineering principles](#engineering-principles)
 - [Development workflow](#development-workflow)
 - [Testing](#testing)
-- [Roadmap](#roadmap)
 - [Contributing](#contributing)
 - [Security & privacy](#security--privacy)
 - [FAQ](#faq)
@@ -83,32 +81,6 @@ Three design commitments shape every decision:
 1. **Local-first, always.** Your prompts, your models, your hardware, your data.
 2. **Honest UX.** When the system can't guarantee something, the UI says so plainly instead of fabricating confidence.
 3. **Engineering discipline.** Small files, separated concerns, strict data-quality gates after every change.
-
----
-
-## Screenshots
-
-> [!NOTE]
-> Drop screenshots into `docs/img/` and link them here once the UI is final.
-
-```
-┌──────────────────────────────────────────────────────────┐
-│  QuantaMind                                              │
-├──────────────────────────────────────────────────────────┤
-│  Model: [llama3.2:1b ▾]  [+]            Run · Cancel     │
-│  ┌────────────────────────────────────────────────────┐  │
-│  │ Why is the sky blue?                               │  │
-│  │                                                    │  │
-│  └────────────────────────────────────────────────────┘  │
-│  ┌────────────────────────────────────────────────────┐  │
-│  │ The sky appears blue because of Rayleigh           │  │
-│  │ scattering...                                      │  │
-│  └────────────────────────────────────────────────────┘  │
-│  TTFT 8ms · 32.0 tok/s · 47 tokens                       │
-├──────────────────────────────────────────────────────────┤
-│  llama3.2:1b   ● connected · 0.1.32   TTFT 8ms · 32.0…   │
-└──────────────────────────────────────────────────────────┘
-```
 
 ---
 
@@ -697,22 +669,6 @@ Inline `#[cfg(test)]` for unit tests; `backend/tests/` for integration (cargo co
 
 ---
 
-## Roadmap
-
-QuantaMind ships in numbered phases. Once a phase ships, its exit criteria are frozen.
-
-| Phase | Scope | Status |
-|---|---|---|
-| **Phase 1** | Workspace MVP — prompt editor, streaming, YAML save/load | ✅ Shipped v0.1 |
-| **Phase 1.5** | Stabilization — emit failure recovery, distinct cancel state, mutex poison recovery, Zod at IPC, timeouts | ✅ Shipped v0.1.1 |
-| **Phase M** | Model Management — install/remove/inspect from 3 sources, GGUF parsing, chat templates, Modelfile generation | ✅ Shipped |
-| **Phase M.5** | Live HF/Ollama browsing + Compare tab with hardware feasibility | 🚧 In progress |
-| **Phase 2** | Settings + Persistence — `plugin-store`, `plugin-fs`, run history | 📋 Planned |
-| **Phase 3** | Bench — second inference backend (`llama_cpp`) so Parallel beats Sequential in wall-clock | 📋 Planned |
-| **Phase 4** | Inspector — live VRAM, latency breakdown, token-by-token timing, CSV export | 📋 Planned |
-| **Phase 5** | MLX backend — native Apple Silicon inference path | 📋 Planned |
-
----
 
 ## Contributing
 
