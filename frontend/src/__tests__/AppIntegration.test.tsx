@@ -24,7 +24,6 @@ import { listen, type EventCallback } from "@tauri-apps/api/event";
 import App from "../App";
 
 const handlers: Record<string, EventCallback<unknown>> = {};
-let saved: { model: string; prompt: string } | null = null;
 
 function fire(event: string, payload: unknown) {
   handlers[event]({ event, id: 0, payload });
@@ -32,7 +31,6 @@ function fire(event: string, payload: unknown) {
 
 beforeEach(() => {
   for (const k of Object.keys(handlers)) delete handlers[k];
-  saved = null;
   vi.mocked(invoke).mockReset();
   vi.mocked(listen).mockReset();
   vi.mocked(listen).mockImplementation((event, cb) => {
@@ -41,8 +39,7 @@ beforeEach(() => {
       delete handlers[event];
     });
   });
-  vi.mocked(invoke).mockImplementation((cmd: string, args?: unknown) => {
-    const a = args as Record<string, unknown> | undefined;
+  vi.mocked(invoke).mockImplementation((cmd: string) => {
     if (cmd === "list_models")
       return Promise.resolve(["llama3.2:1b", "mistral:7b"]);
     if (cmd === "get_installed_models_with_stats")
@@ -54,20 +51,11 @@ beforeEach(() => {
       return Promise.resolve({ available: true, version: "0.1.32" });
     if (cmd === "run_prompt") return Promise.resolve();
     if (cmd === "stop_prompt") return Promise.resolve();
-    if (cmd === "save_prompt") {
-      saved = { model: a!.model as string, prompt: a!.prompt as string };
-      return Promise.resolve();
-    }
-    if (cmd === "load_prompt") {
-      return saved
-        ? Promise.resolve(saved)
-        : Promise.reject(new Error("no saved file"));
-    }
     return Promise.reject(new Error(`unknown ${cmd}`));
   });
 });
 
-describe("Phase 1 E2E smoke — edit → run → save → load → re-run", () => {
+describe("Phase 1 E2E smoke — edit → run → re-run", () => {
   it("walks the full workspace flow with all four exit criteria", async () => {
     render(<App />);
     await waitFor(() =>
@@ -112,27 +100,8 @@ describe("Phase 1 E2E smoke — edit → run → save → load → re-run", () =
     expect(inline.textContent).toEqual(bar.textContent);
     expect(screen.getByTestId("run-status")).toHaveTextContent("done");
 
-    // 3. SAVE
-    fireEvent.click(screen.getByRole("button", { name: /save/i }));
-    await waitFor(() =>
-      expect(invoke).toHaveBeenCalledWith("save_prompt", {
-        path: "./quantamind-current.yaml",
-        model: "llama3.2:1b",
-        prompt: "Why is the sky blue?",
-      }),
-    );
-
-    // 4. MUTATE then LOAD restores
-    fireEvent.change(editor, { target: { value: "scratch" } });
-    fireEvent.click(screen.getByRole("button", { name: /load/i }));
-    await waitFor(() =>
-      expect(
-        (within(screen.getByTestId("user-prompt-editor")).getByTestId("prompt-input") as HTMLTextAreaElement).value,
-      ).toBe("Why is the sky blue?"),
-    );
+    // 3. RE-RUN with the same in-memory state succeeds without re-typing
     expect(select.value).toBe("llama3.2:1b");
-
-    // 5. RE-RUN succeeds with the restored state
     fireEvent.click(screen.getByRole("button", { name: /^run$/i }));
     expect(invoke).toHaveBeenCalledWith("run_prompt", {
       model: "llama3.2:1b",

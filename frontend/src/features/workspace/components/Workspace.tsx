@@ -3,7 +3,6 @@ import { ModelPicker } from "./ModelPicker";
 import { PromptEditor } from "./PromptEditor";
 import { OutputStream } from "./OutputStream";
 import { RunControls } from "./RunControls";
-import { WorkspaceIO } from "./WorkspaceIO";
 import { StatusBar } from "./StatusBar";
 import { useStreamingRun } from "../hooks/useStreamingRun";
 import { useWorkspaceStore } from "../state/workspaceStore";
@@ -55,14 +54,6 @@ export function Workspace() {
         </p>
       )}
       {error && <p className="text-red-600 text-sm">{error}</p>}
-      <WorkspaceIO
-        model={model}
-        prompt={prompt}
-        onLoad={(m, p) => {
-          setModel(m);
-          setPrompt(p);
-        }}
-      />
       <StatusBar
         model={model}
         onModelClick={() =>

@@ -416,10 +416,19 @@ in-scope for "branding correctness":
 - `backend/src/commands/hf_install.rs` temp dir: `quatamind-hf` →
   `quantamind-hf`.
 - `.gitignore` gained `splice-current.yaml` next to the existing
-  `quantamind-current.yaml` entry, so the legacy per-user workspace
-  state file (left over from before the rename) doesn't reappear in
-  `git status` on machines that still have it lying around. The stray
-  file itself was deleted from the working tree.
+  `quantamind-current.yaml` entry (legacy per-user workspace dump
+  files left over from before the rename); the stray Splice file
+  was deleted from the working tree.
+- **Workspace Save/Load YAML bar removed.** The half-finished
+  `WorkspaceIO` panel that wrote `./quantamind-current.yaml` to an
+  unpredictable relative path was deleted along with its backend
+  `save_prompt` / `load_prompt` commands, the `persistence/prompts`
+  module, the `StoredPrompt` type, and all related tests. The
+  selected-model + prompt state already survives tab switches via
+  `workspaceStore.selectedModel`, so within a session nothing's
+  lost. A proper "Save prompt" with the native dialog and a sane
+  default location (e.g. `~/Downloads`) is the right shape when
+  someone actually asks for it via the feedback button.
 
 ---
 
@@ -548,8 +557,9 @@ think the user wants.
 - **Screenshot attachment, categorization dropdown, sentiment rating,
   Discord/GitHub integration.** Each is a separate product; none was
   worth the day-1 weight.
-- **`tauri-plugin-store`** for persistence. Mirroring the existing
-  YAML pattern in `persistence/prompts.rs` was cheaper and avoids
-  pulling a phase-2 dependency into this release.
+- **`tauri-plugin-store`** for persistence. The existing
+  `persistence/model_settings.rs` YAML pattern (`std::fs` +
+  `serde_yaml`) was cheaper and avoids pulling a phase-2 dependency
+  into this release.
 - **Pre-existing `install_local_gguf_verify` test failure.** Out of
   scope — see test totals above.

@@ -44,8 +44,6 @@ pub fn run() {
             commands::storage::get_disk_usage,
             commands::prompt::run_prompt,
             commands::prompt::stop_prompt,
-            commands::workspace::save_prompt,
-            commands::workspace::load_prompt,
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");

@@ -50,8 +50,13 @@ export function FeedbackModal({ onClose }: Props) {
           onChange={(e) => { setMessage(e.target.value); if (status === "error") reset(); }}
           className="w-full border rounded p-2 text-sm font-sans"
           placeholder="What's working, what's broken, what's missing?" />
-        <div className="text-[11px] text-gray-500 text-right">
-          {trimmedLen} / {MAX_MESSAGE_LEN}
+        <div
+          data-testid="feedback-char-counter"
+          className={`text-[11px] text-right ${trimmedLen < MIN_MESSAGE_LEN ? "text-red-600 font-medium" : "text-gray-500"}`}
+        >
+          {trimmedLen < MIN_MESSAGE_LEN
+            ? `${trimmedLen} / ${MIN_MESSAGE_LEN} minimum characters`
+            : `${trimmedLen} / ${MAX_MESSAGE_LEN}`}
         </div>
         <label className="flex items-center gap-2 text-xs text-gray-700">
           <input type="checkbox" data-testid="feedback-diagnostics"
