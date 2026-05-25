@@ -1,14 +1,8 @@
 # QuantaMind v0.1.0 — end-to-end feature overview
 
-This document is the canonical reference for everything shipped on top
-of the M-phase baseline in this release. Five user-facing features
+This document is the canonical reference for everything shipped. Five user-facing features
 plus a handful of drive-by hygiene fixes. Code paths and file names
 are quoted so you can grep from here straight into the codebase.
-
-> Length note: docs are exempt from the 100-line per-file cap that
-> CLAUDE.md enforces on source. This doc is intentionally
-> comprehensive — read top-to-bottom on a first visit, then use the
-> table-of-contents to jump back to whatever you need.
 
 ## Table of contents
 
