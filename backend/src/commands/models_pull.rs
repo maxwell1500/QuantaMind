@@ -1,4 +1,5 @@
 use crate::commands::gguf_cmd::EVENT_MODELS_CHANGED;
+use crate::commands::verify_install::verify_model_registered;
 use crate::errors::{AppError, AppResult};
 use crate::inference::pull::pull_model as run_pull;
 use crate::inference::pull_name::validate_name;
@@ -67,7 +68,15 @@ pub async fn pull_model(
             }, token).await
         };
         match AssertUnwindSafe(task).catch_unwind().await {
-            Ok(Ok(())) => { let _ = emit_app.emit(EVENT_MODELS_CHANGED, ()); }
+            Ok(Ok(())) => {
+                // Ollama 0.24+ may report pull success before /api/tags
+                // reflects the new manifest. Verify before broadcasting so
+                // the frontend's refresh sees the new model on first read.
+                match verify_model_registered(DEFAULT_OLLAMA, &name_outer).await {
+                    Ok(()) => { let _ = emit_app.emit(EVENT_MODELS_CHANGED, ()); }
+                    Err(e) => emit_failed(&emit_app, &pid, &name_outer, e.friendly()),
+                }
+            }
             Ok(Err(e)) => {
                 eprintln!("pull_model({pid}) failed: {e:?}");
                 emit_failed(&emit_app, &pid, &name_outer, e.friendly());
