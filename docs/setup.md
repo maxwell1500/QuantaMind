@@ -100,7 +100,7 @@ export WEB3FORMS_ACCESS_KEY=<your-access-key>
 pnpm tauri dev   # or `pnpm tauri build` for releases
 ```
 
-See `docs/feedback.md` for the full wire and payload shape.
+See `docs/features-v0.1.0.md` (section 4) for the full wire and payload shape.
 
 ## Done
 
