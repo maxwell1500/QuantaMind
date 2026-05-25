@@ -1,0 +1,15 @@
+import { invoke } from "@tauri-apps/api/core";
+import { z } from "zod";
+
+export const OllamaStartResultSchema = z.discriminatedUnion("status", [
+  z.object({ status: z.literal("already_running") }),
+  z.object({ status: z.literal("started"), pid: z.number().int().nonnegative() }),
+  z.object({ status: z.literal("not_installed"), install_url: z.string().url() }),
+  z.object({ status: z.literal("start_failed"), error: z.string() }),
+]);
+export type OllamaStartResult = z.infer<typeof OllamaStartResultSchema>;
+
+export async function startOllama(): Promise<OllamaStartResult> {
+  const raw = await invoke("start_ollama");
+  return OllamaStartResultSchema.parse(raw);
+}

@@ -5,6 +5,9 @@ import { ModelsPage } from "./features/models/components/ModelsPage";
 import { DownloadsPage } from "./features/models/components/DownloadsPage";
 import { StoragePage } from "./features/models/components/StoragePage";
 import { startInstalledModelsBus } from "./features/models/state/installedModelsBus";
+import { useModelSettingsStore } from "./features/models/state/modelSettingsStore";
+import { FeedbackButton } from "./features/feedback/components/FeedbackButton";
+import { ToastHost } from "./shared/ui/Toast";
 import { useNavStore, type TopView } from "./shared/state/navStore";
 
 const TABS: { id: TopView; label: string }[] = [
@@ -23,7 +26,12 @@ const tabClass = (active: boolean) =>
 export default function App() {
   const view = useNavStore((s) => s.topView);
   const setView = useNavStore((s) => s.setTopView);
-  useEffect(() => { void startInstalledModelsBus(); }, []);
+  useEffect(() => {
+    void startInstalledModelsBus();
+    void useModelSettingsStore.getState().load().catch((e) => {
+      console.error("model settings load failed:", e);
+    });
+  }, []);
   return (
     <main className="min-h-screen p-6 pb-14 font-sans space-y-3">
       <div className="flex items-center gap-2">
@@ -50,6 +58,8 @@ export default function App() {
       <div hidden={view !== "models"} data-testid="view-models"><ModelsPage /></div>
       <div hidden={view !== "downloads"} data-testid="view-downloads"><DownloadsPage /></div>
       <div hidden={view !== "storage"} data-testid="view-storage"><StoragePage /></div>
+      <FeedbackButton />
+      <ToastHost />
     </main>
   );
 }

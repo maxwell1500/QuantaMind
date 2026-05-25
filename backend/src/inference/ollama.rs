@@ -10,7 +10,15 @@ struct GenerateRequest<'a> {
     prompt: &'a str,
     #[serde(skip_serializing_if = "Option::is_none")]
     system: Option<&'a str>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    options: Option<GenerateOptions>,
     stream: bool,
+}
+
+#[derive(Serialize)]
+struct GenerateOptions {
+    #[serde(skip_serializing_if = "Option::is_none")]
+    temperature: Option<f32>,
 }
 
 #[derive(Deserialize)]
@@ -25,11 +33,13 @@ pub async fn stream_generate(
     model: &str,
     prompt: &str,
     system: Option<&str>,
+    temperature: Option<f32>,
     cancel: CancellationToken,
     mut on_token: impl FnMut(&str),
 ) -> AppResult<()> {
     let client = streaming_client()?;
-    let body = GenerateRequest { model, prompt, system, stream: true };
+    let options = temperature.map(|t| GenerateOptions { temperature: Some(t) });
+    let body = GenerateRequest { model, prompt, system, options, stream: true };
     let resp = client
         .post(format!("{endpoint}/api/generate"))
         .json(&body)
