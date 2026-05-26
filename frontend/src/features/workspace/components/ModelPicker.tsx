@@ -43,6 +43,7 @@ export function ModelPicker({ value, onChange }: Props) {
         </div>
       ) : (
         <>
+          <ModelTemperaturePopover modelName={value} />
           <select
             aria-label="Model"
             value={value ?? ""}
@@ -58,7 +59,6 @@ export function ModelPicker({ value, onChange }: Props) {
               </option>
             ))}
           </select>
-          <ModelTemperaturePopover modelName={value} />
           <button
             type="button"
             onClick={() => void stop()}

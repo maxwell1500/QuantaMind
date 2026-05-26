@@ -33,7 +33,7 @@ async fn parallel_emits_done_for_every_row_and_run_done_last() {
 
     let (emit, log) = collector();
     let state = CompareRunState::default();
-    run_parallel(emit, &state, &s.url(), rows_for(&["a".into(), "b".into()], |_| None), "ping", None)
+    run_parallel(emit, &state, &s.url(), rows_for(&["a".into(), "b".into()], |_| None), "ping", None, None)
         .await.expect("ok");
 
     let names: Vec<String> = log.lock().unwrap().iter().map(|(n, _)| n.clone()).collect();
@@ -55,7 +55,7 @@ async fn parallel_per_row_token_order_is_monotonic_even_when_interleaved() {
 
     let (emit, log) = collector();
     let state = CompareRunState::default();
-    run_parallel(emit, &state, &s.url(), rows_for(&["a".into(), "b".into()], |_| None), "ping", None)
+    run_parallel(emit, &state, &s.url(), rows_for(&["a".into(), "b".into()], |_| None), "ping", None, None)
         .await.expect("ok");
 
     let log = log.lock().unwrap();

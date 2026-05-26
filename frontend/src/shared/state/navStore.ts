@@ -10,7 +10,8 @@ export type TopView =
   | "compare"
   | "models"
   | "downloads"
-  | "storage";
+  | "storage"
+  | "help";
 
 interface NavStore {
   topView: TopView;

@@ -20,9 +20,10 @@ pub async fn run_prompt_inner(
     prompt: &str,
     system: Option<&str>,
     temperature: Option<f32>,
+    keep_alive: Option<i32>,
     cancel: CancellationToken,
     on_token: impl FnMut(&str),
 ) -> AppResult<()> {
     validate(model, prompt)?;
-    stream_generate(endpoint, model, prompt, system, temperature, cancel, on_token).await
+    stream_generate(endpoint, model, prompt, system, temperature, keep_alive, cancel, on_token).await
 }

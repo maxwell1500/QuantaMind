@@ -5,6 +5,13 @@ pub const EVENT_COMPARE_DONE: &str = "compare-done";
 pub const EVENT_COMPARE_CANCELLED: &str = "compare-cancelled";
 pub const EVENT_COMPARE_ERROR: &str = "compare-error";
 pub const EVENT_COMPARE_RUN_DONE: &str = "compare-run-done";
+pub const EVENT_COMPARE_LOADING: &str = "compare-loading";
+
+#[derive(Serialize, Clone)]
+pub struct CompareLoadingPayload {
+    pub model_id: String,
+    pub model: String,
+}
 
 #[derive(Serialize, Clone)]
 pub struct CompareTokenPayload {

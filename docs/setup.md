@@ -87,21 +87,6 @@ ollama pull phi3.5:latest     # variety for later phases
 curl http://localhost:11434/api/tags
 ```
 
-## 9. (Optional) Wire the in-app Feedback button
-
-The Feedback modal POSTs to a [Web3Forms](https://web3forms.com/) relay,
-read at compile time:
-
-```sh
-# For local dev: feedback is disabled if this isn't set — the modal
-# still renders, but submit_feedback returns a clear "disabled in this
-# build" error. Set it before any build that should send real mail.
-export WEB3FORMS_ACCESS_KEY=<your-access-key>
-pnpm tauri dev   # or `pnpm tauri build` for releases
-```
-
-See `docs/features-v0.1.0.md` (section 4) for the full wire and payload shape.
-
 ## Done
 
 All 8 steps green → development environment ready. Stop here for day 0.

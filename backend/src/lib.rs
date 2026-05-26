@@ -10,7 +10,9 @@ pub mod validation;
 pub fn run() {
     tauri::Builder::default()
         .plugin(tauri_plugin_dialog::init())
+        .plugin(tauri_plugin_process::init())
         .plugin(tauri_plugin_shell::init())
+        .plugin(tauri_plugin_updater::Builder::new().build())
         .manage(commands::prompt::RunState::default())
         .manage(commands::models_pull::PullState::default())
         .manage(commands::hf_install::HfInstallState::default())
@@ -19,7 +21,6 @@ pub fn run() {
         .manage(commands::ollama_start::OllamaStartState::default())
         .invoke_handler(tauri::generate_handler![
             commands::feasibility::check_install_feasibility,
-            commands::feedback::submit_feedback,
             commands::gguf_cmd::inspect_gguf,
             commands::hardware::get_hardware_snapshot,
             commands::compare::run_compare,
@@ -45,8 +46,6 @@ pub fn run() {
             commands::storage::get_disk_usage,
             commands::prompt::run_prompt,
             commands::prompt::stop_prompt,
-            commands::workspace::save_prompt,
-            commands::workspace::load_prompt,
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");

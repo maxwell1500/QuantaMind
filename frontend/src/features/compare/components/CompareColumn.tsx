@@ -6,6 +6,7 @@ type Props = { row: CompareRow };
 
 const STATUS_LABEL: Record<RowStatus, string> = {
   pending: "Waiting",
+  loading: "Loading model…",
   running: "Running",
   done: "Done",
   cancelled: "Cancelled",
@@ -13,6 +14,7 @@ const STATUS_LABEL: Record<RowStatus, string> = {
 };
 const STATUS_CLASS: Record<RowStatus, string> = {
   pending: "bg-gray-100 text-gray-700",
+  loading: "bg-blue-100 text-blue-800",
   running: "bg-blue-100 text-blue-800",
   done: "bg-green-100 text-green-800",
   cancelled: "bg-amber-100 text-amber-800",
@@ -53,12 +55,22 @@ export function CompareColumn({ row }: Props) {
           </span>
         </div>
       </div>
-      <pre
-        data-testid={`compare-output-${row.model}`}
-        className="text-xs whitespace-pre-wrap break-words font-mono bg-gray-50 rounded p-2 min-h-[80px] max-h-[280px] overflow-auto"
-      >
-        {row.output || (row.status === "pending" ? "" : " ")}
-      </pre>
+      {row.status === "loading" && !row.output ? (
+        <div
+          data-testid={`compare-loading-${row.model}`}
+          className="flex items-center gap-2 text-xs text-gray-600 bg-gray-50 rounded p-2 min-h-[80px]"
+        >
+          <span aria-hidden className="inline-block w-3 h-3 border-2 border-gray-400 border-t-transparent rounded-full animate-spin" />
+          <span>Loading model… large models can take 30+ seconds on first load.</span>
+        </div>
+      ) : (
+        <pre
+          data-testid={`compare-output-${row.model}`}
+          className="text-xs whitespace-pre-wrap break-words font-mono bg-gray-50 rounded p-2 min-h-[80px] max-h-[280px] overflow-auto"
+        >
+          {row.output || (row.status === "pending" ? "" : " ")}
+        </pre>
+      )}
       {row.metrics && row.status === "done" && (
         <div className="text-xs text-gray-600" data-testid={`compare-metrics-${row.model}`}>
           {formatMetrics(row.metrics)}

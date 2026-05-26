@@ -50,11 +50,15 @@ pub async fn run_compare(
     let rows = rows_for(&models, |m| Some(settings.temperature_for(m)));
     let emit = make_emit(app);
     let system_trim = system.as_deref().map(str::trim).filter(|s| !s.is_empty());
+    let keep_alive = match strategy {
+        Strategy::Sequential | Strategy::SequentialSkippable => Some(0),
+        Strategy::Parallel => None,
+    };
     match strategy {
         Strategy::Sequential | Strategy::SequentialSkippable =>
-            run_sequential(emit, state.inner(), DEFAULT_OLLAMA, rows, &prompt, system_trim).await,
+            run_sequential(emit, state.inner(), DEFAULT_OLLAMA, rows, &prompt, system_trim, keep_alive).await,
         Strategy::Parallel =>
-            run_parallel(emit, state.inner(), DEFAULT_OLLAMA, rows, &prompt, system_trim).await,
+            run_parallel(emit, state.inner(), DEFAULT_OLLAMA, rows, &prompt, system_trim, keep_alive).await,
     }
 }
 

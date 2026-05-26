@@ -61,4 +61,35 @@ describe("RunControls", () => {
     );
     expect(screen.getByTestId("run-status")).toHaveTextContent("done");
   });
+
+  it("Run is disabled when ollamaHealthy=false, with the 'Start Ollama first' title", () => {
+    const onRun = vi.fn();
+    render(
+      <RunControls
+        status="idle"
+        canRun={true}
+        ollamaHealthy={false}
+        onRun={onRun}
+        onCancel={() => {}}
+      />,
+    );
+    const run = screen.getByRole("button", { name: /run/i });
+    expect(run).toBeDisabled();
+    expect(run).toHaveAttribute("title", "Start Ollama first");
+    fireEvent.click(run);
+    expect(onRun).not.toHaveBeenCalled();
+  });
+
+  it("Run re-enables when ollamaHealthy flips back to true", () => {
+    const { rerender } = render(
+      <RunControls status="idle" canRun={true} ollamaHealthy={false}
+        onRun={() => {}} onCancel={() => {}} />,
+    );
+    expect(screen.getByRole("button", { name: /run/i })).toBeDisabled();
+    rerender(
+      <RunControls status="idle" canRun={true} ollamaHealthy={true}
+        onRun={() => {}} onCancel={() => {}} />,
+    );
+    expect(screen.getByRole("button", { name: /run/i })).not.toBeDisabled();
+  });
 });

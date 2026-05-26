@@ -3,7 +3,6 @@ import { ModelPicker } from "./ModelPicker";
 import { PromptEditor } from "./PromptEditor";
 import { OutputStream } from "./OutputStream";
 import { RunControls } from "./RunControls";
-import { WorkspaceIO } from "./WorkspaceIO";
 import { StatusBar } from "./StatusBar";
 import { useStreamingRun } from "../hooks/useStreamingRun";
 import { useWorkspaceStore } from "../state/workspaceStore";
@@ -12,6 +11,7 @@ import { formatMetrics } from "../format";
 export function Workspace() {
   const model = useWorkspaceStore((s) => s.selectedModel);
   const setModel = useWorkspaceStore((s) => s.setSelectedModel);
+  const ollamaHealthy = useWorkspaceStore((s) => s.ollamaHealthy);
   const [systemPrompt, setSystemPrompt] = useState("");
   const [prompt, setPrompt] = useState("");
   const { output, status, error, metrics, cancelledInfo, start, cancel } =
@@ -38,10 +38,11 @@ export function Workspace() {
       <RunControls
         status={status}
         canRun={!!model && prompt.trim().length > 0}
+        ollamaHealthy={ollamaHealthy}
         onRun={() => model && start(model, prompt, systemPrompt)}
         onCancel={cancel}
       />
-      <OutputStream output={output} />
+      <OutputStream output={output} loading={status === "running" && !output} />
       {metrics && (
         <p className="text-xs text-gray-600" data-testid="metrics">
           {formatMetrics(metrics)}
@@ -53,14 +54,6 @@ export function Workspace() {
         </p>
       )}
       {error && <p className="text-red-600 text-sm">{error}</p>}
-      <WorkspaceIO
-        model={model}
-        prompt={prompt}
-        onLoad={(m, p) => {
-          setModel(m);
-          setPrompt(p);
-        }}
-      />
       <StatusBar
         model={model}
         onModelClick={() =>

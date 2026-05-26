@@ -76,3 +76,33 @@ describe("compareStore reducer", () => {
     expect(useCompareStore.getState().systemPrompt).toBe("be terse");
   });
 });
+
+describe("compareStore loading transitions", () => {
+  it("setRowLoading transitions pending → loading and assigns modelId", () => {
+    useCompareStore.getState().initRun([M("a"), M("b")]);
+    useCompareStore.getState().setRowLoading("a", "uuid-a");
+    const rows = useCompareStore.getState().rows;
+    expect(rows.find((r) => r.model === "a")).toMatchObject({
+      status: "loading", modelId: "uuid-a", output: "",
+    });
+    expect(rows.find((r) => r.model === "b")).toMatchObject({
+      status: "pending", modelId: null,
+    });
+  });
+
+  it("appendToken after setRowLoading transitions loading → running", () => {
+    useCompareStore.getState().initRun([M("a")]);
+    useCompareStore.getState().setRowLoading("a", "uuid-a");
+    useCompareStore.getState().appendToken("a", "uuid-a", "first ");
+    expect(useCompareStore.getState().rows[0]).toMatchObject({
+      status: "running", output: "first ", modelId: "uuid-a",
+    });
+  });
+
+  it("setRowLoading is a no-op on a row that already moved past pending", () => {
+    useCompareStore.getState().initRun([M("a")]);
+    useCompareStore.getState().appendToken("a", "uuid-a", "tok");
+    useCompareStore.getState().setRowLoading("a", "uuid-a");
+    expect(useCompareStore.getState().rows[0].status).toBe("running");
+  });
+});

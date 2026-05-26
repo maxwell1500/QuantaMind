@@ -3,18 +3,31 @@ import type { RunStatus } from "../hooks/useStreamingRun";
 type Props = {
   status: RunStatus;
   canRun: boolean;
+  ollamaHealthy?: boolean | null;
   onRun: () => void;
   onCancel: () => void;
 };
 
-export function RunControls({ status, canRun, onRun, onCancel }: Props) {
+export function RunControls({
+  status,
+  canRun,
+  ollamaHealthy = true,
+  onRun,
+  onCancel,
+}: Props) {
   const running = status === "running";
+  const healthBlocked = ollamaHealthy === false;
+  const runDisabled = running || !canRun || healthBlocked;
+  const runTitle = healthBlocked && canRun && !running
+    ? "Start Ollama first"
+    : undefined;
   return (
     <div className="flex gap-2 items-center">
       <button
         type="button"
         onClick={onRun}
-        disabled={running || !canRun}
+        disabled={runDisabled}
+        title={runTitle}
         className="px-3 py-1 rounded bg-blue-600 text-white text-sm disabled:opacity-50"
       >
         Run

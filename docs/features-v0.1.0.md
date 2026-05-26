@@ -14,6 +14,7 @@ are quoted so you can grep from here straight into the codebase.
 6. [Files added or modified](#6-files-added-or-modified)
 7. [How to verify each feature](#7-how-to-verify-each-feature)
 8. [What is intentionally out of scope](#8-what-is-intentionally-out-of-scope)
+9. [Self-update (Help tab → Check for updates)](#9-self-update-help-tab--check-for-updates)
 
 ---
 
@@ -201,6 +202,77 @@ macOS only this release. On Windows/Linux, `resolve_ollama()` returns
 gates are `#[cfg(target_os = "macos")]`, so cross-compiling still
 builds cleanly.
 
+### Sequential vs parallel memory profile (`keep_alive`)
+
+Ollama keeps a model loaded in RAM for 5 minutes after a request
+finishes by default. That's snappy for re-runs of the same model in
+the Workspace, but it breaks the *intent* of Compare's sequential
+strategy: when the second row's request arrives, Ollama loads the new
+model **in addition** to the prior one, so for a few minutes both are
+resident. On RAM-constrained machines that triggers swap thrash or
+OOM with bigger models.
+
+Fix: the backend now sends `keep_alive: 0` in the `/api/generate`
+body for every sequential request (`Sequential` and
+`SequentialSkippable` strategies). Ollama unloads the model the
+instant the response stream ends, so the next row's model loads into
+a freed-up cache. Parallel keeps `keep_alive` unset (the caller wants
+all models loaded concurrently — that's the whole point). Workspace
+single-model `run_prompt` also keeps it unset so back-to-back runs
+of the same model stay snappy.
+
+Verify with `watch -n 0.5 'ollama ps'` while a sequential compare is
+in flight — only one row should show up at any moment, with the prior
+row's model disappearing before the next row's appears.
+
+### Model-loading indicator (UI)
+
+Big models (14B+, multi-GB GGUFs) take 10–30s loading weights into
+RAM before Ollama can stream the first token. Until the v0.1.0 fix,
+that window showed empty UI and looked like a hang.
+
+- **Compare:** the backend emits an `EVENT_COMPARE_LOADING` event for
+  the active row immediately before the `stream_generate` call. The
+  frontend (`compareEventBus`) flips that row into a new `"loading"`
+  `RowStatus`. `CompareColumn` renders an inline spinner +
+  "Loading model… large models can take 30+ seconds on first load."
+  The existing token handler transitions `loading → running` on the
+  first token.
+- **Workspace:** no extra event needed — the status is already
+  `"running"` before the first token arrives. `OutputStream` accepts
+  an optional `loading` prop; `Workspace.tsx` passes
+  `loading={status === "running" && !output}`. Same spinner +
+  placeholder copy; swaps to streaming text on first token.
+
+Spinner uses the existing Tailwind `animate-spin` pattern from
+`OllamaEmptyState::Spinner`. No new icon dependency.
+
+### Run-gate when Ollama is down
+
+When `ollamaHealthy === false` (because the user clicked Stop or
+because Ollama crashed), the model picker correctly swaps to the
+empty state — but the Run button below was still clickable if a
+model had been selected earlier and was still in the store. Clicking
+it produced a back-end error rather than a clear "you need to start
+Ollama" signal.
+
+Fix: `RunControls` accepts an `ollamaHealthy` prop and short-circuits
+`canRun` when it's not `true`. The Run button goes disabled and its
+hover `title` is "Start Ollama first" — the user's eyes land on the
+visible Start button in the empty state immediately above. When
+`ollamaHealthy` flips back to `true`, Run re-enables automatically.
+
+### Health-check timeout: 800ms → 2500ms
+
+`backend/src/commands/health.rs::PROBE_TIMEOUT` was 800ms. When
+Ollama was busy loading a big model, requests could exceed 800ms and
+the StatusBar would false-negatively flip `ollamaHealthy` to `false`.
+Every surface gated on that store value (Storage page, etc.) then
+said "Ollama is not running" — a lie. Bumping the timeout to 2500ms
+eliminates the false negative without slowing genuine-outage
+detection: a real down server still fails fast via "Connection
+refused," not via timeout.
+
 ### New dependency
 
 `tauri-plugin-shell` (Rust + JS) was added solely for the Install
@@ -236,7 +308,7 @@ capability entry.
 
 ---
 
-## 4. In-app feedback (button + modal → Web3Forms)
+## 4. In-app feedback (button + modal → user's mail client)
 
 ### What the user sees
 
@@ -249,103 +321,77 @@ below modals at z-40). Click → modal opens:
 > missing, what you wish worked differently — directly shapes what
 > we build next.
 > [textarea]
-> Your email (optional — only if you want a reply)
-> [email input]
 > ☐ Include diagnostic info (app version, OS, current model)
-> Feedback goes to info@quantamind.co. We read every message.
-> [Cancel]  [Send]
+> Click **Open in mail app** and your default email client opens a
+> draft to **info@quantamind.co** with this message pre-filled. You
+> hit Send from there. We read every message.
+> [Cancel]  [Open in mail app]
 
-- **Send** is disabled until the trimmed message length is in
-  `[10, 5000]`.
-- **Esc** and clicking the backdrop close the modal (unless a
-  submission is in flight).
+- **Open in mail app** is disabled until the trimmed message length
+  is in `[10, 5000]`.
+- **Esc** and clicking the backdrop close the modal (unless the
+  mail-app launch is in flight).
 - **Success** → modal closes, toast at the bottom of the screen:
-  "Thanks — we read every message."
-- **Failure** → inline red error under the form, modal stays open,
-  retry by clicking Send again.
+  "Opened your mail app — review and hit Send."
+- **Failure** (no default mail client, OS denied the launch, …) →
+  inline red error under the form, modal stays open, retry by
+  clicking the button again.
+
+### Why mailto, not an HTTP relay
+
+The earlier v0.1.0 plan posted to a Web3Forms relay with a
+build-time access key. We replaced it with a `mailto:` flow because:
+
+- **No third-party account or build-time secret.** The app needs no
+  Web3Forms key, no env var at `cargo build` time, no rerun-if-
+  env-changed hook in `build.rs`. The dev / release builds are
+  identical.
+- **The user sees what they're sending before it goes out.** Mail
+  client opens, body pre-filled, user reviews, hits Send. No
+  surprises about what we transmit.
+- **From-address is automatic.** The user's mail client sends from
+  their address, so reply-to "just works" — we no longer need the
+  separate email input field that the old form had.
+- **One less network path that can fail.** No outbound POST, no
+  HTTP timeout, no third-party uptime. The only thing that can fail
+  is "the OS can't find a default mail client," which surfaces
+  cleanly via the shell.open rejection path.
 
 ### Diagnostics opt-in (what the checkbox actually does)
 
-Unchecked (default): the email contains only the message and the
-reply-to address. The `diagnostics` field on the payload is an empty
-string and is stripped before send.
-
-Checked: the backend builds a small three-line string:
+Unchecked (default): the email body is just the user's message.
+Checked: the frontend appends a small block to the body:
 
 ```
-app: QuantaMind v0.1.0
-os: macos (aarch64)
-model: <currently selected model>
+[user message]
+
+---
+Diagnostics (opt-in)
+App: QuantaMind v0.1.0
+User-Agent: <navigator.userAgent>
+Model: <currently selected model or "(none selected)">
 ```
 
-— from `env!("CARGO_PKG_VERSION")`, `std::env::consts::{OS, ARCH}`,
-and the frontend's currently-selected model (read from
-`useWorkspaceStore.selectedModel`, which `Workspace.tsx` writes via
-`setSelectedModel` whenever the picker changes). No logs, no IP, no
-identifying info beyond what the user typed plus that string. The
-checkbox is unchecked by default precisely so this is opt-in.
+The user can edit or delete it in their mail client before sending.
+No logs, no IP, no identifying info beyond what the user typed plus
+those three lines.
 
-### Build-time access key
-
-The Web3Forms access key is read at compile time via
-`option_env!("WEB3FORMS_ACCESS_KEY")`. **Builds succeed without it,**
-but `submit_feedback` returns a clear error if it wasn't set:
-
-> internal: feedback is disabled in this build (`WEB3FORMS_ACCESS_KEY`
-> was not set at compile time)
-
-To enable feedback for a release build:
-
-```sh
-WEB3FORMS_ACCESS_KEY=<your-key> pnpm tauri build
-```
-
-`backend/build.rs` declares
-`cargo:rerun-if-env-changed=WEB3FORMS_ACCESS_KEY` so the build
-re-runs when you swap keys.
-
-### Backend
-
-`backend/src/commands/feedback.rs::submit_feedback`:
-
-1. Trim message; validate length is in `[10, 5000]`, else
-   `AppError::Validation`.
-2. If `user_email` is set, validate with a small inline checker
-   (single `@`, no whitespace, dotted domain, no leading/trailing
-   dot in domain). Bad shape → `AppError::Validation`.
-3. If `include_diagnostics`, build the three-line string above.
-4. POST JSON to `https://api.web3forms.com/submit` via the existing
-   `inference::http::probe_client` (so the same 30s timeout and
-   QuantaMind User-Agent apply).
-5. Non-2xx → `AppError::Inference` with the response body included so
-   debugging isn't blind.
-
-Payload shape Web3Forms receives:
-
-```json
-{
-  "access_key": "<your key>",
-  "subject":    "QuantaMind Feedback",
-  "from_name":  "QuantaMind App",
-  "message":    "<user text>",
-  "reply_to":   "<user email or no-reply@quantamind.co>",
-  "diagnostics": "app: QuantaMind v0.1.0\nos: macos (aarch64)\nmodel: mistral:7b"
-}
-```
-
-Web3Forms takes that and emails it to the address registered at sign-up
-(currently **info@quantamind.co**).
-
-### Frontend wire
+### How it's wired
 
 | Concern | File |
 | --- | --- |
-| IPC wrapper | `frontend/src/shared/ipc/feedback.ts` |
-| State machine (`idle → submitting → success/error`) | `frontend/src/features/feedback/hooks/useSubmitFeedback.ts` |
+| mailto: URL builder + constants | `frontend/src/shared/ipc/feedback.ts` |
+| State machine (`idle → opening → success/error`) | `frontend/src/features/feedback/hooks/useSubmitFeedback.ts` |
 | Floating button | `frontend/src/features/feedback/components/FeedbackButton.tsx` |
 | Modal + form | `frontend/src/features/feedback/components/FeedbackModal.tsx` |
 | Minimal toast primitive (`Toast`, `useToast`, `<ToastHost />`) | `frontend/src/shared/ui/Toast.tsx` |
 | Mount point | `frontend/src/App.tsx` mounts both `<FeedbackButton />` and `<ToastHost />` at the root |
+| Capability allowlist | `backend/capabilities/default.json` grants `shell:allow-open` with a `mailto:**` scope alongside the two `ollama.com` URLs |
+
+There is **no backend command** for feedback. The mailto URL is
+built entirely in the renderer and handed off via
+`@tauri-apps/plugin-shell`'s `open()` — the same hand-off the
+Install Ollama and `ollama.com/library` buttons use.
 
 ### Cross-cutting
 
@@ -371,10 +417,19 @@ in-scope for "branding correctness":
 - `backend/src/commands/hf_install.rs` temp dir: `quatamind-hf` →
   `quantamind-hf`.
 - `.gitignore` gained `splice-current.yaml` next to the existing
-  `quantamind-current.yaml` entry, so the legacy per-user workspace
-  state file (left over from before the rename) doesn't reappear in
-  `git status` on machines that still have it lying around. The stray
-  file itself was deleted from the working tree.
+  `quantamind-current.yaml` entry (legacy per-user workspace dump
+  files left over from before the rename); the stray Splice file
+  was deleted from the working tree.
+- **Workspace Save/Load YAML bar removed.** The half-finished
+  `WorkspaceIO` panel that wrote `./quantamind-current.yaml` to an
+  unpredictable relative path was deleted along with its backend
+  `save_prompt` / `load_prompt` commands, the `persistence/prompts`
+  module, the `StoredPrompt` type, and all related tests. The
+  selected-model + prompt state already survives tab switches via
+  `workspaceStore.selectedModel`, so within a session nothing's
+  lost. A proper "Save prompt" with the native dialog and a sane
+  default location (e.g. `~/Downloads`) is the right shape when
+  someone actually asks for it via the feedback button.
 
 ---
 
@@ -390,7 +445,6 @@ in-scope for "branding correctness":
 - `backend/src/commands/ollama_start.rs` + `ollama_start_tests.rs`
 - `backend/src/commands/ollama_runtime.rs` — process spawn / kill /
   probe / poll helpers
-- `backend/src/commands/feedback.rs` + `feedback_tests.rs`
 
 ### New frontend files
 
@@ -504,8 +558,51 @@ think the user wants.
 - **Screenshot attachment, categorization dropdown, sentiment rating,
   Discord/GitHub integration.** Each is a separate product; none was
   worth the day-1 weight.
-- **`tauri-plugin-store`** for persistence. Mirroring the existing
-  YAML pattern in `persistence/prompts.rs` was cheaper and avoids
-  pulling a phase-2 dependency into this release.
+- **`tauri-plugin-store`** for persistence. The existing
+  `persistence/model_settings.rs` YAML pattern (`std::fs` +
+  `serde_yaml`) was cheaper and avoids pulling a phase-2 dependency
+  into this release.
 - **Pre-existing `install_local_gguf_verify` test failure.** Out of
   scope — see test totals above.
+
+---
+
+## 9. Self-update (Help tab → Check for updates)
+
+QuantaMind v0.1.0 ships with the [`tauri-plugin-updater`][1] plugin.
+The first card on the Help tab is the in-app updater: it shows the
+current version and a **Check for updates** button. Click → the
+plugin polls `https://quantamind.co/releases/latest.json` and
+compares the manifest's `version` field to the running app's
+version.
+
+- **Up-to-date** → green "You're on the latest version" line.
+- **Available** → version + release notes + a **Download and
+  install** button. Click → the new bundle downloads, the embedded
+  public key (in `backend/tauri.conf.json` `plugins.updater.pubkey`)
+  verifies the signature, the app installs the bundle and
+  relaunches.
+- **Error** → red error message under the button (no default mail
+  client, network down, signature mismatch, etc.).
+
+Check is **manual only** in v0.1.0 — there's no background poll. If
+you want background checks later it's a 10-line addition to
+`useUpdater` that fires `check()` from `App.tsx`'s startup effect.
+
+| Concern | File |
+| --- | --- |
+| Plugin wiring (Rust) | `backend/src/lib.rs` registers `tauri_plugin_updater::Builder` + `tauri_plugin_process::init()` |
+| Manifest URL + public key | `backend/tauri.conf.json` under `plugins.updater` |
+| Capability | `backend/capabilities/default.json` (`updater:default` + `process:default`) |
+| IPC wrapper | `frontend/src/shared/ipc/updater.ts` |
+| State machine hook | `frontend/src/features/help/hooks/useUpdater.ts` |
+| UI card | `frontend/src/features/help/components/UpdateChecker.tsx` |
+| Release orchestrator | `scripts/release.sh` |
+| Release notes input | `RELEASE_NOTES.md` (top section is read into the manifest) |
+
+The signing key pair, hosting layout, manifest shape, and the
+per-release recipe are all documented in
+[`docs/release-process.md`](release-process.md). The versioning
+policy is in [`docs/versioning.md`](versioning.md).
+
+[1]: https://v2.tauri.app/plugin/updater/
