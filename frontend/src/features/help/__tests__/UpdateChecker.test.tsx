@@ -55,13 +55,13 @@ describe("UpdateChecker", () => {
   });
 
   it("disables the Check button while in flight", async () => {
-    let resolve: ((v: unknown) => void) | null = null;
+    let resolve!: (v: unknown) => void;
     vi.mocked(check).mockImplementation(
-      () => new Promise((r) => { resolve = r; }) as never,
+      () => new Promise<unknown>((r) => { resolve = r; }) as never,
     );
     render(<UpdateChecker />);
     fireEvent.click(screen.getByTestId("update-check-button"));
     await waitFor(() => expect(screen.getByTestId("update-check-button")).toBeDisabled());
-    resolve?.(null);
+    resolve(null);
   });
 });
