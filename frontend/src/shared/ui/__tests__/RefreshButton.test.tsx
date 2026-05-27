@@ -49,15 +49,15 @@ describe("RefreshButton", () => {
   });
 
   it("re-entrancy guard: a second click while spinning is a no-op", async () => {
-    let resolve: ((v: unknown) => void) | null = null;
+    let resolve!: (v: unknown) => void;
     vi.mocked(invoke).mockImplementation(() =>
-      new Promise((r) => { resolve = r; }),
+      new Promise<unknown>((r) => { resolve = r; }),
     );
     render(<RefreshButton />);
     const btn = screen.getByTestId("refresh-button");
     fireEvent.click(btn);
     fireEvent.click(btn);
     expect(invoke).toHaveBeenCalledTimes(1);
-    resolve?.({ available: true, version: null });
+    resolve({ available: true, version: null });
   });
 });
