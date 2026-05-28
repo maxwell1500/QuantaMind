@@ -10,6 +10,7 @@
 pub mod compare;
 pub mod compare_export;
 pub mod compare_payloads;
+pub mod compare_sink;
 pub mod emit;
 pub mod feasibility;
 pub mod gguf_cmd;
@@ -25,7 +26,6 @@ pub mod onboarding;
 pub mod ollama_runtime;
 pub mod ollama_start;
 pub mod prompt;
-pub mod prompt_handler;
 pub mod prompt_options;
 pub mod prompt_payloads;
 pub mod prompt_run;

@@ -1,26 +1,14 @@
 #![deny(clippy::unwrap_used)]
-use crate::commands::compare_payloads::{
-    CompareCancelledPayload, CompareDonePayload, CompareErrorPayload,
-    EVENT_COMPARE_CANCELLED, EVENT_COMPARE_DONE, EVENT_COMPARE_ERROR,
-};
 use crate::errors::AppError;
 use crate::inference::compare_runner::RowSpec;
+use crate::inference::compare_sink::CompareSink;
 use crate::metrics::timing::RunTiming;
 use crate::sync::MutexExt;
-use serde::Serialize;
 use std::sync::{Arc, Mutex};
 use tokio_util::sync::CancellationToken;
 
-pub type CompareEmit = Arc<dyn Fn(&str, serde_json::Value) + Send + Sync>;
-
-pub fn emit<T: Serialize>(emit_fn: &CompareEmit, event: &str, payload: &T) {
-    if let Ok(v) = serde_json::to_value(payload) {
-        emit_fn(event, v);
-    }
-}
-
 pub(crate) fn finalize_row(
-    emit_fn: &CompareEmit,
+    sink: &dyn CompareSink,
     row: &RowSpec,
     timing: &Arc<Mutex<RunTiming>>,
     row_token: &CancellationToken,
@@ -28,24 +16,16 @@ pub(crate) fn finalize_row(
 ) {
     let id = row.model_id.to_string();
     match result {
-        Ok(()) if row_token.is_cancelled() => emit(emit_fn, EVENT_COMPARE_CANCELLED, &CompareCancelledPayload {
-            model_id: id,
-            model: row.model.clone(),
-            token_count: timing.lock_recover().token_count,
-        }),
+        Ok(()) if row_token.is_cancelled() => {
+            sink.cancelled(&id, &row.model, timing.lock_recover().token_count);
+        }
         Ok(()) => {
             let t = timing.lock_recover();
-            emit(emit_fn, EVENT_COMPARE_DONE, &CompareDonePayload {
-                model_id: id, model: row.model.clone(),
-                ttft_ms: t.ttft_ms(), tokens_per_sec: t.tokens_per_sec(),
-                token_count: t.token_count,
-            });
+            sink.done(&id, &row.model, t.ttft_ms(), t.tokens_per_sec(), t.token_count);
         }
         Err(err) => {
             let (kind, message) = app_error_split(&err);
-            emit(emit_fn, EVENT_COMPARE_ERROR, &CompareErrorPayload {
-                model_id: id, model: row.model.clone(), kind, message,
-            });
+            sink.error(&id, &row.model, &kind, &message);
         }
     }
 }

@@ -1,30 +1,18 @@
 #![deny(clippy::unwrap_used)]
 use crate::commands::compare_payloads::Strategy;
-use crate::commands::emit::log_emit;
+use crate::commands::compare_sink::TauriCompareSink;
 use crate::commands::model_settings::ModelSettingsState;
 use crate::errors::{AppError, AppResult};
 use crate::inference::compare_runner::{rows_for, run_parallel, run_sequential};
-use crate::inference::compare_runner_finalize::CompareEmit;
+use crate::inference::compare_sink::CompareSink;
 use crate::sync::MutexExt;
-use std::collections::HashMap;
-use std::sync::{Arc, Mutex};
+use std::sync::Arc;
 use tauri::AppHandle;
-use tokio_util::sync::CancellationToken;
 use uuid::Uuid;
 
+pub use crate::inference::compare_state::CompareRunState;
+
 const DEFAULT_OLLAMA: &str = "http://localhost:11434";
-
-#[derive(Default, Clone)]
-pub struct CompareRunState {
-    pub rows: Arc<Mutex<HashMap<Uuid, CancellationToken>>>,
-    pub run_cancel: Arc<Mutex<Option<CancellationToken>>>,
-}
-
-fn make_emit(app: AppHandle) -> CompareEmit {
-    Arc::new(move |event: &str, payload: serde_json::Value| {
-        log_emit(&app, event, payload);
-    })
-}
 
 fn validate(models: &[String], prompt: &str) -> AppResult<()> {
     if models.is_empty() {
@@ -49,7 +37,7 @@ pub async fn run_compare(
     validate(&models, &prompt)?;
     settings.ensure_loaded(&app)?;
     let rows = rows_for(&models, |m| Some(settings.temperature_for(m)));
-    let emit = make_emit(app);
+    let sink: Arc<dyn CompareSink> = Arc::new(TauriCompareSink::new(app));
     let system_trim = system.as_deref().map(str::trim).filter(|s| !s.is_empty());
     let keep_alive = match strategy {
         Strategy::Sequential => Some(0),
@@ -57,9 +45,9 @@ pub async fn run_compare(
     };
     match strategy {
         Strategy::Sequential =>
-            run_sequential(emit, state.inner(), DEFAULT_OLLAMA, rows, &prompt, system_trim, keep_alive).await,
+            run_sequential(sink, state.inner(), DEFAULT_OLLAMA, rows, &prompt, system_trim, keep_alive).await,
         Strategy::Parallel =>
-            run_parallel(emit, state.inner(), DEFAULT_OLLAMA, rows, &prompt, system_trim, keep_alive).await,
+            run_parallel(sink, state.inner(), DEFAULT_OLLAMA, rows, &prompt, system_trim, keep_alive).await,
     }
 }
 
