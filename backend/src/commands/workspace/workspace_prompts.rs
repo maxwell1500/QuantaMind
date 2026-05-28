@@ -1,4 +1,4 @@
-use crate::commands::workspaces::WorkspaceState;
+use crate::commands::workspace::workspaces::WorkspaceState;
 use crate::errors::{AppError, AppResult};
 use crate::persistence::prompts::{io as p_io, schema::PromptFile, tree, tree::TreeNode};
 use crate::time_iso::now_utc;

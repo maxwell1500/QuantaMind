@@ -1,4 +1,4 @@
-use crate::commands::storage_types::DiskUsage;
+use crate::commands::storage::storage_types::DiskUsage;
 use std::path::{Path, PathBuf};
 use sysinfo::Disks;
 

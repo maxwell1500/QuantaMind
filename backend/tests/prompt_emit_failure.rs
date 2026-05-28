@@ -1,5 +1,5 @@
 use mockito::Server;
-use quantamind_lib::commands::prompt::run_prompt_inner;
+use quantamind_lib::commands::prompt::prompt::run_prompt_inner;
 use quantamind_lib::inference::token_handler::make_token_handler;
 use quantamind_lib::metrics::timing::RunTiming;
 use std::sync::atomic::{AtomicUsize, Ordering};

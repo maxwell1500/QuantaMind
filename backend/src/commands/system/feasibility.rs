@@ -1,4 +1,4 @@
-use crate::commands::storage_disk::{compute_disk_usage, models_dir};
+use crate::commands::storage::storage_disk::{compute_disk_usage, models_dir};
 use crate::errors::AppError;
 use serde::Serialize;
 

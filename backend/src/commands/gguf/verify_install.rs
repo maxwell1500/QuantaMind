@@ -1,4 +1,4 @@
-use crate::commands::storage::fetch_installed_with_stats;
+use crate::commands::storage::storage::fetch_installed_with_stats;
 use crate::errors::{AppError, AppResult};
 use std::time::Duration;
 

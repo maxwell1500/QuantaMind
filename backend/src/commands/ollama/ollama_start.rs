@@ -1,4 +1,4 @@
-use crate::commands::ollama_runtime::{
+use crate::commands::ollama::ollama_runtime::{
     is_reachable, kill_serve, resolve_ollama, spawn_serve, wait_until_ready,
     PROBE_TIMEOUT_MS,
 };

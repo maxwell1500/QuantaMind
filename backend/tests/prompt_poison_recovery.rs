@@ -1,4 +1,4 @@
-use quantamind_lib::commands::prompt_payloads::done_payload;
+use quantamind_lib::commands::prompt::prompt_payloads::done_payload;
 use quantamind_lib::metrics::timing::RunTiming;
 use quantamind_lib::sync::MutexExt;
 use std::sync::{Arc, Mutex};

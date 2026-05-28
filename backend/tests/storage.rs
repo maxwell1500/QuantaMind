@@ -1,6 +1,6 @@
 use mockito::Server;
-use quantamind_lib::commands::storage::{fetch_installed_with_stats, remove_model_inner};
-use quantamind_lib::commands::storage_disk::compute_disk_usage;
+use quantamind_lib::commands::storage::storage::{fetch_installed_with_stats, remove_model_inner};
+use quantamind_lib::commands::storage::storage_disk::compute_disk_usage;
 use quantamind_lib::errors::AppError;
 use std::path::Path;
 

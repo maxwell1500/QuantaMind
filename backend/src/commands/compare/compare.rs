@@ -1,7 +1,7 @@
 #![deny(clippy::unwrap_used)]
-use crate::commands::compare_payloads::Strategy;
-use crate::commands::compare_sink::TauriCompareSink;
-use crate::commands::model_settings::ModelSettingsState;
+use crate::commands::compare::compare_payloads::Strategy;
+use crate::commands::compare::compare_sink::TauriCompareSink;
+use crate::commands::settings::model_settings::ModelSettingsState;
 use crate::errors::{AppError, AppResult};
 use crate::inference::compare::compare_runner::{rows_for, run_parallel, run_sequential};
 use crate::inference::compare::compare_sink::CompareSink;

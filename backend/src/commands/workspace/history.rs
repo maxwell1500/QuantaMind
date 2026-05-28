@@ -1,4 +1,4 @@
-use crate::commands::workspaces::WorkspaceState;
+use crate::commands::workspace::workspaces::WorkspaceState;
 use crate::errors::{AppError, AppResult};
 use crate::persistence::prompts::history::{self, History, HistoryEntry};
 use crate::persistence::prompts::schema::InferenceParams;

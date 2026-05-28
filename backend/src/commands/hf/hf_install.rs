@@ -1,6 +1,6 @@
 use crate::commands::emit::log_emit;
-use crate::commands::gguf_cmd::{install_local_gguf_inner, EVENT_MODELS_CHANGED};
-use crate::commands::hf_phase::{HfPhase, EVENT_HF_PROGRESS};
+use crate::commands::gguf::gguf_cmd::{install_local_gguf_inner, EVENT_MODELS_CHANGED};
+use crate::commands::hf::hf_phase::{HfPhase, EVENT_HF_PROGRESS};
 use crate::errors::{AppError, AppResult};
 use crate::inference::hf::hf_download::{download_gguf, DownloadProgress};
 use crate::inference::hf::hf_resume::partial_path;

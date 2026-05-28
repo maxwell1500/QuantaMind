@@ -1,4 +1,4 @@
-use quantamind_lib::commands::compare_payloads::{
+use quantamind_lib::commands::compare::compare_payloads::{
     CompareDonePayload, CompareTokenPayload, RunCompareArgs, Strategy,
 };
 

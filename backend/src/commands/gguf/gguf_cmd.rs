@@ -1,5 +1,5 @@
 use crate::commands::emit::log_emit;
-use crate::commands::verify_install::verify_model_registered;
+use crate::commands::gguf::verify_install::verify_model_registered;
 use crate::errors::{AppError, AppResult};
 use crate::inference::chat::chat_templates::detect_template;
 use crate::inference::create::create_spec::{CreateParameters, CreatePhase, CreateSpec};

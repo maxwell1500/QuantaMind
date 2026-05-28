@@ -1,7 +1,7 @@
 use crate::commands::emit::log_emit;
-use crate::commands::gguf_cmd::EVENT_MODELS_CHANGED;
-use crate::commands::pull_events::{emit_failed, panic_message, PullProgressEvent, EVENT_PULL_PROGRESS};
-use crate::commands::verify_install::verify_model_registered;
+use crate::commands::gguf::gguf_cmd::EVENT_MODELS_CHANGED;
+use crate::commands::models::pull_events::{emit_failed, panic_message, PullProgressEvent, EVENT_PULL_PROGRESS};
+use crate::commands::gguf::verify_install::verify_model_registered;
 use crate::errors::{AppError, AppResult};
 use crate::inference::pull::pull::pull_model as run_pull;
 use crate::inference::pull::pull_name::validate_name;

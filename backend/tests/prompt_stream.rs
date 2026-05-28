@@ -1,5 +1,5 @@
 use mockito::Server;
-use quantamind_lib::commands::prompt::run_prompt_inner;
+use quantamind_lib::commands::prompt::prompt::run_prompt_inner;
 use quantamind_lib::errors::AppError;
 use tokio_util::sync::CancellationToken;
 

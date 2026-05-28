@@ -1,7 +1,7 @@
 use crate::commands::emit::log_emit;
-use crate::commands::gguf_cmd::EVENT_MODELS_CHANGED;
-use crate::commands::storage_disk::{compute_disk_usage, models_dir};
-use crate::commands::storage_types::{
+use crate::commands::gguf::gguf_cmd::EVENT_MODELS_CHANGED;
+use crate::commands::storage::storage_disk::{compute_disk_usage, models_dir};
+use crate::commands::storage::storage_types::{
     DiskUsage, InstalledModelInfo, ModelDetails, TagsResponse,
 };
 use crate::errors::{AppError, AppResult};
