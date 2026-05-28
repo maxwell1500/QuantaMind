@@ -1,3 +1,18 @@
+export function rawMessage(e: unknown): string {
+  if (e instanceof Error) return e.message;
+  if (typeof e === "string") return e;
+  if (e && typeof e === "object" && "message" in e) {
+    const m = (e as { message: unknown }).message;
+    if (typeof m === "string") return m;
+  }
+  try {
+    const json = JSON.stringify(e);
+    if (json !== undefined && json !== "{}") return json;
+  } catch { /* fall through to String() */ }
+  const str = String(e);
+  return str === "[object Object]" ? "[unknown error]" : str;
+}
+
 function friendly(msg: string): string {
   if (msg.includes("Connection refused")
       || msg.includes("error trying to connect")
@@ -10,16 +25,5 @@ function friendly(msg: string): string {
 }
 
 export function formatIpcError(e: unknown): string {
-  if (e instanceof Error) return friendly(e.message);
-  if (typeof e === "string") return friendly(e);
-  if (e && typeof e === "object" && "message" in e) {
-    const m = (e as { message: unknown }).message;
-    if (typeof m === "string") return friendly(m);
-  }
-  try {
-    const json = JSON.stringify(e);
-    if (json !== undefined && json !== "{}") return json;
-  } catch { /* fall through to String() */ }
-  const str = String(e);
-  return str === "[object Object]" ? "[unknown error]" : str;
+  return friendly(rawMessage(e));
 }

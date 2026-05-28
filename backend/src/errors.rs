@@ -33,6 +33,7 @@ impl AppError {
     /// Keeps the original string when there's no friendlier match.
     pub fn friendly(&self) -> String {
         let s = self.to_string();
+        let low = s.to_lowercase();
         let looks_like_ollama_down = s.contains("Connection refused")
             || s.contains("error trying to connect")
             || s.contains("os error 61")
@@ -40,6 +41,14 @@ impl AppError {
             || (s.contains("error sending request") && s.contains("localhost:11434"));
         if looks_like_ollama_down {
             return "Ollama is not running. Start Ollama and try again.".to_string();
+        }
+        if low.contains("model") && low.contains("not found") {
+            return "That model isn't installed. Install it from the Models tab and try again."
+                .to_string();
+        }
+        if low.contains("out of memory") || low.contains("not enough memory") {
+            return "Not enough memory to run this model. Try a smaller or more-quantized model."
+                .to_string();
         }
         s
     }
@@ -82,5 +91,29 @@ mod tests {
     fn auth_required_serializes_as_tagged_json() {
         let json = serde_json::to_string(&AppError::AuthRequired("meta-llama/Llama-3".into())).unwrap();
         assert_eq!(json, r#"{"kind":"auth_required","message":"meta-llama/Llama-3"}"#);
+    }
+
+    #[test]
+    fn friendly_maps_connection_refused_to_ollama_down() {
+        let e = AppError::Inference("error trying to connect: Connection refused".into());
+        assert_eq!(e.friendly(), "Ollama is not running. Start Ollama and try again.");
+    }
+
+    #[test]
+    fn friendly_maps_model_not_found() {
+        let e = AppError::Inference("model 'llama3' not found, try pulling it".into());
+        assert!(e.friendly().contains("isn't installed"));
+    }
+
+    #[test]
+    fn friendly_maps_out_of_memory() {
+        let e = AppError::Inference("llama runner: out of memory".into());
+        assert!(e.friendly().contains("Not enough memory"));
+    }
+
+    #[test]
+    fn friendly_passes_through_unknown() {
+        let e = AppError::Validation("weird thing".into());
+        assert_eq!(e.friendly(), "validation: weird thing");
     }
 }

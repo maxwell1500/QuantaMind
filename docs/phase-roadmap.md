@@ -25,7 +25,7 @@ to a real "current prompt file" from day one.
 | 2.1 | Parameter controls | done (pending live GUI check) | `inference-params.md` |
 | 2.2 | Auto-rerun on save | done (pending live GUI check) | `auto-rerun.md` |
 | 2.3 | Prompt history | done (pending live GUI check) | `history.md` |
-| 2.5 | Better error states | pending | `troubleshooting.md` |
+| 2.5 | Better error states | done (pending live GUI check) | `troubleshooting.md` |
 | 2.7 | Light theme + system theme | pending | `theming.md` |
 | 2.6 | Onboarding | pending | `onboarding.md` |
 | 2.10 | Keyboard shortcuts | pending | `keyboard-shortcuts.md` |

@@ -4,6 +4,7 @@ import { PromptEditor } from "./PromptEditor";
 import { OutputStream } from "./OutputStream";
 import { RunControls } from "./RunControls";
 import { ParamsPanel } from "./ParamsPanel";
+import { WorkspaceError } from "./WorkspaceError";
 import { StatusBar } from "./StatusBar";
 import { useStreamingRun } from "../hooks/useStreamingRun";
 import { useAutoRerun } from "../hooks/useAutoRerun";
@@ -82,7 +83,7 @@ export function Workspace() {
               Cancelled · {cancelledInfo.token_count} tokens
             </p>
           )}
-          {error && <p className="text-red-600 text-sm">{error}</p>}
+          {error && <WorkspaceError error={error} onRetry={runNow} />}
         </>
       )}
       <StatusBar
