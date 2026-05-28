@@ -7,6 +7,23 @@ a `*.quantamind.yaml` loads it into the workspace.
 This replaces v0.1's single-prompt session model. Prompts are now
 files you own, version, and share like any other source.
 
+## Model selection drives the mode (v0.2)
+
+The page is model-count-driven (the old Compare tab is gone):
+
+- **0 models** — Run is disabled; pick a model.
+- **1 model** — single streaming run via `run_prompt`, with per-prompt
+  params, history, and auto-rerun (`SingleRun.tsx`).
+- **2+ models** — the same prompt runs across all of them with a
+  RAM-based readout of how many fit sequentially vs in parallel and a
+  strategy picker; output streams into side-by-side columns
+  (`MultiRun.tsx`, reusing the Compare engine). Per-prompt params don't
+  apply here — each model uses its saved temperature.
+
+Selection lives in `compareStore.selectedModels`; `ModelSelectBar.tsx`
+hosts the multi-select and gates on Ollama health. `HardwareSummary`
+shows feasibility verdicts whenever a model is selected.
+
 ## File format: `*.quantamind.yaml`
 
 A human-readable YAML record. Defined in

@@ -36,10 +36,10 @@ beforeEach(() => {
   seedCurrentPrompt();
 });
 
-const ALL = ["workspace", "compare", "models", "downloads", "storage"] as const;
+const ALL = ["workspace", "models", "downloads", "storage"] as const;
 
-describe("App tab strip (5 top tabs)", () => {
-  it("renders all five tabs with Workspace active by default", () => {
+describe("App tab strip", () => {
+  it("renders the tabs with Workspace active by default", () => {
     render(<App />);
     for (const id of ALL) {
       expect(screen.getByTestId(`view-tab-${id}`))
@@ -49,6 +49,11 @@ describe("App tab strip (5 top tabs)", () => {
     for (const id of ALL.filter((x) => x !== "workspace")) {
       expect(screen.getByTestId(`view-${id}`)).toHaveAttribute("hidden");
     }
+  });
+
+  it("has no Compare tab (unified into Workspace)", () => {
+    render(<App />);
+    expect(screen.queryByTestId("view-tab-compare")).toBeNull();
   });
 
   it.each(ALL.filter((x) => x !== "workspace"))(
@@ -63,23 +68,12 @@ describe("App tab strip (5 top tabs)", () => {
     },
   );
 
-  it("Compare prompt survives a Workspace round-trip (Zustand-backed)", () => {
-    render(<App />);
-    fireEvent.click(screen.getByTestId("view-tab-compare"));
-    const input = screen.getByTestId("compare-prompt") as HTMLTextAreaElement;
-    fireEvent.change(input, { target: { value: "Explain CRDTs." } });
-    fireEvent.click(screen.getByTestId("view-tab-workspace"));
-    fireEvent.click(screen.getByTestId("view-tab-compare"));
-    expect((screen.getByTestId("compare-prompt") as HTMLTextAreaElement).value)
-      .toBe("Explain CRDTs.");
-  });
-
-  it("Workspace prompt survives the toggle (Zustand-backed, both views kept mounted)", () => {
+  it("Workspace prompt survives the toggle (kept mounted via hidden)", () => {
     render(<App />);
     const userEditor = within(screen.getByTestId("user-prompt-editor"))
       .getByTestId("prompt-input") as HTMLTextAreaElement;
     fireEvent.change(userEditor, { target: { value: "ws value" } });
-    fireEvent.click(screen.getByTestId("view-tab-compare"));
+    fireEvent.click(screen.getByTestId("view-tab-models"));
     fireEvent.click(screen.getByTestId("view-tab-workspace"));
     const afterToggle = within(screen.getByTestId("user-prompt-editor"))
       .getByTestId("prompt-input") as HTMLTextAreaElement;

@@ -15,7 +15,7 @@ vi.mock("../../../shared/ipc/history", () => ({
 import { HistoryPanel } from "../components/HistoryPanel";
 import { useHistoryStore } from "../state/historyStore";
 import { useWorkspacesStore } from "../../workspaces/state/workspaceStore";
-import { useWorkspaceStore } from "../../workspace/state/workspaceStore";
+import { useCompareStore } from "../../compare/state/compareStore";
 
 beforeEach(() => {
   useHistoryStore.setState({ open: false, entries: [] });
@@ -47,7 +47,7 @@ describe("HistoryPanel", () => {
     fireEvent.click(await screen.findByTestId("history-row"));
     expect(useWorkspacesStore.getState().current?.user).toBe("Explain CRDTs in depth");
     expect(useWorkspacesStore.getState().current?.params.temperature).toBe(0.4);
-    expect(useWorkspaceStore.getState().selectedModel).toBe("llama3");
+    expect(useCompareStore.getState().selectedModels[0]?.name).toBe("llama3");
     expect(useHistoryStore.getState().open).toBe(false);
   });
 

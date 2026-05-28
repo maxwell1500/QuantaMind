@@ -23,6 +23,7 @@ import { invoke } from "@tauri-apps/api/core";
 import { listen, type EventCallback } from "@tauri-apps/api/event";
 import App from "../App";
 import { useWorkspacesStore } from "../features/workspaces/state/workspaceStore";
+import { useCompareStore } from "../features/compare/state/compareStore";
 import { seedCurrentPrompt } from "./helpers/seedWorkspace";
 
 const handlers: Record<string, EventCallback<unknown>> = {};
@@ -56,6 +57,7 @@ beforeEach(() => {
     if (cmd === "save_prompt") return Promise.resolve(useWorkspacesStore.getState().current);
     return Promise.reject(new Error(`unknown ${cmd}`));
   });
+  useCompareStore.getState().reset();
   seedCurrentPrompt();
 });
 
@@ -70,11 +72,8 @@ describe("Phase 1 E2E smoke — edit → run → re-run", () => {
     const userEditorWrap = await screen.findByTestId("user-prompt-editor");
     const editor = within(userEditorWrap).getByTestId("prompt-input");
     fireEvent.change(editor, { target: { value: "Why is the sky blue?" } });
-    const select = (await screen.findByRole("combobox", {
-      name: /model/i,
-    })) as HTMLSelectElement;
-    await screen.findByRole("option", { name: "llama3.2:1b" });
-    fireEvent.change(select, { target: { value: "llama3.2:1b" } });
+    // Pick one model (a chip) → single-run mode
+    fireEvent.click(await screen.findByTestId("model-chip-llama3.2:1b"));
 
     // 2. RUN — tokens stream into UI, metrics displayed
     fireEvent.click(screen.getByRole("button", { name: /^run$/i }));
@@ -105,7 +104,6 @@ describe("Phase 1 E2E smoke — edit → run → re-run", () => {
     expect(screen.getByTestId("run-status")).toHaveTextContent("done");
 
     // 3. RE-RUN with the same in-memory state succeeds without re-typing
-    expect(select.value).toBe("llama3.2:1b");
     fireEvent.click(screen.getByRole("button", { name: /^run$/i }));
     expect(invoke).toHaveBeenCalledWith("run_prompt", {
       model: "llama3.2:1b",
@@ -120,11 +118,7 @@ describe("Phase 1 E2E smoke — edit → run → re-run", () => {
     fireEvent.change(within(userWrap).getByTestId("prompt-input"), {
       target: { value: "x" },
     });
-    await screen.findByRole("option", { name: "llama3.2:1b" });
-    fireEvent.change(
-      screen.getByRole("combobox", { name: /model/i }) as HTMLSelectElement,
-      { target: { value: "llama3.2:1b" } },
-    );
+    fireEvent.click(await screen.findByTestId("model-chip-llama3.2:1b"));
     fireEvent.click(screen.getByRole("button", { name: /^run$/i }));
     act(() => fire("prompt-token", { text: "partial" }));
     fireEvent.click(screen.getByRole("button", { name: /cancel/i }));

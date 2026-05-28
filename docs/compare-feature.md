@@ -1,9 +1,18 @@
 # Compare (multi-model)
 
-A top-level **Compare** tab alongside Workspace. Pick multiple installed
-models, write one prompt, run them through a user-chosen strategy, watch
-output stream into a per-model column, export the result as Markdown
-or JSON.
+> **v0.2 update — unified into the Workspace.** There is no longer a
+> separate Compare tab. The Workspace page is model-count-driven: pick
+> **one** model for a single streaming run (with per-prompt params,
+> history, auto-rerun), or **two-plus** models to compare them on the same
+> prompt. The RAM verdicts + run-strategy picker appear automatically once
+> a second model is selected. The engine below is unchanged — it's the
+> same `assessStrategies` + `run_compare` + per-model columns, now driven
+> from `features/workspace/components/MultiRun.tsx`. See
+> `docs/workspaces.md` for the unified page.
+
+Pick multiple installed models, write one prompt, run them through a
+user-chosen strategy, watch output stream into a per-model column, export
+the result as Markdown or JSON.
 
 ## Run strategies
 
