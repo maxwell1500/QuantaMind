@@ -5,7 +5,9 @@ files**. When a folder reaches the limit, split it into sub-folders grouped by
 concern — never a `misc/`/`utils/` catch-all. Finding a file should be a matter
 of guessing the right concern folder.
 
-Enforced by the folder-count guardrail (see `robustness.md`).
+Enforced by a guardrail test on each side (`backend/tests/layering_guard.rs`,
+`frontend/src/__tests__/folderTaxonomy.test.ts`). `__tests__` dirs are exempt —
+they mirror their source one-to-one, so their size is already bounded.
 
 ## Target sub-folder layout
 
