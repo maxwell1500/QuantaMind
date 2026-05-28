@@ -1,45 +1,24 @@
+use crate::commands::emit::log_emit;
 use crate::commands::gguf_cmd::EVENT_MODELS_CHANGED;
+use crate::commands::pull_events::{emit_failed, panic_message, PullProgressEvent, EVENT_PULL_PROGRESS};
 use crate::commands::verify_install::verify_model_registered;
 use crate::errors::{AppError, AppResult};
 use crate::inference::pull::pull_model as run_pull;
 use crate::inference::pull_name::validate_name;
-use crate::inference::pull_progress::PullProgress;
 use crate::sync::MutexExt;
 use futures_util::FutureExt;
-use serde::Serialize;
 use std::collections::HashMap;
 use std::panic::AssertUnwindSafe;
 use std::sync::Mutex;
-use tauri::{AppHandle, Emitter, Manager};
+use tauri::{AppHandle, Manager};
 use tokio_util::sync::CancellationToken;
 use uuid::Uuid;
 
 const DEFAULT_OLLAMA: &str = "http://localhost:11434";
-pub const EVENT_PULL_PROGRESS: &str = "pull-progress";
 
 #[derive(Default)]
 pub struct PullState {
     active: Mutex<HashMap<String, CancellationToken>>,
-}
-
-#[derive(Serialize, Clone)]
-struct PullProgressEvent {
-    pull_id: String,
-    name: String,
-    progress: PullProgress,
-}
-
-fn panic_message(p: Box<dyn std::any::Any + Send>) -> String {
-    if let Some(s) = p.downcast_ref::<&str>() { return (*s).to_string(); }
-    if let Some(s) = p.downcast_ref::<String>() { return s.clone(); }
-    "unknown panic".to_string()
-}
-
-fn emit_failed(app: &AppHandle, pid: &str, name: &str, message: String) {
-    let _ = app.emit(EVENT_PULL_PROGRESS, PullProgressEvent {
-        pull_id: pid.into(), name: name.into(),
-        progress: PullProgress::Failed { message },
-    });
 }
 
 #[tauri::command]
@@ -62,7 +41,7 @@ pub async fn pull_model(
         let emit_inner = emit_app.clone();
         let task = async move {
             run_pull(DEFAULT_OLLAMA, &name, move |progress| {
-                let _ = emit_inner.emit(EVENT_PULL_PROGRESS, PullProgressEvent {
+                log_emit(&emit_inner, EVENT_PULL_PROGRESS, PullProgressEvent {
                     pull_id: pid_event.clone(), name: name_event.clone(), progress,
                 });
             }, token).await
@@ -73,7 +52,7 @@ pub async fn pull_model(
                 // reflects the new manifest. Verify before broadcasting so
                 // the frontend's refresh sees the new model on first read.
                 match verify_model_registered(DEFAULT_OLLAMA, &name_outer).await {
-                    Ok(()) => { let _ = emit_app.emit(EVENT_MODELS_CHANGED, ()); }
+                    Ok(()) => log_emit(&emit_app, EVENT_MODELS_CHANGED, ()),
                     Err(e) => emit_failed(&emit_app, &pid, &name_outer, e.friendly()),
                 }
             }
