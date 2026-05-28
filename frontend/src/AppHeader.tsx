@@ -1,6 +1,6 @@
 import { useHistoryStore } from "./features/history/state/historyStore";
-import { useUiStore } from "./shared/state/uiStore";
 import { useNavStore } from "./shared/state/navStore";
+import { OllamaControl } from "./features/workspace/components/OllamaControl";
 
 const btn = "text-sm text-gray-600 hover:text-ink px-2 py-1";
 
@@ -9,7 +9,6 @@ export function AppHeader() {
   const canGoBack = useNavStore((s) => s.history.length > 0);
   const goBack = useNavStore((s) => s.goBack);
   const toggleHistory = useHistoryStore((s) => s.toggle);
-  const toggleSettings = useUiStore((s) => s.toggleSettings);
   return (
     <div className="flex items-center gap-2">
       <button
@@ -30,15 +29,7 @@ export function AppHeader() {
             History
           </button>
         )}
-        <button
-          type="button"
-          onClick={toggleSettings}
-          className={btn}
-          data-testid="settings-toggle"
-          aria-label="Settings"
-        >
-          ⚙
-        </button>
+        <OllamaControl />
       </div>
     </div>
   );
