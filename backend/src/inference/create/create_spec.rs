@@ -1,4 +1,4 @@
-use crate::inference::chat_template_data::ChatTemplate;
+use crate::inference::chat::chat_template_data::ChatTemplate;
 use serde::Serialize;
 use std::path::PathBuf;
 

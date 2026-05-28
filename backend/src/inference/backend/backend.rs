@@ -1,5 +1,5 @@
 use crate::errors::AppResult;
-use crate::inference::generate_spec::GenerateSpec;
+use crate::inference::generate::generate_spec::GenerateSpec;
 use tokio_util::sync::CancellationToken;
 
 /// One streaming generation against some backend. Implementors stream

@@ -1,13 +1,13 @@
 #![deny(clippy::unwrap_used)]
-use crate::inference::backend::InferenceBackend;
-use crate::inference::backend_kind::BackendKind;
-use crate::inference::compare_runner::RowSpec;
-use crate::inference::compare_runner_finalize::finalize_row;
-use crate::inference::compare_sink::CompareSink;
-use crate::inference::compare_state::CompareRunState;
-use crate::inference::generate_spec::GenerateSpec;
-use crate::inference::ollama::GenerateOptions;
-use crate::inference::ollama_backend::OllamaBackend;
+use crate::inference::backend::backend::InferenceBackend;
+use crate::inference::backend::backend_kind::BackendKind;
+use crate::inference::compare::compare_runner::RowSpec;
+use crate::inference::compare::compare_runner_finalize::finalize_row;
+use crate::inference::compare::compare_sink::CompareSink;
+use crate::inference::compare::compare_state::CompareRunState;
+use crate::inference::generate::generate_spec::GenerateSpec;
+use crate::inference::ollama::ollama::GenerateOptions;
+use crate::inference::ollama::ollama_backend::OllamaBackend;
 use crate::inference::token_handler::make_token_handler;
 use crate::metrics::timing::RunTiming;
 use crate::sync::MutexExt;

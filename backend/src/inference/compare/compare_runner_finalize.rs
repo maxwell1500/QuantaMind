@@ -1,7 +1,7 @@
 #![deny(clippy::unwrap_used)]
 use crate::errors::AppError;
-use crate::inference::compare_runner::RowSpec;
-use crate::inference::compare_sink::CompareSink;
+use crate::inference::compare::compare_runner::RowSpec;
+use crate::inference::compare::compare_sink::CompareSink;
 use crate::metrics::timing::RunTiming;
 use crate::sync::MutexExt;
 use std::sync::{Arc, Mutex};

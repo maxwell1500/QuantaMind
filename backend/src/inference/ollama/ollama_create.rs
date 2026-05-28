@@ -1,9 +1,9 @@
 use crate::errors::{AppError, AppResult};
-use crate::inference::consume_create::consume_ndjson;
-use crate::inference::http::body_or_note;
-use crate::inference::create_body::build_create_body;
-use crate::inference::create_spec::{CreatePhase, CreateSpec};
-use crate::inference::ollama_blob::{blob_exists, sha256_file, upload_blob};
+use crate::inference::create::consume_create::consume_ndjson;
+use crate::inference::http::http::body_or_note;
+use crate::inference::create::create_body::build_create_body;
+use crate::inference::create::create_spec::{CreatePhase, CreateSpec};
+use crate::inference::ollama::ollama_blob::{blob_exists, sha256_file, upload_blob};
 use reqwest::Client;
 use std::sync::Arc;
 use std::time::Duration;

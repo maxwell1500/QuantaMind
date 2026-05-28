@@ -1,6 +1,6 @@
 use crate::errors::{AppError, AppResult};
-use crate::inference::http::{body_or_note, streaming_client};
-pub use crate::inference::generate_options::GenerateOptions;
+use crate::inference::http::http::{body_or_note, streaming_client};
+pub use crate::inference::generate::generate_options::GenerateOptions;
 use futures_util::StreamExt;
 use serde::{Deserialize, Serialize};
 use tokio_util::sync::CancellationToken;

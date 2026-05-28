@@ -4,7 +4,7 @@ use crate::commands::compare_payloads::{
     EVENT_COMPARE_LOADING, EVENT_COMPARE_RUN_DONE, EVENT_COMPARE_TOKEN,
 };
 use crate::commands::emit::log_emit;
-use crate::inference::compare_sink::CompareSink;
+use crate::inference::compare::compare_sink::CompareSink;
 use tauri::AppHandle;
 
 /// Bridges domain compare events onto Tauri events. The single place the

@@ -1,5 +1,5 @@
 use crate::errors::{AppError, AppResult};
-use crate::inference::create_spec::{CreateParameters, CreateSpec};
+use crate::inference::create::create_spec::{CreateParameters, CreateSpec};
 use serde_json::{json, Map, Value};
 
 fn parameters_to_json(p: &CreateParameters) -> Map<String, Value> {

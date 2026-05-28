@@ -1,5 +1,5 @@
 use crate::errors::{AppError, AppResult};
-use crate::inference::http::streaming_client;
+use crate::inference::http::http::streaming_client;
 use reqwest::{Client, StatusCode};
 
 /// Validate `namespace/repo-name`. Names allow ASCII alphanumeric plus

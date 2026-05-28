@@ -1,7 +1,7 @@
 use crate::errors::{AppError, AppResult};
-use crate::inference::hf_request::{build_client, build_url, map_status, validate_repo};
-use crate::inference::hf_resume::{decide, local_size, partial_path, ResumeStrategy};
-use crate::inference::pull_speed::SpeedTracker;
+use crate::inference::hf::hf_request::{build_client, build_url, map_status, validate_repo};
+use crate::inference::hf::hf_resume::{decide, local_size, partial_path, ResumeStrategy};
+use crate::inference::pull::pull_speed::SpeedTracker;
 use futures_util::StreamExt;
 use serde::Serialize;
 use std::fs::{self, OpenOptions};

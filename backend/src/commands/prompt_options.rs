@@ -1,5 +1,5 @@
 use crate::errors::{AppError, AppResult};
-use crate::inference::ollama::GenerateOptions;
+use crate::inference::ollama::ollama::GenerateOptions;
 use crate::persistence::prompts::schema::InferenceParams;
 
 fn in_range(name: &str, v: Option<f32>, lo: f32, hi: f32) -> AppResult<()> {

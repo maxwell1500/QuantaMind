@@ -1,5 +1,5 @@
 use crate::errors::{AppError, AppResult};
-use crate::inference::ndjson::{next_line, tail};
+use crate::inference::http::ndjson::{next_line, tail};
 use bytes::Bytes;
 use futures_util::Stream;
 use futures_util::StreamExt;

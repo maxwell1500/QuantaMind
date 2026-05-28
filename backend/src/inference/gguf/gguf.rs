@@ -1,8 +1,8 @@
 use crate::errors::AppError;
-use crate::inference::gguf_family::family_from_architecture;
-use crate::inference::gguf_quant::{file_type_to_quant, quant_from_filename};
-use crate::inference::gguf_reader::GgufReader;
-use crate::inference::gguf_value::{read_value, GgufValue};
+use crate::inference::gguf::gguf_family::family_from_architecture;
+use crate::inference::gguf::gguf_quant::{file_type_to_quant, quant_from_filename};
+use crate::inference::gguf::gguf_reader::GgufReader;
+use crate::inference::gguf::gguf_value::{read_value, GgufValue};
 use serde::Serialize;
 use std::collections::HashMap;
 use std::fs;

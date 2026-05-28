@@ -1,8 +1,8 @@
 use mockito::Server;
-use quantamind_lib::inference::backend::InferenceBackend;
-use quantamind_lib::inference::generate_spec::GenerateSpec;
-use quantamind_lib::inference::ollama::stream_generate;
-use quantamind_lib::inference::ollama_backend::OllamaBackend;
+use quantamind_lib::inference::backend::backend::InferenceBackend;
+use quantamind_lib::inference::generate::generate_spec::GenerateSpec;
+use quantamind_lib::inference::ollama::ollama::stream_generate;
+use quantamind_lib::inference::ollama::ollama_backend::OllamaBackend;
 use tokio_util::sync::CancellationToken;
 
 const BODY: &str = "{\"response\":\"Hel\",\"done\":false}\n\

@@ -1,6 +1,6 @@
 #![deny(clippy::unwrap_used)]
 use crate::errors::AppError;
-use crate::inference::hf_browse::{repo_gguf_files, search_models, HfRepoFile, HfSearchHit};
+use crate::inference::hf::hf_browse::{repo_gguf_files, search_models, HfRepoFile, HfSearchHit};
 
 const HF_ENDPOINT: &str = "https://huggingface.co";
 const DEFAULT_LIMIT: u32 = 30;

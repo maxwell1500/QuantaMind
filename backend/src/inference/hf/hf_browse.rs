@@ -1,7 +1,7 @@
 #![deny(clippy::unwrap_used)]
 use crate::errors::{AppError, AppResult};
-use crate::inference::hf_request::{map_status, validate_repo};
-use crate::inference::http::probe_client;
+use crate::inference::hf::hf_request::{map_status, validate_repo};
+use crate::inference::http::http::probe_client;
 use serde::{Deserialize, Serialize};
 
 #[derive(Serialize, Deserialize, Clone, Debug)]

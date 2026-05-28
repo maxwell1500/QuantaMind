@@ -3,7 +3,7 @@
 // v0.1 request shape).
 
 use mockito::{Matcher, Server};
-use quantamind_lib::inference::ollama::{stream_generate, GenerateOptions};
+use quantamind_lib::inference::ollama::ollama::{stream_generate, GenerateOptions};
 use tokio_util::sync::CancellationToken;
 
 #[tokio::test]

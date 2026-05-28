@@ -1,5 +1,5 @@
 use quantamind_lib::errors::AppError;
-use quantamind_lib::inference::gguf::inspect_gguf_bytes;
+use quantamind_lib::inference::gguf::gguf::inspect_gguf_bytes;
 
 #[test]
 fn malicious_huge_string_length_rejected_not_panicked() {

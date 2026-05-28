@@ -1,5 +1,5 @@
 use crate::commands::emit::log_emit;
-use crate::inference::pull_progress::PullProgress;
+use crate::inference::pull::pull_progress::PullProgress;
 use serde::Serialize;
 use tauri::AppHandle;
 

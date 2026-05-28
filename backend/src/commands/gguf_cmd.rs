@@ -1,11 +1,11 @@
 use crate::commands::emit::log_emit;
 use crate::commands::verify_install::verify_model_registered;
 use crate::errors::{AppError, AppResult};
-use crate::inference::chat_templates::detect_template;
-use crate::inference::create_spec::{CreateParameters, CreatePhase, CreateSpec};
-use crate::inference::gguf::{inspect_gguf as inspect, GgufMetadata};
-use crate::inference::ollama_create::ollama_create;
-use crate::inference::pull_name::validate_name;
+use crate::inference::chat::chat_templates::detect_template;
+use crate::inference::create::create_spec::{CreateParameters, CreatePhase, CreateSpec};
+use crate::inference::gguf::gguf::{inspect_gguf as inspect, GgufMetadata};
+use crate::inference::ollama::ollama_create::ollama_create;
+use crate::inference::pull::pull_name::validate_name;
 use std::path::PathBuf;
 use tauri::AppHandle;
 

@@ -1,4 +1,4 @@
-use crate::inference::create_spec::CreatePhase;
+use crate::inference::create::create_spec::CreatePhase;
 use serde::Serialize;
 
 pub const EVENT_HF_PROGRESS: &str = "hf-progress";

@@ -1,4 +1,4 @@
-use crate::inference::chat_template_data::{
+use crate::inference::chat::chat_template_data::{
     ChatTemplate, COMMAND_R, DEEPSEEK, GEMMA, LLAMA3, MISTRAL, PHI3, QWEN_CHATML, YI,
 };
 

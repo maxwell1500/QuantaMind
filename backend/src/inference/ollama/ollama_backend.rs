@@ -1,7 +1,7 @@
 use crate::errors::AppResult;
-use crate::inference::backend::InferenceBackend;
-use crate::inference::generate_spec::GenerateSpec;
-use crate::inference::ollama::stream_generate;
+use crate::inference::backend::backend::InferenceBackend;
+use crate::inference::generate::generate_spec::GenerateSpec;
+use crate::inference::ollama::ollama::stream_generate;
 use tokio_util::sync::CancellationToken;
 
 /// Streams generations from an Ollama HTTP server's `/api/generate`.

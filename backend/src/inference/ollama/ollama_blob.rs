@@ -1,5 +1,5 @@
 use crate::errors::{AppError, AppResult};
-use crate::inference::http::{body_or_note, probe_client, streaming_client};
+use crate::inference::http::http::{body_or_note, probe_client, streaming_client};
 use bytes::Bytes;
 use futures_util::TryStreamExt;
 use sha2::{Digest, Sha256};

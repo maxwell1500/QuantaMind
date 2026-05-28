@@ -1,5 +1,5 @@
 use crate::errors::AppError;
-use crate::inference::gguf_reader::GgufReader;
+use crate::inference::gguf::gguf_reader::GgufReader;
 
 #[derive(Debug, Clone, PartialEq)]
 pub enum GgufValue {

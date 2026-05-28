@@ -1,8 +1,8 @@
 use crate::errors::{AppError, AppResult};
-use crate::inference::ndjson::{next_line, tail};
-use crate::inference::pull_name::validate_name;
-use crate::inference::pull_progress::{classify, PullChunk, PullProgress, PullRequest};
-use crate::inference::pull_speed::SpeedTracker;
+use crate::inference::http::ndjson::{next_line, tail};
+use crate::inference::pull::pull_name::validate_name;
+use crate::inference::pull::pull_progress::{classify, PullChunk, PullProgress, PullRequest};
+use crate::inference::pull::pull_speed::SpeedTracker;
 use futures_util::StreamExt;
 use reqwest::Client;
 use std::time::{Duration, Instant};

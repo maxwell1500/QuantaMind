@@ -1,10 +1,10 @@
 #![deny(clippy::unwrap_used)]
 
 use crate::errors::{AppError, AppResult};
-use crate::inference::backend::InferenceBackend;
-use crate::inference::generate_spec::GenerateSpec;
-use crate::inference::ollama::GenerateOptions;
-use crate::inference::ollama_backend::OllamaBackend;
+use crate::inference::backend::backend::InferenceBackend;
+use crate::inference::generate::generate_spec::GenerateSpec;
+use crate::inference::ollama::ollama::GenerateOptions;
+use crate::inference::ollama::ollama_backend::OllamaBackend;
 use tokio_util::sync::CancellationToken;
 
 pub fn validate(model: &str, prompt: &str) -> AppResult<()> {

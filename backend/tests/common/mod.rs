@@ -3,7 +3,7 @@ use quantamind_lib::commands::compare_payloads::{
     EVENT_COMPARE_CANCELLED, EVENT_COMPARE_DONE, EVENT_COMPARE_ERROR, EVENT_COMPARE_LOADING,
     EVENT_COMPARE_RUN_DONE, EVENT_COMPARE_TOKEN,
 };
-use quantamind_lib::inference::compare_sink::CompareSink;
+use quantamind_lib::inference::compare::compare_sink::CompareSink;
 use serde_json::json;
 use std::sync::{Arc, Mutex};
 

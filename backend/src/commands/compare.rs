@@ -3,14 +3,14 @@ use crate::commands::compare_payloads::Strategy;
 use crate::commands::compare_sink::TauriCompareSink;
 use crate::commands::model_settings::ModelSettingsState;
 use crate::errors::{AppError, AppResult};
-use crate::inference::compare_runner::{rows_for, run_parallel, run_sequential};
-use crate::inference::compare_sink::CompareSink;
+use crate::inference::compare::compare_runner::{rows_for, run_parallel, run_sequential};
+use crate::inference::compare::compare_sink::CompareSink;
 use crate::sync::MutexExt;
 use std::sync::Arc;
 use tauri::AppHandle;
 use uuid::Uuid;
 
-pub use crate::inference::compare_state::CompareRunState;
+pub use crate::inference::compare::compare_state::CompareRunState;
 
 const DEFAULT_OLLAMA: &str = "http://localhost:11434";
 

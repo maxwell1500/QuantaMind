@@ -5,7 +5,7 @@ use quantamind_lib::commands::compare::CompareRunState;
 use quantamind_lib::commands::compare_payloads::{
     EVENT_COMPARE_DONE, EVENT_COMPARE_RUN_DONE, EVENT_COMPARE_TOKEN,
 };
-use quantamind_lib::inference::compare_runner::{rows_for, run_parallel};
+use quantamind_lib::inference::compare::compare_runner::{rows_for, run_parallel};
 
 const BODY_A: &str = "{\"response\":\"a1\",\"done\":false}\n{\"response\":\"a2\",\"done\":false}\n{\"response\":\"\",\"done\":true}\n";
 const BODY_B: &str = "{\"response\":\"b1\",\"done\":false}\n{\"response\":\"b2\",\"done\":false}\n{\"response\":\"\",\"done\":true}\n";

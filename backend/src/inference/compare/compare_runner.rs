@@ -1,9 +1,9 @@
 #![deny(clippy::unwrap_used)]
 use crate::errors::AppError;
-use crate::inference::backend_kind::BackendKind;
-use crate::inference::compare_run_row::run_one_row;
-use crate::inference::compare_sink::CompareSink;
-use crate::inference::compare_state::CompareRunState;
+use crate::inference::backend::backend_kind::BackendKind;
+use crate::inference::compare::compare_run_row::run_one_row;
+use crate::inference::compare::compare_sink::CompareSink;
+use crate::inference::compare::compare_state::CompareRunState;
 use crate::sync::MutexExt;
 use std::sync::Arc;
 use tokio_util::sync::CancellationToken;
