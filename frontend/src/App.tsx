@@ -12,6 +12,7 @@ import { FilesPanel } from "./features/workspaces/components/FilesPanel";
 import { useAutoSave } from "./features/workspaces/hooks/useAutoSave";
 import { HistoryPanel } from "./features/history/components/HistoryPanel";
 import { SettingsModal } from "./features/settings/SettingsModal";
+import { StartupUpdate } from "./features/help/components/StartupUpdate";
 import { AppHeader } from "./AppHeader";
 import { useGlobalHotkeys } from "./appHotkeys";
 import { CheatsheetModal } from "./shared/ui/CheatsheetModal";
@@ -76,6 +77,7 @@ export default function App() {
       <HistoryPanel />
       <SettingsModal />
       <CheatsheetModal />
+      <StartupUpdate />
       <ToastHost />
     </main>
   );

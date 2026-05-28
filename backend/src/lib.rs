@@ -21,6 +21,7 @@ pub fn run() {
         .manage(commands::model_settings::ModelSettingsState::default())
         .manage(commands::ollama_start::OllamaStartState::default())
         .manage(commands::workspaces::WorkspaceState::default())
+        .manage(commands::user_settings::UserSettingsState::default())
         .invoke_handler(tauri::generate_handler![
             commands::feasibility::check_install_feasibility,
             commands::gguf_cmd::inspect_gguf,
@@ -62,6 +63,8 @@ pub fn run() {
             commands::history::history_list,
             commands::history::history_get,
             commands::history::history_clear,
+            commands::user_settings::get_user_settings,
+            commands::user_settings::set_user_settings,
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");
