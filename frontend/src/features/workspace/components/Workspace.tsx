@@ -6,6 +6,7 @@ import { RunControls } from "./RunControls";
 import { ParamsPanel } from "./ParamsPanel";
 import { StatusBar } from "./StatusBar";
 import { useStreamingRun } from "../hooks/useStreamingRun";
+import { useAutoRerun } from "../hooks/useAutoRerun";
 import { useWorkspaceStore } from "../state/workspaceStore";
 import { useWorkspacesStore } from "../../workspaces/state/workspaceStore";
 import { formatMetrics } from "../format";
@@ -15,12 +16,23 @@ export function Workspace() {
   const setModel = useWorkspaceStore((s) => s.setSelectedModel);
   const ollamaHealthy = useWorkspaceStore((s) => s.ollamaHealthy);
   const current = useWorkspacesStore((s) => s.current);
+  const currentPath = useWorkspacesStore((s) => s.currentPath);
   const patch = useWorkspacesStore((s) => s.patch);
   const { output, status, error, metrics, cancelledInfo, start, cancel } =
     useStreamingRun();
   const pickerRef = useRef<HTMLDivElement>(null);
   const prompt = current?.user ?? "";
   const systemPrompt = current?.system ?? "";
+  const canRun = !!model && prompt.trim().length > 0;
+  const runNow = () => model && start(model, prompt, systemPrompt, current?.params);
+  const { pending: pulsing } = useAutoRerun({
+    enabled: !!current?.auto_rerun,
+    selectionId: currentPath,
+    runKey: JSON.stringify([prompt, systemPrompt, current?.params]),
+    status,
+    canRun: canRun && model !== null,
+    onFire: runNow,
+  });
   return (
     <div className="space-y-3">
       <div ref={pickerRef}>
@@ -51,10 +63,13 @@ export function Workspace() {
           <ParamsPanel running={status === "running"} />
           <RunControls
             status={status}
-            canRun={!!model && prompt.trim().length > 0}
+            canRun={canRun}
             ollamaHealthy={ollamaHealthy}
             onRun={() => model && start(model, prompt, systemPrompt, current.params)}
             onCancel={cancel}
+            autoRerun={!!current.auto_rerun}
+            onToggleAutoRerun={() => patch({ auto_rerun: !current.auto_rerun })}
+            pulsing={pulsing}
           />
           <OutputStream output={output} loading={status === "running" && !output} />
           {metrics && (

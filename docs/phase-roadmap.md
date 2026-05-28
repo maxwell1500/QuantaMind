@@ -23,7 +23,7 @@ to a real "current prompt file" from day one.
 | --- | --- | --- | --- |
 | 2.4 | Workspaces & files | done (pending live GUI check) | `workspaces.md` |
 | 2.1 | Parameter controls | done (pending live GUI check) | `inference-params.md` |
-| 2.2 | Auto-rerun on save | pending | `auto-rerun.md` |
+| 2.2 | Auto-rerun on save | done (pending live GUI check) | `auto-rerun.md` |
 | 2.3 | Prompt history | pending | `history.md` |
 | 2.5 | Better error states | pending | `troubleshooting.md` |
 | 2.7 | Light theme + system theme | pending | `theming.md` |
