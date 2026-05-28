@@ -32,6 +32,7 @@ export function Workspace() {
         </p>
       ) : (
         <>
+          {count < 2 && <ParamsPanel running={false} />}
           <PromptEditor
             value={current.system}
             onChange={(v) => patch({ system: v })}
@@ -45,14 +46,7 @@ export function Workspace() {
             label="User prompt"
             testId="user-prompt-editor"
           />
-          {count >= 2 ? (
-            <MultiRun />
-          ) : (
-            <>
-              <ParamsPanel running={false} />
-              <SingleRun model={primaryModel} />
-            </>
-          )}
+          {count >= 2 ? <MultiRun /> : <SingleRun model={primaryModel} />}
         </>
       )}
       <StatusBar model={primaryModel} onModelClick={() => undefined} />

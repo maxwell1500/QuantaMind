@@ -73,7 +73,8 @@ describe("Phase 1 E2E smoke — edit → run → re-run", () => {
     const editor = within(userEditorWrap).getByTestId("prompt-input");
     fireEvent.change(editor, { target: { value: "Why is the sky blue?" } });
     // Pick one model (a chip) → single-run mode
-    fireEvent.click(await screen.findByTestId("model-chip-llama3.2:1b"));
+    fireEvent.click(await screen.findByTestId("model-dropdown"));
+    fireEvent.click(within(await screen.findByTestId("model-option-llama3.2:1b")).getByRole("checkbox"));
 
     // 2. RUN — tokens stream into UI, metrics displayed
     fireEvent.click(screen.getByRole("button", { name: /^run$/i }));
@@ -118,7 +119,8 @@ describe("Phase 1 E2E smoke — edit → run → re-run", () => {
     fireEvent.change(within(userWrap).getByTestId("prompt-input"), {
       target: { value: "x" },
     });
-    fireEvent.click(await screen.findByTestId("model-chip-llama3.2:1b"));
+    fireEvent.click(await screen.findByTestId("model-dropdown"));
+    fireEvent.click(within(await screen.findByTestId("model-option-llama3.2:1b")).getByRole("checkbox"));
     fireEvent.click(screen.getByRole("button", { name: /^run$/i }));
     act(() => fire("prompt-token", { text: "partial" }));
     fireEvent.click(screen.getByRole("button", { name: /cancel/i }));
