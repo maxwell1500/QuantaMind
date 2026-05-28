@@ -17,6 +17,11 @@ vi.mock("../../../../shared/ipc/workspaces", () => ({
   deletePath: vi.fn().mockResolvedValue([]),
 }));
 vi.mock("@tauri-apps/plugin-dialog", () => ({ ask: vi.fn().mockResolvedValue(true), open: vi.fn() }));
+vi.mock("../../../../shared/ipc/history", () => ({
+  historyRemoveByPath: vi.fn().mockResolvedValue(undefined),
+  historyList: vi.fn().mockResolvedValue([]),
+  historyClear: vi.fn().mockResolvedValue(undefined),
+}));
 
 import { FilesPanel } from "../FilesPanel";
 import { useWorkspacesStore } from "../../state/workspaceStore";

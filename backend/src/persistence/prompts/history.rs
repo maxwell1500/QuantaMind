@@ -9,6 +9,8 @@ pub const PREVIEW_CHARS: usize = 280;
 #[derive(Serialize, Deserialize, PartialEq, Debug, Clone)]
 pub struct HistoryEntry {
     pub id: String,
+    #[serde(default)]
+    pub name: String,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub prompt_path: Option<String>,
     pub model: String,
@@ -63,6 +65,16 @@ pub fn record(h: &mut History, entry: HistoryEntry) -> Vec<HistoryEntry> {
 
 pub fn preview(s: &str) -> String {
     s.chars().take(PREVIEW_CHARS).collect()
+}
+
+/// Drop entries whose prompt_path matches `path`; returns the removed ones
+/// so the caller can delete their output blobs.
+pub fn remove_by_path(h: &mut History, path: &str) -> Vec<HistoryEntry> {
+    let (removed, kept): (Vec<_>, Vec<_>) = std::mem::take(&mut h.entries)
+        .into_iter()
+        .partition(|e| e.prompt_path.as_deref() == Some(path));
+    h.entries = kept;
+    removed
 }
 
 #[cfg(test)]

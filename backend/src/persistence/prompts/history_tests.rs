@@ -3,11 +3,16 @@ use tempfile::tempdir;
 
 fn entry(id: &str) -> HistoryEntry {
     HistoryEntry {
-        id: id.into(), prompt_path: Some("/ws/a.quantamind.yaml".into()),
+        id: id.into(), name: format!("name-{id}"),
+        prompt_path: Some("/ws/a.quantamind.yaml".into()),
         model: "llama3".into(), system: "".into(), user: "hi".into(),
         params: InferenceParams::default(), output_preview: "out".into(),
         output_len: 3, token_count: 1, ran_at: "t".into(),
     }
+}
+
+fn entry_at(id: &str, path: &str) -> HistoryEntry {
+    HistoryEntry { prompt_path: Some(path.into()), ..entry(id) }
 }
 
 #[test]
@@ -46,6 +51,18 @@ fn record_caps_at_max_and_returns_evicted() {
     assert_eq!(h.entries[0].id, "overflow");
     assert_eq!(evicted.len(), 1);
     assert_eq!(evicted[0].id, "e0");
+}
+
+#[test]
+fn remove_by_path_drops_matching_entries_only() {
+    let mut h = History::default();
+    record(&mut h, entry_at("keep", "/ws/b.quantamind.yaml"));
+    record(&mut h, entry_at("drop1", "/ws/a.quantamind.yaml"));
+    record(&mut h, entry_at("drop2", "/ws/a.quantamind.yaml"));
+    let removed = remove_by_path(&mut h, "/ws/a.quantamind.yaml");
+    assert_eq!(removed.len(), 2);
+    assert_eq!(h.entries.len(), 1);
+    assert_eq!(h.entries[0].id, "keep");
 }
 
 #[test]

@@ -9,7 +9,7 @@ use tempfile::tempdir;
 
 fn entry(id: &str, output: &str) -> HistoryEntry {
     HistoryEntry {
-        id: id.into(), prompt_path: Some("/ws/a.quantamind.yaml".into()),
+        id: id.into(), name: format!("name-{id}"), prompt_path: Some("/ws/a.quantamind.yaml".into()),
         model: "llama3".into(), system: String::new(), user: format!("run {id}"),
         params: InferenceParams::default(),
         output_preview: history::preview(output),

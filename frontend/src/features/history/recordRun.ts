@@ -3,6 +3,7 @@ import type { InferenceParams } from "../../shared/ipc/prompts";
 import { useHistoryStore } from "./state/historyStore";
 
 export interface RunContext {
+  name?: string;
   model: string;
   prompt: string;
   system?: string;
@@ -17,6 +18,7 @@ export async function recordRun(ctx: RunContext | null, output: string, tokenCou
   if (!ctx || !output) return;
   try {
     await historyAppend({
+      name: ctx.name ?? "",
       prompt_path: ctx.promptPath ?? null,
       model: ctx.model,
       system: ctx.system ?? "",

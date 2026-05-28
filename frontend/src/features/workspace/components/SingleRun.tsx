@@ -21,7 +21,7 @@ export function SingleRun({ model }: { model: string | null }) {
   const prompt = current?.user ?? "";
   const system = current?.system ?? "";
   const canRun = !!model && prompt.trim().length > 0;
-  const runNow = () => model && start(model, prompt, system, current?.params, currentPath);
+  const runNow = () => model && start(model, prompt, system, current?.params, currentPath, current?.name);
   const { pending: pulsing } = useAutoRerun({
     enabled: !!current?.auto_rerun,
     selectionId: currentPath,

@@ -7,6 +7,8 @@ import { useToast } from "../../../shared/ui/Toast";
 import { useUiStore } from "../../../shared/state/uiStore";
 import { formatIpcError } from "../../../shared/ipc/error";
 import { deletePath } from "../../../shared/ipc/workspaces";
+import { historyRemoveByPath } from "../../../shared/ipc/history";
+import { useHistoryStore } from "../../history/state/historyStore";
 import { FilesTree } from "./FilesTree";
 import { WorkspaceSwitcher } from "./WorkspaceSwitcher";
 
@@ -38,6 +40,9 @@ export function FilesPanel() {
       await deletePath(path);
       if (currentPath === path) clearSelection();
       await setTree();
+      // Keep History in sync: drop runs that belonged to the deleted prompt.
+      await historyRemoveByPath(path);
+      await useHistoryStore.getState().load();
     } catch (e) { showToast(`Couldn't delete: ${formatIpcError(e)}`); }
   }, [currentPath, clearSelection, setTree, showToast]);
 

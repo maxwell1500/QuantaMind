@@ -4,7 +4,7 @@ import { render, screen, fireEvent, waitFor } from "@testing-library/react";
 vi.mock("../../../shared/ipc/history", () => ({
   historyList: vi.fn().mockResolvedValue([
     {
-      id: "1", prompt_path: "/ws/a.quantamind.yaml", model: "llama3",
+      id: "1", name: "crdt-explainer", prompt_path: "/ws/a.quantamind.yaml", model: "llama3",
       system: "sys", user: "Explain CRDTs in depth", params: { temperature: 0.4 },
       output_preview: "out", output_len: 120, token_count: 30, ran_at: "2026-05-27T10:00:00Z",
     },
@@ -33,12 +33,11 @@ describe("HistoryPanel", () => {
     expect(container.firstChild).toBeNull();
   });
 
-  it("loads and lists entries when opened", async () => {
+  it("loads and lists entries by name when opened", async () => {
     useHistoryStore.setState({ open: true });
     render(<HistoryPanel />);
-    expect(await screen.findByText("llama3")).toBeTruthy();
-    expect(screen.getByText("Explain CRDTs in depth")).toBeTruthy();
-    expect(screen.getByText(/120 chars · 30 tokens/)).toBeTruthy();
+    expect(await screen.findByText("crdt-explainer")).toBeTruthy();
+    expect(screen.getByText(/llama3 · 120 chars · 30 tokens/)).toBeTruthy();
   });
 
   it("clicking an entry restores inputs+model and closes the drawer", async () => {

@@ -63,6 +63,7 @@ pub fn run() {
             commands::history::history_list,
             commands::history::history_get,
             commands::history::history_clear,
+            commands::history::history_remove_by_path,
             commands::user_settings::get_user_settings,
             commands::user_settings::set_user_settings,
             commands::onboarding::scaffold_onboarding_workspace,

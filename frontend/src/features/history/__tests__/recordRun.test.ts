@@ -12,11 +12,12 @@ beforeEach(() => vi.clearAllMocks());
 describe("recordRun", () => {
   it("appends a run with the right shape", async () => {
     await recordRun(
-      { model: "llama3", prompt: "hi", system: "sys", params: { seed: 7 }, promptPath: "/ws/a.yaml" },
+      { name: "summarize", model: "llama3", prompt: "hi", system: "sys", params: { seed: 7 }, promptPath: "/ws/a.yaml" },
       "the output",
       12,
     );
     expect(historyAppend).toHaveBeenCalledWith({
+      name: "summarize",
       prompt_path: "/ws/a.yaml",
       model: "llama3",
       system: "sys",
@@ -40,7 +41,7 @@ describe("recordRun", () => {
   it("defaults missing optional context fields", async () => {
     await recordRun({ model: "m", prompt: "p" }, "out", 3);
     expect(historyAppend).toHaveBeenCalledWith({
-      prompt_path: null, model: "m", system: "", user: "p", params: {}, output: "out", token_count: 3,
+      name: "", prompt_path: null, model: "m", system: "", user: "p", params: {}, output: "out", token_count: 3,
     });
   });
 });

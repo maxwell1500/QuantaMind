@@ -4,6 +4,7 @@ import { InferenceParamsSchema, type InferenceParams } from "./prompts";
 
 export const HistoryEntrySchema = z.object({
   id: z.string(),
+  name: z.string().default(""),
   prompt_path: z.string().nullable().optional(),
   model: z.string(),
   system: z.string().default(""),
@@ -17,6 +18,7 @@ export const HistoryEntrySchema = z.object({
 export type HistoryEntry = z.infer<typeof HistoryEntrySchema>;
 
 export interface AppendArgs {
+  name: string;
   prompt_path: string | null;
   model: string;
   system: string;
@@ -41,4 +43,8 @@ export async function historyGet(id: string): Promise<string> {
 
 export async function historyClear(): Promise<void> {
   await invoke("history_clear");
+}
+
+export async function historyRemoveByPath(path: string): Promise<void> {
+  await invoke("history_remove_by_path", { path });
 }

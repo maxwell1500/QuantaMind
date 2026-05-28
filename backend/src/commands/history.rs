@@ -8,6 +8,8 @@ use std::path::{Path, PathBuf};
 
 #[derive(Deserialize)]
 pub struct AppendArgs {
+    #[serde(default)]
+    pub name: String,
     pub prompt_path: Option<String>,
     pub model: String,
     #[serde(default)]
@@ -40,7 +42,7 @@ pub fn history_append(
 
     let mut h = history::load(&history_path(&q))?;
     let rec = HistoryEntry {
-        id, prompt_path: entry.prompt_path, model: entry.model,
+        id, name: entry.name, prompt_path: entry.prompt_path, model: entry.model,
         system: entry.system, user: entry.user, params: entry.params,
         output_preview: history::preview(&entry.output),
         output_len: entry.output.chars().count(),
@@ -71,5 +73,21 @@ pub fn history_clear(state: tauri::State<'_, WorkspaceState>) -> Result<(), AppE
     let q = qdir(&state)?;
     history::save(&history_path(&q), &History::default())?;
     let _ = std::fs::remove_dir_all(runs_dir(&q));
+    Ok(())
+}
+
+#[tauri::command]
+pub fn history_remove_by_path(
+    state: tauri::State<'_, WorkspaceState>,
+    path: String,
+) -> Result<(), AppError> {
+    let q = qdir(&state)?;
+    let mut h = history::load(&history_path(&q))?;
+    let removed = history::remove_by_path(&mut h, &path);
+    history::save(&history_path(&q), &h)?;
+    let runs = runs_dir(&q);
+    for e in removed {
+        let _ = std::fs::remove_file(runs.join(format!("{}.txt", e.id)));
+    }
     Ok(())
 }
