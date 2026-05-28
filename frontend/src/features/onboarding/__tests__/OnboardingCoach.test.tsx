@@ -3,11 +3,11 @@ import { render, screen, fireEvent, waitFor } from "@testing-library/react";
 
 vi.mock("@tauri-apps/api/core", () => ({ invoke: vi.fn().mockResolvedValue([]) }));
 vi.mock("@tauri-apps/api/event", () => ({ listen: vi.fn().mockResolvedValue(() => {}) }));
-vi.mock("../../../shared/ipc/userSettings", () => ({
+vi.mock("../../../shared/ipc/settings/userSettings", () => ({
   getUserSettings: vi.fn().mockResolvedValue({ first_run_complete: false }),
   setUserSettings: vi.fn().mockResolvedValue(undefined),
 }));
-vi.mock("../../../shared/ipc/onboarding", () => ({
+vi.mock("../../../shared/ipc/system/onboarding", () => ({
   RECOMMENDED_MODEL: "llama3.2:1b",
   scaffoldOnboardingWorkspace: vi.fn().mockResolvedValue("/ws"),
   pullModel: vi.fn().mockResolvedValue("pull-1"),
@@ -18,7 +18,7 @@ import { useOnboardingStore } from "../state/onboardingStore";
 import { useWorkspaceStore } from "../../workspace/state/workspaceStore";
 import { useInstalledModelsStore } from "../../models/state/installedModelsStore";
 import { useNavStore } from "../../../shared/state/navStore";
-import { pullModel } from "../../../shared/ipc/onboarding";
+import { pullModel } from "../../../shared/ipc/system/onboarding";
 
 beforeEach(() => {
   vi.clearAllMocks();

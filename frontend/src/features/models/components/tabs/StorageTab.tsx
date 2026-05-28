@@ -1,8 +1,8 @@
 import { useEffect, useState } from "react";
-import { getDiskUsage, type DiskUsage } from "../../../../shared/ipc/storage";
+import { getDiskUsage, type DiskUsage } from "../../../../shared/ipc/models/storage";
 import { formatBytes } from "../../../../shared/format/bytes";
 import { StoragePathSection } from "../StoragePathSection";
-import { formatIpcError } from "../../../../shared/ipc/error";
+import { formatIpcError } from "../../../../shared/ipc/core/error";
 import { useInstalledModelsStore } from "../../state/installedModelsStore";
 
 export function StorageTab() {

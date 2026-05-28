@@ -5,9 +5,9 @@ import {
   validateStoragePath,
   type PathValidation,
   type StoragePathInfo,
-} from "../../../shared/ipc/settings";
+} from "../../../shared/ipc/settings/settings";
 import { formatBytes } from "../../../shared/format/bytes";
-import { formatIpcError } from "../../../shared/ipc/error";
+import { formatIpcError } from "../../../shared/ipc/core/error";
 
 export function StoragePathSection() {
   const [info, setInfo] = useState<StoragePathInfo | null>(null);

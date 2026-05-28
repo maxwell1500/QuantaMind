@@ -2,7 +2,7 @@ import { useCallback } from "react";
 import { open } from "@tauri-apps/plugin-dialog";
 import { useWorkspacesStore } from "../state/workspaceStore";
 import { useToast } from "../../../shared/ui/Toast";
-import { formatIpcError } from "../../../shared/ipc/error";
+import { formatIpcError } from "../../../shared/ipc/core/error";
 
 export function useOpenWorkspace() {
   const openIn = useWorkspacesStore((s) => s.open);

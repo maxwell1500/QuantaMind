@@ -3,7 +3,7 @@ import { useHistoryStore } from "../state/historyStore";
 import { useWorkspacesStore } from "../../workspaces/state/workspaceStore";
 import { useCompareStore } from "../../compare/state/compareStore";
 import { useInstalledModelsStore } from "../../models/state/installedModelsStore";
-import type { HistoryEntry } from "../../../shared/ipc/history";
+import type { HistoryEntry } from "../../../shared/ipc/workspace/history";
 import { HistoryRow } from "./HistoryRow";
 
 export function HistoryPanel() {

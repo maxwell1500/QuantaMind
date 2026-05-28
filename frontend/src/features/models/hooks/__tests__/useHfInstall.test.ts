@@ -4,14 +4,14 @@ import { renderHook, act } from "@testing-library/react";
 vi.mock("@tauri-apps/api/event", () => ({
   listen: vi.fn().mockResolvedValue(() => {}),
 }));
-vi.mock("../../../../shared/ipc/hf_install", () => ({
+vi.mock("../../../../shared/ipc/models/hf_install", () => ({
   installHfGguf: vi.fn(),
   cancelHfInstall: vi.fn(),
   EVENT_HF_PROGRESS: "hf-progress",
   HfPhaseSchema: { safeParse: () => ({ success: false, error: { issues: [] } }) },
 }));
 
-import { installHfGguf } from "../../../../shared/ipc/hf_install";
+import { installHfGguf } from "../../../../shared/ipc/models/hf_install";
 import { useHfInstall } from "../useHfInstall";
 import { useModelStore } from "../../state/modelStore";
 

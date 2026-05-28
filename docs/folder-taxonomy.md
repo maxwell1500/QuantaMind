@@ -30,8 +30,9 @@ output) · `status/` (status bar, ollama control, errors)
 
 ### frontend `shared/ipc/` (was 26 files)
 
-`commands/` (the typed `invoke` wrappers) · `events/` (event names + payload zod
-schemas) · `core/` (client, error, errorInfo, timeout, types)
+Grouped by domain (a single `commands/` would itself exceed 10): `core/`
+(client, error, errorInfo, timeout, types) · `events/` (event names + payload zod
+schemas) · `compare/` · `models/` · `workspace/` · `settings/` · `system/`
 
 ## Rules for a split
 

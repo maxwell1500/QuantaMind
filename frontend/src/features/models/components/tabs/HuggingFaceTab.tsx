@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState } from "react";
-import { hfSearch, type HfSearchHit } from "../../../../shared/ipc/hf_browse";
-import { formatIpcError } from "../../../../shared/ipc/error";
+import { hfSearch, type HfSearchHit } from "../../../../shared/ipc/models/hf_browse";
+import { formatIpcError } from "../../../../shared/ipc/core/error";
 import { HuggingFaceRepoDetail } from "../HuggingFaceRepoDetail";
 import { useModelStore } from "../../state/modelStore";
 

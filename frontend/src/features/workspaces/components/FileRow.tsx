@@ -1,4 +1,4 @@
-import type { TreeNode } from "../../../shared/ipc/workspaces";
+import type { TreeNode } from "../../../shared/ipc/workspace/workspaces";
 
 type Props = {
   node: Extract<TreeNode, { kind: "file" }>;

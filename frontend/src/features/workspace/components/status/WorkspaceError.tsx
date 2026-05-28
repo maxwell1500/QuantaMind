@@ -1,5 +1,5 @@
 import { ErrorCard } from "../../../../shared/ui/ErrorCard";
-import { classifyError } from "../../../../shared/ipc/errorInfo";
+import { classifyError } from "../../../../shared/ipc/core/errorInfo";
 import { useNavStore } from "../../../../shared/state/navStore";
 
 type Props = { error: string; onRetry: () => void };

@@ -1,5 +1,5 @@
 import { create } from "zustand";
-import { getUserSettings, setUserSettings } from "../../../shared/ipc/userSettings";
+import { getUserSettings, setUserSettings } from "../../../shared/ipc/settings/userSettings";
 
 interface OnboardingState {
   complete: boolean | null; // null until loaded

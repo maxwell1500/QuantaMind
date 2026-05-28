@@ -3,14 +3,14 @@ import { render, screen, fireEvent, waitFor } from "@testing-library/react";
 
 vi.mock("@tauri-apps/api/core", () => ({ invoke: vi.fn().mockResolvedValue([]) }));
 vi.mock("@tauri-apps/plugin-shell", () => ({ open: vi.fn() }));
-vi.mock("../../../../shared/ipc/ollama_start", () => ({
+vi.mock("../../../../shared/ipc/models/ollama_start", () => ({
   startOllama: vi.fn().mockResolvedValue({ status: "started", pid: 1 }),
   stopOllama: vi.fn().mockResolvedValue(undefined),
 }));
 
 import { OllamaControl } from "../status/OllamaControl";
 import { useWorkspaceStore } from "../../state/workspaceStore";
-import { startOllama, stopOllama } from "../../../../shared/ipc/ollama_start";
+import { startOllama, stopOllama } from "../../../../shared/ipc/models/ollama_start";
 
 beforeEach(() => {
   vi.clearAllMocks();

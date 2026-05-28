@@ -1,5 +1,5 @@
 import { useState } from "react";
-import type { TreeNode } from "../../../shared/ipc/workspaces";
+import type { TreeNode } from "../../../shared/ipc/workspace/workspaces";
 import { FileRow } from "./FileRow";
 
 type Props = {

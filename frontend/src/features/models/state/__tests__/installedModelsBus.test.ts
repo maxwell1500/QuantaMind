@@ -1,12 +1,12 @@
 import { describe, it, expect, vi, beforeEach } from "vitest";
 
 vi.mock("@tauri-apps/api/event", () => ({ listen: vi.fn() }));
-vi.mock("../../../../shared/ipc/storage", () => ({
+vi.mock("../../../../shared/ipc/models/storage", () => ({
   getInstalledModelsWithStats: vi.fn(),
 }));
 
 import { listen, type EventCallback } from "@tauri-apps/api/event";
-import { getInstalledModelsWithStats } from "../../../../shared/ipc/storage";
+import { getInstalledModelsWithStats } from "../../../../shared/ipc/models/storage";
 import {
   startInstalledModelsBus,
   __resetInstalledModelsBusForTests,

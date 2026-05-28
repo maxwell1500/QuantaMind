@@ -1,7 +1,7 @@
 import { useEffect, useState } from "react";
-import { removeModel } from "../../../../shared/ipc/storage";
+import { removeModel } from "../../../../shared/ipc/models/storage";
 import { formatBytes } from "../../../../shared/format/bytes";
-import { formatIpcError } from "../../../../shared/ipc/error";
+import { formatIpcError } from "../../../../shared/ipc/core/error";
 import { useInstalledModelsStore } from "../../state/installedModelsStore";
 
 export function DownloadsInstalled() {

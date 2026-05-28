@@ -1,11 +1,11 @@
 import { describe, it, expect, vi, beforeEach } from "vitest";
 import { render, screen, waitFor, fireEvent } from "@testing-library/react";
 
-vi.mock("../../../shared/ipc/client", () => ({
+vi.mock("../../../shared/ipc/core/client", () => ({
   checkOllamaHealth: vi.fn(),
 }));
 
-import { checkOllamaHealth } from "../../../shared/ipc/client";
+import { checkOllamaHealth } from "../../../shared/ipc/core/client";
 import { StatusBar } from "../components/status/StatusBar";
 import { useWorkspaceStore } from "../state/workspaceStore";
 

@@ -1,14 +1,14 @@
 import { describe, it, expect, vi, beforeEach } from "vitest";
 import { render, screen, fireEvent, waitFor } from "@testing-library/react";
 
-vi.mock("../../../shared/ipc/storage", () => ({
+vi.mock("../../../shared/ipc/models/storage", () => ({
   getInstalledModelsWithStats: vi.fn(),
 }));
 vi.mock("@tauri-apps/api/event", () => ({
   listen: vi.fn().mockResolvedValue(() => {}),
 }));
 
-import { getInstalledModelsWithStats } from "../../../shared/ipc/storage";
+import { getInstalledModelsWithStats } from "../../../shared/ipc/models/storage";
 import { ModelPicker } from "../components/model-select/ModelPicker";
 import { useWorkspaceStore } from "../state/workspaceStore";
 import { useNavStore } from "../../../shared/state/navStore";

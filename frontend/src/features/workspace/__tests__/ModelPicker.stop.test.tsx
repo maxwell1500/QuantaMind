@@ -4,12 +4,12 @@ import { render, screen, fireEvent, waitFor } from "@testing-library/react";
 vi.mock("@tauri-apps/api/core", () => ({ invoke: vi.fn() }));
 vi.mock("@tauri-apps/api/event", () => ({ listen: vi.fn().mockResolvedValue(() => {}) }));
 vi.mock("@tauri-apps/plugin-shell", () => ({ open: vi.fn().mockResolvedValue(undefined) }));
-vi.mock("../../../shared/ipc/storage", () => ({
+vi.mock("../../../shared/ipc/models/storage", () => ({
   getInstalledModelsWithStats: vi.fn(),
 }));
 
 import { invoke } from "@tauri-apps/api/core";
-import { getInstalledModelsWithStats } from "../../../shared/ipc/storage";
+import { getInstalledModelsWithStats } from "../../../shared/ipc/models/storage";
 import { ModelPicker } from "../components/model-select/ModelPicker";
 import { useWorkspaceStore } from "../state/workspaceStore";
 import { useInstalledModelsStore } from "../../models/state/installedModelsStore";

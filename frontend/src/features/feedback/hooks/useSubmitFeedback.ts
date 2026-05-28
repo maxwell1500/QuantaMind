@@ -3,8 +3,8 @@ import { open as openExternal } from "@tauri-apps/plugin-shell";
 import {
   buildFeedbackMailto,
   type FeedbackInput,
-} from "../../../shared/ipc/feedback";
-import { formatIpcError } from "../../../shared/ipc/error";
+} from "../../../shared/ipc/system/feedback";
+import { formatIpcError } from "../../../shared/ipc/core/error";
 
 export type SubmitStatus = "idle" | "opening" | "success" | "error";
 

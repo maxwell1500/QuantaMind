@@ -1,6 +1,6 @@
 import { useCallback, useState } from "react";
-import { stopOllama } from "../../../shared/ipc/ollama_start";
-import { formatIpcError } from "../../../shared/ipc/error";
+import { stopOllama } from "../../../shared/ipc/models/ollama_start";
+import { formatIpcError } from "../../../shared/ipc/core/error";
 import { useWorkspaceStore } from "../state/workspaceStore";
 
 export type StopOllamaStatus = "idle" | "stopping" | "error";

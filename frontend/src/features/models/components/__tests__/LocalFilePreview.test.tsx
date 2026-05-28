@@ -1,7 +1,7 @@
 import { describe, it, expect, vi } from "vitest";
 import { render, screen, fireEvent } from "@testing-library/react";
 import { LocalFilePreview } from "../LocalFilePreview";
-import type { GgufMetadata } from "../../../../shared/ipc/gguf";
+import type { GgufMetadata } from "../../../../shared/ipc/models/gguf";
 
 const META: GgufMetadata = {
   architecture: "llama",

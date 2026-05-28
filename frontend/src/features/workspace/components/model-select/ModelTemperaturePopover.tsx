@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from "react";
-import { DEFAULT_TEMPERATURE } from "../../../../shared/ipc/model_settings";
+import { DEFAULT_TEMPERATURE } from "../../../../shared/ipc/models/model_settings";
 import { useModelSettingsStore } from "../../../models/state/modelSettingsStore";
 
 type Props = { modelName: string | null };

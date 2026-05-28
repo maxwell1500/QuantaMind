@@ -1,12 +1,12 @@
 import { describe, it, expect, vi, beforeEach } from "vitest";
 
-vi.mock("../../../shared/ipc/userSettings", () => ({
+vi.mock("../../../shared/ipc/settings/userSettings", () => ({
   getUserSettings: vi.fn(),
   setUserSettings: vi.fn().mockResolvedValue(undefined),
 }));
 
 import { useOnboardingStore } from "../state/onboardingStore";
-import { getUserSettings, setUserSettings } from "../../../shared/ipc/userSettings";
+import { getUserSettings, setUserSettings } from "../../../shared/ipc/settings/userSettings";
 
 beforeEach(() => {
   vi.clearAllMocks();

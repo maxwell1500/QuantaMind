@@ -1,7 +1,7 @@
 import { listen } from "@tauri-apps/api/event";
-import { EVENT_HF_PROGRESS } from "../../../shared/ipc/hf_install";
-import { EVENT_LOCAL_INSTALL_PROGRESS } from "../../../shared/ipc/local_install";
-import { EVENT_PULL_PROGRESS } from "../../../shared/ipc/pull_events";
+import { EVENT_HF_PROGRESS } from "../../../shared/ipc/models/hf_install";
+import { EVENT_LOCAL_INSTALL_PROGRESS } from "../../../shared/ipc/models/local_install";
+import { EVENT_PULL_PROGRESS } from "../../../shared/ipc/events/pull_events";
 import { onHf, onLocal, onPull } from "./downloadEventHandlers";
 
 let starting: Promise<void> | null = null;

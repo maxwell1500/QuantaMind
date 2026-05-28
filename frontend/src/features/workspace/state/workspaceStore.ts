@@ -1,5 +1,5 @@
 import { create } from "zustand";
-import type { DonePayload } from "../../../shared/ipc/events";
+import type { DonePayload } from "../../../shared/ipc/events/events";
 
 // Shared cross-component state only. Per-action/ephemeral state (run
 // status, output buffer, install progress) lives in hooks. See

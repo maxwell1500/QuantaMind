@@ -4,7 +4,7 @@ import { render, screen, fireEvent, waitFor } from "@testing-library/react";
 vi.mock("@tauri-apps/api/event", () => ({
   listen: vi.fn().mockResolvedValue(() => {}),
 }));
-vi.mock("../../../../../shared/ipc/storage", () => ({
+vi.mock("../../../../../shared/ipc/models/storage", () => ({
   getInstalledModelsWithStats: vi.fn(),
   removeModel: vi.fn(),
 }));
@@ -12,7 +12,7 @@ vi.mock("../../../../../shared/ipc/storage", () => ({
 import {
   getInstalledModelsWithStats,
   removeModel,
-} from "../../../../../shared/ipc/storage";
+} from "../../../../../shared/ipc/models/storage";
 import { DownloadsInstalled } from "../DownloadsInstalled";
 import { useInstalledModelsStore } from "../../../state/installedModelsStore";
 

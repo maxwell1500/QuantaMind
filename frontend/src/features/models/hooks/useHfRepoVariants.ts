@@ -1,6 +1,6 @@
 import { useEffect, useState } from "react";
-import { hfRepoFiles, type HfRepoFile } from "../../../shared/ipc/hf_browse";
-import { formatIpcError } from "../../../shared/ipc/error";
+import { hfRepoFiles, type HfRepoFile } from "../../../shared/ipc/models/hf_browse";
+import { formatIpcError } from "../../../shared/ipc/core/error";
 import { parseQuant } from "../parse_quant";
 
 export type HfVariantView = {

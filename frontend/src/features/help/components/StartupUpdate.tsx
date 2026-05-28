@@ -1,7 +1,7 @@
 import { useEffect, useState } from "react";
 import type { Update } from "@tauri-apps/plugin-updater";
-import { checkForUpdate, downloadAndInstall } from "../../../shared/ipc/updater";
-import { getUserSettings, setUserSettings } from "../../../shared/ipc/userSettings";
+import { checkForUpdate, downloadAndInstall } from "../../../shared/ipc/system/updater";
+import { getUserSettings, setUserSettings } from "../../../shared/ipc/settings/userSettings";
 import { shouldCheck } from "../updateSchedule";
 import { Markdown } from "../../../shared/markdown";
 

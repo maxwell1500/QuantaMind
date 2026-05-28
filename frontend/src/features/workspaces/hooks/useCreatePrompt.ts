@@ -1,8 +1,8 @@
 import { useCallback } from "react";
 import { useWorkspacesStore } from "../state/workspaceStore";
 import { useToast } from "../../../shared/ui/Toast";
-import { formatIpcError } from "../../../shared/ipc/error";
-import { createPrompt } from "../../../shared/ipc/prompts";
+import { formatIpcError } from "../../../shared/ipc/core/error";
+import { createPrompt } from "../../../shared/ipc/workspace/prompts";
 
 /// Shared "new prompt" flow used by the Files panel's inline input and
 /// the Cmd+N shortcut. The name comes from the caller (window.prompt is a

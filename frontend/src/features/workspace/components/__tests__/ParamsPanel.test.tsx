@@ -2,7 +2,7 @@ import { describe, it, expect, beforeEach } from "vitest";
 import { render, screen, fireEvent } from "@testing-library/react";
 import { ParamsPanel } from "../prompt/ParamsPanel";
 import { useWorkspacesStore } from "../../../workspaces/state/workspaceStore";
-import type { PromptFile } from "../../../../shared/ipc/prompts";
+import type { PromptFile } from "../../../../shared/ipc/workspace/prompts";
 
 const base: PromptFile = {
   name: "t", system: "", user: "", model: null, params: {},

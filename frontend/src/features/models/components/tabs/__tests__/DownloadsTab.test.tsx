@@ -5,12 +5,12 @@ vi.mock("@tauri-apps/api/event", () => ({
   listen: vi.fn().mockResolvedValue(() => {}),
 }));
 vi.mock("@tauri-apps/api/core", () => ({ invoke: vi.fn() }));
-vi.mock("../../../../../shared/ipc/storage", () => ({
+vi.mock("../../../../../shared/ipc/models/storage", () => ({
   getInstalledModelsWithStats: vi.fn(),
   removeModel: vi.fn(),
 }));
 
-import { getInstalledModelsWithStats } from "../../../../../shared/ipc/storage";
+import { getInstalledModelsWithStats } from "../../../../../shared/ipc/models/storage";
 import { DownloadsTab } from "../DownloadsTab";
 import { useModelStore } from "../../../state/modelStore";
 import { useInstalledModelsStore } from "../../../state/installedModelsStore";

@@ -1,5 +1,5 @@
 import { useWorkspacesStore } from "../../features/workspaces/state/workspaceStore";
-import type { PromptFile } from "../../shared/ipc/prompts";
+import type { PromptFile } from "../../shared/ipc/workspace/prompts";
 
 /// Put the workspaces store into a state where one prompt is open, so
 /// the Workspace editors render in tests. v0.1 tests assumed prompts were

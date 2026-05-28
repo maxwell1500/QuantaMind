@@ -1,5 +1,5 @@
 import { describe, it, expect } from "vitest";
-import { classifyError } from "../errorInfo";
+import { classifyError } from "../core/errorInfo";
 
 describe("classifyError", () => {
   it("classifies Ollama-down (raw connection error)", () => {

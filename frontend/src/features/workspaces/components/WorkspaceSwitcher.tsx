@@ -1,7 +1,7 @@
 import { useEffect, useState } from "react";
 import { useWorkspacesStore } from "../state/workspaceStore";
 import { useOpenWorkspace } from "../hooks/useOpenWorkspace";
-import { recentWorkspaces, type RecentEntry } from "../../../shared/ipc/workspaces";
+import { recentWorkspaces, type RecentEntry } from "../../../shared/ipc/workspace/workspaces";
 
 const baseName = (p: string) => p.split("/").filter(Boolean).pop() ?? p;
 

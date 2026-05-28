@@ -1,7 +1,7 @@
 import { describe, it, expect, vi, beforeEach } from "vitest";
 import { render, screen, fireEvent, waitFor } from "@testing-library/react";
 
-vi.mock("../../../shared/ipc/history", () => ({
+vi.mock("../../../shared/ipc/workspace/history", () => ({
   historyList: vi.fn().mockResolvedValue([
     {
       id: "1", name: "crdt-explainer", prompt_path: "/ws/a.quantamind.yaml", model: "llama3",

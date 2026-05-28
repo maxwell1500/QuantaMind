@@ -6,7 +6,7 @@ import { useInstalledModelsStore } from "../../models/state/installedModelsStore
 import { useWorkspacesStore } from "../../workspaces/state/workspaceStore";
 import { useNavStore } from "../../../shared/state/navStore";
 import { OllamaEmptyState } from "../../workspace/components/status/OllamaEmptyState";
-import { scaffoldOnboardingWorkspace, pullModel, RECOMMENDED_MODEL } from "../../../shared/ipc/onboarding";
+import { scaffoldOnboardingWorkspace, pullModel, RECOMMENDED_MODEL } from "../../../shared/ipc/system/onboarding";
 
 const card = "border rounded-lg p-4 bg-blue-50 flex flex-col gap-3";
 const primary = "self-start text-sm bg-blue-600 text-white rounded px-3 py-1 hover:bg-blue-700";

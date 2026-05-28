@@ -1,7 +1,7 @@
 import { useCallback, useState } from "react";
 import { open as openExternal } from "@tauri-apps/plugin-shell";
-import { startOllama } from "../../../shared/ipc/ollama_start";
-import { formatIpcError } from "../../../shared/ipc/error";
+import { startOllama } from "../../../shared/ipc/models/ollama_start";
+import { formatIpcError } from "../../../shared/ipc/core/error";
 import { useInstalledModelsStore } from "../../models/state/installedModelsStore";
 import { useWorkspaceStore } from "../state/workspaceStore";
 

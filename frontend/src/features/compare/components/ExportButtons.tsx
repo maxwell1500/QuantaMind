@@ -1,7 +1,7 @@
 import { useState } from "react";
 import { save } from "@tauri-apps/plugin-dialog";
-import { saveCompareReport, type CompareReportFormat } from "../../../shared/ipc/compare";
-import { formatIpcError } from "../../../shared/ipc/error";
+import { saveCompareReport, type CompareReportFormat } from "../../../shared/ipc/compare/compare";
+import { formatIpcError } from "../../../shared/ipc/core/error";
 import { useCompareStore } from "../state/compareStore";
 import { buildReport } from "../format/buildReport";
 import { toMarkdown } from "../format/markdownReport";

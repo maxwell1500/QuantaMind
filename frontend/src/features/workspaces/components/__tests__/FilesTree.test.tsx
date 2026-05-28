@@ -1,7 +1,7 @@
 import { describe, it, expect, vi } from "vitest";
 import { render, screen, fireEvent, within } from "@testing-library/react";
 import { FilesTree } from "../FilesTree";
-import type { TreeNode } from "../../../../shared/ipc/workspaces";
+import type { TreeNode } from "../../../../shared/ipc/workspace/workspaces";
 
 const nodes: TreeNode[] = [
   {

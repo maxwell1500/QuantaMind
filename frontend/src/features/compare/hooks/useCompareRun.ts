@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useState } from "react";
-import { runCompare, stopCompare } from "../../../shared/ipc/compare";
-import { formatIpcError } from "../../../shared/ipc/error";
+import { runCompare, stopCompare } from "../../../shared/ipc/compare/compare";
+import { formatIpcError } from "../../../shared/ipc/core/error";
 import { useCompareStore } from "../state/compareStore";
 import { startCompareEventBus } from "../state/compareEventBus";
 import { assessStrategies } from "../state/strategy";

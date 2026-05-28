@@ -2,7 +2,7 @@ import { useEffect, useState } from "react";
 import { useSubmitFeedback } from "../hooks/useSubmitFeedback";
 import { useToast } from "../../../shared/ui/Toast";
 import { useWorkspaceStore } from "../../workspace/state/workspaceStore";
-import { MIN_MESSAGE_LEN, MAX_MESSAGE_LEN } from "../../../shared/ipc/feedback";
+import { MIN_MESSAGE_LEN, MAX_MESSAGE_LEN } from "../../../shared/ipc/system/feedback";
 
 type Props = { onClose: () => void };
 

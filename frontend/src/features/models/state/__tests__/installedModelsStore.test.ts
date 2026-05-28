@@ -1,10 +1,10 @@
 import { describe, it, expect, vi, beforeEach } from "vitest";
 
-vi.mock("../../../../shared/ipc/storage", () => ({
+vi.mock("../../../../shared/ipc/models/storage", () => ({
   getInstalledModelsWithStats: vi.fn(),
 }));
 
-import { getInstalledModelsWithStats } from "../../../../shared/ipc/storage";
+import { getInstalledModelsWithStats } from "../../../../shared/ipc/models/storage";
 import { useInstalledModelsStore } from "../installedModelsStore";
 
 const fake = (name: string) => ({

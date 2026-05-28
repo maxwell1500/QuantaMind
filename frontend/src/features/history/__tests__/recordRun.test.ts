@@ -1,11 +1,11 @@
 import { describe, it, expect, vi, beforeEach } from "vitest";
 
-vi.mock("../../../shared/ipc/history", () => ({
+vi.mock("../../../shared/ipc/workspace/history", () => ({
   historyAppend: vi.fn().mockResolvedValue(undefined),
 }));
 
 import { recordRun } from "../recordRun";
-import { historyAppend } from "../../../shared/ipc/history";
+import { historyAppend } from "../../../shared/ipc/workspace/history";
 
 beforeEach(() => vi.clearAllMocks());
 

@@ -1,5 +1,5 @@
 import { create } from "zustand";
-import type { HardwareSnapshot } from "../../../shared/ipc/hardware";
+import type { HardwareSnapshot } from "../../../shared/ipc/compare/hardware";
 import type { StrategyId } from "./strategy";
 import { newRow, updateRow, type CompareModel, type CompareRow } from "./compareRow";
 

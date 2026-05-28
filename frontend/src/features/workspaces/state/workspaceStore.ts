@@ -1,12 +1,12 @@
 import { create } from "zustand";
-import type { PromptFile } from "../../../shared/ipc/prompts";
-import type { TreeNode } from "../../../shared/ipc/workspaces";
+import type { PromptFile } from "../../../shared/ipc/workspace/prompts";
+import type { TreeNode } from "../../../shared/ipc/workspace/workspaces";
 import {
   closeWorkspace as ipcClose,
   listWorkspaceTree,
   openWorkspace as ipcOpen,
-} from "../../../shared/ipc/workspaces";
-import { createPrompt, loadPrompt, savePrompt } from "../../../shared/ipc/prompts";
+} from "../../../shared/ipc/workspace/workspaces";
+import { createPrompt, loadPrompt, savePrompt } from "../../../shared/ipc/workspace/prompts";
 
 const blankPrompt = (): PromptFile => ({
   name: "restored", system: "", user: "", model: null, params: {},

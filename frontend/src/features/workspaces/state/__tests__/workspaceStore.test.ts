@@ -1,11 +1,11 @@
 import { describe, it, expect, vi, beforeEach } from "vitest";
 
-vi.mock("../../../../shared/ipc/workspaces", () => ({
+vi.mock("../../../../shared/ipc/workspace/workspaces", () => ({
   openWorkspace: vi.fn().mockResolvedValue([{ kind: "file", name: "a.quantamind.yaml", path: "/ws/a.quantamind.yaml" }]),
   listWorkspaceTree: vi.fn().mockResolvedValue([]),
   closeWorkspace: vi.fn().mockResolvedValue(undefined),
 }));
-vi.mock("../../../../shared/ipc/prompts", () => ({
+vi.mock("../../../../shared/ipc/workspace/prompts", () => ({
   loadPrompt: vi.fn().mockResolvedValue({
     name: "a", system: "sys", user: "usr", model: null, params: {},
     created_at: "t", updated_at: "t", auto_rerun: false,
@@ -15,7 +15,7 @@ vi.mock("../../../../shared/ipc/prompts", () => ({
 }));
 
 import { useWorkspacesStore } from "../workspaceStore";
-import { savePrompt, createPrompt } from "../../../../shared/ipc/prompts";
+import { savePrompt, createPrompt } from "../../../../shared/ipc/workspace/prompts";
 
 const draft = (name = "note") => ({
   name, system: "", user: "hi", model: null, params: {},

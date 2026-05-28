@@ -1,4 +1,4 @@
-import type { HistoryEntry } from "../../../shared/ipc/history";
+import type { HistoryEntry } from "../../../shared/ipc/workspace/history";
 
 type Props = { entry: HistoryEntry; onRestore: (e: HistoryEntry) => void };
 

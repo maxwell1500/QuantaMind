@@ -4,8 +4,8 @@ import {
   checkForUpdate,
   downloadAndInstall,
   getCurrentVersion,
-} from "../../../shared/ipc/updater";
-import { formatIpcError } from "../../../shared/ipc/error";
+} from "../../../shared/ipc/system/updater";
+import { formatIpcError } from "../../../shared/ipc/core/error";
 
 export type UpdaterStatus =
   | "idle"

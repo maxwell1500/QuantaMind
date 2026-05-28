@@ -1,5 +1,5 @@
-import { historyAppend } from "../../shared/ipc/history";
-import type { InferenceParams } from "../../shared/ipc/prompts";
+import { historyAppend } from "../../shared/ipc/workspace/history";
+import type { InferenceParams } from "../../shared/ipc/workspace/prompts";
 import { useHistoryStore } from "./state/historyStore";
 
 export interface RunContext {

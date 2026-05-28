@@ -10,11 +10,11 @@ import {
   TokenPayloadSchema,
   type CancelledPayload,
   type DonePayload,
-} from "../../../shared/ipc/events";
-import { withTimeout } from "../../../shared/ipc/timeout";
-import { formatIpcError } from "../../../shared/ipc/error";
+} from "../../../shared/ipc/events/events";
+import { withTimeout } from "../../../shared/ipc/core/timeout";
+import { formatIpcError } from "../../../shared/ipc/core/error";
 import { useWorkspaceStore } from "../state/workspaceStore";
-import type { InferenceParams } from "../../../shared/ipc/prompts";
+import type { InferenceParams } from "../../../shared/ipc/workspace/prompts";
 import { recordRun, type RunContext } from "../../history/recordRun";
 
 const hasParam = (p?: InferenceParams) =>

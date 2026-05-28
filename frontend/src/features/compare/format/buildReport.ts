@@ -1,4 +1,4 @@
-import type { HardwareSnapshot } from "../../../shared/ipc/hardware";
+import type { HardwareSnapshot } from "../../../shared/ipc/compare/hardware";
 import type { StrategyId } from "../state/strategy";
 import type { CompareRow, RowStatus, CompareModel } from "../state/compareStore";
 

@@ -1,7 +1,7 @@
 import { useEffect, useRef } from "react";
 import { useWorkspacesStore } from "../state/workspaceStore";
 import { useToast } from "../../../shared/ui/Toast";
-import { formatIpcError } from "../../../shared/ipc/error";
+import { formatIpcError } from "../../../shared/ipc/core/error";
 
 const DEBOUNCE_MS = 500;
 

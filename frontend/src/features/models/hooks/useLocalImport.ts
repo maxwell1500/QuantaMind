@@ -1,14 +1,14 @@
 import { useCallback, useEffect, useState } from "react";
 import { open } from "@tauri-apps/plugin-dialog";
-import { listModels } from "../../../shared/ipc/client";
+import { listModels } from "../../../shared/ipc/core/client";
 import {
   inspectGguf,
   installLocalGguf,
   type GgufMetadata,
-} from "../../../shared/ipc/gguf";
+} from "../../../shared/ipc/models/gguf";
 import { useModelStore } from "../state/modelStore";
 import { useInstalledModelsStore } from "../state/installedModelsStore";
-import { formatIpcError } from "../../../shared/ipc/error";
+import { formatIpcError } from "../../../shared/ipc/core/error";
 import { startDownloadEventBus } from "../state/downloadEventBus";
 
 const defaultName = (path: string) =>

@@ -2,8 +2,8 @@ import { create } from "zustand";
 import {
   getInstalledModelsWithStats,
   type InstalledModelInfo,
-} from "../../../shared/ipc/storage";
-import { formatIpcError } from "../../../shared/ipc/error";
+} from "../../../shared/ipc/models/storage";
+import { formatIpcError } from "../../../shared/ipc/core/error";
 
 export type InstalledStatus = "idle" | "loading" | "ready" | "error";
 

@@ -1,19 +1,19 @@
 import { describe, it, expect, vi, beforeEach } from "vitest";
 import { render, screen, waitFor, fireEvent } from "@testing-library/react";
 
-vi.mock("../../../shared/ipc/updater", () => ({
+vi.mock("../../../shared/ipc/system/updater", () => ({
   checkForUpdate: vi.fn(),
   downloadAndInstall: vi.fn().mockResolvedValue(undefined),
 }));
-vi.mock("../../../shared/ipc/userSettings", () => ({
+vi.mock("../../../shared/ipc/settings/userSettings", () => ({
   getUserSettings: vi.fn(),
   setUserSettings: vi.fn().mockResolvedValue(undefined),
 }));
 vi.mock("@tauri-apps/plugin-shell", () => ({ open: vi.fn() }));
 
 import { StartupUpdate } from "../components/StartupUpdate";
-import { checkForUpdate } from "../../../shared/ipc/updater";
-import { getUserSettings, setUserSettings } from "../../../shared/ipc/userSettings";
+import { checkForUpdate } from "../../../shared/ipc/system/updater";
+import { getUserSettings, setUserSettings } from "../../../shared/ipc/settings/userSettings";
 
 beforeEach(() => vi.clearAllMocks());
 

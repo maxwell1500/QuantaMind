@@ -1,7 +1,7 @@
 import { describe, it, expect, vi, beforeEach } from "vitest";
 import { render, screen, fireEvent, waitFor } from "@testing-library/react";
 
-vi.mock("../../../../shared/ipc/prompts", () => ({
+vi.mock("../../../../shared/ipc/workspace/prompts", () => ({
   createPrompt: vi.fn().mockResolvedValue("/ws/foo.quantamind.yaml"),
   loadPrompt: vi.fn().mockResolvedValue({
     name: "foo", system: "", user: "", model: null, params: {},
@@ -9,7 +9,7 @@ vi.mock("../../../../shared/ipc/prompts", () => ({
   }),
   savePrompt: vi.fn(),
 }));
-vi.mock("../../../../shared/ipc/workspaces", () => ({
+vi.mock("../../../../shared/ipc/workspace/workspaces", () => ({
   listWorkspaceTree: vi.fn().mockResolvedValue([]),
   recentWorkspaces: vi.fn().mockResolvedValue({ entries: [] }),
   openWorkspace: vi.fn(),
@@ -17,7 +17,7 @@ vi.mock("../../../../shared/ipc/workspaces", () => ({
   deletePath: vi.fn().mockResolvedValue([]),
 }));
 vi.mock("@tauri-apps/plugin-dialog", () => ({ ask: vi.fn().mockResolvedValue(true), open: vi.fn() }));
-vi.mock("../../../../shared/ipc/history", () => ({
+vi.mock("../../../../shared/ipc/workspace/history", () => ({
   historyRemoveByPath: vi.fn().mockResolvedValue(undefined),
   historyList: vi.fn().mockResolvedValue([]),
   historyClear: vi.fn().mockResolvedValue(undefined),
@@ -26,7 +26,7 @@ vi.mock("../../../../shared/ipc/history", () => ({
 import { FilesPanel } from "../FilesPanel";
 import { useWorkspacesStore } from "../../state/workspaceStore";
 import { useUiStore } from "../../../../shared/state/uiStore";
-import { createPrompt } from "../../../../shared/ipc/prompts";
+import { createPrompt } from "../../../../shared/ipc/workspace/prompts";
 
 beforeEach(() => {
   vi.clearAllMocks();

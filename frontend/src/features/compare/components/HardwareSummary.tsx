@@ -1,6 +1,6 @@
 import { useEffect, useState } from "react";
-import { getHardwareSnapshot } from "../../../shared/ipc/hardware";
-import { formatIpcError } from "../../../shared/ipc/error";
+import { getHardwareSnapshot } from "../../../shared/ipc/compare/hardware";
+import { formatIpcError } from "../../../shared/ipc/core/error";
 import { formatBytes } from "../../../shared/format/bytes";
 import { useCompareStore } from "../state/compareStore";
 import { assessStrategies, type StrategyId, type Verdict } from "../state/strategy";

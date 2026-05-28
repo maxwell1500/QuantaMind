@@ -1,4 +1,4 @@
-import type { HardwareSnapshot } from "../../../shared/ipc/hardware";
+import type { HardwareSnapshot } from "../../../shared/ipc/compare/hardware";
 
 /// Compare verdict per run strategy. Pure module — no React, no IPC.
 /// `required_bytes` is in bytes; uses a 1.3× safety multiplier over the

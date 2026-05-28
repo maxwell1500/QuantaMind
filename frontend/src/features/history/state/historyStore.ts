@@ -1,5 +1,5 @@
 import { create } from "zustand";
-import { historyClear, historyList, type HistoryEntry } from "../../../shared/ipc/history";
+import { historyClear, historyList, type HistoryEntry } from "../../../shared/ipc/workspace/history";
 
 export interface HistoryStoreState {
   open: boolean;

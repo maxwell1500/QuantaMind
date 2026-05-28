@@ -1,5 +1,5 @@
 import { invoke } from "@tauri-apps/api/core";
-import { cancelHfInstall } from "../../../../shared/ipc/hf_install";
+import { cancelHfInstall } from "../../../../shared/ipc/models/hf_install";
 import type { DownloadEntry } from "../../state/modelStore";
 
 /// Dispatch the right cancel IPC for a download entry by source.

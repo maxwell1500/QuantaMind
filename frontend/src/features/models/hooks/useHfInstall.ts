@@ -3,7 +3,7 @@ import {
   cancelHfInstall,
   installHfGguf,
   type HfPhase,
-} from "../../../shared/ipc/hf_install";
+} from "../../../shared/ipc/models/hf_install";
 import { friendlyInstallError } from "../../../shared/install_error";
 import { useModelStore } from "../state/modelStore";
 import { useInstalledModelsStore } from "../state/installedModelsStore";
