@@ -62,6 +62,30 @@ violation of CLAUDE.md rule 3. Split into `release.sh` (orchestrator),
 `scripts/write-manifest.sh` in a dedicated refactor commit. No
 behavior change; each split file <100 lines.
 
+## Windows code-signing certificate
+
+**Why deferred:** an OV/EV code-signing cert is $200-400/yr (Comodo/
+Sectigo, DigiCert) plus identity verification that takes days; EV certs
+ship on a hardware token (or cloud HSM) that CI must reach. v0.2 ships
+the `.msi`/`.exe` **unsigned**, so Windows SmartScreen shows "Windows
+protected your PC" once — users click **More info → Run anyway**.
+
+**Activate when:** Windows becomes a primary distribution target or a
+tester refuses the SmartScreen warning.
+
+**Checklist:**
+
+1. Buy an OV (cheaper, instant-ish) or EV (clears SmartScreen reputation
+   faster, hardware token) cert.
+2. For OV: export the `.pfx`, store its base64 as the GitHub secret
+   `WINDOWS_CERTIFICATE` and password as `WINDOWS_CERTIFICATE_PASSWORD`.
+3. Set `bundle.windows.certificateThumbprint` (or wire `signCommand`) in
+   `tauri.conf.json`; `tauri-action` signs during the Windows matrix leg.
+4. EV certs need a cloud-HSM signing service (Azure Trusted Signing,
+   SSL.com eSigner) since the token can't live on a CI runner.
+5. Verify: `signtool verify /pa QuantaMind_<ver>_x64.msi` reports a valid
+   chain, and a fresh Windows 11 install launches without SmartScreen.
+
 ## Intel Mac build target
 
 Current builds are `aarch64-apple-darwin` only. Intel users get a
