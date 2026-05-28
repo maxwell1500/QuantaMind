@@ -1,3 +1,4 @@
+use crate::commands::emit::log_emit;
 use crate::commands::gguf_cmd::EVENT_MODELS_CHANGED;
 use crate::commands::storage_disk::{compute_disk_usage, models_dir};
 use crate::commands::storage_types::{
@@ -6,7 +7,7 @@ use crate::commands::storage_types::{
 use crate::errors::{AppError, AppResult};
 use reqwest::Client;
 use std::time::Duration;
-use tauri::{AppHandle, Emitter};
+use tauri::AppHandle;
 
 const DEFAULT_OLLAMA: &str = "http://localhost:11434";
 const TIMEOUT: Duration = Duration::from_secs(5);
@@ -83,7 +84,7 @@ pub async fn get_installed_models_with_stats() -> Result<Vec<InstalledModelInfo>
 pub async fn remove_model(app: AppHandle, name: String) -> Result<(), AppError> {
     let r = remove_model_inner(DEFAULT_OLLAMA, &name).await;
     if r.is_ok() {
-        let _ = app.emit(EVENT_MODELS_CHANGED, ());
+        log_emit(&app, EVENT_MODELS_CHANGED, ());
     }
     r
 }

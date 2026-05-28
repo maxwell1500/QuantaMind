@@ -10,6 +10,7 @@
 pub mod compare;
 pub mod compare_export;
 pub mod compare_payloads;
+pub mod emit;
 pub mod feasibility;
 pub mod gguf_cmd;
 pub mod hardware;

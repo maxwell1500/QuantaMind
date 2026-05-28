@@ -1,5 +1,6 @@
 #![deny(clippy::unwrap_used)]
 use crate::commands::compare_payloads::Strategy;
+use crate::commands::emit::log_emit;
 use crate::commands::model_settings::ModelSettingsState;
 use crate::errors::{AppError, AppResult};
 use crate::inference::compare_runner::{rows_for, run_parallel, run_sequential};
@@ -7,7 +8,7 @@ use crate::inference::compare_runner_finalize::CompareEmit;
 use crate::sync::MutexExt;
 use std::collections::HashMap;
 use std::sync::{Arc, Mutex};
-use tauri::{AppHandle, Emitter};
+use tauri::AppHandle;
 use tokio_util::sync::CancellationToken;
 use uuid::Uuid;
 
@@ -21,7 +22,7 @@ pub struct CompareRunState {
 
 fn make_emit(app: AppHandle) -> CompareEmit {
     Arc::new(move |event: &str, payload: serde_json::Value| {
-        let _ = app.emit(event, payload);
+        log_emit(&app, event, payload);
     })
 }
 
