@@ -1,16 +1,16 @@
 import { useRef } from "react";
 import { ModelPicker } from "./ModelPicker";
 import { PromptEditor } from "./PromptEditor";
-import { OutputStream } from "./OutputStream";
 import { RunControls } from "./RunControls";
 import { ParamsPanel } from "./ParamsPanel";
-import { WorkspaceError } from "./WorkspaceError";
 import { StatusBar } from "./StatusBar";
+import { RunOutput } from "./RunOutput";
 import { useStreamingRun } from "../hooks/useStreamingRun";
 import { useAutoRerun } from "../hooks/useAutoRerun";
+import { useWorkspaceHotkeys } from "../hooks/useWorkspaceHotkeys";
 import { useWorkspaceStore } from "../state/workspaceStore";
 import { useWorkspacesStore } from "../../workspaces/state/workspaceStore";
-import { formatMetrics } from "../format";
+import { useNavStore } from "../../../shared/state/navStore";
 
 export function Workspace() {
   const model = useWorkspaceStore((s) => s.selectedModel);
@@ -19,6 +19,8 @@ export function Workspace() {
   const current = useWorkspacesStore((s) => s.current);
   const currentPath = useWorkspacesStore((s) => s.currentPath);
   const patch = useWorkspacesStore((s) => s.patch);
+  const save = useWorkspacesStore((s) => s.save);
+  const workspaceActive = useNavStore((s) => s.topView) === "workspace";
   const { output, status, error, metrics, cancelledInfo, start, cancel } =
     useStreamingRun();
   const pickerRef = useRef<HTMLDivElement>(null);
@@ -34,16 +36,22 @@ export function Workspace() {
     canRun: canRun && model !== null,
     onFire: runNow,
   });
+  useWorkspaceHotkeys({
+    active: workspaceActive,
+    canRun,
+    running: status === "running",
+    hasPrompt: !!current,
+    onRun: runNow,
+    onStop: cancel,
+    onSave: () => void save(),
+  });
   return (
     <div className="space-y-3">
       <div ref={pickerRef}>
         <ModelPicker value={model} onChange={setModel} />
       </div>
       {!current ? (
-        <p
-          data-testid="workspace-empty"
-          className="text-sm text-gray-500 px-2 py-8 text-center"
-        >
+        <p data-testid="workspace-empty" className="text-sm text-gray-500 px-2 py-8 text-center">
           Select a prompt from the Files panel, or click <strong>+ New</strong> to create one.
         </p>
       ) : (
@@ -72,25 +80,19 @@ export function Workspace() {
             onToggleAutoRerun={() => patch({ auto_rerun: !current.auto_rerun })}
             pulsing={pulsing}
           />
-          <OutputStream output={output} loading={status === "running" && !output} />
-          {metrics && (
-            <p className="text-xs text-gray-600" data-testid="metrics">
-              {formatMetrics(metrics)}
-            </p>
-          )}
-          {cancelledInfo && (
-            <p className="text-xs text-amber-700" data-testid="cancelled-info">
-              Cancelled · {cancelledInfo.token_count} tokens
-            </p>
-          )}
-          {error && <WorkspaceError error={error} onRetry={runNow} />}
+          <RunOutput
+            output={output}
+            status={status}
+            metrics={metrics}
+            cancelledInfo={cancelledInfo}
+            error={error}
+            onRetry={runNow}
+          />
         </>
       )}
       <StatusBar
         model={model}
-        onModelClick={() =>
-          pickerRef.current?.scrollIntoView({ behavior: "smooth" })
-        }
+        onModelClick={() => pickerRef.current?.scrollIntoView({ behavior: "smooth" })}
       />
     </div>
   );

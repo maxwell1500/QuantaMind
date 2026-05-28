@@ -28,7 +28,7 @@ to a real "current prompt file" from day one.
 | 2.5 | Better error states | done (pending live GUI check) | `troubleshooting.md` |
 | 2.7 | Light theme + system theme | pending | `theming.md` |
 | 2.6 | Onboarding | pending | `onboarding.md` |
-| 2.10 | Keyboard shortcuts | pending | `keyboard-shortcuts.md` |
+| 2.10 | Keyboard shortcuts | done (pending live GUI check) | `keyboard-shortcuts.md` |
 | 2.8 | Windows + Linux builds | pending | `release-process.md` |
 | 2.9 | Auto-update polish | pending | `release-process.md` |
 

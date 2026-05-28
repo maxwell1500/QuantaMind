@@ -1,9 +1,9 @@
 import { useCallback } from "react";
 import { useWorkspacesStore } from "../state/workspaceStore";
 import { useOpenWorkspace } from "../hooks/useOpenWorkspace";
+import { useCreatePrompt } from "../hooks/useCreatePrompt";
 import { useToast } from "../../../shared/ui/Toast";
 import { formatIpcError } from "../../../shared/ipc/error";
-import { createPrompt } from "../../../shared/ipc/prompts";
 import { deletePath } from "../../../shared/ipc/workspaces";
 import { FilesTree } from "./FilesTree";
 import { WorkspaceSwitcher } from "./WorkspaceSwitcher";
@@ -16,18 +16,8 @@ export function FilesPanel() {
   const setTree = useWorkspacesStore((s) => s.refreshTree);
   const clearSelection = useWorkspacesStore((s) => s.clearSelection);
   const { browse } = useOpenWorkspace();
+  const onCreate = useCreatePrompt();
   const showToast = useToast();
-
-  const onCreate = useCallback(async () => {
-    if (!root) return;
-    const name = window.prompt("New prompt name (no extension):");
-    if (!name) return;
-    try {
-      const path = await createPrompt(root, name);
-      await setTree();
-      await selectPrompt(path);
-    } catch (e) { showToast(`Couldn't create: ${formatIpcError(e)}`); }
-  }, [root, setTree, selectPrompt, showToast]);
 
   const onDelete = useCallback(async (path: string) => {
     if (!window.confirm("Delete this prompt?")) return;

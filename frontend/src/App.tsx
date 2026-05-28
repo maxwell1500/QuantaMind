@@ -11,9 +11,12 @@ import { HelpPage } from "./features/help/components/HelpPage";
 import { FilesPanel } from "./features/workspaces/components/FilesPanel";
 import { useAutoSave } from "./features/workspaces/hooks/useAutoSave";
 import { HistoryPanel } from "./features/history/components/HistoryPanel";
-import { useHistoryStore } from "./features/history/state/historyStore";
+import { SettingsModal } from "./features/settings/SettingsModal";
+import { AppHeader } from "./AppHeader";
+import { useGlobalHotkeys } from "./appHotkeys";
+import { CheatsheetModal } from "./shared/ui/CheatsheetModal";
 import { ToastHost } from "./shared/ui/Toast";
-import { RefreshButton } from "./shared/ui/RefreshButton";
+import { useUiStore } from "./shared/state/uiStore";
 import { useNavStore, type TopView } from "./shared/state/navStore";
 
 const TABS: { id: TopView; label: string }[] = [
@@ -40,26 +43,11 @@ export default function App() {
     });
   }, []);
   useAutoSave();
-  const toggleHistory = useHistoryStore((s) => s.toggle);
+  useGlobalHotkeys();
+  const filesVisible = useUiStore((s) => s.filesVisible);
   return (
     <main className="min-h-screen p-6 pb-14 font-sans space-y-3">
-      <div className="flex items-center gap-2">
-        <img src="/Small_logo.png" alt="QuantaMind" className="h-8 w-8 object-contain" />
-        <h1 className="text-2xl font-semibold">QuantaMind</h1>
-        <div className="ml-auto flex items-center gap-2">
-          {view === "workspace" && (
-            <button
-              type="button"
-              onClick={toggleHistory}
-              className="text-sm text-gray-600 hover:text-black px-2 py-1"
-              data-testid="history-toggle"
-            >
-              History
-            </button>
-          )}
-          <RefreshButton />
-        </div>
-      </div>
+      <AppHeader />
       <nav className="flex gap-1 border-b" role="tablist">
         {TABS.map((t) => (
           <button
@@ -76,7 +64,7 @@ export default function App() {
         ))}
       </nav>
       <div hidden={view !== "workspace"} data-testid="view-workspace" className="flex gap-4">
-        <FilesPanel />
+        {filesVisible && <FilesPanel />}
         <div className="flex-1 min-w-0"><Workspace /></div>
       </div>
       <div hidden={view !== "compare"} data-testid="view-compare"><CompareTab /></div>
@@ -86,6 +74,8 @@ export default function App() {
       <div hidden={view !== "help"} data-testid="view-help"><HelpPage /></div>
       <FeedbackButton />
       <HistoryPanel />
+      <SettingsModal />
+      <CheatsheetModal />
       <ToastHost />
     </main>
   );
