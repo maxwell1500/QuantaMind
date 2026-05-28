@@ -22,7 +22,7 @@ export function HistoryPanel() {
   if (!open) return null;
 
   const restore = (e: HistoryEntry) => {
-    restoreDraft({ user: e.user, system: e.system, params: e.params, model: e.model });
+    restoreDraft({ name: e.name, user: e.user, system: e.system, params: e.params, model: e.model });
     const size = useInstalledModelsStore.getState().list.find((m) => m.name === e.model)?.size_bytes ?? 0;
     setSelectedModels([{ name: e.model, size_bytes: size }]);
     setOpen(false);
