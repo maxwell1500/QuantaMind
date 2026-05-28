@@ -17,24 +17,21 @@ describe("assessStrategies", () => {
     expect(assessStrategies([M(2)], null)).toBeNull();
   });
 
-  it("single small model: all three strategies ok", () => {
+  it("single small model: both strategies ok", () => {
     const m = assessStrategies([M(2)], HW(16));
     expect(m?.sequential.status).toBe("ok");
     expect(m?.parallel.status).toBe("ok");
-    expect(m?.sequential_skippable.status).toBe("ok");
   });
 
-  it("oversize single model: all three wont_fit", () => {
+  it("oversize single model: both wont_fit", () => {
     const m = assessStrategies([M(20)], HW(16));
     expect(m?.sequential.status).toBe("wont_fit");
     expect(m?.parallel.status).toBe("wont_fit");
-    expect(m?.sequential_skippable.status).toBe("wont_fit");
   });
 
   it("sum > avail but max < avail: sequential ok, parallel wont_fit", () => {
     const m = assessStrategies([M(7), M(7), M(7)], HW(16));
     expect(m?.sequential.status).not.toBe("wont_fit");
-    expect(m?.sequential_skippable.status).not.toBe("wont_fit");
     expect(m?.parallel.status).toBe("wont_fit");
   });
 

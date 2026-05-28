@@ -49,7 +49,6 @@ pub struct CompareErrorPayload {
 pub enum Strategy {
     Sequential,
     Parallel,
-    SequentialSkippable,
 }
 
 #[derive(Deserialize, Clone, Debug)]

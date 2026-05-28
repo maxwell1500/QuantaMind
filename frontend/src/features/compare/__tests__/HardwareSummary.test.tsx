@@ -43,7 +43,6 @@ describe("HardwareSummary", () => {
     await screen.findByTestId("verdict-sequential");
     expect(screen.getByTestId("verdict-sequential")).toHaveTextContent(/Sequential: OK/);
     expect(screen.getByTestId("verdict-parallel")).toHaveTextContent(/Parallel: OK/);
-    expect(screen.getByTestId("verdict-sequential_skippable")).toHaveTextContent(/skip: OK/i);
   });
 
   it("marks Parallel 'Won't fit' when summed required > available", async () => {

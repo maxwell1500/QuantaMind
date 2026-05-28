@@ -8,7 +8,6 @@ import { assessStrategies, type StrategyId, type Verdict } from "../state/strate
 const STRATEGY_LABEL: Record<StrategyId, string> = {
   sequential: "Sequential",
   parallel: "Parallel",
-  sequential_skippable: "Sequential w/ skip",
 };
 const VERDICT_LABEL: Record<Verdict, string> = {
   ok: "OK",

@@ -43,9 +43,5 @@ export function useCompareRun() {
     try { await stopCompare(); } catch { /* best-effort */ }
   }, []);
 
-  const skip = useCallback(async (modelId: string) => {
-    try { await stopCompare(modelId); } catch { /* best-effort */ }
-  }, []);
-
-  return { isRunning, startError, start, cancelAll, skip };
+  return { isRunning, startError, start, cancelAll };
 }
