@@ -49,16 +49,23 @@ export function HardwareSummary() {
 
   const matrix = assessStrategies(selected, snapshot);
   const memLabel = snapshot.is_apple_silicon ? "Unified memory" : "RAM";
+  // Per-strategy verdicts only matter with 2+ models (sequential vs parallel
+  // differ). For a single model, surface a warning only when it's tight —
+  // a fitting model needs no badge.
+  const showStrategies = !!matrix && selected.length >= 2;
+  const singleWarn =
+    matrix && selected.length === 1 && matrix.sequential.status !== "ok"
+      ? matrix.sequential
+      : null;
   return (
     <div data-testid="hw-summary" className="border rounded p-2 text-xs space-y-1">
       <div>
         {memLabel}: {formatBytes(snapshot.total_memory_bytes)} total · {formatBytes(snapshot.available_memory_bytes)} available
-        <button type="button" onClick={() => setNonce((n) => n + 1)} className="ml-2 underline" data-testid="hw-refresh">Refresh</button>
       </div>
-      {matrix ? (
+      {showStrategies && (
         <div className="flex flex-wrap gap-2">
           {(Object.keys(STRATEGY_LABEL) as StrategyId[]).map((id) => {
-            const v = matrix[id];
+            const v = matrix![id];
             return (
               <span key={id} data-testid={`verdict-${id}`} className={`px-2 py-0.5 rounded ${VERDICT_CLASS[v.status]}`}>
                 {STRATEGY_LABEL[id]}: {VERDICT_LABEL[v.status]} · {formatBytes(v.required_bytes)}
@@ -66,8 +73,11 @@ export function HardwareSummary() {
             );
           })}
         </div>
-      ) : (
-        <div className="text-gray-500">Select one or more models to see feasibility.</div>
+      )}
+      {singleWarn && (
+        <div data-testid="hw-single-warning" className={`inline-block px-2 py-0.5 rounded ${VERDICT_CLASS[singleWarn.status]}`}>
+          Needs {formatBytes(singleWarn.required_bytes)} · {VERDICT_LABEL[singleWarn.status]} on this machine
+        </div>
       )}
     </div>
   );
