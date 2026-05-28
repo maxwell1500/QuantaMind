@@ -3,9 +3,7 @@
 use crate::commands::model_settings::ModelSettingsState;
 use crate::commands::prompt_handler::make_token_handler;
 use crate::commands::prompt_options::{to_generate_options, validate_params};
-use crate::commands::prompt_payloads::{
-    done_payload_or_zero, CancelledPayload, TokenPayload,
-};
+use crate::commands::prompt_payloads::{done_payload, CancelledPayload, TokenPayload};
 pub use crate::commands::prompt_run::run_prompt_inner;
 use crate::errors::AppError;
 use crate::metrics::timing::RunTiming;
@@ -74,7 +72,7 @@ pub async fn run_prompt(
             app.emit(EVENT_CANCELLED, CancelledPayload { token_count: count })
                 .map_err(|e| AppError::Internal(e.to_string()))?;
         } else {
-            let payload = done_payload_or_zero(&timing);
+            let payload = done_payload(&timing);
             app.emit(EVENT_DONE, &payload)
                 .map_err(|e| AppError::Internal(e.to_string()))?;
         }

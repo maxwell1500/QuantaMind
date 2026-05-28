@@ -1,4 +1,5 @@
 use crate::metrics::timing::RunTiming;
+use crate::sync::MutexExt;
 use serde::Serialize;
 use std::sync::Mutex;
 
@@ -19,19 +20,15 @@ pub struct CancelledPayload {
     pub token_count: usize,
 }
 
-/// Read a `DonePayload` from the timing mutex. On poison return a
-/// zero-valued payload — don't trust recorded data after a panic.
-pub fn done_payload_or_zero(timing: &Mutex<RunTiming>) -> DonePayload {
-    match timing.lock() {
-        Ok(t) => DonePayload {
-            ttft_ms: t.ttft_ms(),
-            tokens_per_sec: t.tokens_per_sec(),
-            token_count: t.token_count,
-        },
-        Err(_) => DonePayload {
-            ttft_ms: None,
-            tokens_per_sec: None,
-            token_count: 0,
-        },
+/// Read a `DonePayload` from the timing mutex, recovering the recorded
+/// data even if a thread panicked while holding the lock. A fabricated
+/// zero would be indistinguishable from a real empty run (see
+/// `docs/robustness.md`).
+pub fn done_payload(timing: &Mutex<RunTiming>) -> DonePayload {
+    let t = timing.lock_recover();
+    DonePayload {
+        ttft_ms: t.ttft_ms(),
+        tokens_per_sec: t.tokens_per_sec(),
+        token_count: t.token_count,
     }
 }
