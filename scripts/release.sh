@@ -127,7 +127,12 @@ cat <<EOF
 
 EOF
 
-# ------ 6. Git tag (optional — only after upload + smoke test) ------
+# ------ 6. Notarize (no-op unless Apple Dev ID env vars are set) ------
+bash "${REPO_ROOT}/scripts/notarize.sh" "$DMG_PATH" || {
+  echo "warning: notarization step failed or skipped — DMG ships unnotarized." >&2
+}
+
+# ------ 7. Git tag (optional — only after upload + smoke test) ------
 echo "==> Once the upload is verified and you've installed the update on a"
 echo "    test machine, tag the release:"
 echo "       git tag v${VERSION} && git push origin v${VERSION}"

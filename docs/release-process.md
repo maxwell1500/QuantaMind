@@ -141,13 +141,16 @@ If a release ships broken and users are upgrading into it:
 
 ## Gotchas
 
-- **No code signing in v0.1.0.** macOS Gatekeeper will warn
-  "QuantaMind can't be opened because Apple cannot check it for
-  malicious software" on the first launch after each update. The
-  user has to right-click → Open. Add a note to your website's
-  download page explaining this. The fix is an Apple Developer ID +
-  notarization (~$99/yr); when you're ready, add the `--sign` flag
-  to the build step and the notarize step to the script.
+- **Ad-hoc signed, not notarized.** `bundle.macOS.signingIdentity`
+  is `"-"` in `tauri.conf.json`, so builds carry a coherent ad-hoc
+  signature (no more "QuantaMind is damaged" error). Testers still
+  see "Apple cannot check it for malicious software" on first
+  launch — recovery is **right-click → Open → Open Anyway**, once
+  per app. Put this instruction on the quantamind.co download page.
+  To go fully clean (no warning), set `APPLE_SIGNING_IDENTITY`,
+  `APPLE_ID`, `APPLE_PASSWORD`, `APPLE_TEAM_ID` and re-run this
+  script — `scripts/notarize.sh` activates automatically. See
+  `docs/future-considerations.md` for the enrollment checklist.
 
 - **The endpoint URL is baked at build time.** If you ever move
   `quantamind.co/releases/` to a CDN or a new domain, you have to
