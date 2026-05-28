@@ -1,7 +1,6 @@
 import { useHistoryStore } from "./features/history/state/historyStore";
 import { useUiStore } from "./shared/state/uiStore";
 import { useNavStore } from "./shared/state/navStore";
-import { RefreshButton } from "./shared/ui/RefreshButton";
 
 const btn = "text-sm text-gray-600 hover:text-ink px-2 py-1";
 
@@ -40,7 +39,6 @@ export function AppHeader() {
         >
           ⚙
         </button>
-        <RefreshButton />
       </div>
     </div>
   );

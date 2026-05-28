@@ -61,6 +61,7 @@ export function HardwareSummary() {
     <div data-testid="hw-summary" className="border rounded p-2 text-xs space-y-1">
       <div>
         {memLabel}: {formatBytes(snapshot.total_memory_bytes)} total · {formatBytes(snapshot.available_memory_bytes)} available
+        <button type="button" onClick={() => setNonce((n) => n + 1)} className="ml-2 underline" data-testid="hw-refresh">Refresh</button>
       </div>
       {showStrategies && (
         <div className="flex flex-wrap gap-2">

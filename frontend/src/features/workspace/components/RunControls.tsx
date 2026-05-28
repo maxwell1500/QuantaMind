@@ -6,9 +6,6 @@ type Props = {
   ollamaHealthy?: boolean | null;
   onRun: () => void;
   onCancel: () => void;
-  autoRerun?: boolean;
-  onToggleAutoRerun?: () => void;
-  pulsing?: boolean;
 };
 
 export function RunControls({
@@ -17,9 +14,6 @@ export function RunControls({
   ollamaHealthy = true,
   onRun,
   onCancel,
-  autoRerun = false,
-  onToggleAutoRerun,
-  pulsing = false,
 }: Props) {
   const running = status === "running";
   const healthBlocked = ollamaHealthy === false;
@@ -34,10 +28,7 @@ export function RunControls({
         onClick={onRun}
         disabled={runDisabled}
         title={runTitle}
-        data-pulsing={pulsing || undefined}
-        className={`px-3 py-1 rounded bg-blue-600 text-white text-sm disabled:opacity-50 ${
-          pulsing ? "animate-pulse ring-2 ring-blue-300" : ""
-        }`}
+        className="px-3 py-1 rounded bg-blue-600 text-white text-sm disabled:opacity-50"
       >
         Run
       </button>
@@ -49,17 +40,6 @@ export function RunControls({
       >
         Cancel
       </button>
-      {onToggleAutoRerun && (
-        <label className="flex items-center gap-1 text-xs text-gray-600 cursor-pointer" title="Re-run automatically 800ms after you stop typing">
-          <input
-            type="checkbox"
-            checked={autoRerun}
-            onChange={onToggleAutoRerun}
-            data-testid="auto-rerun-toggle"
-          />
-          Auto-rerun on save
-        </label>
-      )}
       <span className="text-xs text-gray-500" data-testid="run-status">
         {status}
       </span>
