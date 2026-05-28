@@ -4,6 +4,7 @@ pub mod inference;
 pub mod metrics;
 pub mod persistence;
 pub mod sync;
+pub mod time_iso;
 pub mod validation;
 
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
@@ -19,6 +20,7 @@ pub fn run() {
         .manage(commands::compare::CompareRunState::default())
         .manage(commands::model_settings::ModelSettingsState::default())
         .manage(commands::ollama_start::OllamaStartState::default())
+        .manage(commands::workspaces::WorkspaceState::default())
         .invoke_handler(tauri::generate_handler![
             commands::feasibility::check_install_feasibility,
             commands::gguf_cmd::inspect_gguf,
@@ -46,6 +48,16 @@ pub fn run() {
             commands::storage::get_disk_usage,
             commands::prompt::run_prompt,
             commands::prompt::stop_prompt,
+            commands::workspaces::open_workspace,
+            commands::workspaces::close_workspace,
+            commands::workspaces::current_workspace,
+            commands::workspaces::list_workspace_tree,
+            commands::workspaces::recent_workspaces,
+            commands::workspace_prompts::load_prompt,
+            commands::workspace_prompts::save_prompt,
+            commands::workspace_prompts::create_prompt,
+            commands::workspace_prompts::rename_path,
+            commands::workspace_prompts::delete_path,
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");

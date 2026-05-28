@@ -22,6 +22,8 @@ vi.mock("@monaco-editor/react", () => ({
 import { invoke } from "@tauri-apps/api/core";
 import { listen, type EventCallback } from "@tauri-apps/api/event";
 import App from "../App";
+import { useWorkspacesStore } from "../features/workspaces/state/workspaceStore";
+import { seedCurrentPrompt } from "./helpers/seedWorkspace";
 
 const handlers: Record<string, EventCallback<unknown>> = {};
 
@@ -51,8 +53,10 @@ beforeEach(() => {
       return Promise.resolve({ available: true, version: "0.1.32" });
     if (cmd === "run_prompt") return Promise.resolve();
     if (cmd === "stop_prompt") return Promise.resolve();
+    if (cmd === "save_prompt") return Promise.resolve(useWorkspacesStore.getState().current);
     return Promise.reject(new Error(`unknown ${cmd}`));
   });
+  seedCurrentPrompt();
 });
 
 describe("Phase 1 E2E smoke — edit → run → re-run", () => {

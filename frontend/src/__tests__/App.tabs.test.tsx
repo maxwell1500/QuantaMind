@@ -13,6 +13,8 @@ import App from "../App";
 import { useCompareStore } from "../features/compare/state/compareStore";
 import { useNavStore } from "../shared/state/navStore";
 import { useModelStore } from "../features/models/state/modelStore";
+import { useWorkspacesStore } from "../features/workspaces/state/workspaceStore";
+import { seedCurrentPrompt } from "./helpers/seedWorkspace";
 
 beforeEach(() => {
   vi.mocked(invoke).mockReset();
@@ -25,11 +27,13 @@ beforeEach(() => {
       return Promise.resolve({ total_bytes: 1, free_bytes: 1, ollama_models_bytes: 0 });
     if (cmd === "get_storage_path")
       return Promise.resolve({ current_path: "/tmp", from_env: false });
+    if (cmd === "save_prompt") return Promise.resolve(useWorkspacesStore.getState().current);
     return Promise.reject(new Error(`unknown ${cmd}`));
   });
   useCompareStore.getState().reset();
   useNavStore.setState({ topView: "workspace" });
   useModelStore.setState({ downloads: {}, pullNames: {}, activeHfName: null, hfSearchQuery: "", hfSelectedRepo: null });
+  seedCurrentPrompt();
 });
 
 const ALL = ["workspace", "compare", "models", "downloads", "storage"] as const;
@@ -70,7 +74,7 @@ describe("App tab strip (5 top tabs)", () => {
       .toBe("Explain CRDTs.");
   });
 
-  it("Workspace's own React state also survives the toggle (both views kept mounted)", () => {
+  it("Workspace prompt survives the toggle (Zustand-backed, both views kept mounted)", () => {
     render(<App />);
     const userEditor = within(screen.getByTestId("user-prompt-editor"))
       .getByTestId("prompt-input") as HTMLTextAreaElement;

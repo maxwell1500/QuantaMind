@@ -8,6 +8,8 @@ import { startInstalledModelsBus } from "./features/models/state/installedModels
 import { useModelSettingsStore } from "./features/models/state/modelSettingsStore";
 import { FeedbackButton } from "./features/feedback/components/FeedbackButton";
 import { HelpPage } from "./features/help/components/HelpPage";
+import { FilesPanel } from "./features/workspaces/components/FilesPanel";
+import { useAutoSave } from "./features/workspaces/hooks/useAutoSave";
 import { ToastHost } from "./shared/ui/Toast";
 import { RefreshButton } from "./shared/ui/RefreshButton";
 import { useNavStore, type TopView } from "./shared/state/navStore";
@@ -35,6 +37,7 @@ export default function App() {
       console.error("model settings load failed:", e);
     });
   }, []);
+  useAutoSave();
   return (
     <main className="min-h-screen p-6 pb-14 font-sans space-y-3">
       <div className="flex items-center gap-2">
@@ -57,7 +60,10 @@ export default function App() {
           </button>
         ))}
       </nav>
-      <div hidden={view !== "workspace"} data-testid="view-workspace"><Workspace /></div>
+      <div hidden={view !== "workspace"} data-testid="view-workspace" className="flex gap-4">
+        <FilesPanel />
+        <div className="flex-1 min-w-0"><Workspace /></div>
+      </div>
       <div hidden={view !== "compare"} data-testid="view-compare"><CompareTab /></div>
       <div hidden={view !== "models"} data-testid="view-models"><ModelsPage /></div>
       <div hidden={view !== "downloads"} data-testid="view-downloads"><DownloadsPage /></div>
