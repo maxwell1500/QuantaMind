@@ -71,6 +71,9 @@ If step 5 fails, do not "fix" by loosening the assertion. Fix the code.
 ## Index of docs
 
 - `docs/architecture.md` — module boundaries + IPC diagram
+- `docs/layering.md` — dependency law + sink/thin-command patterns
+- `docs/robustness.md` — no silent failures / no leaky data policy
+- `docs/folder-taxonomy.md` — ≤10 files per folder + target trees
 - `docs/tech-stack.md` — locked dependency decisions
 - `docs/folder-structure.md` — full tree + rationale
 - `docs/setup.md` — day-zero install/verify
