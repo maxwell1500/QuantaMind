@@ -2,12 +2,14 @@
 
 use crate::commands::model_settings::ModelSettingsState;
 use crate::commands::prompt_handler::make_token_handler;
+use crate::commands::prompt_options::{to_generate_options, validate_params};
 use crate::commands::prompt_payloads::{
     done_payload_or_zero, CancelledPayload, TokenPayload,
 };
 pub use crate::commands::prompt_run::run_prompt_inner;
 use crate::errors::AppError;
 use crate::metrics::timing::RunTiming;
+use crate::persistence::prompts::schema::InferenceParams;
 use crate::sync::MutexExt;
 use std::sync::{Arc, Mutex};
 use tauri::Emitter;
@@ -31,9 +33,17 @@ pub async fn run_prompt(
     model: String,
     prompt: String,
     system: Option<String>,
+    params: Option<InferenceParams>,
 ) -> Result<(), AppError> {
     settings.ensure_loaded(&app)?;
-    let temperature = Some(settings.temperature_for(&model));
+    if let Some(p) = &params {
+        validate_params(p)?;
+    }
+    let mut options = params.as_ref().map(to_generate_options).unwrap_or_default();
+    // Fall back to the per-model temperature when the prompt didn't set one.
+    if options.temperature.is_none() {
+        options.temperature = Some(settings.temperature_for(&model));
+    }
 
     let token = CancellationToken::new();
     {
@@ -53,7 +63,7 @@ pub async fn run_prompt(
     );
     let system_trim = system.as_deref().map(str::trim).filter(|s| !s.is_empty());
     let result = run_prompt_inner(
-        DEFAULT_OLLAMA, &model, &prompt, system_trim, temperature, None, token.clone(), handler,
+        DEFAULT_OLLAMA, &model, &prompt, system_trim, Some(options), None, token.clone(), handler,
     ).await;
 
     *state.current.lock_recover() = None;

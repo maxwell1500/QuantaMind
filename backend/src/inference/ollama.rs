@@ -17,10 +17,30 @@ struct GenerateRequest<'a> {
     stream: bool,
 }
 
-#[derive(Serialize)]
-struct GenerateOptions {
+/// Ollama `/api/generate` `options` block. Field names mirror Ollama's
+/// API (note `num_predict`, not `max_tokens`). Every field is optional so
+/// unset knobs fall back to Ollama's own defaults.
+#[derive(Serialize, Default, Clone, Debug, PartialEq)]
+pub struct GenerateOptions {
     #[serde(skip_serializing_if = "Option::is_none")]
-    temperature: Option<f32>,
+    pub temperature: Option<f32>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub top_p: Option<f32>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub top_k: Option<u32>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub num_predict: Option<u32>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub repeat_penalty: Option<f32>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub seed: Option<i64>,
+}
+
+impl GenerateOptions {
+    pub fn is_empty(&self) -> bool {
+        self.temperature.is_none() && self.top_p.is_none() && self.top_k.is_none()
+            && self.num_predict.is_none() && self.repeat_penalty.is_none() && self.seed.is_none()
+    }
 }
 
 #[derive(Deserialize)]
@@ -35,13 +55,13 @@ pub async fn stream_generate(
     model: &str,
     prompt: &str,
     system: Option<&str>,
-    temperature: Option<f32>,
+    options: Option<GenerateOptions>,
     keep_alive: Option<i32>,
     cancel: CancellationToken,
     mut on_token: impl FnMut(&str),
 ) -> AppResult<()> {
     let client = streaming_client()?;
-    let options = temperature.map(|t| GenerateOptions { temperature: Some(t) });
+    let options = options.filter(|o| !o.is_empty());
     let body = GenerateRequest { model, prompt, system, options, keep_alive, stream: true };
     let resp = client
         .post(format!("{endpoint}/api/generate"))

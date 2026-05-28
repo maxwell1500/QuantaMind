@@ -3,6 +3,7 @@ import { ModelPicker } from "./ModelPicker";
 import { PromptEditor } from "./PromptEditor";
 import { OutputStream } from "./OutputStream";
 import { RunControls } from "./RunControls";
+import { ParamsPanel } from "./ParamsPanel";
 import { StatusBar } from "./StatusBar";
 import { useStreamingRun } from "../hooks/useStreamingRun";
 import { useWorkspaceStore } from "../state/workspaceStore";
@@ -47,11 +48,12 @@ export function Workspace() {
             label="User prompt"
             testId="user-prompt-editor"
           />
+          <ParamsPanel running={status === "running"} />
           <RunControls
             status={status}
             canRun={!!model && prompt.trim().length > 0}
             ollamaHealthy={ollamaHealthy}
-            onRun={() => model && start(model, prompt, systemPrompt)}
+            onRun={() => model && start(model, prompt, systemPrompt, current.params)}
             onCancel={cancel}
           />
           <OutputStream output={output} loading={status === "running" && !output} />

@@ -23,6 +23,7 @@ pub mod ollama_runtime;
 pub mod ollama_start;
 pub mod prompt;
 pub mod prompt_handler;
+pub mod prompt_options;
 pub mod prompt_payloads;
 pub mod prompt_run;
 pub mod settings;

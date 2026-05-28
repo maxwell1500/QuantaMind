@@ -7,7 +7,7 @@ use crate::commands::compare_payloads::{
 use crate::commands::prompt_handler::make_token_handler;
 use crate::errors::AppError;
 use crate::inference::compare_runner_finalize::{emit, finalize_row, CompareEmit};
-use crate::inference::ollama::stream_generate;
+use crate::inference::ollama::{stream_generate, GenerateOptions};
 use crate::metrics::timing::RunTiming;
 use crate::sync::MutexExt;
 use std::sync::{Arc, Mutex};
@@ -105,7 +105,8 @@ pub(crate) async fn run_one_row(
         },
         row_token.clone(), timing.clone(),
     );
-    let result = stream_generate(endpoint, &row.model, prompt, system, row.temperature, keep_alive, row_token.clone(), handler).await;
+    let options = row.temperature.map(|t| GenerateOptions { temperature: Some(t), ..Default::default() });
+    let result = stream_generate(endpoint, &row.model, prompt, system, options, keep_alive, row_token.clone(), handler).await;
     state.rows.lock_recover().remove(&row.model_id);
     finalize_row(emit_fn, row, &timing, &row_token, result);
 }

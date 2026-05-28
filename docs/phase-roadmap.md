@@ -22,7 +22,7 @@ to a real "current prompt file" from day one.
 | # | Step | Status | Doc |
 | --- | --- | --- | --- |
 | 2.4 | Workspaces & files | done (pending live GUI check) | `workspaces.md` |
-| 2.1 | Parameter controls | pending | `inference-params.md` |
+| 2.1 | Parameter controls | done (pending live GUI check) | `inference-params.md` |
 | 2.2 | Auto-rerun on save | pending | `auto-rerun.md` |
 | 2.3 | Prompt history | pending | `history.md` |
 | 2.5 | Better error states | pending | `troubleshooting.md` |

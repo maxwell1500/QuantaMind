@@ -1,7 +1,7 @@
 #![deny(clippy::unwrap_used)]
 
 use crate::errors::{AppError, AppResult};
-use crate::inference::ollama::stream_generate;
+use crate::inference::ollama::{stream_generate, GenerateOptions};
 use tokio_util::sync::CancellationToken;
 
 pub fn validate(model: &str, prompt: &str) -> AppResult<()> {
@@ -19,11 +19,11 @@ pub async fn run_prompt_inner(
     model: &str,
     prompt: &str,
     system: Option<&str>,
-    temperature: Option<f32>,
+    options: Option<GenerateOptions>,
     keep_alive: Option<i32>,
     cancel: CancellationToken,
     on_token: impl FnMut(&str),
 ) -> AppResult<()> {
     validate(model, prompt)?;
-    stream_generate(endpoint, model, prompt, system, temperature, keep_alive, cancel, on_token).await
+    stream_generate(endpoint, model, prompt, system, options, keep_alive, cancel, on_token).await
 }

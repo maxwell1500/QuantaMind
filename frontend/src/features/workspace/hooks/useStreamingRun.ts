@@ -14,6 +14,10 @@ import {
 import { withTimeout } from "../../../shared/ipc/timeout";
 import { formatIpcError } from "../../../shared/ipc/error";
 import { useWorkspaceStore } from "../state/workspaceStore";
+import type { InferenceParams } from "../../../shared/ipc/prompts";
+
+const hasParam = (p?: InferenceParams) =>
+  !!p && Object.values(p).some((v) => v !== undefined && v !== null);
 
 export type RunStatus = "idle" | "running" | "done" | "cancelled" | "error";
 
@@ -62,18 +66,22 @@ export function useStreamingRun() {
     return () => { cancelled = true; unsubs.forEach((u) => u()); };
   }, []);
 
-  const start = useCallback(async (model: string, prompt: string, system?: string) => {
-    setOutput(""); setMetrics(null); setCancelledInfo(null); setError(null);
-    setStatus("running");
-    try {
-      const args: Record<string, unknown> = { model, prompt };
-      const trimmed = system?.trim();
-      if (trimmed) args.system = trimmed;
-      await invoke("run_prompt", args);
-    } catch (e) {
-      setError(formatIpcError(e)); setStatus("error");
-    }
-  }, []);
+  const start = useCallback(
+    async (model: string, prompt: string, system?: string, params?: InferenceParams) => {
+      setOutput(""); setMetrics(null); setCancelledInfo(null); setError(null);
+      setStatus("running");
+      try {
+        const args: Record<string, unknown> = { model, prompt };
+        const trimmed = system?.trim();
+        if (trimmed) args.system = trimmed;
+        if (hasParam(params)) args.params = params;
+        await invoke("run_prompt", args);
+      } catch (e) {
+        setError(formatIpcError(e)); setStatus("error");
+      }
+    },
+    [],
+  );
 
   const cancel = useCallback(async () => {
     try { await withTimeout(invoke("stop_prompt"), STOP_PROMPT_TIMEOUT_MS, "stop_prompt"); }
