@@ -1,8 +1,8 @@
 import { useEffect, useState } from "react";
-import { checkOllamaHealth } from "../../../shared/ipc/client";
-import type { HealthStatus } from "../../../shared/ipc/types";
-import { useWorkspaceStore } from "../state/workspaceStore";
-import { formatMetrics } from "../format";
+import { checkOllamaHealth } from "../../../../shared/ipc/client";
+import type { HealthStatus } from "../../../../shared/ipc/types";
+import { useWorkspaceStore } from "../../state/workspaceStore";
+import { formatMetrics } from "../../format";
 
 const POLL_MS = 5000;
 

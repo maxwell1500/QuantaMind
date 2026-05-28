@@ -1,7 +1,7 @@
 import { create } from "zustand";
 import type { HardwareSnapshot } from "../../../shared/ipc/hardware";
 import type { StrategyId } from "./strategy";
-import { newRow, updateRow, type CompareModel, type CompareRow, type RowStatus } from "./compareRow";
+import { newRow, updateRow, type CompareModel, type CompareRow } from "./compareRow";
 
 export type { CompareModel, CompareRow, RowStatus } from "./compareRow";
 

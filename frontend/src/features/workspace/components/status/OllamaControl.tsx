@@ -1,6 +1,6 @@
-import { useWorkspaceStore } from "../state/workspaceStore";
-import { useStopOllama } from "../hooks/useStopOllama";
-import { useStartOllama } from "../hooks/useStartOllama";
+import { useWorkspaceStore } from "../../state/workspaceStore";
+import { useStopOllama } from "../../hooks/useStopOllama";
+import { useStartOllama } from "../../hooks/useStartOllama";
 
 /// Header Start/Stop control for the Ollama server. Shows Stop when the
 /// server is up and Start when it's down. Detailed install/error recovery

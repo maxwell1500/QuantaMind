@@ -1,11 +1,11 @@
 import { useEffect } from "react";
-import { useInstalledModelsStore } from "../../models/state/installedModelsStore";
-import { isEmbeddingModel } from "../../../shared/models/classify";
-import { useWorkspaceStore } from "../state/workspaceStore";
-import { useNavStore } from "../../../shared/state/navStore";
+import { useInstalledModelsStore } from "../../../models/state/installedModelsStore";
+import { isEmbeddingModel } from "../../../../shared/models/classify";
+import { useWorkspaceStore } from "../../state/workspaceStore";
+import { useNavStore } from "../../../../shared/state/navStore";
 import { ModelTemperaturePopover } from "./ModelTemperaturePopover";
-import { OllamaEmptyState } from "./OllamaEmptyState";
-import { useStopOllama } from "../hooks/useStopOllama";
+import { OllamaEmptyState } from "../status/OllamaEmptyState";
+import { useStopOllama } from "../../hooks/useStopOllama";
 
 type Props = {
   value: string | null;

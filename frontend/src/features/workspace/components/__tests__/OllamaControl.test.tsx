@@ -8,7 +8,7 @@ vi.mock("../../../../shared/ipc/ollama_start", () => ({
   stopOllama: vi.fn().mockResolvedValue(undefined),
 }));
 
-import { OllamaControl } from "../OllamaControl";
+import { OllamaControl } from "../status/OllamaControl";
 import { useWorkspaceStore } from "../../state/workspaceStore";
 import { startOllama, stopOllama } from "../../../../shared/ipc/ollama_start";
 

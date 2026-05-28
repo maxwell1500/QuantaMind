@@ -6,7 +6,7 @@ vi.mock("../../../shared/ipc/client", () => ({
 }));
 
 import { checkOllamaHealth } from "../../../shared/ipc/client";
-import { StatusBar } from "../components/StatusBar";
+import { StatusBar } from "../components/status/StatusBar";
 import { useWorkspaceStore } from "../state/workspaceStore";
 
 describe("StatusBar", () => {

@@ -9,7 +9,7 @@ vi.mock("@tauri-apps/api/event", () => ({
 }));
 
 import { getInstalledModelsWithStats } from "../../../shared/ipc/storage";
-import { ModelPicker } from "../components/ModelPicker";
+import { ModelPicker } from "../components/model-select/ModelPicker";
 import { useWorkspaceStore } from "../state/workspaceStore";
 import { useNavStore } from "../../../shared/state/navStore";
 import { useInstalledModelsStore } from "../../models/state/installedModelsStore";

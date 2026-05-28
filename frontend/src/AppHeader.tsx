@@ -1,6 +1,6 @@
 import { useHistoryStore } from "./features/history/state/historyStore";
 import { useNavStore } from "./shared/state/navStore";
-import { OllamaControl } from "./features/workspace/components/OllamaControl";
+import { OllamaControl } from "./features/workspace/components/status/OllamaControl";
 
 const btn = "text-sm text-gray-600 hover:text-ink px-2 py-1";
 

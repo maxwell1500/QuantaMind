@@ -1,8 +1,8 @@
 import { useEffect, useRef, useState } from "react";
-import { useInstalledModelsStore } from "../../models/state/installedModelsStore";
-import { isEmbeddingModel } from "../../../shared/models/classify";
-import { formatBytes } from "../../../shared/format/bytes";
-import { useCompareStore } from "../../compare/state/compareStore";
+import { useInstalledModelsStore } from "../../../models/state/installedModelsStore";
+import { isEmbeddingModel } from "../../../../shared/models/classify";
+import { formatBytes } from "../../../../shared/format/bytes";
+import { useCompareStore } from "../../../compare/state/compareStore";
 
 /// Dropdown model picker. Pick one model for a single run or several to
 /// compare. Replaces the flat chip list. Selection lives in

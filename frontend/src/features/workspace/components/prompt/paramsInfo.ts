@@ -1,4 +1,4 @@
-import type { InferenceParams } from "../../../shared/ipc/prompts";
+import type { InferenceParams } from "../../../../shared/ipc/prompts";
 
 export type ParamKey = keyof InferenceParams;
 

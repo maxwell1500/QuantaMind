@@ -1,6 +1,6 @@
-import { ErrorCard } from "../../../shared/ui/ErrorCard";
-import { classifyError } from "../../../shared/ipc/errorInfo";
-import { useNavStore } from "../../../shared/state/navStore";
+import { ErrorCard } from "../../../../shared/ui/ErrorCard";
+import { classifyError } from "../../../../shared/ipc/errorInfo";
+import { useNavStore } from "../../../../shared/state/navStore";
 
 type Props = { error: string; onRetry: () => void };
 

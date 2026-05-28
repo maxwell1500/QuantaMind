@@ -1,4 +1,4 @@
-import type { RunStatus } from "../hooks/useStreamingRun";
+import type { RunStatus } from "../../hooks/useStreamingRun";
 
 type Props = {
   status: RunStatus;

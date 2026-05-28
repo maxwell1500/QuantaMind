@@ -1,10 +1,10 @@
 import { useEffect } from "react";
-import { PromptEditor } from "./PromptEditor";
-import { ParamsPanel } from "./ParamsPanel";
-import { StatusBar } from "./StatusBar";
-import { ModelSelectBar } from "./ModelSelectBar";
-import { SingleRun } from "./SingleRun";
-import { MultiRun } from "./MultiRun";
+import { PromptEditor } from "./prompt/PromptEditor";
+import { ParamsPanel } from "./prompt/ParamsPanel";
+import { StatusBar } from "./status/StatusBar";
+import { ModelSelectBar } from "./model-select/ModelSelectBar";
+import { SingleRun } from "./run/SingleRun";
+import { MultiRun } from "./run/MultiRun";
 import { HardwareSummary } from "../../compare/components/HardwareSummary";
 import { useCompareStore } from "../../compare/state/compareStore";
 import { useWorkspaceStore } from "../state/workspaceStore";

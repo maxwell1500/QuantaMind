@@ -1,5 +1,5 @@
 import { useState } from "react";
-import { useWorkspacesStore } from "../../workspaces/state/workspaceStore";
+import { useWorkspacesStore } from "../../../workspaces/state/workspaceStore";
 import { PARAMS } from "./paramsInfo";
 import { ParamRow } from "./ParamRow";
 

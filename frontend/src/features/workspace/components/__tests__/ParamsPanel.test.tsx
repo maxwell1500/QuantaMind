@@ -1,6 +1,6 @@
 import { describe, it, expect, beforeEach } from "vitest";
 import { render, screen, fireEvent } from "@testing-library/react";
-import { ParamsPanel } from "../ParamsPanel";
+import { ParamsPanel } from "../prompt/ParamsPanel";
 import { useWorkspacesStore } from "../../../workspaces/state/workspaceStore";
 import type { PromptFile } from "../../../../shared/ipc/prompts";
 

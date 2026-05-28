@@ -3,7 +3,7 @@ import { render, screen, fireEvent, within, act } from "@testing-library/react";
 
 vi.mock("@tauri-apps/api/core", () => ({ invoke: vi.fn().mockResolvedValue([]) }));
 
-import { ModelDropdown } from "../ModelDropdown";
+import { ModelDropdown } from "../model-select/ModelDropdown";
 import { useInstalledModelsStore } from "../../../models/state/installedModelsStore";
 import { useCompareStore } from "../../../compare/state/compareStore";
 

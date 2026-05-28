@@ -1,8 +1,8 @@
-import { useCompareRun } from "../../compare/hooks/useCompareRun";
-import { useCompareStore } from "../../compare/state/compareStore";
-import { useWorkspacesStore } from "../../workspaces/state/workspaceStore";
-import { RunStrategyPicker } from "../../compare/components/RunStrategyPicker";
-import { CompareColumn } from "../../compare/components/CompareColumn";
+import { useCompareRun } from "../../../compare/hooks/useCompareRun";
+import { useCompareStore } from "../../../compare/state/compareStore";
+import { useWorkspacesStore } from "../../../workspaces/state/workspaceStore";
+import { RunStrategyPicker } from "../../../compare/components/RunStrategyPicker";
+import { CompareColumn } from "../../../compare/components/CompareColumn";
 
 /// Multi-model run surface (2+ models): run_compare across the selected
 /// models using the current prompt, with strategy + RAM verdicts and

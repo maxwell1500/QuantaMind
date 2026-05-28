@@ -5,7 +5,7 @@ import { useWorkspaceStore } from "../../workspace/state/workspaceStore";
 import { useInstalledModelsStore } from "../../models/state/installedModelsStore";
 import { useWorkspacesStore } from "../../workspaces/state/workspaceStore";
 import { useNavStore } from "../../../shared/state/navStore";
-import { OllamaEmptyState } from "../../workspace/components/OllamaEmptyState";
+import { OllamaEmptyState } from "../../workspace/components/status/OllamaEmptyState";
 import { scaffoldOnboardingWorkspace, pullModel, RECOMMENDED_MODEL } from "../../../shared/ipc/onboarding";
 
 const card = "border rounded-lg p-4 bg-blue-50 flex flex-col gap-3";

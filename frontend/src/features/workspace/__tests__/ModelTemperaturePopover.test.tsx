@@ -4,7 +4,7 @@ import { render, screen, fireEvent } from "@testing-library/react";
 vi.mock("@tauri-apps/api/core", () => ({ invoke: vi.fn() }));
 
 import { invoke } from "@tauri-apps/api/core";
-import { ModelTemperaturePopover } from "../components/ModelTemperaturePopover";
+import { ModelTemperaturePopover } from "../components/model-select/ModelTemperaturePopover";
 import { useModelSettingsStore } from "../../models/state/modelSettingsStore";
 
 beforeEach(() => {

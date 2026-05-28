@@ -1,7 +1,7 @@
 import { describe, it, expect } from "vitest";
 import { render, screen } from "@testing-library/react";
 
-import { OutputStream } from "../components/OutputStream";
+import { OutputStream } from "../components/run/OutputStream";
 
 describe("OutputStream", () => {
   it("renders the streaming output area by default", () => {

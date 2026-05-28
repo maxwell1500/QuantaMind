@@ -1,8 +1,8 @@
 import { OutputStream } from "./OutputStream";
-import { WorkspaceError } from "./WorkspaceError";
-import { formatMetrics } from "../format";
-import type { RunStatus } from "../hooks/useStreamingRun";
-import type { CancelledPayload, DonePayload } from "../../../shared/ipc/events";
+import { WorkspaceError } from "../status/WorkspaceError";
+import { formatMetrics } from "../../format";
+import type { RunStatus } from "../../hooks/useStreamingRun";
+import type { CancelledPayload, DonePayload } from "../../../../shared/ipc/events";
 
 type Props = {
   output: string;

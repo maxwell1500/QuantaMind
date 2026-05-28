@@ -1,6 +1,6 @@
-import { useWorkspaceStore } from "../state/workspaceStore";
-import { useNavStore } from "../../../shared/state/navStore";
-import { OllamaEmptyState } from "./OllamaEmptyState";
+import { useWorkspaceStore } from "../../state/workspaceStore";
+import { useNavStore } from "../../../../shared/state/navStore";
+import { OllamaEmptyState } from "../status/OllamaEmptyState";
 import { ModelDropdown } from "./ModelDropdown";
 
 /// Model selection for the unified page: pick one model for a single run,

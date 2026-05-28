@@ -10,7 +10,7 @@ vi.mock("../../../shared/ipc/storage", () => ({
 
 import { invoke } from "@tauri-apps/api/core";
 import { getInstalledModelsWithStats } from "../../../shared/ipc/storage";
-import { ModelPicker } from "../components/ModelPicker";
+import { ModelPicker } from "../components/model-select/ModelPicker";
 import { useWorkspaceStore } from "../state/workspaceStore";
 import { useInstalledModelsStore } from "../../models/state/installedModelsStore";
 

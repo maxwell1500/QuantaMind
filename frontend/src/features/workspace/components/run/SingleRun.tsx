@@ -1,11 +1,11 @@
 import { useEffect } from "react";
 import { RunControls } from "./RunControls";
 import { RunOutput } from "./RunOutput";
-import { useStreamingRun } from "../hooks/useStreamingRun";
-import { useWorkspaceHotkeys } from "../hooks/useWorkspaceHotkeys";
-import { useWorkspaceStore } from "../state/workspaceStore";
-import { useWorkspacesStore } from "../../workspaces/state/workspaceStore";
-import { useNavStore } from "../../../shared/state/navStore";
+import { useStreamingRun } from "../../hooks/useStreamingRun";
+import { useWorkspaceHotkeys } from "../../hooks/useWorkspaceHotkeys";
+import { useWorkspaceStore } from "../../state/workspaceStore";
+import { useWorkspacesStore } from "../../../workspaces/state/workspaceStore";
+import { useNavStore } from "../../../../shared/state/navStore";
 
 /// Single-model run surface: run_prompt streaming with per-prompt params
 /// and history recording. `model` is the one selected model.

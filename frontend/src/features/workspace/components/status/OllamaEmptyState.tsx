@@ -1,4 +1,4 @@
-import { useStartOllama } from "../hooks/useStartOllama";
+import { useStartOllama } from "../../hooks/useStartOllama";
 
 export function OllamaEmptyState() {
   const { status, error, start, openInstallPage } = useStartOllama();
