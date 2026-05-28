@@ -1,54 +1,37 @@
-# Theming (light / dark)
+# Theming (light-only)
 
-QuantaMind supports light and dark themes with system detection and a
-user override. Colors flow through CSS variables so existing Tailwind
-utility classes (`bg-gray-50`, `text-blue-700`, …) flip with the theme —
-no per-component dark: variants.
+QuantaMind is light-only. A dark theme was built in v0.2 but **removed
+after the visual pass** — it didn't read well and the value/effort wasn't
+there. The CSS-variable token system stays because it keeps colors in one
+place and the no-hardcoded-hex rule cheap to hold.
 
 ## How it works
 
 1. **Tokens** — `frontend/src/styles/tokens.css` defines every color the
-   app uses as space-separated RGB channels, in a light block
-   (`:root, [data-theme="light"]`) and a dark block (`[data-theme="dark"]`).
+   app uses as space-separated RGB channels under `:root` (light values).
 2. **Palette remap** — `tailwind.config.js` points the `gray/blue/red/
    amber/green` ramps (and `surface`/`ink`) at `rgb(var(--x) /
    <alpha-value>)`, so utility classes resolve through the tokens and
    opacity utilities (`bg-black/30`) still work.
-3. **Apply** — `shared/state/themeStore.ts` sets `data-theme` on `<html>`
-   to the *resolved* theme. `useThemeSync` (mounted in App) loads the
-   persisted mode and re-applies on OS changes while in "system" mode.
-4. **Override** — Settings (gear / Cmd+,) offers System / Light / Dark,
-   persisted as `theme` in `user_settings.yaml`.
 
 ## Conventions
 
 - **No hardcoded hex outside `tokens.css`.** `grep -rE '#[0-9a-fA-F]{6}'
-  frontend/src` returns nothing. Use Tailwind palette classes (they're
-  token-backed) or the `surface`/`ink` semantic colors.
-- `white` / `black` stay **literal** — they're for always-light button
-  labels (`text-white`) and translucent backdrops (`bg-black/30`).
-- Flipping surfaces use `bg-surface`; primary body text that must invert
-  uses `text-ink`. The gray ramp is **inverted** in dark mode, so
-  `bg-gray-50` (light surface) becomes dark and `text-gray-700` becomes
-  light automatically.
+  frontend/src` returns nothing. Use Tailwind palette classes (token-
+  backed) or the `surface`/`ink` semantic colors.
+- `white` / `black` stay **literal** — they're for button labels
+  (`text-white`) and translucent backdrops (`bg-black/30`).
+- Flipping surfaces use `bg-surface`; primary body text uses `text-ink`.
 
-## Status / tuning note
+## Re-adding dark later
 
-The mechanism, persistence, system detection, and override are complete
-and tested. The **dark-mode color values in `tokens.css` are a first
-cut** — they were chosen without a live visual pass (the build
-environment has no display). Run the app, toggle to dark, and tune the
-`[data-theme="dark"]` values for contrast where needed; no code changes
-required, only the token values.
+If dark returns, add a `[data-theme="dark"]` block to `tokens.css`, a
+theme store that sets `data-theme` on `<html>` (reading
+`prefers-color-scheme`), and a Settings control. The token plumbing
+already supports it; only the dark values + the toggle were removed.
 
 ## Verification
 
-- `shared/state/__tests__/themeStore.test.ts` — resolveTheme (system via
-  matchMedia + explicit), applyTheme sets `data-theme`, load/setMode
-  persist.
-- `features/settings/__tests__/SettingsModal.test.tsx` — selector shows
-  modes, selecting updates the store.
-- Build check: compiled CSS contains `rgb(var(--…))` for every palette
-  class; zero hardcoded hex in `src`.
-- Live check (pending GUI): OS theme flips the app in system mode;
-  override persists across reload.
+- Build: compiled CSS contains `rgb(var(--…))` for every palette class;
+  zero hardcoded hex in `src`; no `[data-theme="dark"]` anywhere.
+- App renders light on a fresh config dir and never goes dark.

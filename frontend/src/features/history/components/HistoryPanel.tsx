@@ -11,8 +11,7 @@ export function HistoryPanel() {
   const load = useHistoryStore((s) => s.load);
   const clear = useHistoryStore((s) => s.clear);
   const setOpen = useHistoryStore((s) => s.setOpen);
-  const patch = useWorkspacesStore((s) => s.patch);
-  const current = useWorkspacesStore((s) => s.current);
+  const restoreDraft = useWorkspacesStore((s) => s.restoreDraft);
   const setModel = useWorkspaceStore((s) => s.setSelectedModel);
 
   useEffect(() => {
@@ -22,8 +21,9 @@ export function HistoryPanel() {
   if (!open) return null;
 
   const restore = (e: HistoryEntry) => {
-    if (current) patch({ user: e.user, system: e.system, params: e.params });
+    restoreDraft({ user: e.user, system: e.system, params: e.params, model: e.model });
     setModel(e.model);
+    setOpen(false);
   };
 
   return (

@@ -6,7 +6,12 @@ import {
   listWorkspaceTree,
   openWorkspace as ipcOpen,
 } from "../../../shared/ipc/workspaces";
-import { loadPrompt, savePrompt } from "../../../shared/ipc/prompts";
+import { createPrompt, loadPrompt, savePrompt } from "../../../shared/ipc/prompts";
+
+const blankPrompt = (): PromptFile => ({
+  name: "restored", system: "", user: "", model: null, params: {},
+  created_at: "", updated_at: "", auto_rerun: false,
+});
 
 export interface WorkspaceStoreState {
   root: string | null;
@@ -21,6 +26,8 @@ export interface WorkspaceStoreState {
   clearSelection: () => void;
   patch: (p: Partial<PromptFile>) => void;
   save: () => Promise<void>;
+  restoreDraft: (fields: Partial<PromptFile>) => void;
+  saveAs: (name: string) => Promise<void>;
 }
 
 export const useWorkspacesStore = create<WorkspaceStoreState>((set, get) => ({
@@ -52,5 +59,17 @@ export const useWorkspacesStore = create<WorkspaceStoreState>((set, get) => ({
     if (!currentPath || !current) return;
     const saved = await savePrompt(currentPath, current);
     set({ current: saved, dirty: false });
+  },
+  // Load history/restored content into a detached draft (currentPath=null)
+  // so it never overwrites the open prompt file until the user saves it.
+  restoreDraft: (fields) =>
+    set({ currentPath: null, current: { ...blankPrompt(), ...fields }, dirty: false }),
+  saveAs: async (name) => {
+    const { root, current } = get();
+    if (!root || !current) return;
+    const path = await createPrompt(root, name);
+    const saved = await savePrompt(path, { ...current, name });
+    const tree = await listWorkspaceTree();
+    set({ currentPath: path, current: saved, tree, dirty: false });
   },
 }));

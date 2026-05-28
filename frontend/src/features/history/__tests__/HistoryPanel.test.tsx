@@ -41,13 +41,24 @@ describe("HistoryPanel", () => {
     expect(screen.getByText(/120 chars · 30 tokens/)).toBeTruthy();
   });
 
-  it("clicking an entry restores prompt inputs and model", async () => {
+  it("clicking an entry restores inputs+model and closes the drawer", async () => {
     useHistoryStore.setState({ open: true });
     render(<HistoryPanel />);
     fireEvent.click(await screen.findByTestId("history-row"));
     expect(useWorkspacesStore.getState().current?.user).toBe("Explain CRDTs in depth");
     expect(useWorkspacesStore.getState().current?.params.temperature).toBe(0.4);
     expect(useWorkspaceStore.getState().selectedModel).toBe("llama3");
+    expect(useHistoryStore.getState().open).toBe(false);
+  });
+
+  it("restores into a detached draft even when no prompt is open", async () => {
+    useWorkspacesStore.setState({ currentPath: null, current: null });
+    useHistoryStore.setState({ open: true });
+    render(<HistoryPanel />);
+    fireEvent.click(await screen.findByTestId("history-row"));
+    const s = useWorkspacesStore.getState();
+    expect(s.current?.user).toBe("Explain CRDTs in depth");
+    expect(s.currentPath).toBeNull(); // a draft, not bound to a file
   });
 
   it("clear empties the list", async () => {

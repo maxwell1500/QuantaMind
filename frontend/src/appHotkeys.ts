@@ -4,7 +4,6 @@ import { useUiStore } from "./shared/state/uiStore";
 import { useNavStore } from "./shared/state/navStore";
 import { useHistoryStore } from "./features/history/state/historyStore";
 import { useOpenWorkspace } from "./features/workspaces/hooks/useOpenWorkspace";
-import { useCreatePrompt } from "./features/workspaces/hooks/useCreatePrompt";
 
 /// App-level (composition root) wiring of the global shortcuts to their
 /// store actions. Workspace-only toggles are gated to the workspace view.
@@ -14,10 +13,10 @@ export function useGlobalHotkeys() {
   const toggleCheatsheet = useUiStore((s) => s.toggleCheatsheet);
   const toggleFiles = useUiStore((s) => s.toggleFiles);
   const toggleHistory = useHistoryStore((s) => s.toggle);
+  const requestNewPrompt = useUiStore((s) => s.setCreatingPrompt);
   const { browse } = useOpenWorkspace();
-  const createPrompt = useCreatePrompt();
 
-  useHotkey(comboFor("new"), () => void createPrompt(), ws);
+  useHotkey(comboFor("new"), () => requestNewPrompt(true), ws);
   useHotkey(comboFor("open"), () => void browse(), true);
   useHotkey(comboFor("settings"), toggleSettings, true);
   useHotkey(comboFor("history"), toggleHistory, ws);
