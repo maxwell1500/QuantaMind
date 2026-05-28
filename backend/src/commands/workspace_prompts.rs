@@ -44,8 +44,11 @@ pub fn create_prompt(
     if trimmed.contains('/') || trimmed.contains('\\') {
         return Err(AppError::Validation("name cannot contain path separators".into()));
     }
-    let parent_abs = state.ensure_within(&PathBuf::from(&parent).join("_"))
-        .map(|p| p.parent().unwrap().to_path_buf())?;
+    let probe = state.ensure_within(&PathBuf::from(&parent).join("_"))?;
+    let parent_abs = probe
+        .parent()
+        .ok_or_else(|| AppError::Internal("resolved parent path has no parent".into()))?
+        .to_path_buf();
     let target = parent_abs.join(format!("{}{}", trimmed, EXT_SUFFIX));
     if target.exists() {
         return Err(AppError::Validation(format!("already exists: {}", target.display())));

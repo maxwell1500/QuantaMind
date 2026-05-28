@@ -1,5 +1,5 @@
 use crate::errors::{AppError, AppResult};
-use crate::inference::http::{probe_client, streaming_client};
+use crate::inference::http::{body_or_note, probe_client, streaming_client};
 use bytes::Bytes;
 use futures_util::TryStreamExt;
 use sha2::{Digest, Sha256};
@@ -54,7 +54,7 @@ where F: Fn(u64, u64) + Send + Sync + 'static,
         .send().await.map_err(|e| AppError::Inference(e.to_string()))?;
     let status = resp.status();
     if !status.is_success() {
-        let body_text = resp.text().await.unwrap_or_default();
+        let body_text = body_or_note(resp).await;
         return Err(AppError::Inference(format!("blob upload HTTP {status}: {body_text}")));
     }
     Ok(())

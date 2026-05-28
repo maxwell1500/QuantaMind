@@ -1,5 +1,6 @@
 use crate::errors::{AppError, AppResult};
 use crate::inference::consume_create::consume_ndjson;
+use crate::inference::http::body_or_note;
 use crate::inference::create_body::build_create_body;
 use crate::inference::create_spec::{CreatePhase, CreateSpec};
 use crate::inference::ollama_blob::{blob_exists, sha256_file, upload_blob};
@@ -51,7 +52,7 @@ where
         .map_err(|e| AppError::Inference(e.to_string()))?;
     let status = resp.status();
     if !status.is_success() {
-        let body_text = resp.text().await.unwrap_or_default();
+        let body_text = body_or_note(resp).await;
         return Err(AppError::Inference(format!(
             "create HTTP {status}: {body_text}"
         )));

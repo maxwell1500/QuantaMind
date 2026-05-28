@@ -1,5 +1,5 @@
 use crate::errors::{AppError, AppResult};
-use crate::inference::http::streaming_client;
+use crate::inference::http::{body_or_note, streaming_client};
 pub use crate::inference::generate_options::GenerateOptions;
 use futures_util::StreamExt;
 use serde::{Deserialize, Serialize};
@@ -53,7 +53,7 @@ pub async fn stream_generate(
 
     let status = resp.status();
     if !status.is_success() {
-        let body_text = resp.text().await.unwrap_or_default();
+        let body_text = body_or_note(resp).await;
         return Err(AppError::Inference(format!("generate HTTP {status}: {body_text}")));
     }
 

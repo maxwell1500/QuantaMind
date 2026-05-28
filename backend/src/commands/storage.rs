@@ -91,7 +91,7 @@ pub async fn remove_model(app: AppHandle, name: String) -> Result<(), AppError> 
 
 #[tauri::command]
 pub async fn get_disk_usage() -> Result<DiskUsage, AppError> {
-    let models = fetch_installed_with_stats(DEFAULT_OLLAMA).await.unwrap_or_default();
+    let models = fetch_installed_with_stats(DEFAULT_OLLAMA).await?;
     let sum: u64 = models.iter().map(|m| m.size_bytes).sum();
     Ok(compute_disk_usage(&models_dir(), sum))
 }
