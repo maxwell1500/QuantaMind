@@ -8,7 +8,6 @@ import { useModelSettingsStore } from "./features/models/state/modelSettingsStor
 import { FeedbackButton } from "./features/feedback/components/FeedbackButton";
 import { HelpPage } from "./features/help/components/HelpPage";
 import { FilesPanel } from "./features/workspaces/components/FilesPanel";
-import { DraftBanner } from "./features/workspace/components/DraftBanner";
 import { useAutoSave } from "./features/workspaces/hooks/useAutoSave";
 import { HistoryPanel } from "./features/history/components/HistoryPanel";
 import { SettingsModal } from "./features/settings/SettingsModal";
@@ -68,10 +67,7 @@ export default function App() {
       <div hidden={view !== "workspace"} data-testid="view-workspace">
         <div className="flex gap-4">
           {filesVisible && <FilesPanel />}
-          <div className="flex-1 min-w-0 space-y-3">
-            <DraftBanner />
-            <Workspace />
-          </div>
+          <div className="flex-1 min-w-0"><Workspace /></div>
         </div>
       </div>
       <div hidden={view !== "models"} data-testid="view-models"><ModelsPage /></div>

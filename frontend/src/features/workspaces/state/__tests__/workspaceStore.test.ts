@@ -11,10 +11,16 @@ vi.mock("../../../../shared/ipc/prompts", () => ({
     created_at: "t", updated_at: "t", auto_rerun: false,
   }),
   savePrompt: vi.fn().mockImplementation((_p, f) => Promise.resolve({ ...f, updated_at: "later" })),
+  createPrompt: vi.fn().mockImplementation((root, name) => Promise.resolve(`${root}/${name}.quantamind.yaml`)),
 }));
 
 import { useWorkspacesStore } from "../workspaceStore";
-import { savePrompt } from "../../../../shared/ipc/prompts";
+import { savePrompt, createPrompt } from "../../../../shared/ipc/prompts";
+
+const draft = (name = "note") => ({
+  name, system: "", user: "hi", model: null, params: {},
+  created_at: "", updated_at: "", auto_rerun: false,
+});
 
 beforeEach(() => {
   useWorkspacesStore.setState({
@@ -66,5 +72,21 @@ describe("workspaceStore", () => {
     await useWorkspacesStore.getState().selectPrompt("/ws/a.quantamind.yaml");
     useWorkspacesStore.getState().clearSelection();
     expect(useWorkspacesStore.getState().current).toBeNull();
+  });
+
+  it("saveDraftAuto persists an unsaved draft under its (deduped) name", async () => {
+    useWorkspacesStore.setState({
+      root: "/ws", currentPath: null, current: draft("note"),
+      tree: [{ kind: "file", name: "note.quantamind.yaml", path: "/ws/note.quantamind.yaml" }],
+    });
+    await useWorkspacesStore.getState().saveDraftAuto();
+    expect(createPrompt).toHaveBeenCalledWith("/ws", "note-2");
+    expect(useWorkspacesStore.getState().currentPath).toBe("/ws/note-2.quantamind.yaml");
+  });
+
+  it("saveDraftAuto is a no-op once the prompt is saved (currentPath set)", async () => {
+    useWorkspacesStore.setState({ root: "/ws", currentPath: "/ws/a.quantamind.yaml", current: draft() });
+    await useWorkspacesStore.getState().saveDraftAuto();
+    expect(createPrompt).not.toHaveBeenCalled();
   });
 });

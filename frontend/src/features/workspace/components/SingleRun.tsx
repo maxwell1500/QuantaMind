@@ -1,3 +1,4 @@
+import { useEffect } from "react";
 import { RunControls } from "./RunControls";
 import { RunOutput } from "./RunOutput";
 import { useStreamingRun } from "../hooks/useStreamingRun";
@@ -12,9 +13,15 @@ export function SingleRun({ model }: { model: string | null }) {
   const current = useWorkspacesStore((s) => s.current);
   const currentPath = useWorkspacesStore((s) => s.currentPath);
   const save = useWorkspacesStore((s) => s.save);
+  const saveDraftAuto = useWorkspacesStore((s) => s.saveDraftAuto);
   const ollamaHealthy = useWorkspaceStore((s) => s.ollamaHealthy);
   const active = useNavStore((s) => s.topView) === "workspace";
   const { output, status, error, metrics, cancelledInfo, start, cancel } = useStreamingRun();
+
+  // A successful run on an unsaved draft auto-saves it into the workspace.
+  useEffect(() => {
+    if (status === "done") void saveDraftAuto();
+  }, [status, saveDraftAuto]);
 
   const prompt = current?.user ?? "";
   const system = current?.system ?? "";

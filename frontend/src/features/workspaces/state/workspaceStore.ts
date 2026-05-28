@@ -28,6 +28,18 @@ export interface WorkspaceStoreState {
   save: () => Promise<void>;
   restoreDraft: (fields: Partial<PromptFile>) => void;
   saveAs: (name: string) => Promise<void>;
+  saveDraftAuto: () => Promise<void>;
+}
+
+/// First free `base`, `base-2`, `base-3`, … among the folder's files.
+function uniqueName(tree: TreeNode[], base: string): string {
+  const taken = new Set(
+    tree.filter((n) => n.kind === "file").map((n) => n.name.replace(/\.quantamind\.yaml$/, "")),
+  );
+  if (!taken.has(base)) return base;
+  let i = 2;
+  while (taken.has(`${base}-${i}`)) i += 1;
+  return `${base}-${i}`;
 }
 
 export const useWorkspacesStore = create<WorkspaceStoreState>((set, get) => ({
@@ -71,5 +83,14 @@ export const useWorkspacesStore = create<WorkspaceStoreState>((set, get) => ({
     const saved = await savePrompt(path, { ...current, name });
     const tree = await listWorkspaceTree();
     set({ currentPath: path, current: saved, tree, dirty: false });
+  },
+  // Persist an unsaved draft (currentPath===null) into the workspace after
+  // a successful run — auto-named from the prompt's name, deduped. No-op
+  // for already-saved prompts or when no workspace is open.
+  saveDraftAuto: async () => {
+    const { root, current, currentPath, tree } = get();
+    if (currentPath !== null || !current || !root) return;
+    const base = current.name && current.name !== "restored" ? current.name : "untitled";
+    await get().saveAs(uniqueName(tree, base));
   },
 }));
