@@ -11,15 +11,14 @@ Ctrl elsewhere.
 | mod+S | Save prompt | Workspace |
 | mod+N | New prompt | Global |
 | mod+O | Open workspace | Global |
-| mod+, | Settings | Global |
 | mod+Y | Toggle History | Global |
 | mod+B | Toggle Files panel | Global |
 | mod+/ | Cheatsheet | Global |
 | mod+1/2/3 | Switch Models sub-tab | Models tab |
 
 Workspace-scoped shortcuts only fire while the Workspace tab is active
-(and Run/Stop respect the current run state). Cmd+, opens the Settings
-shell — theme controls land there in Step 2.7.
+(and Run/Stop respect the current run state). (There is no Settings
+screen — it was removed once theme was dropped.)
 
 ## How it's wired
 

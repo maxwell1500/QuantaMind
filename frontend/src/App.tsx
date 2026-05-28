@@ -10,7 +10,6 @@ import { HelpPage } from "./features/help/components/HelpPage";
 import { FilesPanel } from "./features/workspaces/components/FilesPanel";
 import { useAutoSave } from "./features/workspaces/hooks/useAutoSave";
 import { HistoryPanel } from "./features/history/components/HistoryPanel";
-import { SettingsModal } from "./features/settings/SettingsModal";
 import { StartupUpdate } from "./features/help/components/StartupUpdate";
 import { OnboardingCoach } from "./features/onboarding/components/OnboardingCoach";
 import { AppHeader } from "./AppHeader";
@@ -76,7 +75,6 @@ export default function App() {
       <div hidden={view !== "help"} data-testid="view-help"><HelpPage /></div>
       <FeedbackButton />
       <HistoryPanel />
-      <SettingsModal />
       <CheatsheetModal />
       <StartupUpdate />
       <ToastHost />
