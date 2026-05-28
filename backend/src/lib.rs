@@ -65,6 +65,7 @@ pub fn run() {
             commands::history::history_clear,
             commands::user_settings::get_user_settings,
             commands::user_settings::set_user_settings,
+            commands::onboarding::scaffold_onboarding_workspace,
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");

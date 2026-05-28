@@ -27,7 +27,7 @@ to a real "current prompt file" from day one.
 | 2.3 | Prompt history | done (pending live GUI check) | `history.md` |
 | 2.5 | Better error states | done (pending live GUI check) | `troubleshooting.md` |
 | 2.7 | Light theme + system theme | done (dark values need visual tuning) | `theming.md` |
-| 2.6 | Onboarding | pending | `onboarding.md` |
+| 2.6 | Onboarding | done (pending live GUI check) | `onboarding.md` |
 | 2.10 | Keyboard shortcuts | done (pending live GUI check) | `keyboard-shortcuts.md` |
 | 2.8 | Windows + Linux builds | done (CI authored; needs a tag run to verify) | `cross-platform-builds.md` |
 | 2.9 | Auto-update polish | done (pending live GUI check) | `auto-update.md` |

@@ -13,6 +13,7 @@ import { useAutoSave } from "./features/workspaces/hooks/useAutoSave";
 import { HistoryPanel } from "./features/history/components/HistoryPanel";
 import { SettingsModal } from "./features/settings/SettingsModal";
 import { StartupUpdate } from "./features/help/components/StartupUpdate";
+import { OnboardingCoach } from "./features/onboarding/components/OnboardingCoach";
 import { AppHeader } from "./AppHeader";
 import { useGlobalHotkeys } from "./appHotkeys";
 import { CheatsheetModal } from "./shared/ui/CheatsheetModal";
@@ -51,6 +52,7 @@ export default function App() {
   return (
     <main className="min-h-screen p-6 pb-14 font-sans space-y-3">
       <AppHeader />
+      <OnboardingCoach />
       <nav className="flex gap-1 border-b" role="tablist">
         {TABS.map((t) => (
           <button
