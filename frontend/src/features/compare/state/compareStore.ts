@@ -1,20 +1,9 @@
 import { create } from "zustand";
 import type { HardwareSnapshot } from "../../../shared/ipc/hardware";
 import type { StrategyId } from "./strategy";
+import { newRow, updateRow, type CompareModel, type CompareRow, type RowStatus } from "./compareRow";
 
-export type CompareModel = { name: string; size_bytes: number };
-export type RowStatus = "pending" | "loading" | "running" | "done" | "cancelled" | "error";
-
-export interface CompareRow {
-  model: string;
-  modelId: string | null;
-  status: RowStatus;
-  output: string;
-  metrics: { ttft_ms: number | null; tokens_per_sec: number | null; token_count: number } | null;
-  error: { kind: string; message: string } | null;
-  startedAt: string | null;
-  endedAt: string | null;
-}
+export type { CompareModel, CompareRow, RowStatus } from "./compareRow";
 
 interface CompareStore {
   selectedModels: CompareModel[];
@@ -38,14 +27,6 @@ interface CompareStore {
   finishRun: () => void;
   reset: () => void;
 }
-
-const newRow = (model: string): CompareRow => ({
-  model, modelId: null, status: "pending", output: "",
-  metrics: null, error: null, startedAt: null, endedAt: null,
-});
-
-const updateRow = (rows: CompareRow[], model: string, patch: Partial<CompareRow>): CompareRow[] =>
-  rows.map((r) => (r.model === model ? { ...r, ...patch } : r));
 
 export const useCompareStore = create<CompareStore>((set) => ({
   selectedModels: [],
