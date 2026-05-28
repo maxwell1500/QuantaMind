@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { invoke } from "@tauri-apps/api/core";
 import { listen } from "@tauri-apps/api/event";
 import {
@@ -15,6 +15,7 @@ import { withTimeout } from "../../../shared/ipc/timeout";
 import { formatIpcError } from "../../../shared/ipc/error";
 import { useWorkspaceStore } from "../state/workspaceStore";
 import type { InferenceParams } from "../../../shared/ipc/prompts";
+import { recordRun, type RunContext } from "../../history/recordRun";
 
 const hasParam = (p?: InferenceParams) =>
   !!p && Object.values(p).some((v) => v !== undefined && v !== null);
@@ -31,6 +32,8 @@ export function useStreamingRun() {
   const [error, setError] = useState<string | null>(null);
   const [metrics, setMetrics] = useState<DonePayload | null>(null);
   const [cancelledInfo, setCancelledInfo] = useState<CancelledPayload | null>(null);
+  const outputRef = useRef("");
+  const ctxRef = useRef<RunContext | null>(null);
 
   useEffect(() => {
     let cancelled = false;
@@ -43,6 +46,7 @@ export function useStreamingRun() {
       const ut = await listen<unknown>(EVENT_TOKEN, (e) => {
         const p = TokenPayloadSchema.safeParse(e.payload);
         if (!p.success) return fail("prompt-token", p.error.issues);
+        outputRef.current += p.data.text;
         setOutput((prev) => prev + p.data.text);
       });
       if (cancelled) { ut(); return; }
@@ -52,6 +56,7 @@ export function useStreamingRun() {
         if (!p.success) return fail("prompt-done", p.error.issues);
         setMetrics(p.data); setStatus("done");
         useWorkspaceStore.getState().setLastRunMetrics(p.data);
+        void recordRun(ctxRef.current, outputRef.current, p.data.token_count);
       });
       if (cancelled) { ud(); return; }
       unsubs.push(ud);
@@ -67,8 +72,10 @@ export function useStreamingRun() {
   }, []);
 
   const start = useCallback(
-    async (model: string, prompt: string, system?: string, params?: InferenceParams) => {
+    async (model: string, prompt: string, system?: string, params?: InferenceParams, promptPath?: string | null) => {
       setOutput(""); setMetrics(null); setCancelledInfo(null); setError(null);
+      outputRef.current = "";
+      ctxRef.current = { model, prompt, system, params, promptPath };
       setStatus("running");
       try {
         const args: Record<string, unknown> = { model, prompt };

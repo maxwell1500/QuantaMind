@@ -10,6 +10,8 @@ import { FeedbackButton } from "./features/feedback/components/FeedbackButton";
 import { HelpPage } from "./features/help/components/HelpPage";
 import { FilesPanel } from "./features/workspaces/components/FilesPanel";
 import { useAutoSave } from "./features/workspaces/hooks/useAutoSave";
+import { HistoryPanel } from "./features/history/components/HistoryPanel";
+import { useHistoryStore } from "./features/history/state/historyStore";
 import { ToastHost } from "./shared/ui/Toast";
 import { RefreshButton } from "./shared/ui/RefreshButton";
 import { useNavStore, type TopView } from "./shared/state/navStore";
@@ -38,12 +40,25 @@ export default function App() {
     });
   }, []);
   useAutoSave();
+  const toggleHistory = useHistoryStore((s) => s.toggle);
   return (
     <main className="min-h-screen p-6 pb-14 font-sans space-y-3">
       <div className="flex items-center gap-2">
         <img src="/Small_logo.png" alt="QuantaMind" className="h-8 w-8 object-contain" />
         <h1 className="text-2xl font-semibold">QuantaMind</h1>
-        <div className="ml-auto"><RefreshButton /></div>
+        <div className="ml-auto flex items-center gap-2">
+          {view === "workspace" && (
+            <button
+              type="button"
+              onClick={toggleHistory}
+              className="text-sm text-gray-600 hover:text-black px-2 py-1"
+              data-testid="history-toggle"
+            >
+              History
+            </button>
+          )}
+          <RefreshButton />
+        </div>
       </div>
       <nav className="flex gap-1 border-b" role="tablist">
         {TABS.map((t) => (
@@ -70,6 +85,7 @@ export default function App() {
       <div hidden={view !== "storage"} data-testid="view-storage"><StoragePage /></div>
       <div hidden={view !== "help"} data-testid="view-help"><HelpPage /></div>
       <FeedbackButton />
+      <HistoryPanel />
       <ToastHost />
     </main>
   );

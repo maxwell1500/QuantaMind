@@ -24,7 +24,7 @@ export function Workspace() {
   const prompt = current?.user ?? "";
   const systemPrompt = current?.system ?? "";
   const canRun = !!model && prompt.trim().length > 0;
-  const runNow = () => model && start(model, prompt, systemPrompt, current?.params);
+  const runNow = () => model && start(model, prompt, systemPrompt, current?.params, currentPath);
   const { pending: pulsing } = useAutoRerun({
     enabled: !!current?.auto_rerun,
     selectionId: currentPath,
@@ -65,7 +65,7 @@ export function Workspace() {
             status={status}
             canRun={canRun}
             ollamaHealthy={ollamaHealthy}
-            onRun={() => model && start(model, prompt, systemPrompt, current.params)}
+            onRun={() => model && start(model, prompt, systemPrompt, current.params, currentPath)}
             onCancel={cancel}
             autoRerun={!!current.auto_rerun}
             onToggleAutoRerun={() => patch({ auto_rerun: !current.auto_rerun })}

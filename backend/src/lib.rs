@@ -58,6 +58,10 @@ pub fn run() {
             commands::workspace_prompts::create_prompt,
             commands::workspace_prompts::rename_path,
             commands::workspace_prompts::delete_path,
+            commands::history::history_append,
+            commands::history::history_list,
+            commands::history::history_get,
+            commands::history::history_clear,
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");
