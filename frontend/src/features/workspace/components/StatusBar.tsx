@@ -45,7 +45,7 @@ export function StatusBar({ model, onModelClick }: Props) {
   return (
     <footer
       data-testid="status-bar"
-      className="fixed bottom-0 left-0 right-0 h-10 px-3 flex items-center justify-between text-xs font-mono border-t bg-white"
+      className="fixed bottom-0 left-0 right-0 h-10 px-3 flex items-center justify-between text-xs font-mono border-t bg-surface"
     >
       <button
         type="button"

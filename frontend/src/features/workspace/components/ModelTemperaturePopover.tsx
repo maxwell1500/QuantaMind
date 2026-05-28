@@ -59,7 +59,7 @@ export function ModelTemperaturePopover({ modelName }: Props) {
       </button>
       {open && modelName && (
         <div role="dialog" aria-label="Temperature settings"
-          className="absolute z-20 mt-1 left-0 w-64 border rounded bg-white shadow p-3 space-y-2"
+          className="absolute z-20 mt-1 left-0 w-64 border rounded bg-surface shadow p-3 space-y-2"
           data-testid="model-temperature-popover"
         >
           <div className="flex justify-between text-xs">

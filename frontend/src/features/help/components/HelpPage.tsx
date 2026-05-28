@@ -29,7 +29,7 @@ export function HelpPage() {
             key={s.id}
             id={`help-${s.id}`}
             data-testid={`help-section-${s.id}`}
-            className="border rounded p-3 bg-white"
+            className="border rounded p-3 bg-surface"
           >
             <h3 className="text-sm font-semibold mb-2">{s.title}</h3>
             <div className="text-xs text-gray-700 space-y-1.5">

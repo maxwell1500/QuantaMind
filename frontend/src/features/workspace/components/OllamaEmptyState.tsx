@@ -27,7 +27,7 @@ export function OllamaEmptyState() {
           <button
             type="button"
             onClick={() => void openInstallPage()}
-            className="self-start border rounded px-3 py-1 bg-white hover:bg-gray-50"
+            className="self-start border rounded px-3 py-1 bg-surface hover:bg-gray-50"
             data-testid="ollama-install-button"
           >
             Install Ollama
@@ -40,7 +40,7 @@ export function OllamaEmptyState() {
           <button
             type="button"
             onClick={() => void start()}
-            className="self-start border rounded px-3 py-1 bg-white hover:bg-gray-50"
+            className="self-start border rounded px-3 py-1 bg-surface hover:bg-gray-50"
             data-testid="ollama-retry-button"
           >
             Retry

@@ -17,6 +17,7 @@ import { AppHeader } from "./AppHeader";
 import { useGlobalHotkeys } from "./appHotkeys";
 import { CheatsheetModal } from "./shared/ui/CheatsheetModal";
 import { ToastHost } from "./shared/ui/Toast";
+import { useThemeSync } from "./shared/ui/useThemeSync";
 import { useUiStore } from "./shared/state/uiStore";
 import { useNavStore, type TopView } from "./shared/state/navStore";
 
@@ -32,7 +33,7 @@ const TABS: { id: TopView; label: string }[] = [
 const tabClass = (active: boolean) =>
   active
     ? "border-b-2 border-blue-600 px-3 py-1 text-sm font-medium"
-    : "px-3 py-1 text-sm text-gray-600 hover:text-black";
+    : "px-3 py-1 text-sm text-gray-600 hover:text-ink";
 
 export default function App() {
   const view = useNavStore((s) => s.topView);
@@ -45,6 +46,7 @@ export default function App() {
   }, []);
   useAutoSave();
   useGlobalHotkeys();
+  useThemeSync();
   const filesVisible = useUiStore((s) => s.filesVisible);
   return (
     <main className="min-h-screen p-6 pb-14 font-sans space-y-3">

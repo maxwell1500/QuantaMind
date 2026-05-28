@@ -31,13 +31,13 @@ export function HistoryPanel() {
       <div className="fixed inset-0 z-30 bg-black/20" onClick={() => setOpen(false)} />
       <aside
         data-testid="history-panel"
-        className="fixed right-0 top-0 z-40 h-full w-80 bg-white border-l shadow-lg flex flex-col"
+        className="fixed right-0 top-0 z-40 h-full w-80 bg-surface border-l shadow-lg flex flex-col"
       >
         <div className="flex items-center justify-between px-3 py-2 border-b">
           <span className="text-sm font-semibold">History</span>
           <div className="flex items-center gap-2">
             <button type="button" onClick={() => void clear()} className="text-xs text-gray-500 hover:text-red-600">Clear</button>
-            <button type="button" onClick={() => setOpen(false)} className="text-xs text-gray-500 hover:text-black" aria-label="Close history">✕</button>
+            <button type="button" onClick={() => setOpen(false)} className="text-xs text-gray-500 hover:text-ink" aria-label="Close history">✕</button>
           </div>
         </div>
         <div className="flex-1 overflow-y-auto">

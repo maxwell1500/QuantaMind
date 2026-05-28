@@ -27,7 +27,7 @@ export function ErrorCard({ title, body, learnMore, action }: Props) {
             <button
               type="button"
               onClick={action.onClick}
-              className="border rounded px-3 py-1 bg-white hover:bg-gray-50"
+              className="border rounded px-3 py-1 bg-surface hover:bg-gray-50"
               data-testid="error-action"
             >
               {action.label}

@@ -55,6 +55,13 @@ commit convention. PR body references "closes #N" when applicable.
   `streams_tokens_in_order` not `test_run_prompt`.
 - One behavior per test.
 
+## Colors
+
+- All colors flow through the theme tokens in `frontend/src/styles/
+  tokens.css`. Use Tailwind palette classes (token-backed) or the
+  `surface`/`ink` semantic colors.
+- No hardcoded hex outside `tokens.css`. See `docs/theming.md`.
+
 ## Imports
 
 - Absolute imports for cross-feature in TS (`@/shared/...`).

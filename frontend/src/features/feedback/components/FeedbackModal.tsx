@@ -38,7 +38,7 @@ export function FeedbackModal({ onClose }: Props) {
       className="fixed inset-0 z-40 bg-black/40 flex items-center justify-center p-4">
       <div role="dialog" aria-modal="true" aria-labelledby="feedback-title"
         onClick={(e) => e.stopPropagation()}
-        className="bg-white rounded-lg shadow-xl max-w-lg w-full p-5 space-y-3"
+        className="bg-surface rounded-lg shadow-xl max-w-lg w-full p-5 space-y-3"
         data-testid="feedback-modal">
         <h2 id="feedback-title" className="text-lg font-semibold">Send us feedback</h2>
         <p className="text-sm text-gray-600">

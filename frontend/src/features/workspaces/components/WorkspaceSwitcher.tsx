@@ -28,7 +28,7 @@ export function WorkspaceSwitcher() {
         {root ? baseName(root) : "No workspace"} <span className="text-gray-400">▾</span>
       </button>
       {open && (
-        <div className="absolute z-20 mt-1 w-56 bg-white border rounded shadow text-sm">
+        <div className="absolute z-20 mt-1 w-56 bg-surface border rounded shadow text-sm">
           <button
             type="button"
             onClick={() => { setOpen(false); void browse(); }}

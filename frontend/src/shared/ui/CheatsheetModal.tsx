@@ -25,7 +25,7 @@ export function CheatsheetModal() {
         role="dialog"
         aria-label="Keyboard shortcuts"
         data-testid="cheatsheet-modal"
-        className="bg-white rounded-lg shadow-xl w-96 max-h-[80vh] overflow-y-auto p-4"
+        className="bg-surface rounded-lg shadow-xl w-96 max-h-[80vh] overflow-y-auto p-4"
         onClick={(e) => e.stopPropagation()}
       >
         <h2 className="text-lg font-semibold mb-3">Keyboard shortcuts</h2>

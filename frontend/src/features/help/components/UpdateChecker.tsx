@@ -14,7 +14,7 @@ export function UpdateChecker() {
   return (
     <section
       data-testid="update-checker"
-      className="border rounded p-3 bg-white flex flex-col gap-2"
+      className="border rounded p-3 bg-surface flex flex-col gap-2"
     >
       <div className="flex items-center justify-between gap-2">
         <div>
@@ -47,7 +47,7 @@ export function UpdateChecker() {
             {update.date && <span className="text-gray-600"> · {update.date}</span>}.
           </div>
           {update.body && (
-            <div className="bg-white border rounded p-2 max-h-48 overflow-auto">
+            <div className="bg-surface border rounded p-2 max-h-48 overflow-auto">
               <Markdown text={update.body} />
             </div>
           )}

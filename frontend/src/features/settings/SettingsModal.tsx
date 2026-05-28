@@ -1,11 +1,15 @@
 import { useEffect } from "react";
 import { useUiStore } from "../../shared/state/uiStore";
+import { useThemeStore, type ThemeMode } from "../../shared/state/themeStore";
 
-/// Settings shell. Opened via the gear / Cmd+,. Theme controls land here
-/// in Step 2.7; for now it hosts app info and a placeholder.
+const MODES: ThemeMode[] = ["system", "light", "dark"];
+
+/// Settings dialog (gear / Cmd+,). Hosts the theme selector.
 export function SettingsModal() {
   const open = useUiStore((s) => s.settingsOpen);
   const setOpen = useUiStore((s) => s.setSettingsOpen);
+  const mode = useThemeStore((s) => s.mode);
+  const setMode = useThemeStore((s) => s.setMode);
 
   useEffect(() => {
     if (!open) return;
@@ -24,14 +28,32 @@ export function SettingsModal() {
         role="dialog"
         aria-label="Settings"
         data-testid="settings-modal"
-        className="bg-white rounded-lg shadow-xl w-96 p-4"
+        className="bg-surface rounded-lg shadow-xl w-96 p-4"
         onClick={(e) => e.stopPropagation()}
       >
         <div className="flex items-center justify-between mb-3">
           <h2 className="text-lg font-semibold">Settings</h2>
-          <button type="button" onClick={() => setOpen(false)} aria-label="Close settings" className="text-gray-500 hover:text-black">✕</button>
+          <button type="button" onClick={() => setOpen(false)} aria-label="Close settings" className="text-gray-500 hover:text-ink">✕</button>
         </div>
-        <p className="text-sm text-gray-500">Theme and appearance settings are coming soon.</p>
+        <div className="flex items-center justify-between">
+          <span className="text-sm text-gray-700">Theme</span>
+          <div className="flex border rounded overflow-hidden" role="group" aria-label="Theme">
+            {MODES.map((m) => (
+              <button
+                key={m}
+                type="button"
+                onClick={() => void setMode(m)}
+                aria-pressed={mode === m}
+                data-testid={`theme-${m}`}
+                className={`px-3 py-1 text-xs capitalize ${
+                  mode === m ? "bg-blue-600 text-white" : "bg-surface text-gray-600 hover:bg-gray-100"
+                }`}
+              >
+                {m}
+              </button>
+            ))}
+          </div>
+        </div>
       </div>
     </div>
   );

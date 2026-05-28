@@ -36,7 +36,7 @@ export function StartupUpdate() {
   return (
     <div
       data-testid="update-banner"
-      className="fixed bottom-4 left-1/2 -translate-x-1/2 z-50 w-[28rem] max-w-[90vw] bg-white border rounded-lg shadow-lg p-3"
+      className="fixed bottom-4 left-1/2 -translate-x-1/2 z-50 w-[28rem] max-w-[90vw] bg-surface border rounded-lg shadow-lg p-3"
     >
       <div className="text-sm font-semibold mb-1">QuantaMind v{update.version} is available</div>
       {update.body && (

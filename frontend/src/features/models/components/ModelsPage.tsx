@@ -13,7 +13,7 @@ const TABS: Tab[] = [
 ];
 
 const subTabClass = (active: boolean) =>
-  `px-4 py-2 text-sm ${active ? "border-b-2 border-blue-600 font-medium" : "text-gray-600 hover:text-black"}`;
+  `px-4 py-2 text-sm ${active ? "border-b-2 border-blue-600 font-medium" : "text-gray-600 hover:text-ink"}`;
 
 export function ModelsPage() {
   const activeTab = useModelStore((s) => s.activeTab);

@@ -3,7 +3,7 @@ import { useUiStore } from "./shared/state/uiStore";
 import { useNavStore } from "./shared/state/navStore";
 import { RefreshButton } from "./shared/ui/RefreshButton";
 
-const btn = "text-sm text-gray-600 hover:text-black px-2 py-1";
+const btn = "text-sm text-gray-600 hover:text-ink px-2 py-1";
 
 export function AppHeader() {
   const workspace = useNavStore((s) => s.topView) === "workspace";
