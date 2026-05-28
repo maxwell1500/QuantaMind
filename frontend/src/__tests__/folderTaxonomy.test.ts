@@ -1,30 +1,24 @@
 import { describe, it, expect } from "vitest";
-import { readdirSync, statSync } from "node:fs";
-import { join } from "node:path";
 
-const SRC = join(process.cwd(), "src");
 const LIMIT = 10;
 
 // Enforces docs/folder-taxonomy.md: no source folder holds more than 10
-// .ts/.tsx files. `__tests__` dirs are exempt — they mirror their source
-// one-to-one, so their size is bounded by the (already-limited) source.
-function collectOffenders(dir: string, acc: string[]): void {
-  let count = 0;
-  for (const name of readdirSync(dir)) {
-    const full = join(dir, name);
-    if (statSync(full).isDirectory()) {
-      if (name !== "__tests__") collectOffenders(full, acc);
-    } else if (/\.tsx?$/.test(name)) {
-      count += 1;
-    }
-  }
-  if (count > LIMIT) acc.push(`${dir} (${count} files)`);
-}
+// .ts/.tsx files. Uses Vite's import.meta.glob (no node types needed, so
+// `tsc` build stays green). `__tests__` dirs are exempt — they mirror
+// their source one-to-one, so their size is already bounded.
+const files = Object.keys(import.meta.glob("/src/**/*.{ts,tsx}"));
 
 describe("folder taxonomy", () => {
   it("no source folder exceeds 10 .ts/.tsx files", () => {
-    const offenders: string[] = [];
-    collectOffenders(SRC, offenders);
+    const counts: Record<string, number> = {};
+    for (const path of files) {
+      const dir = path.slice(0, path.lastIndexOf("/"));
+      if (dir.endsWith("/__tests__")) continue;
+      counts[dir] = (counts[dir] ?? 0) + 1;
+    }
+    const offenders = Object.entries(counts)
+      .filter(([, n]) => n > LIMIT)
+      .map(([dir, n]) => `${dir} (${n} files)`);
     expect(offenders).toEqual([]);
   });
 });
