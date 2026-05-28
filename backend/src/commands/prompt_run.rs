@@ -1,7 +1,10 @@
 #![deny(clippy::unwrap_used)]
 
 use crate::errors::{AppError, AppResult};
-use crate::inference::ollama::{stream_generate, GenerateOptions};
+use crate::inference::backend::InferenceBackend;
+use crate::inference::generate_spec::GenerateSpec;
+use crate::inference::ollama::GenerateOptions;
+use crate::inference::ollama_backend::OllamaBackend;
 use tokio_util::sync::CancellationToken;
 
 pub fn validate(model: &str, prompt: &str) -> AppResult<()> {
@@ -25,5 +28,14 @@ pub async fn run_prompt_inner(
     on_token: impl FnMut(&str),
 ) -> AppResult<()> {
     validate(model, prompt)?;
-    stream_generate(endpoint, model, prompt, system, options, keep_alive, cancel, on_token).await
+    let spec = GenerateSpec {
+        model: model.to_string(),
+        prompt: prompt.to_string(),
+        system: system.map(str::to_string),
+        options,
+        keep_alive,
+    };
+    OllamaBackend::new(endpoint.to_string())
+        .generate(&spec, cancel, on_token)
+        .await
 }

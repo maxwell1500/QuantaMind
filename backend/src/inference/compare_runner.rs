@@ -1,16 +1,11 @@
 #![deny(clippy::unwrap_used)]
 use crate::commands::compare::CompareRunState;
-use crate::commands::compare_payloads::{
-    CompareLoadingPayload, CompareTokenPayload,
-    EVENT_COMPARE_LOADING, EVENT_COMPARE_RUN_DONE, EVENT_COMPARE_TOKEN,
-};
-use crate::commands::prompt_handler::make_token_handler;
+use crate::commands::compare_payloads::EVENT_COMPARE_RUN_DONE;
 use crate::errors::AppError;
-use crate::inference::compare_runner_finalize::{emit, finalize_row, CompareEmit};
-use crate::inference::ollama::{stream_generate, GenerateOptions};
-use crate::metrics::timing::RunTiming;
+use crate::inference::backend_kind::BackendKind;
+use crate::inference::compare_run_row::run_one_row;
+use crate::inference::compare_runner_finalize::{emit, CompareEmit};
 use crate::sync::MutexExt;
-use std::sync::{Arc, Mutex};
 use tokio_util::sync::CancellationToken;
 use uuid::Uuid;
 
@@ -19,11 +14,17 @@ pub struct RowSpec {
     pub model_id: Uuid,
     pub model: String,
     pub temperature: Option<f32>,
+    pub backend: BackendKind,
 }
 
 pub fn rows_for(models: &[String], temp_for: impl Fn(&str) -> Option<f32>) -> Vec<RowSpec> {
     models.iter()
-        .map(|m| RowSpec { model_id: Uuid::new_v4(), model: m.clone(), temperature: temp_for(m) })
+        .map(|m| RowSpec {
+            model_id: Uuid::new_v4(),
+            model: m.clone(),
+            temperature: temp_for(m),
+            backend: BackendKind::Ollama,
+        })
         .collect()
 }
 
@@ -76,37 +77,4 @@ pub async fn run_parallel(
     state.rows.lock_recover().clear();
     emit(&emit_fn, EVENT_COMPARE_RUN_DONE, &serde_json::json!({}));
     Ok(())
-}
-
-pub(crate) async fn run_one_row(
-    emit_fn: &CompareEmit,
-    state: &CompareRunState,
-    endpoint: &str,
-    row: &RowSpec,
-    prompt: &str,
-    system: Option<&str>,
-    keep_alive: Option<i32>,
-) {
-    let row_token = CancellationToken::new();
-    state.rows.lock_recover().insert(row.model_id, row_token.clone());
-    let id_str = row.model_id.to_string();
-    emit(emit_fn, EVENT_COMPARE_LOADING, &CompareLoadingPayload {
-        model_id: id_str.clone(), model: row.model.clone(),
-    });
-    let timing = Arc::new(Mutex::new(RunTiming::start()));
-    let emit_clone = emit_fn.clone();
-    let model_for_token = row.model.clone();
-    let handler = make_token_handler(
-        move |t| {
-            emit(&emit_clone, EVENT_COMPARE_TOKEN, &CompareTokenPayload {
-                model_id: id_str.clone(), model: model_for_token.clone(), text: t.to_string(),
-            });
-            Ok(())
-        },
-        row_token.clone(), timing.clone(),
-    );
-    let options = row.temperature.map(|t| GenerateOptions { temperature: Some(t), ..Default::default() });
-    let result = stream_generate(endpoint, &row.model, prompt, system, options, keep_alive, row_token.clone(), handler).await;
-    state.rows.lock_recover().remove(&row.model_id);
-    finalize_row(emit_fn, row, &timing, &row_token, result);
 }

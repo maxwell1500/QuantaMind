@@ -44,7 +44,10 @@ HTTP to a local Ollama server.
 ### Backend (`backend/src/`)
 
 - `commands/` — IPC entry points. Thin. Validate input, call domain, return.
-- `inference/` — backend adapters behind `InferenceBackend` trait.
+- `inference/` — backend adapters behind the `InferenceBackend` trait
+  (`backend.rs`). `OllamaBackend` is the only backend today; callers build one
+  by matching `BackendKind` (a closed enum — no `dyn`/`async-trait`). llama.cpp
+  (3.2) and cloud (3.10) add variants.
 - `metrics/` — measurements: TTFT, tokens/sec, VRAM.
 - `persistence/` — YAML/JSON read+write of prompts and history.
 - `validation/` — schemas. Shared by commands and persistence.
