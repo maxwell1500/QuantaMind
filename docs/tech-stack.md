@@ -34,6 +34,13 @@ Do not substitute. Alternatives go to `future-considerations.md`.
 
 Resist additions. Every dependency is a maintenance debt.
 
+## Phase 3 additions (locked; installed when their step lands)
+
+| Layer | Choice | Step | Why |
+|---|---|---|---|
+| Word diff (TS) | `diff-match-patch` | 3.5 | De-facto standard for word-level diffs; tiny, dependency-free, well-tested. Hand-rolling diff is the wrong place to spend effort. |
+| Secret storage (Rust) | `keyring` | 3.10 | OS-native keychain (macOS Keychain / Windows Credential Manager / libsecret) for cloud API keys. Keys must never touch plaintext on disk. |
+
 ## Update this doc when
 
 - A locked choice is replaced (requires a PR with rationale).

@@ -71,8 +71,14 @@ Step-level acceptance gate (each step "done" only when all true):
 tree order, rename/delete, hidden-dir skip, human-readable YAML). Not yet
 exercised in a live Tauri window (folder picker needs a GUI + display).
 
-## Phase 3+
+## Phase 3 — v0.3 "The Bench" (in progress)
 
-Phases 3–5 are sketched in the v0.1 planning notes (advanced inference
-features, multi-model studio, etc.) but not yet broken into steps.
-Owners flesh out the next phase's section here when Phase 2 lands.
+A dedicated model-comparison Bench: per-panel params, output diff, metrics,
+saved configs, prompt templates, and a cloud baseline reference. Full step
+breakdown in `phase-3-bench.md`; scope limits in `product-principles.md`.
+
+## Phase 4+
+
+Phases 4–5 are sketched in the v0.1 planning notes (Inspector / deep profiling,
+MLX backend, etc.) but not yet broken into steps. Owners flesh out the next
+phase's section here when the current phase lands.
