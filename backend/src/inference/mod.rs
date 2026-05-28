@@ -14,6 +14,7 @@ pub mod hf_resume;
 pub mod consume_create;
 pub mod create_body;
 pub mod create_spec;
+pub mod generate_options;
 pub mod http;
 pub mod ndjson;
 pub mod ollama;
