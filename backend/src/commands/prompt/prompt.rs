@@ -1,6 +1,8 @@
 #![deny(clippy::unwrap_used)]
 
 use crate::commands::settings::model_settings::ModelSettingsState;
+use crate::inference::backend::backend_kind::BackendKind;
+use crate::inference::backend::endpoint;
 use crate::inference::token_handler::make_token_handler;
 use crate::commands::prompt::prompt_options::{to_generate_options, validate_params};
 use crate::commands::prompt::prompt_payloads::{done_payload, CancelledPayload, TokenPayload};
@@ -13,7 +15,6 @@ use std::sync::{Arc, Mutex};
 use tauri::Emitter;
 use tokio_util::sync::CancellationToken;
 
-const DEFAULT_OLLAMA: &str = "http://localhost:11434";
 pub const EVENT_TOKEN: &str = "prompt-token";
 pub const EVENT_DONE: &str = "prompt-done";
 pub const EVENT_CANCELLED: &str = "prompt-cancelled";
@@ -32,7 +33,9 @@ pub async fn run_prompt(
     prompt: String,
     system: Option<String>,
     params: Option<InferenceParams>,
+    backend: Option<BackendKind>,
 ) -> Result<(), AppError> {
+    let backend = backend.unwrap_or_default();
     settings.ensure_loaded(&app)?;
     if let Some(p) = &params {
         validate_params(p)?;
@@ -61,7 +64,8 @@ pub async fn run_prompt(
     );
     let system_trim = system.as_deref().map(str::trim).filter(|s| !s.is_empty());
     let result = run_prompt_inner(
-        DEFAULT_OLLAMA, &model, &prompt, system_trim, Some(options), None, token.clone(), handler,
+        backend, endpoint::default_for(backend), &model, &prompt, system_trim,
+        Some(options), None, token.clone(), handler,
     ).await;
 
     *state.current.lock_recover() = None;

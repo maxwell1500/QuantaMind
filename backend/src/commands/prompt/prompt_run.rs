@@ -2,7 +2,9 @@
 
 use crate::errors::{AppError, AppResult};
 use crate::inference::backend::backend::InferenceBackend;
+use crate::inference::backend::backend_kind::BackendKind;
 use crate::inference::generate::generate_spec::GenerateSpec;
+use crate::inference::llama::llama_backend::LlamaCppBackend;
 use crate::inference::ollama::ollama::GenerateOptions;
 use crate::inference::ollama::ollama_backend::OllamaBackend;
 use tokio_util::sync::CancellationToken;
@@ -18,6 +20,7 @@ pub fn validate(model: &str, prompt: &str) -> AppResult<()> {
 }
 
 pub async fn run_prompt_inner(
+    backend: BackendKind,
     endpoint: &str,
     model: &str,
     prompt: &str,
@@ -35,7 +38,12 @@ pub async fn run_prompt_inner(
         options,
         keep_alive,
     };
-    OllamaBackend::new(endpoint.to_string())
-        .generate(&spec, cancel, on_token)
-        .await
+    match backend {
+        BackendKind::Ollama => {
+            OllamaBackend::new(endpoint.to_string()).generate(&spec, cancel, on_token).await
+        }
+        BackendKind::LlamaCpp => {
+            LlamaCppBackend::new(endpoint.to_string()).generate(&spec, cancel, on_token).await
+        }
+    }
 }
