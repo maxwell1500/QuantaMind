@@ -26,6 +26,10 @@ describe("AnalysisTab", () => {
     useCompareStore.setState({ rows: [doneRow("a"), doneRow("b")] });
     render(<AnalysisTab />);
     expect(screen.queryByTestId("analysis-empty")).toBeNull();
+    // Responses on top…
+    expect(screen.getByTestId("compare-output-a")).toHaveTextContent("out a");
+    expect(screen.getByTestId("compare-output-b")).toHaveTextContent("out b");
+    // …analysis below.
     expect(screen.getByTestId("metrics-chart")).toBeInTheDocument();
     expect(screen.getByTestId("compare-diff")).toBeInTheDocument();
   });

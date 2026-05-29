@@ -25,6 +25,7 @@ import App from "../App";
 import { useWorkspacesStore } from "../features/workspaces/state/workspaceStore";
 import { useWorkspaceStore } from "../features/workspace/state/workspaceStore";
 import { useCompareStore } from "../features/compare/state/compareStore";
+import { useNavStore } from "../shared/state/navStore";
 import { seedCurrentPrompt } from "./helpers/seedWorkspace";
 
 const handlers: Record<string, EventCallback<unknown>> = {};
@@ -60,6 +61,7 @@ beforeEach(() => {
   });
   useWorkspaceStore.setState({ activeBackend: "ollama" });
   useCompareStore.getState().reset();
+  useNavStore.setState({ topView: "workspace", history: [] });
   seedCurrentPrompt();
 });
 
@@ -78,7 +80,7 @@ describe("Phase 1 E2E smoke — edit → run → re-run", () => {
     fireEvent.click(await screen.findByTestId("model-dropdown"));
     fireEvent.click(await screen.findByTestId("model-option-llama3.2:1b"));
 
-    // 2. RUN — tokens stream into UI, metrics displayed
+    // 2. RUN — navigates to Analysis; the response streams into the M1 column
     fireEvent.click(screen.getByRole("button", { name: /^run$/i }));
     await waitFor(() =>
       expect(invoke).toHaveBeenCalledWith("run_prompt", {
@@ -87,6 +89,7 @@ describe("Phase 1 E2E smoke — edit → run → re-run", () => {
         backend: "ollama",
       }),
     );
+    expect(useNavStore.getState().topView).toBe("analysis");
     act(() => {
       fire("prompt-token", { text: "The " });
       fire("prompt-token", { text: "sky " });
@@ -96,18 +99,17 @@ describe("Phase 1 E2E smoke — edit → run → re-run", () => {
     act(() => {
       fire("prompt-done", { ttft_ms: 8, tokens_per_sec: 32.0, token_count: 4 });
     });
-    expect(screen.getByTestId("output-stream")).toHaveTextContent(
+    const expected = "TTFT 8ms · 32.0 tok/s · 4 tokens";
+    expect(await screen.findByTestId("compare-output-llama3.2:1b")).toHaveTextContent(
       "The sky is blue.",
     );
-    const inline = screen.getByTestId("metrics");
-    const bar = screen.getByTestId("status-bar-metrics");
-    const expected = "TTFT 8ms · 32.0 tok/s · 4 tokens";
-    expect(inline).toHaveTextContent(expected);
-    expect(bar).toHaveTextContent(expected);
-    expect(inline.textContent).toEqual(bar.textContent);
+    expect(screen.getByTestId("compare-metrics-llama3.2:1b")).toHaveTextContent(expected);
+    // The Workspace status bar still reflects the last run's metrics.
+    expect(screen.getByTestId("status-bar-metrics")).toHaveTextContent(expected);
     expect(screen.getByTestId("run-status")).toHaveTextContent("done");
 
-    // 3. RE-RUN with the same in-memory state succeeds without re-typing
+    // 3. RE-RUN from the Workspace succeeds without re-typing
+    fireEvent.click(screen.getByTestId("view-tab-workspace"));
     fireEvent.click(screen.getByRole("button", { name: /^run$/i }));
     expect(invoke).toHaveBeenCalledWith("run_prompt", {
       model: "llama3.2:1b",
@@ -126,14 +128,15 @@ describe("Phase 1 E2E smoke — edit → run → re-run", () => {
     fireEvent.click(await screen.findByTestId("model-dropdown"));
     fireEvent.click(await screen.findByTestId("model-option-llama3.2:1b"));
     fireEvent.click(screen.getByRole("button", { name: /^run$/i }));
+    expect(useNavStore.getState().topView).toBe("analysis");
     act(() => fire("prompt-token", { text: "partial" }));
+    // Cancel from the Workspace (where the run trigger lives).
+    fireEvent.click(screen.getByTestId("view-tab-workspace"));
     fireEvent.click(screen.getByRole("button", { name: /cancel/i }));
     await waitFor(() => expect(invoke).toHaveBeenCalledWith("stop_prompt"));
     act(() => fire("prompt-cancelled", { token_count: 1 }));
     expect(screen.getByTestId("run-status")).toHaveTextContent("cancelled");
-    expect(screen.getByTestId("cancelled-info")).toHaveTextContent(
-      "Cancelled · 1 tokens",
-    );
-    expect(screen.queryByTestId("metrics")).toBeNull();
+    // A cancelled run shows no metrics in its Analysis column.
+    expect(screen.queryByTestId("compare-metrics-llama3.2:1b")).toBeNull();
   });
 });

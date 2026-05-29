@@ -24,6 +24,7 @@ interface CompareStore {
   setRowDone: (p: { model: string; ttft_ms: number | null; tokens_per_sec: number | null; token_count: number }) => void;
   setRowCancelled: (p: { model: string; token_count: number }) => void;
   setRowError: (p: { model: string; kind: string; message: string }) => void;
+  setSingleRun: (row: CompareRow) => void;
   finishRun: () => void;
   reset: () => void;
 }
@@ -74,6 +75,9 @@ export const useCompareStore = create<CompareStore>((set) => ({
         endedAt: new Date().toISOString(),
       }),
     })),
+  // Bridge a single (run_prompt) run into the rows the Analysis tab reads, so a
+  // 1-model run shows there like a one-column compare.
+  setSingleRun: (row) => set({ rows: [row], isRunning: row.status === "running" }),
   finishRun: () =>
     set((s) => ({
       isRunning: false,
