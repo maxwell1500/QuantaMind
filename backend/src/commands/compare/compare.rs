@@ -59,6 +59,10 @@ pub fn stop_compare(
     stop_compare_inner(state.inner(), model_id)
 }
 
+#[cfg(test)]
+#[path = "compare_tests.rs"]
+mod tests;
+
 pub fn stop_compare_inner(state: &CompareRunState, model_id: Option<String>) -> AppResult<()> {
     match model_id {
         Some(id_str) => {
