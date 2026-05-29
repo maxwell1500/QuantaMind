@@ -1,5 +1,6 @@
 import { useEffect, useState } from "react";
 import { removeModel } from "../../../../shared/ipc/models/storage";
+import { deleteLlamaModel } from "../../../../shared/ipc/models/llama_start";
 import { formatBytes } from "../../../../shared/format/bytes";
 import { formatIpcError } from "../../../../shared/ipc/core/error";
 import { useInstalledModelsStore } from "../../state/installedModelsStore";
@@ -21,10 +22,15 @@ export function DownloadsInstalled() {
     if (status === "idle") void refresh();
   }, [status, refresh]);
 
-  const onDelete = async (ollamaName: string) => {
+  const groups = groupInstalled(list);
+  const target = groups.find((g) => g.name === pending);
+
+  const onDelete = async (alsoLlama: boolean) => {
+    if (!target) return;
     setError(null);
     try {
-      await removeModel(ollamaName);
+      if (target.ollamaName) await removeModel(target.ollamaName);
+      if (target.llamaPath && alsoLlama) await deleteLlamaModel(target.llamaPath);
       await refresh();
       setPending(null);
     } catch (e) {
@@ -33,7 +39,6 @@ export function DownloadsInstalled() {
   };
 
   const showErr = error ?? storeError;
-  const groups = groupInstalled(list);
   if (groups.length === 0) {
     return (
       <div className="text-xs text-gray-500" data-testid="downloads-empty-installed">
@@ -41,7 +46,6 @@ export function DownloadsInstalled() {
       </div>
     );
   }
-  const pendingSize = pending ? groups.find((g) => g.ollamaName === pending)?.sizeBytes ?? 0 : 0;
 
   return (
     <div className="flex flex-col gap-2" data-testid="downloads-installed-list">
@@ -60,19 +64,25 @@ export function DownloadsInstalled() {
                 {g.family} · {g.parameterSize} · {g.quantization} · {formatBytes(g.sizeBytes)}
               </div>
             </div>
-            {g.llamaPath && !g.ollamaName && <AddToOllamaButton path={g.llamaPath} name={g.name} />}
-            {g.ollamaName && (
-              <button type="button" onClick={() => setPending(g.ollamaName!)}
+            <div className="flex items-center gap-1 shrink-0">
+              {g.llamaPath && !g.ollamaName && <AddToOllamaButton path={g.llamaPath} name={g.name} />}
+              <button type="button" onClick={() => setPending(g.name)}
                 className="text-xs border rounded px-2 py-1" aria-label={`Delete ${g.name}`}>
                 Delete
               </button>
-            )}
+            </div>
           </li>
         ))}
       </ul>
-      {pending && (
-        <ConfirmRemove name={pending} sizeBytes={pendingSize}
-          onConfirm={() => void onDelete(pending)} onCancel={() => setPending(null)} />
+      {target && (
+        <ConfirmRemove
+          name={target.name}
+          sizeBytes={target.sizeBytes}
+          inOllama={!!target.ollamaName}
+          inLlama={!!target.llamaPath}
+          onConfirm={(alsoLlama) => void onDelete(alsoLlama)}
+          onCancel={() => setPending(null)}
+        />
       )}
     </div>
   );

@@ -29,3 +29,8 @@ export async function listLlamaModels(): Promise<InstalledModelInfo[]> {
   const raw = await invoke("list_llama_models");
   return z.array(InstalledModelInfoSchema).parse(raw);
 }
+
+/// Delete a llama.cpp model's GGUF file from the shared weights folder.
+export async function deleteLlamaModel(path: string): Promise<void> {
+  await invoke("delete_llama_model", { path });
+}
