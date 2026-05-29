@@ -28,6 +28,7 @@ export function Workspace() {
         </p>
       ) : (
         <>
+          <ParamsPanel running={false} />
           <PromptEditor
             value={current.system}
             onChange={(v) => patch({ system: v })}
@@ -51,10 +52,7 @@ export function Workspace() {
               <MultiRun />
             </>
           ) : (
-            <>
-              <ParamsPanel running={false} />
-              <SingleRun model={model} />
-            </>
+            <SingleRun model={model} />
           )}
         </>
       )}
