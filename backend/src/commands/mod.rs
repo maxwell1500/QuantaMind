@@ -1,4 +1,5 @@
 // Tauri command handlers, grouped by concern (see docs/folder-taxonomy.md).
+pub mod bench;
 pub mod compare;
 pub mod emit;
 pub mod gguf;

@@ -7,6 +7,7 @@ import { CompareColumn } from "./CompareColumn";
 import { CompareDiff } from "./CompareDiff";
 import { MetricsChart } from "./MetricsChart";
 import { ExportButtons } from "./ExportButtons";
+import { BenchConfigBar } from "./config/BenchConfigBar";
 
 export function CompareTab() {
   const prompt = useCompareStore((s) => s.prompt);
@@ -46,6 +47,7 @@ export function CompareTab() {
           data-testid="compare-prompt"
         />
       </div>
+      <BenchConfigBar />
       <CompareToolbar />
       {rows.length > 0 && (
         <>
