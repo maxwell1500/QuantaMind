@@ -22,7 +22,7 @@ re-homes that engine under `/bench` and builds the new surfaces on top of it.
 | --- | --- | --- | --- |
 | 3.1 | `InferenceBackend` trait + backend identity (refactor) | done | `architecture.md` |
 | 3.2 | llama.cpp direct backend + `ModelInfo.backend` column | done | `phase-3-llama-backend.md` |
-| 3.3 | Bench view layout; migrate multi-model out of Workspace | todo | — |
+| 3.3 | Backend switcher: scope the Workspace to Ollama or llama.cpp | done | `phase-3-llama-backend.md` |
 | 3.4 | Sequential vs parallel modes + VRAM gate (surface existing) | todo | `compare-feature.md` |
 | 3.5 | Output diff highlighting (`diff-match-patch`) | todo | — |
 | 3.6 | Comparison metrics view + bar charts | todo | — |
@@ -31,13 +31,17 @@ re-homes that engine under `/bench` and builds the new surfaces on top of it.
 | 3.9 | Prompt templates library (`docs/prompts/`) | todo | — |
 | 3.10 | Cloud baseline comparison (OpenAI/Anthropic/Google/Mistral) | todo | — |
 
-## Architecture decision — Bench owns comparison
+## Architecture decision — Step 3.3 is a backend switcher (revised)
 
-v0.2 unified multi-model comparison *into* the Workspace. Phase 3 reverses that:
-**Step 3.3 moves the multi-model path out of the Workspace into a new `/bench`
-route**, and the Workspace returns to lean single-model. Bench grows
-comparison-only UI (per-panel params, diff, charts, saved configs, templates,
-cloud) that would otherwise bloat the Workspace.
+The original 3.3 plan was to move multi-model comparison into a separate
+`/bench` route. In practice the first need was simpler: **see and run
+llama.cpp**. So 3.3 instead adds a **collapsible left backend panel** (Ollama /
+llama.cpp); selecting a backend scopes the Workspace's models and runs to that
+server. Compare stays *per backend* (Ollama: 1 = single, 2+ = compare;
+llama.cpp: single-model, since `llama-server` runs one model at a time with
+manual Start/Stop). The richer comparison-only surfaces (diff, charts, saved
+configs, templates, cloud) remain Steps 3.5–3.10. See
+`phase-3-llama-backend.md` for the switcher's wiring.
 
 ## Locked decisions
 

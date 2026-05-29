@@ -77,6 +77,11 @@ A dedicated model-comparison Bench: per-panel params, output diff, metrics,
 saved configs, prompt templates, and a cloud baseline reference. Full step
 breakdown in `phase-3-bench.md`; scope limits in `product-principles.md`.
 
+Steps 3.1–3.3 done: the `InferenceBackend` trait, the llama.cpp `llama-server`
+sidecar backend, and a left **backend switcher** that scopes the Workspace to
+Ollama or llama.cpp (3.3 was revised from a `/bench` route to the switcher —
+see `phase-3-bench.md`). Steps 3.4–3.10 (richer comparison surfaces) remain.
+
 ## Phase 4+
 
 Phases 4–5 are sketched in the v0.1 planning notes (Inspector / deep profiling,

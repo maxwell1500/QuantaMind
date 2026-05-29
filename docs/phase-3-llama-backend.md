@@ -62,8 +62,18 @@ appends the target triple per platform. This pass ships **macOS arm64,
 CPU-only** (`llama-server-aarch64-apple-darwin`). Other platforms and GPU
 variants are a release follow-up tracked in `cross-platform-builds.md`.
 
+## UI — backend switcher (Step 3.3)
+
+A collapsible left **BackendPanel** lists Ollama and llama.cpp; selecting one
+sets `workspaceStore.activeBackend`. The Workspace then scopes to it: the model
+picker filters by `m.backend`, and `run_prompt` carries the chosen `backend`
+(backend-aware single run). llama.cpp is single-select with **manual**
+Start/Stop in the panel — Start launches `start_llama_server(model.path)` on the
+selected GGUF; Run is gated on `llamaHealthy`. Discovered llama.cpp GGUFs are
+merged into the installed-models list (`installedModelsStore`).
+
 ## Out of scope here
 
 - Windows/Linux + GPU sidecar binaries (release follow-up).
 - Concurrent llama.cpp servers / parallel multi-model llama compare.
-- The `/bench` route migration (Step 3.3) and later Bench surfaces.
+- Richer comparison-only Bench surfaces (Steps 3.5–3.10).
