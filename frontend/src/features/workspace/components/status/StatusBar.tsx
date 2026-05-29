@@ -14,6 +14,8 @@ type Props = {
 export function StatusBar({ model, onModelClick }: Props) {
   const metrics = useWorkspaceStore((s) => s.lastRunMetrics);
   const setOllamaHealthy = useWorkspaceStore((s) => s.setOllamaHealthy);
+  const activeBackend = useWorkspaceStore((s) => s.activeBackend);
+  const llamaHealthy = useWorkspaceStore((s) => s.llamaHealthy);
   const [health, setHealth] = useState<HealthStatus | null>(null);
 
   useEffect(() => {
@@ -34,13 +36,22 @@ export function StatusBar({ model, onModelClick }: Props) {
     };
   }, [setOllamaHealthy]);
 
+  // The status reflects the active backend, not always Ollama. For llama.cpp it
+  // tracks the sidecar's run state and names the loaded model.
+  const onLlama = activeBackend === "llama_cpp";
   const healthy = health?.available === true;
-  const healthLabel = health === null
-    ? "checking…"
-    : healthy
-      ? `connected${health.version ? ` · ${health.version}` : ""}`
-      : "Ollama not running";
-  const dotClass = healthy ? "bg-green-500" : "bg-red-500";
+  const running = onLlama ? llamaHealthy === true : healthy;
+  const healthLabel = onLlama
+    ? running
+      ? `llama.cpp · running${model ? ` (${model})` : ""}`
+      : "llama.cpp · not started"
+    : health === null
+      ? "checking…"
+      : healthy
+        ? `connected${health.version ? ` · ${health.version}` : ""}`
+        : "Ollama not running";
+  const healthAria = onLlama ? "llama.cpp health" : "Ollama health";
+  const dotClass = running ? "bg-green-500" : "bg-red-500";
 
   return (
     <footer
@@ -55,7 +66,7 @@ export function StatusBar({ model, onModelClick }: Props) {
       >
         {model ?? "no model"}
       </button>
-      <span className="flex items-center gap-1.5" aria-label="Ollama health">
+      <span className="flex items-center gap-1.5" aria-label={healthAria}>
         <span className={`inline-block w-2 h-2 rounded-full ${dotClass}`} />
         {healthLabel}
       </span>
