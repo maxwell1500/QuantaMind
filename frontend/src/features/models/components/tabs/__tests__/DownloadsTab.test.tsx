@@ -54,7 +54,7 @@ describe("DownloadsTab", () => {
       },
     ]);
     render(<DownloadsTab />);
-    expect(await screen.findByTestId("download-installed-phi3.5:latest")).toBeInTheDocument();
+    expect(await screen.findByTestId("download-installed-ollama-phi3.5:latest")).toBeInTheDocument();
     expect(screen.getByRole("button", { name: /delete phi3.5:latest/i })).toBeInTheDocument();
   });
 });

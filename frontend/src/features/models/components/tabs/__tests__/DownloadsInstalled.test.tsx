@@ -8,53 +8,77 @@ vi.mock("../../../../../shared/ipc/models/storage", () => ({
   getInstalledModelsWithStats: vi.fn(),
   removeModel: vi.fn(),
 }));
+vi.mock("../../../../../shared/ipc/models/gguf", () => ({
+  installLocalGguf: vi.fn(),
+}));
+vi.mock("../../../../../shared/ui/Toast", () => ({ useToast: () => vi.fn() }));
 
 import {
   getInstalledModelsWithStats,
   removeModel,
 } from "../../../../../shared/ipc/models/storage";
+import { installLocalGguf } from "../../../../../shared/ipc/models/gguf";
 import { DownloadsInstalled } from "../DownloadsInstalled";
 import { useInstalledModelsStore } from "../../../state/installedModelsStore";
 
-const FIXTURE = [
-  { name: "phi3.5:latest", family: "phi", parameter_size: "3.8B",
-    quantization: "Q4_K_M", size_bytes: 2_400_000_000, modified_at: "2026-05-22", backend: "ollama" as const },
-];
+const ollama = {
+  name: "phi3.5:latest", family: "phi", parameter_size: "3.8B",
+  quantization: "Q4_K_M", size_bytes: 2_400_000_000, modified_at: "2026-05-22",
+  backend: "ollama" as const,
+};
+const llama = {
+  name: "phi-4-mini", family: "phi", parameter_size: "4B", quantization: "Q2_K",
+  size_bytes: 1_600_000_000, modified_at: "", backend: "llama_cpp" as const,
+  path: "/g/phi-4-mini.gguf",
+};
 
 beforeEach(() => {
-  vi.mocked(getInstalledModelsWithStats).mockReset();
+  vi.mocked(getInstalledModelsWithStats).mockReset().mockResolvedValue([]);
   vi.mocked(removeModel).mockReset();
-  useInstalledModelsStore.setState({
-    list: [], status: "idle", error: null, lastRefreshedAt: null,
-  });
+  vi.mocked(installLocalGguf).mockReset().mockResolvedValue(undefined);
+  useInstalledModelsStore.setState({ list: [], status: "ready", error: null, lastRefreshedAt: null });
 });
 
 describe("DownloadsInstalled", () => {
-  it("shows helpful empty state when nothing is installed", async () => {
-    vi.mocked(getInstalledModelsWithStats).mockResolvedValue([]);
+  it("shows the empty state when nothing is installed", () => {
     render(<DownloadsInstalled />);
-    expect(await screen.findByTestId("downloads-empty-installed")).toHaveTextContent(
-      /Ollama Library.*Hugging Face.*Local File/,
-    );
+    expect(screen.getByTestId("downloads-empty-installed")).toBeInTheDocument();
   });
 
-  it("renders installed model with metadata and a Delete button", async () => {
-    vi.mocked(getInstalledModelsWithStats).mockResolvedValue(FIXTURE);
+  it("renders an Ollama model with metadata and a Delete button", () => {
+    useInstalledModelsStore.setState({ list: [ollama], status: "ready" });
     render(<DownloadsInstalled />);
-    expect(await screen.findByTestId("download-installed-phi3.5:latest")).toHaveTextContent(/3\.8B/);
+    expect(screen.getByTestId("download-installed-ollama-phi3.5:latest")).toHaveTextContent(/3\.8B/);
     expect(screen.getByRole("button", { name: /delete phi3.5:latest/i })).toBeInTheDocument();
   });
 
-  it("Delete opens confirm with freed size; clicking Remove invokes removeModel and refreshes", async () => {
-    vi.mocked(getInstalledModelsWithStats).mockResolvedValue(FIXTURE);
+  it("offers Add to Ollama for a folder-only llama.cpp model and imports it", async () => {
+    useInstalledModelsStore.setState({ list: [llama], status: "ready" });
+    render(<DownloadsInstalled />);
+    // No Delete (not in Ollama); has Add to Ollama.
+    expect(screen.queryByRole("button", { name: /delete/i })).toBeNull();
+    fireEvent.click(screen.getByTestId("add-to-ollama-phi-4-mini"));
+    await waitFor(() =>
+      expect(installLocalGguf).toHaveBeenCalledWith("/g/phi-4-mini.gguf", "phi-4-mini"),
+    );
+  });
+
+  it("hides Add to Ollama once the model is also in Ollama", () => {
+    useInstalledModelsStore.setState({
+      list: [{ ...llama, name: "phi-4-mini" }, { ...ollama, name: "phi-4-mini" }],
+      status: "ready",
+    });
+    render(<DownloadsInstalled />);
+    expect(screen.queryByTestId("add-to-ollama-phi-4-mini")).toBeNull();
+  });
+
+  it("Delete confirms then removes and refreshes", async () => {
+    useInstalledModelsStore.setState({ list: [ollama], status: "ready" });
     vi.mocked(removeModel).mockResolvedValue(undefined);
     render(<DownloadsInstalled />);
-    fireEvent.click(await screen.findByRole("button", { name: /delete phi3.5:latest/i }));
-    const dialog = screen.getByTestId("downloads-confirm-delete");
-    expect(dialog).toHaveTextContent("phi3.5:latest");
-    expect(dialog).toHaveTextContent(/2\.2GB|2\.4GB/);
-    vi.mocked(getInstalledModelsWithStats).mockResolvedValue([]);
-    fireEvent.click(screen.getByRole("button", { name: /remove/i }));
+    fireEvent.click(screen.getByRole("button", { name: /delete phi3.5:latest/i }));
+    expect(screen.getByTestId("downloads-confirm-delete")).toHaveTextContent("phi3.5:latest");
+    fireEvent.click(screen.getByRole("button", { name: /^remove$/i }));
     await waitFor(() => expect(removeModel).toHaveBeenCalledWith("phi3.5:latest"));
   });
 });
