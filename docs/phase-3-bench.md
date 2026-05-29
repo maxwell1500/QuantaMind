@@ -20,7 +20,7 @@ re-homes that engine under `/bench` and builds the new surfaces on top of it.
 
 | # | Step | Status | Doc |
 | --- | --- | --- | --- |
-| 3.1 | `InferenceBackend` trait + backend identity (refactor) | in progress | `architecture.md` |
+| 3.1 | `InferenceBackend` trait + backend identity (refactor) | done | `architecture.md` |
 | 3.2 | llama.cpp direct backend + `ModelInfo.backend` column | todo | — |
 | 3.3 | Bench view layout; migrate multi-model out of Workspace | todo | — |
 | 3.4 | Sequential vs parallel modes + VRAM gate (surface existing) | todo | `compare-feature.md` |
