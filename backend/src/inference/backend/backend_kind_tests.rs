@@ -13,6 +13,18 @@ fn ollama_round_trips_through_serde() {
 }
 
 #[test]
+fn llama_cpp_serializes_as_snake_case_string() {
+    let json = serde_json::to_string(&BackendKind::LlamaCpp).unwrap();
+    assert_eq!(json, "\"llama_cpp\"");
+}
+
+#[test]
+fn llama_cpp_round_trips_through_serde() {
+    let parsed: BackendKind = serde_json::from_str("\"llama_cpp\"").unwrap();
+    assert_eq!(parsed, BackendKind::LlamaCpp);
+}
+
+#[test]
 fn default_is_ollama() {
     assert_eq!(BackendKind::default(), BackendKind::Ollama);
 }

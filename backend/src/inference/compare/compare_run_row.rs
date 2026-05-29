@@ -1,4 +1,5 @@
 #![deny(clippy::unwrap_used)]
+use crate::errors::AppError;
 use crate::inference::backend::backend::InferenceBackend;
 use crate::inference::backend::backend_kind::BackendKind;
 use crate::inference::compare::compare_runner::RowSpec;
@@ -52,6 +53,7 @@ pub(crate) async fn run_one_row(
                 .generate(&spec, row_token.clone(), handler)
                 .await
         }
+        BackendKind::LlamaCpp => Err(AppError::Inference("llama.cpp backend not yet wired".into())),
     };
     state.rows.lock_recover().remove(&row.model_id);
     finalize_row(sink.as_ref(), row, &timing, &row_token, result);
