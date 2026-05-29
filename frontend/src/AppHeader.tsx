@@ -1,5 +1,6 @@
 import { useHistoryStore } from "./features/history/state/historyStore";
 import { useNavStore } from "./shared/state/navStore";
+import { RunButton } from "./features/workspace/components/run/RunButton";
 
 const btn = "text-sm text-gray-600 hover:text-ink px-2 py-1";
 
@@ -23,6 +24,7 @@ export function AppHeader() {
       <img src="/Small_logo.png" alt="QuantaMind" className="h-8 w-8 object-contain" />
       <h1 className="text-2xl font-semibold">QuantaMind</h1>
       <div className="ml-auto flex items-center gap-2">
+        {workspace && <RunButton />}
         {workspace && (
           <button type="button" onClick={toggleHistory} className={btn} data-testid="history-toggle">
             History

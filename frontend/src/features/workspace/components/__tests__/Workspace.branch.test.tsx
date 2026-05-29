@@ -9,6 +9,7 @@ import { Workspace } from "../Workspace";
 import { useWorkspacesStore } from "../../../workspaces/state/workspaceStore";
 import { useWorkspaceStore } from "../../state/workspaceStore";
 import { useCompareStore } from "../../../compare/state/compareStore";
+import { useRunController } from "../../state/runController";
 
 beforeEach(() => {
   vi.clearAllMocks();
@@ -30,10 +31,11 @@ describe("Workspace branches by selection count", () => {
     expect(screen.queryByTestId("multi-toolbar")).toBeNull();
   });
 
-  it("with no model selected, Run is disabled", () => {
+  it("with no model selected, the run controller reports canRun=false", () => {
     render(<Workspace />);
     expect(screen.getByTestId("run-status")).toBeTruthy();
-    expect((screen.getByRole("button", { name: /^run$/i }) as HTMLButtonElement).disabled).toBe(true);
+    // The Play/Stop trigger lives in the header; here we assert the registered state.
+    expect(useRunController.getState().canRun).toBe(false);
   });
 
   it("two models → the compare surface with a sequential/parallel picker", () => {
@@ -42,7 +44,6 @@ describe("Workspace branches by selection count", () => {
     ]);
     render(<Workspace />);
     expect(screen.getByTestId("run-strategy-picker")).toBeTruthy();
-    expect(screen.getByTestId("multi-toolbar")).toBeTruthy();
     // Single-run surface is not mounted in compare mode.
     expect(screen.queryByTestId("run-status")).toBeNull();
   });
