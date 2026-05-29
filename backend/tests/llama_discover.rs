@@ -41,6 +41,11 @@ fn discovers_gguf_files_tagged_llama_cpp_and_skips_others() {
     assert_eq!(m.quantization, "Q4_K_M", "quant recovered from filename");
     assert!(!m.family.is_empty(), "family derived from architecture");
     assert!(m.size_bytes > 64 * 1024);
+    assert_eq!(
+        m.path.as_deref(),
+        dir.path().join("phi3-mini-q4_k_m.gguf").to_str(),
+        "absolute GGUF path is exposed for the Start control",
+    );
 
     // Serializes with the snake_case backend tag the frontend expects.
     let json = serde_json::to_string(m).expect("serialize");

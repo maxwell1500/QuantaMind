@@ -10,6 +10,10 @@ pub struct InstalledModelInfo {
     pub parameter_size: String,
     pub quantization: String,
     pub backend: BackendKind,
+    /// Absolute GGUF path — set for llama.cpp models (used to launch the
+    /// sidecar on the right file); `None` for Ollama models.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub path: Option<String>,
 }
 
 #[derive(Serialize, Clone)]
