@@ -33,12 +33,21 @@ pub fn build_spawn_args(gguf_path: &str, port: u16) -> Vec<String> {
     ]
 }
 
-/// Spawn `llama-server` detached, returning the child so the caller owns its
-/// lifecycle. Killing by `Child` handle is portable across macOS / Windows /
-/// Linux, unlike Ollama's macOS-only `pkill`.
-pub fn spawn_server(bin: &Path, args: &[String]) -> Result<Child, String> {
-    Command::new(bin)
+/// The `llama-server` executable file name for this platform.
+pub fn bin_name() -> &'static str {
+    if cfg!(windows) { "llama-server.exe" } else { "llama-server" }
+}
+
+/// Spawn `llama-server` from `dir` (which holds the binary and its dylibs),
+/// returning the child so the caller owns its lifecycle. `current_dir` +
+/// `DYLD_FALLBACK_LIBRARY_PATH` ensure the `@rpath`/`@loader_path` dylibs
+/// resolve regardless of cwd. Killing by `Child` handle is portable across
+/// macOS / Windows / Linux, unlike Ollama's macOS-only `pkill`.
+pub fn spawn_server(dir: &Path, args: &[String]) -> Result<Child, String> {
+    Command::new(dir.join(bin_name()))
         .args(args)
+        .current_dir(dir)
+        .env("DYLD_FALLBACK_LIBRARY_PATH", dir)
         .stdin(Stdio::null())
         .stdout(Stdio::null())
         .stderr(Stdio::null())
