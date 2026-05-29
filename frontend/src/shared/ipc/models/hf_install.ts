@@ -1,5 +1,6 @@
 import { invoke } from "@tauri-apps/api/core";
 import { z } from "zod";
+import type { BackendKind } from "./storage";
 
 export const EVENT_HF_PROGRESS = "hf-progress";
 
@@ -30,8 +31,9 @@ export async function installHfGguf(
   repo: string,
   filename: string,
   name: string,
+  backend: BackendKind,
 ): Promise<void> {
-  await invoke("install_hf_gguf", { repo, filename, name });
+  await invoke("install_hf_gguf", { repo, filename, name, backend });
 }
 
 export async function cancelHfInstall(): Promise<void> {
