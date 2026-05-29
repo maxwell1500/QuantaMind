@@ -17,7 +17,7 @@ describe("navStore", () => {
   it("goBack returns to the previous view and pops history", () => {
     const { setTopView } = useNavStore.getState();
     setTopView("models");
-    setTopView("storage");
+    setTopView("downloads");
     useNavStore.getState().goBack();
     expect(useNavStore.getState().topView).toBe("models");
     useNavStore.getState().goBack();
@@ -36,7 +36,7 @@ describe("navStore", () => {
   });
 
   it("caps history at 20 entries", () => {
-    const views = ["models", "storage", "downloads", "help"] as const;
+    const views = ["models", "analysis", "downloads", "help"] as const;
     for (let i = 0; i < 30; i++) useNavStore.getState().setTopView(views[i % 4]);
     expect(useNavStore.getState().history.length).toBeLessThanOrEqual(20);
   });

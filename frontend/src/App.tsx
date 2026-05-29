@@ -3,7 +3,6 @@ import { Workspace } from "./features/workspace/components/Workspace";
 import { AnalysisTab } from "./features/compare/components/AnalysisTab";
 import { ModelsPage } from "./features/models/components/ModelsPage";
 import { DownloadsPage } from "./features/models/components/DownloadsPage";
-import { StoragePage } from "./features/models/components/StoragePage";
 import { startInstalledModelsBus } from "./features/models/state/installedModelsBus";
 import { useModelSettingsStore } from "./features/models/state/modelSettingsStore";
 import { FeedbackButton } from "./features/feedback/components/FeedbackButton";
@@ -26,7 +25,6 @@ const TABS: { id: TopView; label: string }[] = [
   { id: "analysis", label: "Analysis" },
   { id: "models", label: "Models" },
   { id: "downloads", label: "Downloads" },
-  { id: "storage", label: "Storage" },
   { id: "help", label: "Help" },
 ];
 
@@ -76,7 +74,6 @@ export default function App() {
       <div hidden={view !== "analysis"} data-testid="view-analysis"><AnalysisTab /></div>
       <div hidden={view !== "models"} data-testid="view-models"><ModelsPage /></div>
       <div hidden={view !== "downloads"} data-testid="view-downloads"><DownloadsPage /></div>
-      <div hidden={view !== "storage"} data-testid="view-storage"><StoragePage /></div>
       <div hidden={view !== "help"} data-testid="view-help"><HelpPage /></div>
       <FeedbackButton />
       <HistoryPanel />

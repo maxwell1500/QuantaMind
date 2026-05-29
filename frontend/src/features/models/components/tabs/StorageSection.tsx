@@ -6,7 +6,9 @@ import { ModelsFolderSection } from "../ModelsFolderSection";
 import { formatIpcError } from "../../../../shared/ipc/core/error";
 import { useInstalledModelsStore } from "../../state/installedModelsStore";
 
-export function StorageTab() {
+/// Storage controls shown at the top of the Downloads page: the Ollama models
+/// path, the shared GGUF weights folder, and a disk-usage summary.
+export function StorageSection() {
   const list = useInstalledModelsStore((s) => s.list);
   const [usage, setUsage] = useState<DiskUsage | null>(null);
   const [error, setError] = useState<string | null>(null);
@@ -16,7 +18,7 @@ export function StorageTab() {
   }, [list]);
 
   return (
-    <div data-testid="storage-tab" className="flex flex-col gap-3 h-full">
+    <div data-testid="storage-section" className="flex flex-col gap-3">
       <StoragePathSection />
       <ModelsFolderSection />
       {usage && (
@@ -26,9 +28,6 @@ export function StorageTab() {
         </div>
       )}
       {error && <div role="alert" className="text-red-600 text-xs">{error}</div>}
-      <p className="text-xs text-gray-500">
-        Manage installed models from the Downloads page.
-      </p>
     </div>
   );
 }

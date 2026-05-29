@@ -10,7 +10,6 @@ export type TopView =
   | "analysis"
   | "models"
   | "downloads"
-  | "storage"
   | "help";
 
 interface NavStore {
