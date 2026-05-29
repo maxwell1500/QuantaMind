@@ -60,23 +60,22 @@ Linux AppImage/deb need no signing.
 
 ## llama.cpp sidecar (Step 3.2)
 
-The `llama-server` sidecar is bundled via `tauri.conf.json`
-`bundle.externalBin: ["binaries/llama-server"]` — Tauri appends the target
-triple, so it bundles `binaries/llama-server-<triple>`.
+The `llama-server` sidecar ships as a **resource dir** via `tauri.conf.json`
+`bundle.resources: { "binaries/": "binaries/" }` — the binary **and** its
+`libggml*`/`libllama` dylibs travel together (an earlier `externalBin` approach
+copied only the lone binary, which then died with a `dyld` "Library not loaded"
+error). At runtime `llama_dir()` resolves the dir (env → `resource_dir()` →
+dev source tree) and the server is spawned there.
 
 Binaries are **not** committed (`.gitignore` excludes `backend/binaries/`).
-Run `scripts/fetch-llama-server.sh` before `tauri build` or local
-verification; it downloads the pinned llama.cpp release for the host triple,
-extracting `llama-server` and its sibling `libggml*`/`libllama` dylibs.
+Run `scripts/fetch-llama-server.sh` before `tauri build` or local verification;
+it downloads the pinned llama.cpp release for the host triple and installs
+`llama-server` + its dylibs into `backend/binaries/`.
 
 **This pass ships macOS arm64 (CPU-only) only.** Deferred to a release
 follow-up:
 - Windows x64 / Linux x64 assets in the fetch script (add `case` arms).
 - GPU variants (Metal/CUDA/Vulkan).
-- Bundling the dylibs alongside the binary in the packaged app
-  (`bundle.resources` or macOS frameworks) — `externalBin` ships only the
-  single executable, so the dylibs must be added before a bundled (not just
-  dev) run works on a clean machine.
 
 ## Verification
 

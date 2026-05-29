@@ -57,10 +57,24 @@ parameter size, quantization) and surfaced as an `InstalledModelInfo` tagged
 
 ## Sidecar binary
 
-`tauri.conf.json` `bundle.externalBin` registers `binaries/llama-server`; Tauri
-appends the target triple per platform. This pass ships **macOS arm64,
-CPU-only** (`llama-server-aarch64-apple-darwin`). Other platforms and GPU
-variants are a release follow-up tracked in `cross-platform-builds.md`.
+`llama-server` needs its sibling `libllama`/`libggml` dylibs colocated
+(`@rpath`/`@loader_path`), so the **whole `binaries/` dir** ships via
+`tauri.conf.json` `bundle.resources` (not `externalBin`, which copies only the
+lone binary and dies with a `dyld` error). `llama_dir()` resolves the dir at
+runtime: `QUANTAMIND_LLAMA_DIR` env → `resource_dir()/binaries` (prod) →
+source-tree `backend/binaries` (dev); `spawn_server` runs the binary there with
+`current_dir` + `DYLD_FALLBACK_LIBRARY_PATH` set. `scripts/fetch-llama-server.sh`
+populates it (macOS arm64, CPU-only this pass). Other platforms/GPU variants are
+a release follow-up — `cross-platform-builds.md`.
+
+## Backend-aware HF download
+
+Downloading a GGUF from Hugging Face works **without Ollama** on the llama.cpp
+backend: the file is always retained in `gguf_dir`, and `install_hf_gguf` only
+imports into Ollama when `imports_into_ollama(backend)` (i.e. the Ollama
+backend). On llama.cpp the import is skipped, so the download no longer fails on
+`/api/blobs/...` when Ollama is down — the GGUF just appears in
+`list_llama_models`. The frontend passes `workspaceStore.activeBackend`.
 
 ## UI — backend switcher (Step 3.3)
 
