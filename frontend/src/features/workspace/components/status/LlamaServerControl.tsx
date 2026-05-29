@@ -11,7 +11,7 @@ export function LlamaServerControl() {
   const model = useInstalledModelsStore((s) =>
     s.list.find((m) => m.name === selectedName && m.backend === "llama_cpp"),
   );
-  const { start, status: startStatus } = useStartLlamaServer();
+  const { start, status: startStatus, error: startError } = useStartLlamaServer();
   const { stop, status: stopStatus } = useStopLlamaServer();
 
   if (healthy) {
@@ -30,15 +30,22 @@ export function LlamaServerControl() {
   }
   const path = model?.path;
   return (
-    <button
-      type="button"
-      onClick={() => path && void start(path)}
-      disabled={!path || startStatus === "starting"}
-      title={path ? "Start llama-server on the selected model" : "Select a llama.cpp model first"}
-      data-testid="llama-start"
-      className="text-xs text-blue-600 hover:text-blue-800 px-2 py-1 disabled:opacity-40"
-    >
-      {startStatus === "starting" ? "Starting…" : "Start llama.cpp"}
-    </button>
+    <div className="space-y-0.5">
+      <button
+        type="button"
+        onClick={() => path && void start(path)}
+        disabled={!path || startStatus === "starting"}
+        title={path ? "Start llama-server on the selected model" : "Select a llama.cpp model first"}
+        data-testid="llama-start"
+        className="text-xs text-blue-600 hover:text-blue-800 px-2 py-1 disabled:opacity-40"
+      >
+        {startStatus === "starting" ? "Starting…" : "Start llama.cpp"}
+      </button>
+      {startError && (
+        <p data-testid="llama-start-error" className="px-2 text-[10px] text-red-600">
+          {startError}
+        </p>
+      )}
+    </div>
   );
 }
