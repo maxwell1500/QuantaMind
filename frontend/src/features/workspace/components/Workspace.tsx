@@ -6,6 +6,7 @@ import { SingleRun } from "./run/SingleRun";
 import { MultiRun } from "./run/MultiRun";
 import { HardwareSummary } from "../../compare/components/HardwareSummary";
 import { RunStrategyPicker } from "../../compare/components/RunStrategyPicker";
+import { PromptTemplatePicker } from "../../../shared/ui/PromptTemplatePicker";
 import { useWorkspacesStore } from "../../workspaces/state/workspaceStore";
 import { useCompareStore } from "../../compare/state/compareStore";
 
@@ -34,10 +35,13 @@ export function Workspace() {
             testId="system-prompt-editor"
             height="120px"
           />
+          <div className="flex items-center justify-between">
+            <span className="text-xs text-gray-600">User prompt</span>
+            <PromptTemplatePicker onInsert={(body) => patch({ user: body })} />
+          </div>
           <PromptEditor
             value={current.user}
             onChange={(v) => patch({ user: v })}
-            label="User prompt"
             testId="user-prompt-editor"
           />
           {multi ? (

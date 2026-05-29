@@ -1,6 +1,6 @@
 import { useEffect } from "react";
 import { Workspace } from "./features/workspace/components/Workspace";
-import { CompareTab } from "./features/compare/components/CompareTab";
+import { AnalysisTab } from "./features/compare/components/AnalysisTab";
 import { ModelsPage } from "./features/models/components/ModelsPage";
 import { DownloadsPage } from "./features/models/components/DownloadsPage";
 import { StoragePage } from "./features/models/components/StoragePage";
@@ -23,7 +23,7 @@ import { useNavStore, type TopView } from "./shared/state/navStore";
 
 const TABS: { id: TopView; label: string }[] = [
   { id: "workspace", label: "Workspace" },
-  { id: "bench", label: "Bench" },
+  { id: "analysis", label: "Analysis" },
   { id: "models", label: "Models" },
   { id: "downloads", label: "Downloads" },
   { id: "storage", label: "Storage" },
@@ -73,7 +73,7 @@ export default function App() {
           <div className="flex-1 min-w-0"><Workspace /></div>
         </div>
       </div>
-      <div hidden={view !== "bench"} data-testid="view-bench"><CompareTab /></div>
+      <div hidden={view !== "analysis"} data-testid="view-analysis"><AnalysisTab /></div>
       <div hidden={view !== "models"} data-testid="view-models"><ModelsPage /></div>
       <div hidden={view !== "downloads"} data-testid="view-downloads"><DownloadsPage /></div>
       <div hidden={view !== "storage"} data-testid="view-storage"><StoragePage /></div>
