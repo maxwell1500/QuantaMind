@@ -15,6 +15,9 @@ pub struct UserSettings {
     pub first_run_complete: bool,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub last_update_check_at: Option<String>,
+    /// Override for the shared GGUF weights folder (default `~/.quantamind/gguf`).
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub models_folder: Option<String>,
 }
 
 pub fn load(path: &Path) -> AppResult<UserSettings> {

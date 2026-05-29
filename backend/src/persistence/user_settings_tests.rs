@@ -23,6 +23,7 @@ fn round_trip_preserves_fields() {
         theme: Some("dark".into()),
         first_run_complete: true,
         last_update_check_at: Some("2026-05-27T10:00:00Z".into()),
+        models_folder: Some("/models/shared".into()),
     };
     save(&p, &s).unwrap();
     assert_eq!(load(&p).unwrap(), s);

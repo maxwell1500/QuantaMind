@@ -13,16 +13,24 @@ pub fn models_dir() -> PathBuf {
     PathBuf::from(home).join(".ollama/models")
 }
 
-/// Persistent directory for standalone GGUF files kept for the llama.cpp
-/// backend. HF downloads are retained here (not deleted after the Ollama
-/// import) so they can be discovered as llama.cpp models. Overridable via
-/// `QUANTAMIND_GGUF_DIR` (used by tests and power users).
-pub fn gguf_dir() -> PathBuf {
+/// Shared GGUF weights folder, the source of truth for both backends. HF and
+/// local-file downloads are retained here (llama.cpp loads them directly;
+/// Ollama imports them). Precedence: user setting → `QUANTAMIND_GGUF_DIR` env →
+/// `~/.quantamind/gguf`.
+pub fn gguf_dir_resolved(setting: Option<&str>) -> PathBuf {
+    if let Some(p) = setting.filter(|s| !s.trim().is_empty()) {
+        return PathBuf::from(p);
+    }
     if let Ok(p) = std::env::var("QUANTAMIND_GGUF_DIR") {
         return PathBuf::from(p);
     }
     let home = std::env::var("HOME").unwrap_or_else(|_| ".".to_string());
     PathBuf::from(home).join(".quantamind/gguf")
+}
+
+/// The default/env-resolved weights folder (no user-setting override).
+pub fn gguf_dir() -> PathBuf {
+    gguf_dir_resolved(None)
 }
 
 /// Path for a GGUF named `name`, sanitizing `:`/`/` so a model tag like
