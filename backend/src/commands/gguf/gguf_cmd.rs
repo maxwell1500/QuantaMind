@@ -1,5 +1,6 @@
 use crate::commands::emit::log_emit;
 use crate::commands::gguf::verify_install::verify_model_registered;
+use crate::commands::ollama::ollama_runtime::{is_reachable, PROBE_TIMEOUT_MS};
 use crate::commands::settings::user_settings::UserSettingsState;
 use crate::commands::storage::storage_disk::gguf_dest;
 use crate::errors::{AppError, AppResult};
@@ -42,6 +43,12 @@ where F: Fn(CreatePhase) + Send + Sync + 'static,
         .map(|s| s.eq_ignore_ascii_case("gguf")).unwrap_or(false);
     if !ext_ok {
         return Err(AppError::Validation(format!("not a .gguf file: {path}")));
+    }
+    // Fail fast (before hashing/uploading a multi-GB file) if Ollama is down.
+    if !is_reachable(PROBE_TIMEOUT_MS).await {
+        return Err(AppError::Inference(
+            "Ollama is not running — start it, then add the model again.".into(),
+        ));
     }
     let meta = inspect(&p)?;
     let canonical = p.canonicalize().map_err(|e| AppError::Io(
