@@ -39,21 +39,28 @@ verbatim. Readiness is probed at `/health`.
 - Lifecycle is a command-layer concern (`commands/llama/`), never `inference/`
   (which stays Tauri-free per `layering.md`).
 
+## Shared weights folder
+
+One **canonical GGUF folder** is the source of truth for both engines, resolved
+by `storage_disk::gguf_dir_resolved`: user setting (`UserSettings.models_folder`,
+set from the Storage page) → `QUANTAMIND_GGUF_DIR` env → `~/.quantamind/gguf`.
+Commands resolve it via `UserSettingsState::weights_dir(app)`;
+`resolve_models_folder` exposes the path to the UI.
+
+- **HF downloads** and **local-file installs** are saved/copied here (llama.cpp
+  loads them directly) **and** imported into Ollama when reachable (Ollama keeps
+  its own internal copy).
+- **Ollama pulls stay Ollama-only** — not exported into the folder, so they
+  aren't available to llama.cpp.
+
 ## Model discovery
 
 llama-server has no `/api/tags` registry, so models come from disk
-(`commands/llama/llama_discover.rs`, pure; `commands/llama/llama_models.rs`,
-the thin command). It lives in `commands/` (not `inference/`) because it maps
-into `InstalledModelInfo`, a command-layer type `inference/` may not import
-(`layering.md`). Two sources:
-
-1. A GGUF models folder (user setting; default under `storage_disk::models_dir`).
-2. HF-installed GGUFs — the HF flow now **retains** the downloaded `.gguf` on
-   disk (Step 3.2 / B12) instead of deleting it after the Ollama import.
-
+(`commands/llama/llama_discover.rs`, pure; `commands/llama/llama_models.rs`, the
+thin command — resolves the folder via `weights_dir`). It lives in `commands/`
+(not `inference/`) because it maps into `InstalledModelInfo` (`layering.md`).
 Each `*.gguf` is inspected via `inference/gguf/gguf.rs::inspect_gguf` (family,
-parameter size, quantization) and surfaced as an `InstalledModelInfo` tagged
-`backend: llama_cpp`. Non-`.gguf` files are skipped.
+params, quant) → `InstalledModelInfo` tagged `backend: llama_cpp`; others skipped.
 
 ## Sidecar binary
 
@@ -67,14 +74,12 @@ source-tree `backend/binaries` (dev); `spawn_server` runs the binary there with
 populates it (macOS arm64, CPU-only this pass). Other platforms/GPU variants are
 a release follow-up — `cross-platform-builds.md`.
 
-## Backend-aware HF download
+## Ollama-down handling
 
-An HF download is always retained in `gguf_dir` (so it appears in
-`list_llama_models`) **and** imported into Ollama whenever Ollama is
-reachable — so the model shows up in Ollama too, regardless of which backend is
-active. If Ollama is down, the import is skipped; only the **Ollama** backend
-treats that as an error (`ollama_import_required`), so a llama.cpp download still
-succeeds with Ollama off (no `/api/blobs/...` failure). The frontend passes
+When Ollama is unreachable the import is skipped (the GGUF is already in the
+shared folder for llama.cpp). Only the **Ollama** backend treats that as an
+error (`ollama_import_required`) — a llama.cpp download still succeeds with
+Ollama off (no `/api/blobs/...` failure). The HF frontend passes
 `workspaceStore.activeBackend`.
 
 ## UI — backend switcher (Step 3.3)

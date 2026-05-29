@@ -54,7 +54,10 @@ HTTP to a local Ollama server.
   **Tauri-free and must not import `crate::commands`** — when it must report
   progress it takes a sink trait (`layering.md`), not an `AppHandle`.
 - `metrics/` — measurements: TTFT, tokens/sec, VRAM.
-- `persistence/` — YAML/JSON read+write of prompts and history.
+- `persistence/` — YAML/JSON read+write of prompts and history. The shared GGUF
+  weights folder resolves via `UserSettings.models_folder` →
+  `storage_disk::gguf_dir_resolved` (`UserSettingsState::weights_dir`); HF + local
+  installs land there for llama.cpp and import into Ollama when reachable.
 - `validation/` — schemas. Shared by commands and persistence.
 - `errors.rs` — single `AppError` enum. No `unwrap()` outside tests.
 
