@@ -5,6 +5,7 @@ import { RunStrategyPicker } from "./RunStrategyPicker";
 import { CompareToolbar } from "./CompareToolbar";
 import { CompareColumn } from "./CompareColumn";
 import { CompareDiff } from "./CompareDiff";
+import { MetricsChart } from "./MetricsChart";
 import { ExportButtons } from "./ExportButtons";
 
 export function CompareTab() {
@@ -51,6 +52,7 @@ export function CompareTab() {
           <div className="flex gap-2 overflow-x-auto" data-testid="compare-columns">
             {rows.map((r) => <CompareColumn key={r.model} row={r} />)}
           </div>
+          <MetricsChart />
           <CompareDiff />
           <ExportButtons />
         </>
