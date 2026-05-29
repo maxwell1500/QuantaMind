@@ -42,8 +42,10 @@ verbatim. Readiness is probed at `/health`.
 ## Model discovery
 
 llama-server has no `/api/tags` registry, so models come from disk
-(`inference/llama/llama_discover.rs`, pure; `commands/llama/llama_models.rs`,
-the thin command). Two sources:
+(`commands/llama/llama_discover.rs`, pure; `commands/llama/llama_models.rs`,
+the thin command). It lives in `commands/` (not `inference/`) because it maps
+into `InstalledModelInfo`, a command-layer type `inference/` may not import
+(`layering.md`). Two sources:
 
 1. A GGUF models folder (user setting; default under `storage_disk::models_dir`).
 2. HF-installed GGUFs — the HF flow now **retains** the downloaded `.gguf` on

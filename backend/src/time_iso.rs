@@ -6,7 +6,7 @@ pub fn now_utc() -> String {
     format_secs(secs as i64)
 }
 
-fn format_secs(secs: i64) -> String {
+pub fn format_secs(secs: i64) -> String {
     let days = secs.div_euclid(86_400);
     let sod = secs.rem_euclid(86_400);
     let (h, m, s) = (sod / 3600, (sod % 3600) / 60, sod % 60);

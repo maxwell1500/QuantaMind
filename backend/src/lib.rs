@@ -45,6 +45,7 @@ pub fn run() {
             commands::ollama::ollama_start::stop_ollama,
             commands::llama::llama_start::start_llama_server,
             commands::llama::llama_start::stop_llama_server,
+            commands::llama::llama_models::list_llama_models,
             commands::settings::settings::get_storage_path,
             commands::settings::settings::validate_storage_path,
             commands::storage::storage::get_installed_models_with_stats,
