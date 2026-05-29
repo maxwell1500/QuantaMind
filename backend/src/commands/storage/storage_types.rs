@@ -36,7 +36,7 @@ pub(crate) struct ModelEntry {
     #[serde(default)] pub details: Option<ModelDetails>,
 }
 
-#[derive(Deserialize)]
+#[derive(Deserialize, Default)]
 pub(crate) struct ModelDetails {
     #[serde(default)] pub family: String,
     #[serde(default)] pub parameter_size: String,

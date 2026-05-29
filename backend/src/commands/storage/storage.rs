@@ -1,9 +1,7 @@
 use crate::commands::emit::log_emit;
 use crate::commands::gguf::gguf_cmd::EVENT_MODELS_CHANGED;
 use crate::commands::storage::storage_disk::{compute_disk_usage, models_dir};
-use crate::commands::storage::storage_types::{
-    DiskUsage, InstalledModelInfo, ModelDetails, TagsResponse,
-};
+use crate::commands::storage::storage_types::{DiskUsage, InstalledModelInfo, TagsResponse};
 use crate::errors::{AppError, AppResult};
 use crate::inference::backend::backend_kind::BackendKind;
 use reqwest::Client;
@@ -37,11 +35,7 @@ pub async fn fetch_installed_with_stats(endpoint: &str) -> AppResult<Vec<Install
         .models
         .into_iter()
         .map(|m| {
-            let d = m.details.unwrap_or(ModelDetails {
-                family: String::new(),
-                parameter_size: String::new(),
-                quantization_level: String::new(),
-            });
+            let d = m.details.unwrap_or_default();
             InstalledModelInfo {
                 name: m.name,
                 size_bytes: m.size,

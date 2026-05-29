@@ -74,8 +74,7 @@ export function useStreamingRun() {
   const start = useCallback(
     async (model: string, prompt: string, system?: string, params?: InferenceParams, promptPath?: string | null, name?: string) => {
       setOutput(""); setMetrics(null); setCancelledInfo(null); setError(null);
-      outputRef.current = "";
-      ctxRef.current = { name, model, prompt, system, params, promptPath };
+      outputRef.current = ""; ctxRef.current = { name, model, prompt, system, params, promptPath };
       setStatus("running");
       try {
         const args: Record<string, unknown> = { model, prompt };
