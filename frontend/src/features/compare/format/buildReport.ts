@@ -1,6 +1,7 @@
 import type { HardwareSnapshot } from "../../../shared/ipc/compare/hardware";
 import type { StrategyId } from "../state/strategy";
 import type { CompareRow, RowStatus, CompareModel } from "../state/compareStore";
+import { REPORT_FOOTER } from "./branding";
 
 export interface CompareReportModel {
   name: string;
@@ -16,6 +17,7 @@ export interface CompareReportModel {
 export interface CompareReport {
   schema_version: number;
   generated_at: string;
+  generated_by: string;
   prompt: string;
   strategy: StrategyId;
   hardware_snapshot: HardwareSnapshot | null;
@@ -36,6 +38,7 @@ export function buildReport(input: BuildReportInput): CompareReport {
   return {
     schema_version: 1,
     generated_at: now().toISOString(),
+    generated_by: REPORT_FOOTER,
     prompt: input.prompt,
     strategy: input.strategy,
     hardware_snapshot: input.hardwareSnapshot,

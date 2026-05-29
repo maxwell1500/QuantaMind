@@ -1,5 +1,6 @@
 import { formatBytes } from "../../../shared/format/bytes";
 import type { CompareReport, CompareReportModel } from "./buildReport";
+import { REPORT_FOOTER } from "./branding";
 
 const metricsLine = (m: NonNullable<CompareReportModel["metrics"]>): string => {
   const parts: string[] = [];
@@ -46,5 +47,6 @@ export function toMarkdown(r: CompareReport): string {
   lines.push("", "## Prompt");
   for (const ln of r.prompt.split("\n")) lines.push(`> ${ln}`);
   for (const m of r.models) lines.push(...modelSection(m));
+  lines.push("", "---", "", `_${REPORT_FOOTER}_`);
   return lines.join("\n");
 }
