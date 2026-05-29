@@ -1,6 +1,7 @@
 use crate::commands::emit::log_emit;
 use crate::commands::gguf::gguf_cmd::{install_local_gguf_inner, EVENT_MODELS_CHANGED};
 use crate::commands::hf::hf_phase::{HfPhase, EVENT_HF_PROGRESS};
+use crate::commands::ollama::ollama_runtime::{is_reachable, PROBE_TIMEOUT_MS};
 use crate::commands::storage::storage_disk::{gguf_dest, gguf_dir};
 use crate::errors::{AppError, AppResult};
 use crate::inference::backend::backend_kind::BackendKind;
@@ -21,8 +22,8 @@ pub struct HfInstallState {
     current: Mutex<Option<CancellationToken>>,
 }
 
-/// Only the Ollama backend imports the GGUF; llama.cpp reads it off disk.
-pub fn imports_into_ollama(backend: BackendKind) -> bool {
+/// A failed Ollama import is fatal only on the Ollama backend.
+pub fn ollama_import_required(backend: BackendKind) -> bool {
     matches!(backend, BackendKind::Ollama)
 }
 
@@ -58,18 +59,17 @@ pub async fn install_hf_gguf_inner(
     }
     dl?;
 
-    // Ollama needs the GGUF imported; llama.cpp just reads the retained file.
-    let result = if imports_into_ollama(backend) {
-        let install_app = app.clone();
-        let on_install = move |phase| {
-            log_emit(&install_app, EVENT_HF_PROGRESS, HfPhase::from_create(phase));
-        };
+    // Import into Ollama when reachable (shows there too); GGUF kept for llama.cpp.
+    let install_app = app.clone();
+    let on_install = move |p| log_emit(&install_app, EVENT_HF_PROGRESS, HfPhase::from_create(p));
+    let result = if is_reachable(PROBE_TIMEOUT_MS).await {
         install_local_gguf_inner(DEFAULT_OLLAMA, &dest.to_string_lossy(), name, on_install).await
+    } else if ollama_import_required(backend) {
+        Err(AppError::Inference("Ollama is not running — start it to add this model to Ollama.".into()))
     } else {
         Ok(())
     };
-    // Keep `dest` (the GGUF) for llama.cpp; only the resume marker is transient.
-    let _ = fs::remove_file(partial_path(&dest));
+    let _ = fs::remove_file(partial_path(&dest)); // keep `dest`; only the resume marker is transient
     if result.is_ok() {
         log_emit(&app, EVENT_MODELS_CHANGED, ());
     }

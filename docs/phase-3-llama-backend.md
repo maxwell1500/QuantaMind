@@ -69,12 +69,13 @@ a release follow-up — `cross-platform-builds.md`.
 
 ## Backend-aware HF download
 
-Downloading a GGUF from Hugging Face works **without Ollama** on the llama.cpp
-backend: the file is always retained in `gguf_dir`, and `install_hf_gguf` only
-imports into Ollama when `imports_into_ollama(backend)` (i.e. the Ollama
-backend). On llama.cpp the import is skipped, so the download no longer fails on
-`/api/blobs/...` when Ollama is down — the GGUF just appears in
-`list_llama_models`. The frontend passes `workspaceStore.activeBackend`.
+An HF download is always retained in `gguf_dir` (so it appears in
+`list_llama_models`) **and** imported into Ollama whenever Ollama is
+reachable — so the model shows up in Ollama too, regardless of which backend is
+active. If Ollama is down, the import is skipped; only the **Ollama** backend
+treats that as an error (`ollama_import_required`), so a llama.cpp download still
+succeeds with Ollama off (no `/api/blobs/...` failure). The frontend passes
+`workspaceStore.activeBackend`.
 
 ## UI — backend switcher (Step 3.3)
 

@@ -1,7 +1,7 @@
 use super::*;
 
 #[test]
-fn only_ollama_imports_the_downloaded_gguf() {
-    assert!(imports_into_ollama(BackendKind::Ollama));
-    assert!(!imports_into_ollama(BackendKind::LlamaCpp));
+fn ollama_import_is_required_only_on_the_ollama_backend() {
+    assert!(ollama_import_required(BackendKind::Ollama));
+    assert!(!ollama_import_required(BackendKind::LlamaCpp));
 }
