@@ -9,12 +9,17 @@ export function MultiRun() {
   const { isRunning, startError, start, cancelAll } = useCompareRun();
   const setPrompt = useCompareStore((s) => s.setPrompt);
   const setSystemPrompt = useCompareStore((s) => s.setSystemPrompt);
+  const setBaseParams = useCompareStore((s) => s.setBaseParams);
   const count = useCompareStore((s) => s.selectedModels.length);
   const current = useWorkspacesStore((s) => s.current);
   const canRun = !isRunning && !!current && current.user.trim().length > 0;
 
   const run = () => {
-    if (current) { setPrompt(current.user); setSystemPrompt(current.system); }
+    if (current) {
+      setPrompt(current.user);
+      setSystemPrompt(current.system);
+      setBaseParams(current.params);
+    }
     useNavStore.getState().setTopView("analysis");
     void start();
   };

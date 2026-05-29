@@ -1,6 +1,7 @@
 #![deny(clippy::unwrap_used)]
 use crate::errors::AppError;
 use crate::inference::backend::backend_kind::BackendKind;
+use crate::inference::ollama::ollama::GenerateOptions;
 use crate::inference::compare::compare_run_row::run_one_row;
 use crate::inference::compare::compare_sink::CompareSink;
 use crate::inference::compare::compare_state::CompareRunState;
@@ -13,16 +14,16 @@ use uuid::Uuid;
 pub struct RowSpec {
     pub model_id: Uuid,
     pub model: String,
-    pub temperature: Option<f32>,
+    pub options: Option<GenerateOptions>,
     pub backend: BackendKind,
 }
 
-pub fn rows_for(models: &[String], temp_for: impl Fn(&str) -> Option<f32>) -> Vec<RowSpec> {
+pub fn rows_for(models: &[String], options_for: impl Fn(&str) -> Option<GenerateOptions>) -> Vec<RowSpec> {
     models.iter()
         .map(|m| RowSpec {
             model_id: Uuid::new_v4(),
             model: m.clone(),
-            temperature: temp_for(m),
+            options: options_for(m),
             backend: BackendKind::Ollama,
         })
         .collect()

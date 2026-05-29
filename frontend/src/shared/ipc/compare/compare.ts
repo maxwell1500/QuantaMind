@@ -1,4 +1,5 @@
 import { invoke } from "@tauri-apps/api/core";
+import type { InferenceParams } from "../workspace/prompts";
 
 export type CompareStrategy = "sequential" | "parallel" | "sequential_skippable";
 
@@ -7,6 +8,8 @@ export interface RunCompareArgs {
   prompt: string;
   strategy: CompareStrategy;
   system?: string;
+  params?: InferenceParams;
+  perModelParams?: Record<string, InferenceParams>;
 }
 
 export async function runCompare(args: RunCompareArgs): Promise<void> {

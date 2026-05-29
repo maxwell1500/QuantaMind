@@ -1,11 +1,15 @@
 #![deny(clippy::unwrap_used)]
+use crate::commands::compare::compare_options::options_for;
 use crate::commands::compare::compare_payloads::Strategy;
 use crate::commands::compare::compare_sink::TauriCompareSink;
+use crate::commands::prompt::prompt_options::validate_params;
 use crate::commands::settings::model_settings::ModelSettingsState;
 use crate::errors::{AppError, AppResult};
 use crate::inference::compare::compare_runner::{rows_for, run_parallel, run_sequential};
 use crate::inference::compare::compare_sink::CompareSink;
+use crate::persistence::prompts::schema::InferenceParams;
 use crate::sync::MutexExt;
+use std::collections::HashMap;
 use std::sync::Arc;
 use tauri::AppHandle;
 use uuid::Uuid;
@@ -33,10 +37,21 @@ pub async fn run_compare(
     prompt: String,
     strategy: Strategy,
     system: Option<String>,
+    params: Option<InferenceParams>,
+    per_model_params: Option<HashMap<String, InferenceParams>>,
 ) -> Result<(), AppError> {
     validate(&models, &prompt)?;
     settings.ensure_loaded(&app)?;
-    let rows = rows_for(&models, |m| Some(settings.temperature_for(m)));
+    // Validate every provided param block up-front so the closure stays infallible.
+    if let Some(p) = &params { validate_params(p)?; }
+    if let Some(map) = &per_model_params {
+        for p in map.values() { validate_params(p)?; }
+    }
+    // Per-model params override the shared params; temperature falls back to the
+    // per-model setting when nobody set one.
+    let rows = rows_for(&models, |m| {
+        Some(options_for(m, params.as_ref(), per_model_params.as_ref(), settings.temperature_for(m)))
+    });
     let sink: Arc<dyn CompareSink> = Arc::new(TauriCompareSink::new(app));
     let system_trim = system.as_deref().map(str::trim).filter(|s| !s.is_empty());
     let keep_alive = match strategy {

@@ -8,7 +8,6 @@ use crate::inference::compare::compare_runner_finalize::finalize_row;
 use crate::inference::compare::compare_sink::CompareSink;
 use crate::inference::compare::compare_state::CompareRunState;
 use crate::inference::generate::generate_spec::GenerateSpec;
-use crate::inference::ollama::ollama::GenerateOptions;
 use crate::inference::ollama::ollama_backend::OllamaBackend;
 use crate::inference::token_handler::make_token_handler;
 use crate::metrics::timing::RunTiming;
@@ -49,7 +48,7 @@ pub(crate) async fn run_one_row(
         },
         row_token.clone(), timing.clone(),
     );
-    let options = row.temperature.map(|t| GenerateOptions { temperature: Some(t), ..Default::default() });
+    let options = row.options.clone();
     let spec = GenerateSpec {
         model: row.model.clone(),
         prompt: prompt.to_string(),

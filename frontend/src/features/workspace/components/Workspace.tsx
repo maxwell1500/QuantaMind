@@ -4,6 +4,7 @@ import { StatusBar } from "./status/StatusBar";
 import { ModelSelectBar } from "./model-select/ModelSelectBar";
 import { SingleRun } from "./run/SingleRun";
 import { MultiRun } from "./run/MultiRun";
+import { ModelParamControls } from "./prompt/ModelParamControls";
 import { HardwareSummary } from "../../compare/components/HardwareSummary";
 import { RunStrategyPicker } from "../../compare/components/RunStrategyPicker";
 import { PromptTemplatePicker } from "../../../shared/ui/PromptTemplatePicker";
@@ -49,6 +50,7 @@ export function Workspace() {
             <>
               <HardwareSummary />
               <RunStrategyPicker />
+              <ModelParamControls />
               <MultiRun />
             </>
           ) : (

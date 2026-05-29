@@ -1,5 +1,6 @@
 import { create } from "zustand";
 import type { HardwareSnapshot } from "../../../shared/ipc/compare/hardware";
+import type { InferenceParams } from "../../../shared/ipc/workspace/prompts";
 import type { StrategyId } from "./strategy";
 import { newRow, updateRow, type CompareModel, type CompareRow } from "./compareRow";
 
@@ -11,9 +12,15 @@ interface CompareStore {
   systemPrompt: string;
   hardwareSnapshot: HardwareSnapshot | null;
   strategy: StrategyId;
+  useSharedParams: boolean;
+  baseParams: InferenceParams;
+  perModelParams: Record<string, InferenceParams>;
   rows: CompareRow[];
   isRunning: boolean;
   setSelectedModels: (m: CompareModel[]) => void;
+  setUseSharedParams: (v: boolean) => void;
+  setBaseParams: (p: InferenceParams) => void;
+  setModelParams: (model: string, p: InferenceParams) => void;
   setPrompt: (p: string) => void;
   setSystemPrompt: (p: string) => void;
   setHardwareSnapshot: (s: HardwareSnapshot | null) => void;
@@ -35,9 +42,16 @@ export const useCompareStore = create<CompareStore>((set) => ({
   systemPrompt: "",
   hardwareSnapshot: null,
   strategy: "sequential",
+  useSharedParams: true,
+  baseParams: {},
+  perModelParams: {},
   rows: [],
   isRunning: false,
   setSelectedModels: (selectedModels) => set({ selectedModels }),
+  setUseSharedParams: (useSharedParams) => set({ useSharedParams }),
+  setBaseParams: (baseParams) => set({ baseParams }),
+  setModelParams: (model, p) =>
+    set((s) => ({ perModelParams: { ...s.perModelParams, [model]: p } })),
   setPrompt: (prompt) => set({ prompt }),
   setSystemPrompt: (systemPrompt) => set({ systemPrompt }),
   setHardwareSnapshot: (hardwareSnapshot) => set({ hardwareSnapshot }),
@@ -51,40 +65,21 @@ export const useCompareStore = create<CompareStore>((set) => ({
         : r),
     })),
   appendToken: (model, modelId, text) =>
-    set((s) => ({
-      rows: s.rows.map((r) => r.model === model
-        ? { ...r, status: "running", modelId: r.modelId ?? modelId, output: r.output + text,
-            startedAt: r.startedAt ?? new Date().toISOString() }
-        : r),
-    })),
+    set((s) => ({ rows: s.rows.map((r) => r.model === model
+      ? { ...r, status: "running", modelId: r.modelId ?? modelId, output: r.output + text, startedAt: r.startedAt ?? new Date().toISOString() }
+      : r) })),
   setRowDone: (p) =>
-    set((s) => ({
-      rows: updateRow(s.rows, p.model, {
-        status: "done",
-        metrics: { ttft_ms: p.ttft_ms, tokens_per_sec: p.tokens_per_sec, token_count: p.token_count },
-        endedAt: new Date().toISOString(),
-      }),
-    })),
+    set((s) => ({ rows: updateRow(s.rows, p.model, { status: "done", endedAt: new Date().toISOString(),
+      metrics: { ttft_ms: p.ttft_ms, tokens_per_sec: p.tokens_per_sec, token_count: p.token_count } }) })),
   setRowCancelled: (p) =>
     set((s) => ({ rows: updateRow(s.rows, p.model, { status: "cancelled", endedAt: new Date().toISOString() }) })),
   setRowError: (p) =>
-    set((s) => ({
-      rows: updateRow(s.rows, p.model, {
-        status: "error",
-        error: { kind: p.kind, message: p.message },
-        endedAt: new Date().toISOString(),
-      }),
-    })),
-  // Bridge a single (run_prompt) run into the rows the Analysis tab reads, so a
-  // 1-model run shows there like a one-column compare.
+    set((s) => ({ rows: updateRow(s.rows, p.model, { status: "error", endedAt: new Date().toISOString(), error: { kind: p.kind, message: p.message } }) })),
+  // Bridge a single (run_prompt) run into the rows the Analysis tab reads.
   setSingleRun: (row) => set({ rows: [row], isRunning: row.status === "running" }),
   finishRun: () =>
-    set((s) => ({
-      isRunning: false,
-      rows: s.rows.map((r) => r.status === "pending" ? { ...r, status: "cancelled", endedAt: new Date().toISOString() } : r),
-    })),
-  reset: () => set({
-    selectedModels: [], prompt: "", systemPrompt: "", hardwareSnapshot: null,
-    strategy: "sequential", rows: [], isRunning: false,
-  }),
+    set((s) => ({ isRunning: false,
+      rows: s.rows.map((r) => r.status === "pending" ? { ...r, status: "cancelled", endedAt: new Date().toISOString() } : r) })),
+  reset: () => set({ selectedModels: [], prompt: "", systemPrompt: "", hardwareSnapshot: null,
+    strategy: "sequential", useSharedParams: true, baseParams: {}, perModelParams: {}, rows: [], isRunning: false }),
 }));
