@@ -4,6 +4,9 @@ vi.mock("@tauri-apps/api/event", () => ({ listen: vi.fn() }));
 vi.mock("../../../../shared/ipc/models/storage", () => ({
   getInstalledModelsWithStats: vi.fn(),
 }));
+vi.mock("../../../../shared/ipc/models/llama_start", () => ({
+  listLlamaModels: vi.fn(() => Promise.resolve([])),
+}));
 
 import { listen, type EventCallback } from "@tauri-apps/api/event";
 import { getInstalledModelsWithStats } from "../../../../shared/ipc/models/storage";
@@ -35,6 +38,8 @@ beforeEach(() => {
 describe("installedModelsBus", () => {
   it("calls refresh() once on startup", async () => {
     await startInstalledModelsBus();
+    // refresh() fans out to both backends via allSettled — let it settle.
+    await new Promise((r) => setTimeout(r, 0));
     expect(getInstalledModelsWithStats).toHaveBeenCalledTimes(1);
     expect(useInstalledModelsStore.getState().status).toBe("ready");
   });

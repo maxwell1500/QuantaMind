@@ -59,12 +59,20 @@ describe("ModelMultiSelect", () => {
   });
 
   it("Retry refetches", async () => {
-    let calls = 0;
-    vi.mocked(invoke).mockImplementation(() => {
-      calls += 1;
-      return calls === 1
-        ? Promise.reject({ kind: "inference", message: "x" })
-        : Promise.resolve(MODELS);
+    // Both backends fail on the first round (error shows) and succeed on retry.
+    // One get_installed call per refresh keys the round.
+    let ollamaCalls = 0;
+    vi.mocked(invoke).mockImplementation((cmd: string) => {
+      if (cmd === "get_installed_models_with_stats") {
+        ollamaCalls += 1;
+        return ollamaCalls === 1
+          ? Promise.reject({ kind: "inference", message: "x" })
+          : Promise.resolve(MODELS);
+      }
+      // list_llama_models: mirror the round so round 1 fails both backends.
+      return ollamaCalls >= 2
+        ? Promise.resolve([])
+        : Promise.reject({ kind: "inference", message: "x" });
     });
     render(<ModelMultiSelect />);
     await screen.findByTestId("model-select-error");
