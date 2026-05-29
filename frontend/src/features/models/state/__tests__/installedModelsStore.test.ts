@@ -3,22 +3,27 @@ import { describe, it, expect, vi, beforeEach } from "vitest";
 vi.mock("../../../../shared/ipc/models/storage", () => ({
   getInstalledModelsWithStats: vi.fn(),
 }));
+vi.mock("../../../../shared/ipc/models/llama_start", () => ({
+  listLlamaModels: vi.fn(),
+}));
 
 import { getInstalledModelsWithStats } from "../../../../shared/ipc/models/storage";
+import { listLlamaModels } from "../../../../shared/ipc/models/llama_start";
 import { useInstalledModelsStore } from "../installedModelsStore";
 
-const fake = (name: string) => ({
+const fake = (name: string, backend: "ollama" | "llama_cpp" = "ollama") => ({
   name,
   size_bytes: 0,
   modified_at: "2025-01-01T00:00:00Z",
   family: "x",
   parameter_size: "1B",
   quantization: "Q4",
-  backend: "ollama" as const,
+  backend,
 });
 
 beforeEach(() => {
   vi.mocked(getInstalledModelsWithStats).mockReset();
+  vi.mocked(listLlamaModels).mockReset().mockResolvedValue([]);
   useInstalledModelsStore.setState({
     list: [],
     status: "idle",
@@ -38,8 +43,27 @@ describe("installedModelsStore", () => {
     expect(s.lastRefreshedAt).not.toBeNull();
   });
 
-  it("refresh() records a friendly error on rejection", async () => {
+  it("refresh() merges Ollama and llama.cpp models", async () => {
+    vi.mocked(getInstalledModelsWithStats).mockResolvedValue([fake("llama3", "ollama")]);
+    vi.mocked(listLlamaModels).mockResolvedValue([fake("phi3", "llama_cpp")]);
+    await useInstalledModelsStore.getState().refresh();
+    const s = useInstalledModelsStore.getState();
+    expect(s.status).toBe("ready");
+    expect(s.list.map((m) => m.name)).toEqual(["llama3", "phi3"]);
+  });
+
+  it("refresh() still lists llama.cpp models when Ollama is down", async () => {
+    vi.mocked(getInstalledModelsWithStats).mockRejectedValue(new Error("Ollama down"));
+    vi.mocked(listLlamaModels).mockResolvedValue([fake("phi3", "llama_cpp")]);
+    await useInstalledModelsStore.getState().refresh();
+    const s = useInstalledModelsStore.getState();
+    expect(s.status).toBe("ready");
+    expect(s.list.map((m) => m.name)).toEqual(["phi3"]);
+  });
+
+  it("refresh() records an error only when both backends fail", async () => {
     vi.mocked(getInstalledModelsWithStats).mockRejectedValue(new Error("boom"));
+    vi.mocked(listLlamaModels).mockRejectedValue(new Error("no llama"));
     await useInstalledModelsStore.getState().refresh();
     const s = useInstalledModelsStore.getState();
     expect(s.status).toBe("error");
