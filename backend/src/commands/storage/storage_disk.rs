@@ -2,12 +2,21 @@ use crate::commands::storage::storage_types::DiskUsage;
 use std::path::{Path, PathBuf};
 use sysinfo::Disks;
 
+/// Make a path absolute so the UI never shows a relative/"hidden" path like
+/// `./`. Relative paths are joined onto the current working directory.
+fn absolutize(p: PathBuf) -> PathBuf {
+    if p.is_absolute() {
+        return p;
+    }
+    std::env::current_dir().map(|cwd| cwd.join(&p)).unwrap_or(p)
+}
+
 /// Resolve the on-disk Ollama models directory. Respects `OLLAMA_MODELS`
 /// if set; otherwise defaults to `$HOME/.ollama/models` (works on macOS
 /// and Linux; Windows users will set the env var per M.13's settings).
 pub fn models_dir() -> PathBuf {
     if let Ok(p) = std::env::var("OLLAMA_MODELS") {
-        return PathBuf::from(p);
+        return absolutize(PathBuf::from(p));
     }
     let home = std::env::var("HOME").unwrap_or_else(|_| "/".to_string());
     PathBuf::from(home).join(".ollama/models")
@@ -19,12 +28,12 @@ pub fn models_dir() -> PathBuf {
 /// `~/.quantamind/gguf`.
 pub fn gguf_dir_resolved(setting: Option<&str>) -> PathBuf {
     if let Some(p) = setting.filter(|s| !s.trim().is_empty()) {
-        return PathBuf::from(p);
+        return absolutize(PathBuf::from(p));
     }
     if let Ok(p) = std::env::var("QUANTAMIND_GGUF_DIR") {
-        return PathBuf::from(p);
+        return absolutize(PathBuf::from(p));
     }
-    let home = std::env::var("HOME").unwrap_or_else(|_| ".".to_string());
+    let home = std::env::var("HOME").unwrap_or_else(|_| "/".to_string());
     PathBuf::from(home).join(".quantamind/gguf")
 }
 

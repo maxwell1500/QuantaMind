@@ -29,3 +29,11 @@ fn gguf_dir_precedence_setting_then_env_then_default() {
 fn resolved_setting_wins_without_touching_env() {
     assert_eq!(gguf_dir_resolved(Some("/models/shared")), PathBuf::from("/models/shared"));
 }
+
+#[test]
+fn relative_setting_resolves_to_an_absolute_path() {
+    // A relative setting (e.g. "./gguf") must never surface as a hidden path.
+    let resolved = gguf_dir_resolved(Some("./gguf"));
+    assert!(resolved.is_absolute(), "expected absolute, got {resolved:?}");
+    assert!(resolved.ends_with("gguf"));
+}
