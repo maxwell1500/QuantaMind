@@ -42,6 +42,14 @@ describe("ModelDropdown (Ollama multi-select)", () => {
     expect(names()).toEqual(["llama3.2:1b", "mistral:7b"]);
   });
 
+  it("marks selected options with a checkbox tick", () => {
+    useCompareStore.getState().setSelectedModels([{ name: "llama3.2:1b", size_bytes: 1 }]);
+    render(<ModelDropdown />);
+    fireEvent.click(screen.getByTestId("model-dropdown"));
+    expect(screen.getByTestId("model-option-llama3.2:1b")).toHaveTextContent("✓");
+    expect(screen.getByTestId("model-option-mistral:7b")).not.toHaveTextContent("✓");
+  });
+
   it("clicking a selected model again removes it", () => {
     useCompareStore.getState().setSelectedModels([{ name: "llama3.2:1b", size_bytes: 1 }]);
     render(<ModelDropdown />);

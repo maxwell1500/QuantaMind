@@ -80,6 +80,12 @@ export function ModelDropdown() {
               aria-pressed={has(m.name)}
               className={`w-full flex items-center gap-2 px-3 py-1.5 text-left hover:bg-gray-100 ${has(m.name) ? "bg-blue-50" : ""}`}
             >
+              <span
+                aria-hidden
+                className={`inline-flex h-3.5 w-3.5 shrink-0 items-center justify-center rounded border text-[10px] leading-none ${has(m.name) ? "bg-blue-600 border-blue-600 text-white" : "border-gray-300"}`}
+              >
+                {has(m.name) ? "✓" : ""}
+              </span>
               <span className="flex-1 truncate">{m.name}</span>
               <span className="text-[10px] text-gray-400">{formatBytes(m.size_bytes)}</span>
             </button>
