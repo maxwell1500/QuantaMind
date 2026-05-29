@@ -58,6 +58,26 @@ tracked in `future-considerations.md`.
 
 Linux AppImage/deb need no signing.
 
+## llama.cpp sidecar (Step 3.2)
+
+The `llama-server` sidecar is bundled via `tauri.conf.json`
+`bundle.externalBin: ["binaries/llama-server"]` — Tauri appends the target
+triple, so it bundles `binaries/llama-server-<triple>`.
+
+Binaries are **not** committed (`.gitignore` excludes `backend/binaries/`).
+Run `scripts/fetch-llama-server.sh` before `tauri build` or local
+verification; it downloads the pinned llama.cpp release for the host triple,
+extracting `llama-server` and its sibling `libggml*`/`libllama` dylibs.
+
+**This pass ships macOS arm64 (CPU-only) only.** Deferred to a release
+follow-up:
+- Windows x64 / Linux x64 assets in the fetch script (add `case` arms).
+- GPU variants (Metal/CUDA/Vulkan).
+- Bundling the dylibs alongside the binary in the packaged app
+  (`bundle.resources` or macOS frameworks) — `externalBin` ships only the
+  single executable, so the dylibs must be added before a bundled (not just
+  dev) run works on a clean machine.
+
 ## Verification
 
 - Workflow is valid YAML and uses the standard `tauri-action` matrix
@@ -65,3 +85,5 @@ Linux AppImage/deb need no signing.
 - Manual: push a `vX.Y.Z` tag, confirm the draft release gets six+
   artifacts, install the `.msi` on Windows 11 and the `.deb`/`.AppImage`
   on Ubuntu 24.04, and run one prompt on each.
+- llama.cpp: `scripts/fetch-llama-server.sh` then
+  `backend/binaries/llama-server-<triple> --version` prints a build number.
