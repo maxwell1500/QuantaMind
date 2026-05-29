@@ -51,6 +51,26 @@ async fn ok_when_model_appears_after_initial_misses() {
 }
 
 #[tokio::test]
+async fn ok_when_ollama_tags_a_bare_name_as_latest() {
+    // POST /api/create with model "phi-4-mini" registers as "phi-4-mini:latest".
+    let mut s = Server::new_async().await;
+    let _m = s
+        .mock("GET", "/api/tags")
+        .with_status(200)
+        .with_body(tags_body(&["phi-4-mini:latest"]))
+        .create_async()
+        .await;
+    verify_with_delays(&s.url(), "phi-4-mini", FAST).await.unwrap();
+}
+
+#[test]
+fn tag_matches_handles_the_implicit_latest_tag() {
+    assert!(tag_matches("phi:latest", "phi"));
+    assert!(tag_matches("mistral:7b", "mistral:7b"));
+    assert!(!tag_matches("phi:7b", "phi"));
+}
+
+#[tokio::test]
 async fn err_when_model_never_appears() {
     let mut s = Server::new_async().await;
     let _m = s

@@ -37,7 +37,13 @@ async fn has_model(endpoint: &str, name: &str) -> AppResult<bool> {
     let models = fetch_installed_with_stats(endpoint)
         .await
         .map_err(|e| AppError::Inference(format!("verify install: {e}")))?;
-    Ok(models.iter().any(|m| m.name == name))
+    Ok(models.iter().any(|m| tag_matches(&m.name, name)))
+}
+
+/// A tagless create (`model: "x"`) registers in `/api/tags` as `x:latest`, so
+/// match the requested `name` against that implicit tag too.
+pub(crate) fn tag_matches(tag: &str, name: &str) -> bool {
+    tag == name || tag.strip_suffix(":latest") == Some(name)
 }
 
 #[cfg(test)]
