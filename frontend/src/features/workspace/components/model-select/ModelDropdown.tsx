@@ -3,6 +3,7 @@ import { useInstalledModelsStore } from "../../../models/state/installedModelsSt
 import { isEmbeddingModel } from "../../../../shared/models/classify";
 import { formatBytes } from "../../../../shared/format/bytes";
 import { useCompareStore } from "../../../compare/state/compareStore";
+import { useWorkspaceStore } from "../../state/workspaceStore";
 
 /// Dropdown model picker. Pick one model for a single run or several to
 /// compare. Replaces the flat chip list. Selection lives in
@@ -10,6 +11,7 @@ import { useCompareStore } from "../../../compare/state/compareStore";
 export function ModelDropdown() {
   const selected = useCompareStore((s) => s.selectedModels);
   const setSelected = useCompareStore((s) => s.setSelectedModels);
+  const activeBackend = useWorkspaceStore((s) => s.activeBackend);
   const list = useInstalledModelsStore((s) => s.list);
   const status = useInstalledModelsStore((s) => s.status);
   const error = useInstalledModelsStore((s) => s.error);
@@ -18,6 +20,12 @@ export function ModelDropdown() {
   const ref = useRef<HTMLDivElement>(null);
 
   useEffect(() => { if (status === "idle") void refresh(); }, [status, refresh]);
+  // Models differ per backend; drop the prior selection on an actual switch
+  // (not the initial mount, which would wipe a restored selection).
+  const prevBackend = useRef(activeBackend);
+  useEffect(() => {
+    if (prevBackend.current !== activeBackend) { prevBackend.current = activeBackend; setSelected([]); }
+  }, [activeBackend, setSelected]);
 
   useEffect(() => {
     if (!open) return;
@@ -28,18 +36,24 @@ export function ModelDropdown() {
     return () => { document.removeEventListener("mousedown", onDown); document.removeEventListener("keydown", onEsc); };
   }, [open]);
 
-  const toggle = (m: { name: string; size_bytes: number }) =>
+  // llama.cpp runs one server at a time, so its picker is single-select.
+  const single = activeBackend === "llama_cpp";
+  const toggle = (m: { name: string; size_bytes: number }) => {
+    const on = selected.some((s) => s.name === m.name);
+    if (single) {
+      setSelected(on ? [] : [{ name: m.name, size_bytes: m.size_bytes }]);
+      return;
+    }
     setSelected(
-      selected.some((s) => s.name === m.name)
+      on
         ? selected.filter((s) => s.name !== m.name)
         : [...selected, { name: m.name, size_bytes: m.size_bytes }],
     );
+  };
 
-  const generative = list.filter((m) => !isEmbeddingModel(m));
-  const summary =
-    selected.length === 0 ? "Select a model"
-      : selected.length === 1 ? selected[0].name
-      : `${selected.length} models`;
+  const generative = list.filter((m) => !isEmbeddingModel(m) && m.backend === activeBackend);
+  const summary = selected.length === 0 ? "Select a model"
+    : selected.length === 1 ? selected[0].name : `${selected.length} models`;
 
   return (
     <div className="relative" data-testid="compare-model-select" ref={ref}>

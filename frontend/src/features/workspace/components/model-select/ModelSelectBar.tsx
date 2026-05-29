@@ -8,9 +8,11 @@ import { ModelDropdown } from "./ModelDropdown";
 /// the Models tab.
 export function ModelSelectBar() {
   const ollamaHealthy = useWorkspaceStore((s) => s.ollamaHealthy);
+  const activeBackend = useWorkspaceStore((s) => s.activeBackend);
   const goToModels = useNavStore((s) => s.setTopView);
 
-  if (ollamaHealthy === false) return <OllamaEmptyState />;
+  // The Ollama-down empty state only applies when Ollama is the active backend.
+  if (activeBackend === "ollama" && ollamaHealthy === false) return <OllamaEmptyState />;
   return (
     <div className="flex items-start justify-between gap-2">
       <div className="flex-1 min-w-0">
