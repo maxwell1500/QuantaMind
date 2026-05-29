@@ -9,3 +9,7 @@ pub enum BackendKind {
     #[default]
     Ollama,
 }
+
+#[cfg(test)]
+#[path = "backend_kind_tests.rs"]
+mod tests;
