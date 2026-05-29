@@ -7,6 +7,7 @@ import { create } from "zustand";
 
 export type TopView =
   | "workspace"
+  | "bench"
   | "models"
   | "downloads"
   | "storage"

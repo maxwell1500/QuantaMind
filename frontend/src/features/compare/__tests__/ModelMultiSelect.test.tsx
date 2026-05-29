@@ -26,6 +26,19 @@ beforeEach(() => {
 });
 
 describe("ModelMultiSelect", () => {
+  it("shows only Ollama models — multi-model llama.cpp is excluded", () => {
+    useInstalledModelsStore.setState({
+      list: [
+        { name: "qwen2.5:7b", size_bytes: 1, modified_at: "", family: "qwen", parameter_size: "7B", quantization: "Q4", backend: "ollama" },
+        { name: "phi-4-mini", size_bytes: 1, modified_at: "", family: "phi", parameter_size: "4B", quantization: "Q2", backend: "llama_cpp", path: "/g/phi.gguf" },
+      ] as never,
+      status: "ready",
+    });
+    render(<ModelMultiSelect />);
+    expect(screen.getByTestId("model-chip-qwen2.5:7b")).toBeInTheDocument();
+    expect(screen.queryByTestId("model-chip-phi-4-mini")).toBeNull();
+  });
+
   it("renders a chip per installed model with name + size", async () => {
     render(<ModelMultiSelect />);
     expect(await screen.findByTestId("model-chip-llama3.2:1b")).toHaveTextContent(/llama3\.2:1b/);

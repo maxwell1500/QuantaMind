@@ -29,9 +29,15 @@ export function ModelMultiSelect() {
     );
   };
 
+  // Compare runs against Ollama (sequential/parallel); multi-model llama.cpp
+  // needs multiple servers, so it's excluded here for now.
+  const ollama = list.filter((m) => m.backend === "ollama");
+  const generative = ollama.filter((m) => !isEmbeddingModel(m));
+  const hidden = ollama.length - generative.length;
+
   return (
-    <div data-testid="compare-model-select" className="space-y-1">
-      <div className="text-xs text-gray-600">Installed models</div>
+    <div data-testid="bench-model-select" className="space-y-1">
+      <div className="text-xs text-gray-600">Installed Ollama models</div>
       {(status === "idle" || status === "loading") && (
         <div className="text-xs text-gray-500" data-testid="model-select-loading">
           Loading…
@@ -45,15 +51,12 @@ export function ModelMultiSelect() {
           </button>
         </div>
       )}
-      {status === "ready" && list.length === 0 && (
+      {status === "ready" && generative.length === 0 && (
         <div className="text-xs text-gray-500" data-testid="model-select-empty">
-          No models installed yet. Add one from the Workspace.
+          No Ollama models installed yet. Add one from the Workspace.
         </div>
       )}
-      {status === "ready" && list.length > 0 && (() => {
-        const generative = list.filter((m) => !isEmbeddingModel(m));
-        const hidden = list.length - generative.length;
-        return (
+      {status === "ready" && generative.length > 0 && (
           <>
             <div className="flex flex-wrap gap-1">
               {generative.map((m) => {
@@ -80,8 +83,7 @@ export function ModelMultiSelect() {
               </div>
             )}
           </>
-        );
-      })()}
+      )}
     </div>
   );
 }
