@@ -53,4 +53,17 @@ describe("ModelDropdown backend scoping", () => {
     act(() => useWorkspaceStore.getState().setActiveBackend("llama_cpp"));
     expect(useCompareStore.getState().selectedModels).toEqual([]);
   });
+
+  it("prunes a stale other-backend pick that has no row on this backend", () => {
+    // On Ollama, a leaked llama.cpp bare-name selection (no `:latest` row here)
+    // must be dropped automatically so it can't linger and inflate the count.
+    act(() =>
+      useCompareStore.setState({ selectedModels: [
+        { name: "llama3:1b", size_bytes: 1 },   // ollama model in the list
+        { name: "phi3", size_bytes: 1 },         // llama.cpp-only — not on Ollama
+      ] }),
+    );
+    render(<ModelDropdown />);
+    expect(useCompareStore.getState().selectedModels.map((m) => m.name)).toEqual(["llama3:1b"]);
+  });
 });

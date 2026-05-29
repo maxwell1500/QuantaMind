@@ -19,13 +19,15 @@ export function ModelDropdown() {
   const [open, setOpen] = useState(false);
   const ref = useRef<HTMLDivElement>(null);
 
+  const generative = list.filter((m) => !isEmbeddingModel(m) && m.backend === activeBackend);
+
   useEffect(() => { if (status === "idle") void refresh(); }, [status, refresh]);
-  // Models differ per backend; drop the prior selection on an actual switch
-  // (not the initial mount, which would wipe a restored selection).
-  const prevBackend = useRef(activeBackend);
+  // Scope selection to the active backend; drop other-backend picks (skip when empty).
   useEffect(() => {
-    if (prevBackend.current !== activeBackend) { prevBackend.current = activeBackend; setSelected([]); }
-  }, [activeBackend, setSelected]);
+    if (status !== "ready" || generative.length === 0) return;
+    const ok = new Set(generative.map((m) => m.name));
+    if (selected.some((s) => !ok.has(s.name))) setSelected(selected.filter((s) => ok.has(s.name)));
+  }, [status, generative, selected, setSelected]);
 
   useEffect(() => {
     if (!open) return;
@@ -51,9 +53,7 @@ export function ModelDropdown() {
     );
   };
 
-  const generative = list.filter((m) => !isEmbeddingModel(m) && m.backend === activeBackend);
-  const summary = selected.length === 0 ? "Select a model"
-    : selected.length === 1 ? selected[0].name : `${selected.length} models`;
+  const summary = selected.length === 0 ? "Select a model" : selected.length === 1 ? selected[0].name : `${selected.length} models`;
 
   return (
     <div className="relative" data-testid="compare-model-select" ref={ref}>
