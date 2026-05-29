@@ -27,8 +27,10 @@ BIN="$(find "$TMP" -type f -name llama-server | head -n1)"
 [ -n "$BIN" ] || { echo "llama-server not found in archive" >&2; exit 1; }
 
 mkdir -p "$DEST"
-# Colocate the binary's sibling dylibs so the sidecar resolves @rpath libs.
+# Colocate the binary's sibling dylibs so it resolves its @rpath/@loader_path
+# libs. Bundled as a Tauri resource dir (not externalBin), so a bare name is
+# fine — `llama_dir()` resolves this whole directory at runtime.
 cp "$(dirname "$BIN")"/*.dylib "$DEST"/ 2>/dev/null || true
-cp "$BIN" "$DEST/llama-server-${TRIPLE}"
-chmod +x "$DEST/llama-server-${TRIPLE}"
-echo "Installed $DEST/llama-server-${TRIPLE} (build $LLAMA_BUILD)"
+cp "$BIN" "$DEST/llama-server"
+chmod +x "$DEST/llama-server"
+echo "Installed $DEST/llama-server (build $LLAMA_BUILD, $TRIPLE)"
