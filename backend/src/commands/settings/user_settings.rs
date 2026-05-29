@@ -57,3 +57,12 @@ pub fn set_user_settings(
     *state.inner.lock_recover() = settings.clone();
     save(&settings_path(&app)?, &settings)
 }
+
+/// The absolute shared GGUF weights folder, for display in the UI.
+#[tauri::command]
+pub fn resolve_models_folder(
+    app: tauri::AppHandle,
+    state: tauri::State<'_, UserSettingsState>,
+) -> Result<String, AppError> {
+    Ok(state.weights_dir(&app)?.to_string_lossy().into_owned())
+}

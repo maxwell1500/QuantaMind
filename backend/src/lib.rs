@@ -70,6 +70,7 @@ pub fn run() {
             commands::workspace::history::history_remove_by_path,
             commands::settings::user_settings::get_user_settings,
             commands::settings::user_settings::set_user_settings,
+            commands::settings::user_settings::resolve_models_folder,
             commands::system::onboarding::scaffold_onboarding_workspace,
         ])
         .run(tauri::generate_context!())
