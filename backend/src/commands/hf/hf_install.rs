@@ -2,7 +2,9 @@ use crate::commands::emit::log_emit;
 use crate::commands::gguf::gguf_cmd::{install_local_gguf_inner, EVENT_MODELS_CHANGED};
 use crate::commands::hf::hf_phase::{HfPhase, EVENT_HF_PROGRESS};
 use crate::commands::ollama::ollama_runtime::{is_reachable, PROBE_TIMEOUT_MS};
-use crate::commands::storage::storage_disk::{gguf_dest, gguf_dir};
+use crate::commands::settings::user_settings::UserSettingsState;
+use crate::commands::storage::storage_disk::gguf_dest;
+use std::path::PathBuf;
 use crate::errors::{AppError, AppResult};
 use crate::inference::backend::backend_kind::BackendKind;
 use crate::inference::hf::hf_download::{download_gguf, DownloadProgress};
@@ -29,11 +31,9 @@ pub fn ollama_import_required(backend: BackendKind) -> bool {
 
 pub async fn install_hf_gguf_inner(
     app: AppHandle, state: &HfInstallState, endpoint: &str,
-    repo: &str, filename: &str, name: &str, backend: BackendKind,
+    repo: &str, filename: &str, name: &str, backend: BackendKind, dir: PathBuf,
 ) -> AppResult<()> {
     validate_name(name)?;
-    // Persist the GGUF (retained for the llama.cpp backend, not deleted on import).
-    let dir = gguf_dir();
     fs::create_dir_all(&dir).map_err(|e| AppError::Io(e.to_string()))?;
     let dest = gguf_dest(&dir, name);
 
@@ -53,13 +53,12 @@ pub async fn install_hf_gguf_inner(
     let dl = download_gguf(endpoint, repo, filename, &dest, on_dl, token.clone()).await;
     if token.is_cancelled() {
         *state.current.lock_recover() = None;
-        let _ = fs::remove_file(&dest);
-        let _ = fs::remove_file(partial_path(&dest));
+        let _ = fs::remove_file(&dest); let _ = fs::remove_file(partial_path(&dest));
         return Err(AppError::Validation("install cancelled".into()));
     }
     dl?;
 
-    // Import into Ollama when reachable (shows there too); GGUF kept for llama.cpp.
+    // Import into Ollama when reachable; the GGUF is kept for llama.cpp regardless.
     let install_app = app.clone();
     let on_install = move |p| log_emit(&install_app, EVENT_HF_PROGRESS, HfPhase::from_create(p));
     let result = if is_reachable(PROBE_TIMEOUT_MS).await {
@@ -70,20 +69,21 @@ pub async fn install_hf_gguf_inner(
         Ok(())
     };
     let _ = fs::remove_file(partial_path(&dest)); // keep `dest`; only the resume marker is transient
-    if result.is_ok() {
-        log_emit(&app, EVENT_MODELS_CHANGED, ());
-    }
+    if result.is_ok() { log_emit(&app, EVENT_MODELS_CHANGED, ()); }
     *state.current.lock_recover() = None;
     result
 }
 
 #[tauri::command]
 pub async fn install_hf_gguf(
-    app: AppHandle, state: tauri::State<'_, HfInstallState>,
+    app: AppHandle,
+    state: tauri::State<'_, HfInstallState>,
+    settings: tauri::State<'_, UserSettingsState>,
     repo: String, filename: String, name: String, backend: Option<BackendKind>,
 ) -> Result<(), AppError> {
     let backend = backend.unwrap_or_default();
-    install_hf_gguf_inner(app, state.inner(), HF_ENDPOINT, &repo, &filename, &name, backend).await
+    let dir = settings.weights_dir(&app)?;
+    install_hf_gguf_inner(app, state.inner(), HF_ENDPOINT, &repo, &filename, &name, backend, dir).await
 }
 
 #[tauri::command]

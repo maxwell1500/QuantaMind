@@ -1,3 +1,4 @@
+use crate::commands::storage::storage_disk::gguf_dir_resolved;
 use crate::errors::{AppError, AppResult};
 use crate::persistence::user_settings::{load, save, UserSettings};
 use crate::sync::MutexExt;
@@ -27,6 +28,13 @@ impl UserSettingsState {
         *self.inner.lock_recover() = load(&settings_path(app)?)?;
         *loaded = true;
         Ok(())
+    }
+
+    /// The resolved shared GGUF weights folder (user setting → env → default).
+    pub fn weights_dir(&self, app: &tauri::AppHandle) -> AppResult<PathBuf> {
+        self.ensure_loaded(app)?;
+        let folder = self.inner.lock_recover().models_folder.clone();
+        Ok(gguf_dir_resolved(folder.as_deref()))
     }
 }
 
