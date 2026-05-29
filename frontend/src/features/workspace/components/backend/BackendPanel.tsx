@@ -1,8 +1,6 @@
 import type { BackendKind } from "../../../../shared/ipc/models/storage";
 import { useUiStore } from "../../../../shared/state/uiStore";
 import { useWorkspaceStore } from "../../state/workspaceStore";
-import { OllamaControl } from "../status/OllamaControl";
-import { LlamaServerControl } from "../status/LlamaServerControl";
 
 const BACKENDS: { id: BackendKind; label: string }[] = [
   { id: "ollama", label: "Ollama" },
@@ -18,23 +16,19 @@ function BackendRow({ id, label }: { id: BackendKind; label: string }) {
   const active = useWorkspaceStore((s) => s.activeBackend === id);
   const setActive = useWorkspaceStore((s) => s.setActiveBackend);
   const healthy = useWorkspaceStore((s) => (id === "ollama" ? s.ollamaHealthy : s.llamaHealthy));
+  // Start/Stop for the active backend lives in the header (ServerControl).
   return (
-    <div className={`rounded ${active ? "bg-blue-50" : ""}`}>
-      <button
-        type="button"
-        onClick={() => setActive(id)}
-        aria-pressed={active}
-        data-testid={`backend-${id}`}
-        className={`w-full flex items-center gap-2 px-2 py-1.5 text-sm text-left rounded
-          ${active ? "text-ink font-medium" : "text-gray-600 hover:bg-gray-100"}`}
-      >
-        <span className={dotClass(healthy)} aria-hidden />
-        <span className="flex-1 truncate">{label}</span>
-      </button>
-      {active && (
-        <div className="px-2 pb-1">{id === "ollama" ? <OllamaControl /> : <LlamaServerControl />}</div>
-      )}
-    </div>
+    <button
+      type="button"
+      onClick={() => setActive(id)}
+      aria-pressed={active}
+      data-testid={`backend-${id}`}
+      className={`w-full flex items-center gap-2 px-2 py-1.5 text-sm text-left rounded
+        ${active ? "bg-blue-50 text-ink font-medium" : "text-gray-600 hover:bg-gray-100"}`}
+    >
+      <span className={dotClass(healthy)} aria-hidden />
+      <span className="flex-1 truncate">{label}</span>
+    </button>
   );
 }
 

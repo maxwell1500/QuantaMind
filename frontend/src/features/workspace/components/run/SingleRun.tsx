@@ -1,15 +1,14 @@
 import { useEffect } from "react";
+import { RunControls } from "./RunControls";
 import { RunOutput } from "./RunOutput";
 import { useStreamingRun } from "../../hooks/useStreamingRun";
 import { useWorkspaceHotkeys } from "../../hooks/useWorkspaceHotkeys";
-import { useRegisterRun } from "../../hooks/useRegisterRun";
 import { useWorkspaceStore } from "../../state/workspaceStore";
 import { useWorkspacesStore } from "../../../workspaces/state/workspaceStore";
 import { useNavStore } from "../../../../shared/state/navStore";
 
-/// Single-model run surface: run_prompt streaming with per-prompt params and
-/// history recording. The Run/Stop trigger lives in the header (registered via
-/// useRegisterRun); this renders the status + streamed output.
+/// Single-model run surface: run_prompt streaming with per-prompt params
+/// and history recording. `model` is the one selected model.
 export function SingleRun({ model }: { model: string | null }) {
   const current = useWorkspacesStore((s) => s.current);
   const currentPath = useWorkspacesStore((s) => s.currentPath);
@@ -28,19 +27,24 @@ export function SingleRun({ model }: { model: string | null }) {
 
   const prompt = current?.user ?? "";
   const system = current?.system ?? "";
+  // llama.cpp needs its server started first (manual control in the panel).
   const backendReady = activeBackend === "ollama" || llamaHealthy === true;
-  const ollamaBlocked = activeBackend === "ollama" && ollamaHealthy === false;
-  const canRun = !!model && prompt.trim().length > 0 && backendReady && !ollamaBlocked;
+  const canRun = !!model && prompt.trim().length > 0 && backendReady;
   const runNow = () => model && start(model, prompt, system, current?.params, currentPath, current?.name);
   useWorkspaceHotkeys({
     active, canRun, running: status === "running", hasPrompt: !!current,
     onRun: runNow, onStop: cancel, onSave: () => void save(),
   });
-  useRegisterRun(status === "running", canRun, runNow, cancel);
 
   return (
     <>
-      <span className="text-xs text-gray-500" data-testid="run-status">{status}</span>
+      <RunControls
+        status={status}
+        canRun={canRun}
+        ollamaHealthy={activeBackend === "ollama" ? ollamaHealthy : true}
+        onRun={runNow}
+        onCancel={cancel}
+      />
       <RunOutput
         output={output}
         status={status}
