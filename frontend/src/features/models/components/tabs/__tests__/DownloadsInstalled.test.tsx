@@ -18,7 +18,7 @@ import { useInstalledModelsStore } from "../../../state/installedModelsStore";
 
 const FIXTURE = [
   { name: "phi3.5:latest", family: "phi", parameter_size: "3.8B",
-    quantization: "Q4_K_M", size_bytes: 2_400_000_000, modified_at: "2026-05-22" },
+    quantization: "Q4_K_M", size_bytes: 2_400_000_000, modified_at: "2026-05-22", backend: "ollama" as const },
 ];
 
 beforeEach(() => {

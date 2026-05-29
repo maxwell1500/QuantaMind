@@ -9,8 +9,8 @@ import { useCompareStore } from "../state/compareStore";
 import { useInstalledModelsStore } from "../../models/state/installedModelsStore";
 
 const MODELS = [
-  { name: "llama3.2:1b", size_bytes: 1_300_000_000, modified_at: "", family: "llama", parameter_size: "1B", quantization: "Q8_0" },
-  { name: "qwen2.5:7b", size_bytes: 4_680_000_000, modified_at: "", family: "qwen", parameter_size: "7B", quantization: "Q4_K_M" },
+  { name: "llama3.2:1b", size_bytes: 1_300_000_000, modified_at: "", family: "llama", parameter_size: "1B", quantization: "Q8_0", backend: "ollama" as const },
+  { name: "qwen2.5:7b", size_bytes: 4_680_000_000, modified_at: "", family: "qwen", parameter_size: "7B", quantization: "Q4_K_M", backend: "ollama" as const },
 ];
 
 beforeEach(() => {

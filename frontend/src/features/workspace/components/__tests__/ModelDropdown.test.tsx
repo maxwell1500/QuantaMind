@@ -8,7 +8,7 @@ import { useInstalledModelsStore } from "../../../models/state/installedModelsSt
 import { useCompareStore } from "../../../compare/state/compareStore";
 
 const model = (name: string, size = 1_000_000) =>
-  ({ name, size_bytes: size, modified_at: "", family: "llama", parameter_size: "1B", quantization: "Q4" });
+  ({ name, size_bytes: size, modified_at: "", family: "llama", parameter_size: "1B", quantization: "Q4", backend: "ollama" as const });
 
 beforeEach(() => {
   vi.clearAllMocks();

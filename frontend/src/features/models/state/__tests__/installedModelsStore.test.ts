@@ -14,6 +14,7 @@ const fake = (name: string) => ({
   family: "x",
   parameter_size: "1B",
   quantization: "Q4",
+  backend: "ollama" as const,
 });
 
 beforeEach(() => {

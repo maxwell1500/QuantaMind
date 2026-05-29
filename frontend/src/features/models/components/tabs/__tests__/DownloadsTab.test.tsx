@@ -50,7 +50,7 @@ describe("DownloadsTab", () => {
       {
         name: "phi3.5:latest",
         family: "phi3", parameter_size: "3.8B", quantization: "Q4_K_M",
-        size_bytes: 2_400_000_000, modified_at: "2026-05-22",
+        size_bytes: 2_400_000_000, modified_at: "2026-05-22", backend: "ollama" as const,
       },
     ]);
     render(<DownloadsTab />);

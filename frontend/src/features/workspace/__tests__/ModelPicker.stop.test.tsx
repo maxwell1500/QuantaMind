@@ -16,7 +16,7 @@ import { useInstalledModelsStore } from "../../models/state/installedModelsStore
 
 const M = (name: string) => ({
   name, size_bytes: 1, modified_at: "", family: "llama",
-  parameter_size: "", quantization: "",
+  parameter_size: "", quantization: "", backend: "ollama" as const,
 });
 
 beforeEach(() => {

@@ -16,7 +16,7 @@ import { useInstalledModelsStore } from "../../models/state/installedModelsStore
 
 const M = (name: string, family = "llama") => ({
   name, size_bytes: 1_000_000_000, modified_at: "", family,
-  parameter_size: "", quantization: "",
+  parameter_size: "", quantization: "", backend: "ollama" as const,
 });
 
 describe("ModelPicker", () => {

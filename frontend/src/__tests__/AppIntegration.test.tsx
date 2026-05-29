@@ -47,8 +47,8 @@ beforeEach(() => {
       return Promise.resolve(["llama3.2:1b", "mistral:7b"]);
     if (cmd === "get_installed_models_with_stats")
       return Promise.resolve([
-        { name: "llama3.2:1b", size_bytes: 1_000_000_000, modified_at: "", family: "llama", parameter_size: "1B", quantization: "Q4_K_M" },
-        { name: "mistral:7b", size_bytes: 4_000_000_000, modified_at: "", family: "llama", parameter_size: "7B", quantization: "Q4_K_M" },
+        { name: "llama3.2:1b", size_bytes: 1_000_000_000, modified_at: "", family: "llama", parameter_size: "1B", quantization: "Q4_K_M", backend: "ollama" },
+        { name: "mistral:7b", size_bytes: 4_000_000_000, modified_at: "", family: "llama", parameter_size: "7B", quantization: "Q4_K_M", backend: "ollama" },
       ]);
     if (cmd === "check_ollama_health")
       return Promise.resolve({ available: true, version: "0.1.32" });
