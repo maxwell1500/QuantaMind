@@ -7,7 +7,7 @@ use std::thread;
 /// F4: poisoning the timing mutex (e.g. a panic in the per-token callback)
 /// must not crash subsequent reads, and the payload must reflect the data
 /// actually recorded before the panic — never a fabricated zero, which is
-/// indistinguishable from a real empty run (see docs/robustness.md).
+/// indistinguishable from a real empty run (see docs/architecture.md#robustness).
 #[test]
 fn poisoned_timing_recovers_recorded_metrics_not_zero() {
     let timing = Arc::new(Mutex::new(RunTiming::start()));

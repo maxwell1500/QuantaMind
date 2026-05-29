@@ -8,7 +8,7 @@ use crate::inference::compare::compare_sink::CompareSink;
 use tauri::AppHandle;
 
 /// Bridges domain compare events onto Tauri events. The single place the
-/// compare payload shapes meet the IPC layer (see `docs/layering.md`).
+/// compare payload shapes meet the IPC layer (see `docs/architecture.md#layering`).
 pub struct TauriCompareSink {
     app: AppHandle,
 }

@@ -1,6 +1,6 @@
 import type { StrategyId } from "../state/strategy";
 
-// The exported document shape — a populated subset of docs/analysis-schema-v1.md.
+// The exported document shape — a populated subset of docs/reference.md#analysis-schema.
 // Everything beyond the required spine is optional; we only emit what we have.
 
 export interface DocModel {

@@ -12,7 +12,7 @@ export interface ErrorInfo {
 }
 
 /// Map a raw or friendly error string to actionable, human copy. Keep the
-/// branches ordered most-specific first. Anchors match docs/troubleshooting.md.
+/// branches ordered most-specific first. Anchors match docs/reference.md#troubleshooting.
 export function classifyError(e: unknown): ErrorInfo {
   const low = rawMessage(e).toLowerCase();
   if (

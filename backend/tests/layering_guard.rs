@@ -1,7 +1,7 @@
 use std::fs;
 use std::path::Path;
 
-/// Enforces the layering law (docs/layering.md): the domain layer
+/// Enforces the layering law (docs/architecture.md#layering): the domain layer
 /// `inference/` must not depend on the IPC layer `commands/`. If this
 /// fails, a backward dependency crept back in — invert it via a sink/
 /// callback trait instead of importing from `commands`.
@@ -16,11 +16,11 @@ fn inference_does_not_import_commands() {
     });
     assert!(
         offenders.is_empty(),
-        "inference/ must not import crate::commands (see docs/layering.md): {offenders:?}"
+        "inference/ must not import crate::commands (see docs/architecture.md#layering): {offenders:?}"
     );
 }
 
-/// Enforces the folder-taxonomy rule (docs/folder-taxonomy.md): no source
+/// Enforces the folder-taxonomy rule (docs/architecture.md#folder-taxonomy): no source
 /// folder holds more than 10 .rs files. Split into concern sub-folders when
 /// a folder reaches the limit.
 #[test]
@@ -30,7 +30,7 @@ fn no_src_folder_exceeds_ten_rs_files() {
     check_counts(&root, &mut offenders);
     assert!(
         offenders.is_empty(),
-        "folders over the 10-file limit (see docs/folder-taxonomy.md): {offenders:?}"
+        "folders over the 10-file limit (see docs/architecture.md#folder-taxonomy): {offenders:?}"
     );
 }
 

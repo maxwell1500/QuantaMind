@@ -1,7 +1,7 @@
 /// Domain-level sink for compare-run events. The IPC layer implements this
 /// by emitting Tauri events (`commands/compare_sink.rs`); the domain never
 /// depends on the IPC layer — it depends on this trait. See
-/// `docs/layering.md`. `Send + Sync` so a sink can cross `tokio::spawn`.
+/// `docs/architecture.md#layering`. `Send + Sync` so a sink can cross `tokio::spawn`.
 pub trait CompareSink: Send + Sync {
     fn loading(&self, model_id: &str, model: &str);
     fn token(&self, model_id: &str, model: &str, text: &str);

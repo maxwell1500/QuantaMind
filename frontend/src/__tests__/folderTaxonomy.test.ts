@@ -2,7 +2,7 @@ import { describe, it, expect } from "vitest";
 
 const LIMIT = 10;
 
-// Enforces docs/folder-taxonomy.md: no source folder holds more than 10
+// Enforces docs/architecture.md#folder-taxonomy: no source folder holds more than 10
 // .ts/.tsx files. Uses Vite's import.meta.glob (no node types needed, so
 // `tsc` build stays green). `__tests__` dirs are exempt — they mirror
 // their source one-to-one, so their size is already bounded.

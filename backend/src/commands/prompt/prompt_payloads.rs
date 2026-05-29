@@ -23,7 +23,7 @@ pub struct CancelledPayload {
 /// Read a `DonePayload` from the timing mutex, recovering the recorded
 /// data even if a thread panicked while holding the lock. A fabricated
 /// zero would be indistinguishable from a real empty run (see
-/// `docs/robustness.md`).
+/// `docs/architecture.md#robustness`).
 pub fn done_payload(timing: &Mutex<RunTiming>) -> DonePayload {
     let t = timing.lock_recover();
     DonePayload {

@@ -34,7 +34,7 @@ pub fn streaming_client() -> AppResult<Client> {
 }
 
 /// Read a response body for an error message. A failed read is annotated,
-/// never blanked to "" — error context must survive (see docs/robustness.md).
+/// never blanked to "" — error context must survive (see docs/architecture.md#robustness).
 pub async fn body_or_note(resp: reqwest::Response) -> String {
     match resp.text().await {
         Ok(t) => t,

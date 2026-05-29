@@ -1,9 +1,15 @@
-# Architecture
+# Architecture & Code Structure
+
+Module boundaries, the dependency law (layering), the failure policy, and the
+folder rules. Companion docs: `process.md` (how we work) and `reference.md`
+(contracts + troubleshooting).
+
+## Architecture
 
 QuantaMind is a Tauri desktop app: React/TS frontend, Rust backend, JSON IPC,
 HTTP to a local Ollama server.
 
-## Mental model
+### Mental model
 
 ```
 ┌─────────────────────────────────────────────────────────────┐
@@ -30,29 +36,29 @@ HTTP to a local Ollama server.
                 └─────────────────────────────┘
 ```
 
-## Module boundaries
+### Module boundaries
 
-### Frontend (`frontend/src/`)
+**Frontend (`frontend/src/`)**
 
 - `app/` — application shell, routing, providers. No feature logic.
 - `features/<name>/` — self-contained vertical slice. Owns its components,
-  hooks, state, types, schemas, and tests. Deletable in one rm -rf.
+  hooks, state, types, schemas, and tests. Deletable in one `rm -rf`.
 - `shared/ipc/` — only place that calls Tauri `invoke`. Typed wrappers.
 - `shared/components/` — primitives reused by 2+ features. If only one
   feature uses it, it lives in that feature.
 
-### Backend (`backend/src/`)
+**Backend (`backend/src/`)**
 
 - `commands/` — IPC entry points. Thin: validate, wire Tauri, delegate to a pure
-  core. The **only** layer that names `tauri::` types. See `layering.md`.
+  core. The **only** layer that names `tauri::` types. See [Layering](#layering).
   `run_prompt` is backend-aware (dispatches to Ollama or the `llama-server`
   sidecar per the request's `backend`); the frontend's `BackendPanel` picks it.
 - `inference/` — backend adapters behind the `InferenceBackend` trait
   (`backend.rs`). `OllamaBackend` and `LlamaCppBackend` (a `llama-server`
-  sidecar, 3.2) today; callers build one by matching `BackendKind` (a closed
-  enum — no `dyn`/`async-trait`). Cloud (3.10) adds another variant.
+  sidecar) today; callers build one by matching `BackendKind` (a closed
+  enum — no `dyn`/`async-trait`). Cloud adds another variant.
   **Tauri-free and must not import `crate::commands`** — when it must report
-  progress it takes a sink trait (`layering.md`), not an `AppHandle`.
+  progress it takes a sink trait (see [Layering](#layering)), not an `AppHandle`.
 - `metrics/` — measurements: TTFT, tokens/sec, VRAM.
 - `persistence/` — YAML/JSON read+write of prompts and history. The shared GGUF
   weights folder resolves via `UserSettings.models_folder` →
@@ -61,7 +67,7 @@ HTTP to a local Ollama server.
 - `validation/` — schemas. Shared by commands and persistence.
 - `errors.rs` — single `AppError` enum. No `unwrap()` outside tests.
 
-## Rules
+### Rules
 
 1. **One file = one concern.** If you need "and" to describe what a file
    does, split it.
@@ -75,16 +81,260 @@ HTTP to a local Ollama server.
    discriminated unions, not thrown errors across IPC.
 6. **Hooks for ephemeral, store for shared.** Per-action state that lives
    only as long as the action (mid-run output, install progress, ongoing
-   fetch) belongs in a hook's local `useState`. Cross-component state
-   read by parts of the UI that don't drive the action (current model,
-   list of installed models, last run's final metrics) belongs in the
-   Zustand store. Hooks may write to the store at completion (the result
-   of an action), but components must not read both the hook's local
-   state and the store for the same piece of data — pick one source per
-   piece of data.
+   fetch) belongs in a hook's local `useState`. Cross-component state read by
+   parts of the UI that don't drive the action (current model, list of
+   installed models, last run's final metrics) belongs in the Zustand store.
+   Hooks may write to the store at completion; components must not read both
+   the hook's local state and the store for the same piece of data — pick one
+   source per piece of data.
 
-## Update this doc when
+Update this section when a new top-level module is added, a boundary rule
+changes, or the IPC contract gains a new category of message.
 
-- A new top-level module is added.
-- A boundary rule changes.
-- The IPC contract gains a new category of message.
+---
+
+## Layering
+
+How the backend modules depend on each other, and the two patterns that keep the
+domain layer pure and testable. See [Architecture](#architecture) for the module
+list and [Robustness](#robustness) for the failure policy.
+
+### The dependency law
+
+Edges point one way only. A lower layer must never import a higher one.
+
+```
+commands/  →  inference/  →  persistence/ , metrics/
+   (IPC)        (domain)         (I/O)      (timing)
+```
+
+- `commands/` is the only layer that touches Tauri (`AppHandle`, `State`,
+  `Emitter`, `#[tauri::command]`).
+- **`inference/` must be Tauri-free.** It must not import `crate::commands`, and
+  must not name any `tauri::` type. If domain code needs to report progress, it
+  takes a **sink** (below), not an `AppHandle`.
+- `persistence/` and `metrics/` are leaves: plain data in, `Result<T, AppError>`
+  out, no knowledge of the layers above.
+
+Enforced by a guardrail test (see [Robustness](#robustness)): no file under
+`inference/` may contain `use crate::commands`.
+
+### Pattern 1 — Sink boundary (invert the dependency)
+
+When the domain must emit progress/results, it defines a **trait** describing the
+events in plain domain terms; the IPC layer implements that trait by emitting
+Tauri events. The domain depends on its own trait, never on the IPC layer.
+
+```
+inference/compare/sink.rs   pub trait CompareSink { fn token(..); fn done(..); … }
+commands/compare.rs         impl CompareSink for TauriCompareSink { … app.emit(…) }
+```
+
+This is why `commands/` can know about `inference/` types but not the reverse.
+
+### Pattern 2 — Thin command, pure core
+
+A `#[tauri::command]` does three things only: validate input, wire Tauri
+plumbing (build the sink/handler, manage `State`), and delegate to a pure
+`*_inner` core. The core takes plain data + callbacks and is unit-testable
+without a Tauri runtime.
+
+Reference: `commands/prompt.rs` (thin) → `commands/prompt_run.rs::run_prompt_inner`
+(pure, integration-tested with mockito). New commands follow this split; logic
+that needs a test belongs in the core, not the command.
+
+Update this section when the set of layers or allowed edges change, or a new
+cross-layer boundary needs a sink/callback contract.
+
+---
+
+## Robustness
+
+**No silent failures, no leaky data.** Every failure is either handled or
+surfaced. The user (or a test, or a log) must be able to tell that something
+went wrong. Fabricating a plausible-looking result is worse than an error,
+because it hides.
+
+### No silent failures
+
+- **No `let _ =` on a fallible call** (a `Result`, a `JoinHandle`) unless it is a
+  documented best-effort cleanup — and even then route it through a helper that
+  logs the failure. For Tauri event emission use the `log_emit` helper, never a
+  bare `let _ = app.emit(...)`: a dropped event silently freezes the UI.
+- **Don't swallow serialization errors.** `serde_json::to_value(...)` and friends
+  must log (or propagate) on failure, not vanish in an `if let Ok(_)`.
+- **Observe spawned tasks.** Don't `let _ = join_all(handles)`; inspect each
+  result and surface a panic/error as an event, not nothing.
+- **Frontend: validation failures surface to state.** When a zod `safeParse`
+  fails on an IPC payload, set an error state on the affected row/download (and
+  log) — never `console.error` then `return`, which leaves the UI frozen. Promise
+  rejections get a real handler, not a bare `.catch(() => {})`.
+
+### No leaky data
+
+- **Never fabricate data on error.** No zero-on-poison: a `token_count: 0` after a
+  panic is indistinguishable from a real empty run. Emit a distinct
+  degraded/error signal instead, so the UI can show "incomplete," not "done."
+- **Don't blank error context.** `resp.text().await.unwrap_or_default()` turns an
+  HTTP error body into "" — keep it (or annotate the read failure) so diagnostics
+  survive.
+- **Validate at every boundary.** zod on inbound IPC payloads (TS), `validator` +
+  serde on inbound commands (Rust). Untrusted data never reaches domain logic
+  unchecked.
+
+### Independent panels degrade independently
+
+A read that aggregates two independent sources must not fail wholesale when one
+is down. `get_disk_usage` reports filesystem free/total (from `sysinfo`) plus a
+model-bytes sum (from Ollama `/api/tags`). Ollama being unreachable zeroes only
+the model sum (`disk_usage_for`) — it never fails the whole call, which used to
+surface "Ollama is not running" inside the *Storage* panel. The zeroed sum is
+not a leaky "done" signal: the Ollama-down state is shown distinctly by the
+status bar and the installed-models list, so the user is never misled.
+
+### Errors are typed
+
+Rust returns `Result<T, AppError>`; TS returns discriminated unions over IPC, not
+thrown errors. **No `unwrap()`/`expect()`/`.parent().unwrap()` outside tests** —
+prove the invariant or return a typed error.
+
+> Known limitation / future option: `AppError` variants are stringly-typed
+> (`Inference(String)`), so io errno / HTTP status is flattened to a message.
+> Enriching them is high-ripple and deferred; the discriminated-union-over-IPC
+> shape is acceptable for now.
+
+### Guardrail
+
+A backend test enforces the layering invariant (no `use crate::commands` under
+`inference/`) and flags any folder with >10 files (see
+[Folder taxonomy](#folder-taxonomy)).
+
+Update this section when a new class of failure or boundary appears, or the
+error model changes (e.g. structured `AppError`).
+
+---
+
+## Folder taxonomy
+
+One concern per file (see [Conventions](process.md#conventions)); and **no folder holds
+more than 10 files**. When a folder reaches the limit, split it into sub-folders
+grouped by concern — never a `misc/`/`utils/` catch-all. Finding a file should be
+a matter of guessing the right concern folder.
+
+Enforced by a guardrail test on each side (`backend/tests/layering_guard.rs`,
+`frontend/src/__tests__/folderTaxonomy.test.ts`). `__tests__` dirs are exempt —
+they mirror their source one-to-one, so their size is already bounded.
+
+### Target sub-folder layout
+
+These four folders exceeded the limit and are split as follows (the reorg lands
+one folder per commit, behavior unchanged).
+
+- **backend `commands/`** (was 36 files): `prompt/` · `compare/` · `models/` ·
+  `hf/` · `gguf/` · `ollama/` · `workspace/` · `storage/` · `settings/` ·
+  `system/` (health, feasibility, hardware, onboarding)
+- **backend `inference/`** (was 33 files): `ollama/` · `gguf/` · `hf/` · `pull/` ·
+  `create/` · `compare/` · `http/` (http + ndjson) · `backend/` (trait + kind) ·
+  `generate/` (spec + options) · `chat/` (templates)
+- **frontend `features/workspace/components/`** (was 17 files): `model-select/` ·
+  `prompt/` (editor + params) · `run/` (single/multi + controls + output) ·
+  `status/` (status bar, ollama control, errors)
+- **frontend `shared/ipc/`** (was 26 files), grouped by domain: `core/` (client,
+  error, errorInfo, timeout, types) · `events/` (event names + payload zod
+  schemas) · `compare/` · `models/` · `workspace/` · `settings/` · `system/`
+
+### Rules for a split
+
+- Move files only; do not change behavior in a reorg commit.
+- Update the module's `mod.rs` (Rust) / import paths (TS); run the full suite
+  green before committing.
+- Keep tests beside their code through the move.
+
+Update this section when a folder crosses 10 files and needs a new sub-grouping,
+or a sub-folder's concern boundary changes.
+
+---
+
+## Folder structure
+
+```
+QM-Dev/
+├── .github/
+│   ├── workflows/{ci.yml,release.yml,nightly.yml}
+│   └── PULL_REQUEST_TEMPLATE.md
+│
+├── frontend/                       # React + TS + Vite app
+│   ├── src/
+│   │   ├── app/{App.tsx,routes.tsx,providers.tsx}
+│   │   ├── features/
+│   │   │   ├── workspace/          # Phase 1
+│   │   │   │   ├── components/{PromptEditor,OutputStream,ModelPicker,RunControls}.tsx
+│   │   │   │   ├── hooks/{useStreamingRun,usePromptStore}.ts
+│   │   │   │   ├── state/workspaceStore.ts
+│   │   │   │   ├── types.ts
+│   │   │   │   ├── schemas.ts      # zod
+│   │   │   │   └── __tests__/
+│   │   │   ├── inspector/          # Phase 4
+│   │   │   ├── bench/              # Phase 3
+│   │   │   └── settings/           # Phase 2
+│   │   ├── shared/
+│   │   │   ├── components/
+│   │   │   ├── ipc/{client.ts,types.ts,__tests__/}
+│   │   │   └── styles/tokens.css
+│   │   ├── test/setup.ts
+│   │   ├── main.tsx
+│   │   └── index.css
+│   ├── index.html
+│   ├── package.json
+│   ├── pnpm-lock.yaml
+│   ├── tsconfig.json / tsconfig.node.json
+│   ├── vite.config.ts / vitest.config.ts
+│   ├── tailwind.config.js
+│   └── postcss.config.js
+│
+├── backend/                        # Rust + Tauri 2 app
+│   ├── src/
+│   │   ├── main.rs
+│   │   ├── lib.rs
+│   │   ├── commands/{mod,prompt,models,settings,workspace}.rs
+│   │   ├── inference/{mod,ollama,llama_cpp,mlx,traits}.rs
+│   │   ├── metrics/{mod,timing,vram}.rs
+│   │   ├── persistence/{mod,prompts,history}.rs
+│   │   ├── validation/{mod,schemas}.rs
+│   │   └── errors.rs
+│   ├── tests/{ollama_stream,models_list,prompt_stream}.rs
+│   ├── Cargo.toml
+│   ├── tauri.conf.json
+│   ├── build.rs
+│   ├── capabilities/
+│   └── icons/
+│
+├── docs/                           # this directory
+├── CLAUDE.md .gitignore
+└── LICENSE README.md CHANGELOG.md
+```
+
+### Rationale
+
+- **`frontend/` + `backend/` top split.** Two languages, two toolchains.
+  Co-locating each side's configs with its source means a frontend dev rarely
+  needs to read backend files and vice versa.
+- **`features/` over `components/` at top level.** Each feature is a vertical
+  slice: components + hooks + state + tests. Deletable in one `rm -rf`.
+- **`commands/` mirrors `features/`.** Every command corresponds to a frontend
+  need. If they drift, something is wrong.
+- **`__tests__/` next to code.** Rust integration tests are the exception —
+  they live in `backend/tests/` because cargo requires it.
+
+### Tauri CLI: pointing at `backend/`
+
+Tauri 2's CLI discovers the project by searching subfolders of cwd for
+`tauri.conf.json`. From `frontend/` it can't see `backend/`, so
+`frontend/package.json`'s `tauri` script is `"cd .. && tauri"` — shifting cwd to
+the QM-Dev root where `backend/` is a subfolder. `backend/tauri.conf.json` then
+references the frontend via `pnpm --dir=../frontend dev` / `build` and
+`frontendDist: ../frontend/dist`. Both directions of the hop are explicit.
+
+New work almost never adds a top-level folder; it fits into a new feature
+(`frontend/src/features/<name>/`) or a new command + domain module.
+
