@@ -1,5 +1,5 @@
 import { describe, it, expect, vi, beforeEach } from "vitest";
-import { render, screen } from "@testing-library/react";
+import { render, screen, act } from "@testing-library/react";
 
 vi.mock("@tauri-apps/api/core", () => ({ invoke: vi.fn().mockResolvedValue([]) }));
 vi.mock("@tauri-apps/api/event", () => ({ listen: vi.fn().mockResolvedValue(() => {}) }));
@@ -45,5 +45,20 @@ describe("Workspace branches by selection count", () => {
     expect(screen.getByTestId("multi-toolbar")).toBeTruthy();
     // Single-run surface is not mounted in compare mode.
     expect(screen.queryByTestId("run-status")).toBeNull();
+  });
+
+  it("shows the params UI once: shared panel when 'same for all', cards otherwise", () => {
+    useCompareStore.getState().setSelectedModels([
+      { name: "llama3.2:1b", size_bytes: 1 }, { name: "mistral:7b", size_bytes: 1 },
+    ]);
+    const { rerender } = render(<Workspace />);
+    // Default (shared): the shared panel shows, no per-model cards.
+    expect(screen.getByTestId("params-panel")).toBeInTheDocument();
+    expect(screen.queryByTestId("model-params-llama3.2:1b")).toBeNull();
+    // Turn the toggle off: per-model cards replace the shared panel (no duplication).
+    act(() => useCompareStore.getState().setUseSharedParams(false));
+    rerender(<Workspace />);
+    expect(screen.queryByTestId("params-panel")).toBeNull();
+    expect(screen.getByTestId("model-params-llama3.2:1b")).toBeInTheDocument();
   });
 });

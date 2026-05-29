@@ -17,8 +17,12 @@ export function Workspace() {
   const current = useWorkspacesStore((s) => s.current);
   const patch = useWorkspacesStore((s) => s.patch);
   const selected = useCompareStore((s) => s.selectedModels);
+  const useSharedParams = useCompareStore((s) => s.useSharedParams);
   const model = selected[0]?.name ?? null;
   const multi = selected.length >= 2;
+  // One parameters UI at a time: the shared panel when single, or when a 2+
+  // compare keeps "same for all"; otherwise the per-model cards (in ModelParamControls).
+  const showSharedParams = !multi || useSharedParams;
 
   return (
     <div className="space-y-3">
@@ -29,7 +33,8 @@ export function Workspace() {
         </p>
       ) : (
         <>
-          <ParamsPanel running={false} />
+          {showSharedParams && <ParamsPanel running={false} />}
+          {multi && <ModelParamControls />}
           <PromptEditor
             value={current.system}
             onChange={(v) => patch({ system: v })}
@@ -50,7 +55,6 @@ export function Workspace() {
             <>
               <HardwareSummary />
               <RunStrategyPicker />
-              <ModelParamControls />
               <MultiRun />
             </>
           ) : (
