@@ -43,22 +43,25 @@ manual Start/Stop). The richer comparison-only surfaces (diff, charts, saved
 configs, templates, cloud) remain Steps 3.5–3.10. See
 `phase-3-llama-backend.md` for the switcher's wiring.
 
-## Bench surfaces (3.4–3.9, shipped)
+## Re-home (post-3.9): the Workspace runs, "Analysis" analyzes
 
-The Bench is a dedicated top-level tab (`features/compare/components/CompareTab`);
-the Workspace stayed single-model per backend. On top of the v0.2 engine the
-Bench now adds:
+The 3.4–3.9 Bench tab was reworked: **running moved back into the Workspace** and
+the Bench was renamed **Analysis** (read-only). The shipped pieces now live as:
 
-- **3.4** seq/parallel picker + RAM/VRAM verdict (surfaced existing).
-- **3.5** word-level `DiffView` (diff-match-patch) when exactly two rows finish.
-- **3.6** hand-rolled bar charts (`MetricsChart`) for tok/s and TTFT.
-- **3.7** save/load `*.bench.yaml` configs in the open workspace
-  (`commands/bench/bench_config.rs`, sandboxed via `WorkspaceState`).
-- **3.8** a `quantamind.co` footer on Markdown reports + `generated_by` in JSON.
+- **3.4** seq/parallel picker + RAM/VRAM verdict — in the Workspace when 2+
+  Ollama models are selected (`MultiRun` + `RunStrategyPicker` + `HardwareSummary`).
+- **3.5** word-level `DiffView` (diff-match-patch) — Analysis tab.
+- **3.6** hand-rolled tok/s + TTFT bar charts (`MetricsChart`) — Analysis tab.
+- **3.8** `quantamind.co` footer on Markdown reports + `generated_by` JSON —
+  Analysis export.
 - **3.9** bundled `docs/prompts/*.md` templates via `list_prompt_templates`,
-  inserted from a `PromptTemplatePicker`.
+  inserted from `PromptTemplatePicker` — now in the Workspace prompt editor.
+- A single **Play/Stop** in the header (`runController` + `RunButton`) runs/stops
+  the selection for the active backend.
 
-3.10 (cloud baseline) remains deferred to its own mini-epic.
+**3.7** (saved `*.bench.yaml` configs) UI was removed; its backend commands
+(`commands/bench/bench_config.rs`) remain registered but unused. See
+`compare-feature.md` + `workspaces.md`. 3.10 (cloud) stays deferred.
 
 ## Locked decisions
 

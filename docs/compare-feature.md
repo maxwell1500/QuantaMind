@@ -1,17 +1,18 @@
 # Compare (multi-model)
 
-> **v0.3 update — the Bench.** Multi-model comparison now lives in a
-> dedicated **Bench** tab (`features/compare/components/CompareTab.tsx`);
-> the Workspace is single-model per backend again. On top of the engine
-> below the Bench adds word-level diff (3.5), tok/s + TTFT bar charts
-> (3.6), saved `*.bench.yaml` configs (3.7), a quantamind.co report
-> footer (3.8), and a bundled prompt-template library (3.9). The engine
-> (`assessStrategies` + `run_compare` + per-model columns) is unchanged.
-> See `phase-3-bench.md`.
+> **v0.3 update — run in the Workspace, analyze in Analysis.** Multi-model
+> comparison runs **in the Workspace**: the model picker is multi-select for
+> Ollama (1 = single run, 2+ = compare with a sequential/parallel picker) and
+> single-select for llama.cpp. There is one shared system + user prompt and one
+> **Play/Stop** control in the header next to History; per-model outputs stream
+> into side-by-side columns (`MultiRun` → `CompareColumn`). The **Analysis** tab
+> (`features/compare/components/AnalysisTab.tsx`) is read-only: tok/s + TTFT bar
+> charts (3.6), the two-model word diff (3.5), and Markdown/JSON export with a
+> quantamind.co footer (3.8). The engine (`assessStrategies` + `run_compare`) is
+> unchanged. See `phase-3-bench.md` and `workspaces.md`.
 
-Pick multiple installed models, write one prompt, run them through a
-user-chosen strategy, watch output stream into a per-model column, export
-the result as Markdown or JSON.
+The flow: pick model(s) in the Workspace, write one prompt, hit Play, watch
+output stream per model, then open Analysis to compare metrics + diff and export.
 
 ## Run strategies
 

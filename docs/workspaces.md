@@ -7,22 +7,22 @@ a `*.quantamind.yaml` loads it into the workspace.
 This replaces v0.1's single-prompt session model. Prompts are now
 files you own, version, and share like any other source.
 
-## Model selection drives the mode (v0.2)
+## Model selection drives the mode (v0.3)
 
-The page is model-count-driven (the old Compare tab is gone):
+Selection is backend-driven, in `compareStore.selectedModels`
+(`ModelDropdown.tsx`; `ModelSelectBar.tsx` gates on Ollama health):
 
-- **0 models** — Run is disabled; pick a model.
-- **1 model** — single streaming run via `run_prompt`, with per-prompt
-  params, history, and auto-rerun (`SingleRun.tsx`).
-- **2+ models** — the same prompt runs across all of them with a
-  RAM-based readout of how many fit sequentially vs in parallel and a
-  strategy picker; output streams into side-by-side columns
-  (`MultiRun.tsx`, reusing the Compare engine). Per-prompt params don't
-  apply here — each model uses its saved temperature.
+- **Ollama** — multi-select. 0 = Run disabled; 1 = single streaming run
+  via `run_prompt` (per-prompt params, history, auto-rerun —
+  `SingleRun.tsx`); 2+ = one prompt across all, with a RAM-based
+  sequential-vs-parallel readout + strategy picker, streaming into
+  side-by-side columns (`MultiRun.tsx`). Params don't apply to a multi-run.
+- **llama.cpp** — single-select only (one server); single run.
 
-Selection lives in `compareStore.selectedModels`; `ModelSelectBar.tsx`
-hosts the multi-select and gates on Ollama health. `HardwareSummary`
-shows feasibility verdicts whenever a model is selected.
+A single **Play/Stop** in the header (next to History) drives whichever
+surface is mounted (`runController` + `RunButton`). The **Analysis** tab
+holds the tok/s + TTFT charts, the two-model diff, and export — read-only
+over the latest run.
 
 ## File format: `*.quantamind.yaml`
 
