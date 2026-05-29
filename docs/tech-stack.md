@@ -30,7 +30,8 @@ Do not substitute. Alternatives go to `future-considerations.md`.
 - UI component library — Tailwind utility classes only.
 - Form library — no forms in Phase 1.
 - Extra Tauri plugins — Phase 2 introduces `plugin-store`, `plugin-fs`.
-- AI/ML libraries — we call Ollama, we do not run models in-process.
+- AI/ML libraries — we do not run models in-process. We call Ollama, and
+  (from Step 3.2) a bundled `llama-server` sidecar over HTTP — never FFI.
 
 Resist additions. Every dependency is a maintenance debt.
 
@@ -40,6 +41,7 @@ Resist additions. Every dependency is a maintenance debt.
 |---|---|---|---|
 | Word diff (TS) | `diff-match-patch` | 3.5 | De-facto standard for word-level diffs; tiny, dependency-free, well-tested. Hand-rolling diff is the wrong place to spend effort. |
 | Secret storage (Rust) | `keyring` | 3.10 | OS-native keychain (macOS Keychain / Windows Credential Manager / libsecret) for cloud API keys. Keys must never touch plaintext on disk. |
+| llama.cpp backend | `llama-server` (Tauri sidecar binary, not a crate) | 3.2 | Local GGUF inference without Ollama, streamed over HTTP — mirrors the Ollama path. Subprocess, not in-process FFI, to avoid a C++/CMake/GPU build in our crate. See `phase-3-llama-backend.md`. |
 
 ## Update this doc when
 
