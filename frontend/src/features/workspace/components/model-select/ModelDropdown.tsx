@@ -3,12 +3,13 @@ import { useInstalledModelsStore } from "../../../models/state/installedModelsSt
 import { isEmbeddingModel } from "../../../../shared/models/classify";
 import { formatBytes } from "../../../../shared/format/bytes";
 import { useWorkspaceStore } from "../../state/workspaceStore";
+import { useCompareStore } from "../../../compare/state/compareStore";
 
-/// Single-model picker for the Workspace. Selection lives in
-/// workspaceStore.selectedModel and is scoped to the active backend.
+/// Model picker for the Workspace. Selection lives in compareStore.selectedModels.
+/// Ollama is multi-select (1 = single run, 2+ = compare); llama.cpp is single-select.
 export function ModelDropdown() {
-  const selected = useWorkspaceStore((s) => s.selectedModel);
-  const setSelected = useWorkspaceStore((s) => s.setSelectedModel);
+  const selected = useCompareStore((s) => s.selectedModels);
+  const setSelected = useCompareStore((s) => s.setSelectedModels);
   const activeBackend = useWorkspaceStore((s) => s.activeBackend);
   const list = useInstalledModelsStore((s) => s.list);
   const status = useInstalledModelsStore((s) => s.status);
@@ -17,13 +18,16 @@ export function ModelDropdown() {
   const [open, setOpen] = useState(false);
   const ref = useRef<HTMLDivElement>(null);
 
+  const multi = activeBackend === "ollama";
   const generative = list.filter((m) => !isEmbeddingModel(m) && m.backend === activeBackend);
+  const has = (name: string) => selected.some((s) => s.name === name);
 
   useEffect(() => { if (status === "idle") void refresh(); }, [status, refresh]);
-  // Clear a selection that isn't in the active backend (skip when none loaded).
+  // Drop selections that aren't on the active backend (also handles backend switch).
   useEffect(() => {
     if (status !== "ready" || generative.length === 0) return;
-    if (selected && !generative.some((m) => m.name === selected)) setSelected(null);
+    const kept = selected.filter((s) => generative.some((m) => m.name === s.name));
+    if (kept.length !== selected.length) setSelected(kept);
   }, [status, generative, selected, setSelected]);
 
   useEffect(() => {
@@ -35,7 +39,14 @@ export function ModelDropdown() {
     return () => { document.removeEventListener("mousedown", onDown); document.removeEventListener("keydown", onEsc); };
   }, [open]);
 
-  const pick = (name: string) => { setSelected(selected === name ? null : name); setOpen(false); };
+  const pick = (m: { name: string; size_bytes: number }) => {
+    const entry = { name: m.name, size_bytes: m.size_bytes };
+    if (!multi) { setSelected(has(m.name) ? [] : [entry]); setOpen(false); return; }
+    setSelected(has(m.name) ? selected.filter((s) => s.name !== m.name) : [...selected, entry]);
+  };
+
+  const label = selected.length === 0 ? "Select a model"
+    : selected.length === 1 ? selected[0].name : `${selected.length} models`;
 
   return (
     <div className="relative" data-testid="compare-model-select" ref={ref}>
@@ -45,7 +56,7 @@ export function ModelDropdown() {
         className="border rounded px-3 py-1 text-sm min-w-[12rem] text-left flex justify-between gap-2"
         data-testid="model-dropdown"
       >
-        <span className="truncate">{selected ?? "Select a model"}</span>
+        <span className="truncate">{label}</span>
         <span className="text-gray-400">▾</span>
       </button>
       {open && (
@@ -64,10 +75,10 @@ export function ModelDropdown() {
             <button
               key={m.name}
               type="button"
-              onClick={() => pick(m.name)}
+              onClick={() => pick(m)}
               data-testid={`model-option-${m.name}`}
-              aria-pressed={selected === m.name}
-              className={`w-full flex items-center gap-2 px-3 py-1.5 text-left hover:bg-gray-100 ${selected === m.name ? "bg-blue-50" : ""}`}
+              aria-pressed={has(m.name)}
+              className={`w-full flex items-center gap-2 px-3 py-1.5 text-left hover:bg-gray-100 ${has(m.name) ? "bg-blue-50" : ""}`}
             >
               <span className="flex-1 truncate">{m.name}</span>
               <span className="text-[10px] text-gray-400">{formatBytes(m.size_bytes)}</span>

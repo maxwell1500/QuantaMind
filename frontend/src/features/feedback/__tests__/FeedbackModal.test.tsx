@@ -7,14 +7,14 @@ vi.mock("@tauri-apps/plugin-shell", () => ({
 
 import { open as openExternal } from "@tauri-apps/plugin-shell";
 import { FeedbackModal } from "../components/FeedbackModal";
-import { useWorkspaceStore } from "../../workspace/state/workspaceStore";
+import { useCompareStore } from "../../compare/state/compareStore";
 
 const onClose = vi.fn();
 
 beforeEach(() => {
   vi.mocked(openExternal).mockReset().mockResolvedValue(undefined);
   onClose.mockReset();
-  useWorkspaceStore.setState({ selectedModel: null });
+  useCompareStore.getState().reset();
 });
 
 const renderModal = () => render(<FeedbackModal onClose={onClose} />);
@@ -49,7 +49,7 @@ describe("FeedbackModal (mailto flow)", () => {
   });
 
   it("includes diagnostics + current model in the body when checkbox is on", async () => {
-    useWorkspaceStore.setState({ selectedModel: "mistral:7b" });
+    useCompareStore.getState().setSelectedModels([{ name: "mistral:7b", size_bytes: 1 }]);
     renderModal();
     fireEvent.change(screen.getByTestId("feedback-message"), {
       target: { value: "ten chars min satisfied" },

@@ -1,7 +1,7 @@
 import { useEffect, useState } from "react";
 import { useSubmitFeedback } from "../hooks/useSubmitFeedback";
 import { useToast } from "../../../shared/ui/Toast";
-import { useWorkspaceStore } from "../../workspace/state/workspaceStore";
+import { useCompareStore } from "../../compare/state/compareStore";
 import { MIN_MESSAGE_LEN, MAX_MESSAGE_LEN } from "../../../shared/ipc/system/feedback";
 
 type Props = { onClose: () => void };
@@ -11,7 +11,7 @@ export function FeedbackModal({ onClose }: Props) {
   const [includeDiagnostics, setIncludeDiagnostics] = useState(false);
   const { status, error, submit, reset } = useSubmitFeedback();
   const showToast = useToast();
-  const currentModel = useWorkspaceStore((s) => s.selectedModel);
+  const currentModel = useCompareStore((s) => s.selectedModels[0]?.name ?? null);
 
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {

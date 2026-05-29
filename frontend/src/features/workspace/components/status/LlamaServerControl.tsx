@@ -1,5 +1,6 @@
 import { useWorkspaceStore } from "../../state/workspaceStore";
 import { useInstalledModelsStore } from "../../../models/state/installedModelsStore";
+import { useCompareStore } from "../../../compare/state/compareStore";
 import { useStartLlamaServer } from "../../hooks/useStartLlamaServer";
 import { useStopLlamaServer } from "../../hooks/useStopLlamaServer";
 
@@ -7,7 +8,7 @@ import { useStopLlamaServer } from "../../hooks/useStopLlamaServer";
 /// the selected llama.cpp model's GGUF (one model at a time); Stop kills it.
 export function LlamaServerControl() {
   const healthy = useWorkspaceStore((s) => s.llamaHealthy);
-  const selectedName = useWorkspaceStore((s) => s.selectedModel);
+  const selectedName = useCompareStore((s) => s.selectedModels[0]?.name ?? null);
   const model = useInstalledModelsStore((s) =>
     s.list.find((m) => m.name === selectedName && m.backend === "llama_cpp"),
   );

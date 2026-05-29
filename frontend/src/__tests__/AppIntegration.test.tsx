@@ -24,6 +24,7 @@ import { listen, type EventCallback } from "@tauri-apps/api/event";
 import App from "../App";
 import { useWorkspacesStore } from "../features/workspaces/state/workspaceStore";
 import { useWorkspaceStore } from "../features/workspace/state/workspaceStore";
+import { useCompareStore } from "../features/compare/state/compareStore";
 import { seedCurrentPrompt } from "./helpers/seedWorkspace";
 
 const handlers: Record<string, EventCallback<unknown>> = {};
@@ -57,7 +58,8 @@ beforeEach(() => {
     if (cmd === "save_prompt") return Promise.resolve(useWorkspacesStore.getState().current);
     return Promise.reject(new Error(`unknown ${cmd}`));
   });
-  useWorkspaceStore.setState({ selectedModel: null, activeBackend: "ollama" });
+  useWorkspaceStore.setState({ activeBackend: "ollama" });
+  useCompareStore.getState().reset();
   seedCurrentPrompt();
 });
 

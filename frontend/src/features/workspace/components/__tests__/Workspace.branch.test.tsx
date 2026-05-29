@@ -8,10 +8,12 @@ vi.mock("@monaco-editor/react", () => ({ default: () => <textarea data-testid="p
 import { Workspace } from "../Workspace";
 import { useWorkspacesStore } from "../../../workspaces/state/workspaceStore";
 import { useWorkspaceStore } from "../../state/workspaceStore";
+import { useCompareStore } from "../../../compare/state/compareStore";
 
 beforeEach(() => {
   vi.clearAllMocks();
-  useWorkspaceStore.setState({ selectedModel: null, activeBackend: "ollama", ollamaHealthy: null });
+  useWorkspaceStore.setState({ activeBackend: "ollama", ollamaHealthy: null });
+  useCompareStore.getState().reset();
   useWorkspacesStore.setState({
     root: "/ws", tree: [], currentPath: "/ws/a.quantamind.yaml",
     current: { name: "a", system: "", user: "hi", model: null, params: {}, created_at: "t", updated_at: "t", auto_rerun: false },
@@ -21,7 +23,7 @@ beforeEach(() => {
 
 describe("Workspace is single-model (compare lives in the Bench)", () => {
   it("renders the single-run surface with a selected model", () => {
-    useWorkspaceStore.setState({ selectedModel: "llama3.2:1b" });
+    useCompareStore.getState().setSelectedModels([{ name: "llama3.2:1b", size_bytes: 1 }]);
     render(<Workspace />);
     expect(screen.getByTestId("run-status")).toBeTruthy();
     // No multi-model compare surface in the Workspace anymore.

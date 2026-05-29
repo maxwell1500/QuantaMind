@@ -10,12 +10,10 @@ export interface WorkspaceStore {
   ollamaHealthy: boolean | null;
   llamaHealthy: boolean | null;
   activeBackend: BackendKind;
-  selectedModel: string | null;
   setLastRunMetrics: (m: DonePayload) => void;
   setOllamaHealthy: (h: boolean) => void;
   setLlamaHealthy: (h: boolean) => void;
   setActiveBackend: (b: BackendKind) => void;
-  setSelectedModel: (m: string | null) => void;
 }
 
 export const useWorkspaceStore = create<WorkspaceStore>((set) => ({
@@ -23,10 +21,8 @@ export const useWorkspaceStore = create<WorkspaceStore>((set) => ({
   ollamaHealthy: null,
   llamaHealthy: null,
   activeBackend: "ollama",
-  selectedModel: null,
   setLastRunMetrics: (m) => set({ lastRunMetrics: m }),
   setOllamaHealthy: (h) => set({ ollamaHealthy: h }),
   setLlamaHealthy: (h) => set({ llamaHealthy: h }),
   setActiveBackend: (b) => set({ activeBackend: b }),
-  setSelectedModel: (m) => set({ selectedModel: m }),
 }));
