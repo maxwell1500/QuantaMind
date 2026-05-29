@@ -15,6 +15,8 @@ export function SingleRun({ model }: { model: string | null }) {
   const save = useWorkspacesStore((s) => s.save);
   const saveDraftAuto = useWorkspacesStore((s) => s.saveDraftAuto);
   const ollamaHealthy = useWorkspaceStore((s) => s.ollamaHealthy);
+  const llamaHealthy = useWorkspaceStore((s) => s.llamaHealthy);
+  const activeBackend = useWorkspaceStore((s) => s.activeBackend);
   const active = useNavStore((s) => s.topView) === "workspace";
   const { output, status, error, metrics, cancelledInfo, start, cancel } = useStreamingRun();
 
@@ -25,7 +27,9 @@ export function SingleRun({ model }: { model: string | null }) {
 
   const prompt = current?.user ?? "";
   const system = current?.system ?? "";
-  const canRun = !!model && prompt.trim().length > 0;
+  // llama.cpp needs its server started first (manual control in the panel).
+  const backendReady = activeBackend === "ollama" || llamaHealthy === true;
+  const canRun = !!model && prompt.trim().length > 0 && backendReady;
   const runNow = () => model && start(model, prompt, system, current?.params, currentPath, current?.name);
   useWorkspaceHotkeys({
     active, canRun, running: status === "running", hasPrompt: !!current,
@@ -37,7 +41,7 @@ export function SingleRun({ model }: { model: string | null }) {
       <RunControls
         status={status}
         canRun={canRun}
-        ollamaHealthy={ollamaHealthy}
+        ollamaHealthy={activeBackend === "ollama" ? ollamaHealthy : true}
         onRun={runNow}
         onCancel={cancel}
       />

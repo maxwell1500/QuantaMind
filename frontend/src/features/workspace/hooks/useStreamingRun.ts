@@ -82,6 +82,7 @@ export function useStreamingRun() {
         const trimmed = system?.trim();
         if (trimmed) args.system = trimmed;
         if (hasParam(params)) args.params = params;
+        args.backend = useWorkspaceStore.getState().activeBackend;
         await invoke("run_prompt", args);
       } catch (e) {
         setError(formatIpcError(e)); setStatus("error");

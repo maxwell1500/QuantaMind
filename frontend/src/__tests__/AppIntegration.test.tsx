@@ -82,6 +82,7 @@ describe("Phase 1 E2E smoke — edit → run → re-run", () => {
       expect(invoke).toHaveBeenCalledWith("run_prompt", {
         model: "llama3.2:1b",
         prompt: "Why is the sky blue?",
+        backend: "ollama",
       }),
     );
     act(() => {
@@ -109,6 +110,7 @@ describe("Phase 1 E2E smoke — edit → run → re-run", () => {
     expect(invoke).toHaveBeenCalledWith("run_prompt", {
       model: "llama3.2:1b",
       prompt: "Why is the sky blue?",
+      backend: "ollama",
     });
   });
 
