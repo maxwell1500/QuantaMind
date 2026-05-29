@@ -21,18 +21,29 @@ beforeEach(() => {
   });
 });
 
-describe("Workspace is single-model (compare lives in the Bench)", () => {
-  it("renders the single-run surface with a selected model", () => {
+describe("Workspace branches by selection count", () => {
+  it("one model → the single-run surface, no compare strategy picker", () => {
     useCompareStore.getState().setSelectedModels([{ name: "llama3.2:1b", size_bytes: 1 }]);
     render(<Workspace />);
     expect(screen.getByTestId("run-status")).toBeTruthy();
-    // No multi-model compare surface in the Workspace anymore.
-    expect(screen.queryByTestId("compare-columns")).toBeNull();
+    expect(screen.queryByTestId("run-strategy-picker")).toBeNull();
+    expect(screen.queryByTestId("multi-toolbar")).toBeNull();
   });
 
   it("with no model selected, Run is disabled", () => {
     render(<Workspace />);
     expect(screen.getByTestId("run-status")).toBeTruthy();
     expect((screen.getByRole("button", { name: /^run$/i }) as HTMLButtonElement).disabled).toBe(true);
+  });
+
+  it("two models → the compare surface with a sequential/parallel picker", () => {
+    useCompareStore.getState().setSelectedModels([
+      { name: "llama3.2:1b", size_bytes: 1 }, { name: "mistral:7b", size_bytes: 1 },
+    ]);
+    render(<Workspace />);
+    expect(screen.getByTestId("run-strategy-picker")).toBeTruthy();
+    expect(screen.getByTestId("multi-toolbar")).toBeTruthy();
+    // Single-run surface is not mounted in compare mode.
+    expect(screen.queryByTestId("run-status")).toBeNull();
   });
 });
