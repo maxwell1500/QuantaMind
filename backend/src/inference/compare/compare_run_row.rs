@@ -1,7 +1,8 @@
 #![deny(clippy::unwrap_used)]
-use crate::errors::AppError;
 use crate::inference::backend::backend::InferenceBackend;
 use crate::inference::backend::backend_kind::BackendKind;
+use crate::inference::backend::endpoint;
+use crate::inference::llama::llama_backend::LlamaCppBackend;
 use crate::inference::compare::compare_runner::RowSpec;
 use crate::inference::compare::compare_runner_finalize::finalize_row;
 use crate::inference::compare::compare_sink::CompareSink;
@@ -14,6 +15,15 @@ use crate::metrics::timing::RunTiming;
 use crate::sync::MutexExt;
 use std::sync::{Arc, Mutex};
 use tokio_util::sync::CancellationToken;
+
+/// The HTTP endpoint a compare row talks to. Ollama rows use the run's
+/// configured endpoint; llama.cpp rows use the `llama-server` sidecar default.
+fn endpoint_for(ollama_endpoint: &str, backend: BackendKind) -> String {
+    match backend {
+        BackendKind::Ollama => ollama_endpoint.to_string(),
+        BackendKind::LlamaCpp => endpoint::default_for(backend).to_string(),
+    }
+}
 
 pub(crate) async fn run_one_row(
     sink: &Arc<dyn CompareSink>,
@@ -47,14 +57,23 @@ pub(crate) async fn run_one_row(
         options,
         keep_alive,
     };
+    let row_endpoint = endpoint_for(endpoint, row.backend);
     let result = match row.backend {
         BackendKind::Ollama => {
-            OllamaBackend::new(endpoint.to_string())
+            OllamaBackend::new(row_endpoint)
                 .generate(&spec, row_token.clone(), handler)
                 .await
         }
-        BackendKind::LlamaCpp => Err(AppError::Inference("llama.cpp backend not yet wired".into())),
+        BackendKind::LlamaCpp => {
+            LlamaCppBackend::new(row_endpoint)
+                .generate(&spec, row_token.clone(), handler)
+                .await
+        }
     };
     state.rows.lock_recover().remove(&row.model_id);
     finalize_row(sink.as_ref(), row, &timing, &row_token, result);
 }
+
+#[cfg(test)]
+#[path = "compare_run_row_tests.rs"]
+mod tests;
