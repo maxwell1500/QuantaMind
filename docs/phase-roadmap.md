@@ -80,7 +80,11 @@ breakdown in `phase-3-bench.md`; scope limits in `product-principles.md`.
 Steps 3.1–3.3 done: the `InferenceBackend` trait, the llama.cpp `llama-server`
 sidecar backend, and a left **backend switcher** that scopes the Workspace to
 Ollama or llama.cpp (3.3 was revised from a `/bench` route to the switcher —
-see `phase-3-bench.md`). Steps 3.4–3.10 (richer comparison surfaces) remain.
+see `phase-3-bench.md`). Steps 3.4–3.9 done: a dedicated **Bench** tab with
+seq/parallel + VRAM gate, word-level diff, metric bar charts, saved
+`*.bench.yaml` configs, a quantamind.co report footer, and a bundled
+prompt-template library. Step 3.10 (cloud baseline) remains, deferred to its
+own mini-epic.
 
 ## Phase 4+
 

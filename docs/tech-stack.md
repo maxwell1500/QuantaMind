@@ -39,7 +39,7 @@ Resist additions. Every dependency is a maintenance debt.
 
 | Layer | Choice | Step | Why |
 |---|---|---|---|
-| Word diff (TS) | `diff-match-patch` | 3.5 | De-facto standard for word-level diffs; tiny, dependency-free, well-tested. Hand-rolling diff is the wrong place to spend effort. |
+| Word diff (TS) | `diff-match-patch` (installed) | 3.5 | De-facto standard for word-level diffs; tiny, dependency-free, well-tested. Hand-rolling diff is the wrong place to spend effort. |
 | Secret storage (Rust) | `keyring` | 3.10 | OS-native keychain (macOS Keychain / Windows Credential Manager / libsecret) for cloud API keys. Keys must never touch plaintext on disk. |
 | llama.cpp backend | `llama-server` (Tauri sidecar binary, not a crate) | 3.2 | Local GGUF inference without Ollama, streamed over HTTP — mirrors the Ollama path. Subprocess, not in-process FFI, to avoid a C++/CMake/GPU build in our crate. See `phase-3-llama-backend.md`. |
 

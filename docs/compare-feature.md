@@ -1,14 +1,13 @@
 # Compare (multi-model)
 
-> **v0.2 update — unified into the Workspace.** There is no longer a
-> separate Compare tab. The Workspace page is model-count-driven: pick
-> **one** model for a single streaming run (with per-prompt params,
-> history, auto-rerun), or **two-plus** models to compare them on the same
-> prompt. The RAM verdicts + run-strategy picker appear automatically once
-> a second model is selected. The engine below is unchanged — it's the
-> same `assessStrategies` + `run_compare` + per-model columns, now driven
-> from `features/workspace/components/MultiRun.tsx`. See
-> `docs/workspaces.md` for the unified page.
+> **v0.3 update — the Bench.** Multi-model comparison now lives in a
+> dedicated **Bench** tab (`features/compare/components/CompareTab.tsx`);
+> the Workspace is single-model per backend again. On top of the engine
+> below the Bench adds word-level diff (3.5), tok/s + TTFT bar charts
+> (3.6), saved `*.bench.yaml` configs (3.7), a quantamind.co report
+> footer (3.8), and a bundled prompt-template library (3.9). The engine
+> (`assessStrategies` + `run_compare` + per-model columns) is unchanged.
+> See `phase-3-bench.md`.
 
 Pick multiple installed models, write one prompt, run them through a
 user-chosen strategy, watch output stream into a per-model column, export

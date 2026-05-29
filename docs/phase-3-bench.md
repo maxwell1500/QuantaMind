@@ -23,12 +23,12 @@ re-homes that engine under `/bench` and builds the new surfaces on top of it.
 | 3.1 | `InferenceBackend` trait + backend identity (refactor) | done | `architecture.md` |
 | 3.2 | llama.cpp direct backend + `ModelInfo.backend` column | done | `phase-3-llama-backend.md` |
 | 3.3 | Backend switcher: scope the Workspace to Ollama or llama.cpp | done | `phase-3-llama-backend.md` |
-| 3.4 | Sequential vs parallel modes + VRAM gate (surface existing) | todo | `compare-feature.md` |
-| 3.5 | Output diff highlighting (`diff-match-patch`) | todo | — |
-| 3.6 | Comparison metrics view + bar charts | todo | — |
-| 3.7 | Saved bench configurations (workspace YAML) | todo | — |
-| 3.8 | Export comparison report (+ quantamind.co footer) | todo | — |
-| 3.9 | Prompt templates library (`docs/prompts/`) | todo | — |
+| 3.4 | Sequential vs parallel modes + VRAM gate (surface existing) | done | `compare-feature.md` |
+| 3.5 | Output diff highlighting (`diff-match-patch`) | done | `compare-feature.md` |
+| 3.6 | Comparison metrics view + bar charts | done | `compare-feature.md` |
+| 3.7 | Saved bench configurations (workspace YAML) | done | `compare-feature.md` |
+| 3.8 | Export comparison report (+ quantamind.co footer) | done | `compare-feature.md` |
+| 3.9 | Prompt templates library (`docs/prompts/`) | done | `compare-feature.md` |
 | 3.10 | Cloud baseline comparison (OpenAI/Anthropic/Google/Mistral) | todo | — |
 
 ## Architecture decision — Step 3.3 is a backend switcher (revised)
@@ -42,6 +42,23 @@ llama.cpp: single-model, since `llama-server` runs one model at a time with
 manual Start/Stop). The richer comparison-only surfaces (diff, charts, saved
 configs, templates, cloud) remain Steps 3.5–3.10. See
 `phase-3-llama-backend.md` for the switcher's wiring.
+
+## Bench surfaces (3.4–3.9, shipped)
+
+The Bench is a dedicated top-level tab (`features/compare/components/CompareTab`);
+the Workspace stayed single-model per backend. On top of the v0.2 engine the
+Bench now adds:
+
+- **3.4** seq/parallel picker + RAM/VRAM verdict (surfaced existing).
+- **3.5** word-level `DiffView` (diff-match-patch) when exactly two rows finish.
+- **3.6** hand-rolled bar charts (`MetricsChart`) for tok/s and TTFT.
+- **3.7** save/load `*.bench.yaml` configs in the open workspace
+  (`commands/bench/bench_config.rs`, sandboxed via `WorkspaceState`).
+- **3.8** a `quantamind.co` footer on Markdown reports + `generated_by` in JSON.
+- **3.9** bundled `docs/prompts/*.md` templates via `list_prompt_templates`,
+  inserted from a `PromptTemplatePicker`.
+
+3.10 (cloud baseline) remains deferred to its own mini-epic.
 
 ## Locked decisions
 
