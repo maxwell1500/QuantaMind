@@ -19,7 +19,7 @@
     "active": true,
     "targets": "all",
     "createUpdaterArtifacts": true,
-    "resources": { "binaries/": "binaries/" },
+    "resources": { "binaries/": "binaries/", "../docs/prompts/": "prompts/" },
     "icon": [
       "icons/32x32.png",
       "icons/128x128.png",

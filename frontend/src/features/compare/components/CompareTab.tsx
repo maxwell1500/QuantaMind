@@ -8,6 +8,7 @@ import { CompareDiff } from "./CompareDiff";
 import { MetricsChart } from "./MetricsChart";
 import { ExportButtons } from "./ExportButtons";
 import { BenchConfigBar } from "./config/BenchConfigBar";
+import { PromptTemplatePicker } from "../../../shared/ui/PromptTemplatePicker";
 
 export function CompareTab() {
   const prompt = useCompareStore((s) => s.prompt);
@@ -37,7 +38,10 @@ export function CompareTab() {
         />
       </div>
       <div className="space-y-1">
-        <div className="text-xs text-gray-600">User prompt</div>
+        <div className="flex items-center justify-between">
+          <div className="text-xs text-gray-600">User prompt</div>
+          <PromptTemplatePicker onInsert={setPrompt} />
+        </div>
         <textarea
           value={prompt}
           onChange={(e) => setPrompt(e.target.value)}

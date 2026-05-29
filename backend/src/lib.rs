@@ -62,6 +62,7 @@ pub fn run() {
             commands::bench::bench_config::save_bench_config,
             commands::bench::bench_config::load_bench_config,
             commands::bench::bench_config::list_bench_configs,
+            commands::prompt_templates::templates::list_prompt_templates,
             commands::workspace::workspace_prompts::load_prompt,
             commands::workspace::workspace_prompts::save_prompt,
             commands::workspace::workspace_prompts::create_prompt,
