@@ -12,16 +12,16 @@ files you own, version, and share like any other source.
 Selection is backend-driven, in `compareStore.selectedModels`
 (`ModelDropdown.tsx`; `ModelSelectBar.tsx` gates on Ollama health):
 
-- **Ollama** — multi-select. 0 = Run disabled; 1 = single streaming run
-  via `run_prompt` (per-prompt params, history, auto-rerun —
-  `SingleRun.tsx`); 2+ = one prompt across all, with a RAM-based
-  sequential-vs-parallel readout + strategy picker, streaming into
-  side-by-side columns (`MultiRun.tsx`). Params don't apply to a multi-run.
+- **Ollama** — multi-select. 0 = Run disabled; 1 = single `run_prompt` run
+  (history, auto-rerun); 2+ = one prompt across all, with a RAM-based
+  sequential-vs-parallel readout + strategy picker (`MultiRun.tsx`).
 - **llama.cpp** — single-select only (one server); single run.
 
-The header's single **Start/Stop** next to History (`ServerControl`) starts/stops
-the active backend's *server*, not the prompt; the prompt **Run/Cancel** (Compare
-for 2+) stays inline. The read-only **Analysis** tab has charts, diff, and export.
+The Workspace is config-only: params on top, then prompts, then **Run**. A 2+
+compare adds a "same parameters for all models" toggle (default on; else a
+per-model card, `ModelParamControls`). The header **Start/Stop**
+(`ServerControl`) controls the backend *server*; **Run** opens the read-only
+**Analysis** tab — responses on top, charts + diff + export below.
 
 ## File format: `*.quantamind.yaml`
 

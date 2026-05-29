@@ -1,19 +1,16 @@
 # Compare (multi-model)
 
-> **v0.3 update — run in the Workspace, analyze in Analysis.** Multi-model
-> comparison runs **in the Workspace**: the model picker is multi-select for
-> Ollama (1 = single run, 2+ = compare with a sequential/parallel picker) and
-> single-select for llama.cpp. There is one shared system + user prompt; the
-> prompt **Run/Cancel** (or Compare) is inline in the run surface, while the
-> header's single **Start/Stop** next to History controls the active backend's
-> *server* (`ServerControl`). Per-model outputs stream into side-by-side columns
-> (`MultiRun`). The read-only **Analysis** tab (`AnalysisTab.tsx`) has the tok/s
+> **v0.3 update — configure in the Workspace, run into Analysis.** The Workspace
+> is config-only: pick model(s) (Ollama multi-select; llama.cpp single), set
+> parameters (shared, or per-model via the "same for all" toggle), write one
+> system + user prompt, hit **Run**. Run navigates to the read-only **Analysis**
+> tab (`AnalysisTab.tsx`): per-model responses (M1/M2/M3) on top, then the tok/s
 > + TTFT charts (3.6), the two-model diff (3.5), and MD/JSON export with a
-> quantamind.co footer (3.8). The engine (`assessStrategies` + `run_compare`) is
+> quantamind.co footer (3.8). The header's single **Start/Stop** next to History
+> controls the active backend's *server* (`ServerControl`), not the prompt.
+> Per-model params + the shared prompt thread through `run_compare`
+> (`options_for`); the engine (`assessStrategies` + `run_compare`) is otherwise
 > unchanged. See `phase-3-bench.md` and `workspaces.md`.
-
-The flow: pick model(s) in the Workspace, write one prompt, Run, then open
-Analysis to compare metrics + diff and export it.
 
 ## Run strategies
 
