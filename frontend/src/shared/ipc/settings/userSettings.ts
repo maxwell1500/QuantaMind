@@ -5,6 +5,7 @@ export const UserSettingsSchema = z.object({
   theme: z.string().nullable().optional(),
   first_run_complete: z.boolean().default(false),
   last_update_check_at: z.string().nullable().optional(),
+  models_folder: z.string().nullable().optional(),
 });
 export type UserSettings = z.infer<typeof UserSettingsSchema>;
 
@@ -14,4 +15,9 @@ export async function getUserSettings(): Promise<UserSettings> {
 
 export async function setUserSettings(settings: UserSettings): Promise<void> {
   await invoke("set_user_settings", { settings });
+}
+
+/// Absolute path of the shared GGUF weights folder (setting → env → default).
+export async function resolveModelsFolder(): Promise<string> {
+  return z.string().parse(await invoke("resolve_models_folder"));
 }

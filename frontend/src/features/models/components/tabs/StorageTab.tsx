@@ -2,6 +2,7 @@ import { useEffect, useState } from "react";
 import { getDiskUsage, type DiskUsage } from "../../../../shared/ipc/models/storage";
 import { formatBytes } from "../../../../shared/format/bytes";
 import { StoragePathSection } from "../StoragePathSection";
+import { ModelsFolderSection } from "../ModelsFolderSection";
 import { formatIpcError } from "../../../../shared/ipc/core/error";
 import { useInstalledModelsStore } from "../../state/installedModelsStore";
 
@@ -17,6 +18,7 @@ export function StorageTab() {
   return (
     <div data-testid="storage-tab" className="flex flex-col gap-3 h-full">
       <StoragePathSection />
+      <ModelsFolderSection />
       {usage && (
         <div className="text-xs text-gray-600" data-testid="disk-summary">
           Models: {formatBytes(usage.ollama_models_bytes)} / Free:{" "}
