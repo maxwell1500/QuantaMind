@@ -12,6 +12,8 @@ export const InstalledModelInfoSchema = z.object({
   parameter_size: z.string(),
   quantization: z.string(),
   backend: BackendKindSchema,
+  // Absolute GGUF path — present for llama.cpp models, absent for Ollama.
+  path: z.string().optional(),
 });
 export type InstalledModelInfo = z.infer<typeof InstalledModelInfoSchema>;
 
