@@ -52,10 +52,11 @@ the Bench was renamed **Analysis** (read-only). The shipped pieces now live as:
   Ollama models are selected (`MultiRun` + `RunStrategyPicker` + `HardwareSummary`).
 - **3.5** word-level `DiffView` (diff-match-patch) — Analysis tab.
 - **3.6** hand-rolled tok/s + TTFT bar charts (`MetricsChart`) — Analysis tab.
-- **3.8** `quantamind.co` footer on Markdown reports + `generated_by` JSON —
-  Analysis export. Target export schema (a richer future format) is filed in
-  `docs/analysis-schema-v1.md`; the shipped `buildReport` `CompareReport` is the
-  simpler v1 to be aligned to `document_type:"bench-report"` later.
+- **3.8** Analysis export. JSON now emits the richer analysis document
+  (`document_type:"bench-report"`, schema in `docs/analysis-schema-v1.md`) — a
+  populated subset (environment/models/prompts/runs/reproducibility) with
+  optional fields omitted; `findings`/`verdicts` empty. Markdown keeps the
+  `quantamind.co` footer and is the human-readable view of the same document.
 - **3.9** bundled `docs/prompts/*.md` templates via `list_prompt_templates`,
   inserted from `PromptTemplatePicker` — now in the Workspace prompt editor.
 - The header's single **Start/Stop** next to History (`ServerControl`)

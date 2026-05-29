@@ -7,13 +7,14 @@
 
 ## Status
 
-Design-only. **Nothing in the app emits this format yet.** Today, Phase 3 Step
-3.8 emits the simpler `CompareReport` from
-`frontend/src/features/compare/format/buildReport.ts`
-(`schema_version: 1`, `prompt`, `strategy`, `hardware_snapshot`, `models[]`).
-This document is the **target** schema to align that exporter to in a later
-pass. File now, build later — getting the outer shape right up front is cheap;
-retrofitting a community schema after shipping an ad-hoc one is expensive.
+Phase 3 Step 3.8's export (`frontend/src/features/compare/format/buildReport.ts`)
+now emits this format as a **populated subset**: `document_type:"bench-report"`,
+`schema_version:"1.0.0"`, with `environment`/`models`/`prompts`/`runs`/
+`reproducibility` filled from whatever data we currently have and every other
+field omitted (the schema keeps them optional). `findings`/`verdicts` stay empty
+for app-generated reports. The remaining gaps (CPU/OS/GPU detail, per-run
+parameters, `parameter_count`, `author`/provenance, ULID monotonicity) fill in
+as the app gains that data; nothing here blocks a later, richer pass.
 
 ## What this schema is
 
