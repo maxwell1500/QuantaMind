@@ -27,6 +27,9 @@ async fn fetch_installed_parses_details_and_sorts_by_size_desc() {
     assert_eq!(out[0].quantization, "Q4_K_M");
     assert_eq!(out[1].name, "mid:3b");
     assert_eq!(out[2].name, "small:1b");
+    // Ollama-listed models are tagged backend=ollama (serialized snake_case).
+    let json = serde_json::to_string(&out[0]).expect("serialize");
+    assert!(json.contains(r#""backend":"ollama""#), "json: {json}");
 }
 
 #[tokio::test]

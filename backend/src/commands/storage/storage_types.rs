@@ -1,3 +1,4 @@
+use crate::inference::backend::backend_kind::BackendKind;
 use serde::{Deserialize, Serialize};
 
 #[derive(Serialize, Clone)]
@@ -8,6 +9,7 @@ pub struct InstalledModelInfo {
     pub family: String,
     pub parameter_size: String,
     pub quantization: String,
+    pub backend: BackendKind,
 }
 
 #[derive(Serialize, Clone)]

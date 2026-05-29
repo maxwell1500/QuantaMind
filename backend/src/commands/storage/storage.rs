@@ -5,6 +5,7 @@ use crate::commands::storage::storage_types::{
     DiskUsage, InstalledModelInfo, ModelDetails, TagsResponse,
 };
 use crate::errors::{AppError, AppResult};
+use crate::inference::backend::backend_kind::BackendKind;
 use reqwest::Client;
 use std::time::Duration;
 use tauri::AppHandle;
@@ -48,6 +49,7 @@ pub async fn fetch_installed_with_stats(endpoint: &str) -> AppResult<Vec<Install
                 family: d.family,
                 parameter_size: d.parameter_size,
                 quantization: d.quantization_level,
+                backend: BackendKind::Ollama,
             }
         })
         .collect();
