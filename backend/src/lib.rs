@@ -20,6 +20,7 @@ pub fn run() {
         .manage(commands::compare::compare::CompareRunState::default())
         .manage(commands::settings::model_settings::ModelSettingsState::default())
         .manage(commands::ollama::ollama_start::OllamaStartState::default())
+        .manage(commands::llama::llama_server_types::LlamaServerState::default())
         .manage(commands::workspace::workspaces::WorkspaceState::default())
         .manage(commands::settings::user_settings::UserSettingsState::default())
         .invoke_handler(tauri::generate_handler![
@@ -42,6 +43,8 @@ pub fn run() {
             commands::models::models_pull::cancel_pull,
             commands::ollama::ollama_start::start_ollama,
             commands::ollama::ollama_start::stop_ollama,
+            commands::llama::llama_start::start_llama_server,
+            commands::llama::llama_start::stop_llama_server,
             commands::settings::settings::get_storage_path,
             commands::settings::settings::validate_storage_path,
             commands::storage::storage::get_installed_models_with_stats,
