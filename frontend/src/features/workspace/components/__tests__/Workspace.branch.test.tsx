@@ -7,13 +7,11 @@ vi.mock("@monaco-editor/react", () => ({ default: () => <textarea data-testid="p
 
 import { Workspace } from "../Workspace";
 import { useWorkspacesStore } from "../../../workspaces/state/workspaceStore";
-import { useCompareStore } from "../../../compare/state/compareStore";
-
-const m = (name: string) => ({ name, size_bytes: 1_000_000 });
+import { useWorkspaceStore } from "../../state/workspaceStore";
 
 beforeEach(() => {
   vi.clearAllMocks();
-  useCompareStore.getState().reset();
+  useWorkspaceStore.setState({ selectedModel: null, activeBackend: "ollama", ollamaHealthy: null });
   useWorkspacesStore.setState({
     root: "/ws", tree: [], currentPath: "/ws/a.quantamind.yaml",
     current: { name: "a", system: "", user: "hi", model: null, params: {}, created_at: "t", updated_at: "t", auto_rerun: false },
@@ -21,22 +19,16 @@ beforeEach(() => {
   });
 });
 
-describe("Workspace mode is driven by model count", () => {
-  it("one model → single-run surface (no compare toolbar)", () => {
-    useCompareStore.setState({ selectedModels: [m("llama3.2:1b")] });
+describe("Workspace is single-model (compare lives in the Bench)", () => {
+  it("renders the single-run surface with a selected model", () => {
+    useWorkspaceStore.setState({ selectedModel: "llama3.2:1b" });
     render(<Workspace />);
     expect(screen.getByTestId("run-status")).toBeTruthy();
-    expect(screen.queryByTestId("multi-run")).toBeNull();
+    // No multi-model compare surface in the Workspace anymore.
+    expect(screen.queryByTestId("compare-columns")).toBeNull();
   });
 
-  it("two-plus models → compare surface (no single run-status)", () => {
-    useCompareStore.setState({ selectedModels: [m("llama3.2:1b"), m("mistral:7b")] });
-    render(<Workspace />);
-    expect(screen.getByTestId("multi-run")).toBeTruthy();
-    expect(screen.queryByTestId("run-status")).toBeNull();
-  });
-
-  it("zero models → single-run surface with the Run disabled", () => {
+  it("with no model selected, Run is disabled", () => {
     render(<Workspace />);
     expect(screen.getByTestId("run-status")).toBeTruthy();
     expect((screen.getByRole("button", { name: /^run$/i }) as HTMLButtonElement).disabled).toBe(true);

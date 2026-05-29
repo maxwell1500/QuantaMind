@@ -23,7 +23,7 @@ import { invoke } from "@tauri-apps/api/core";
 import { listen, type EventCallback } from "@tauri-apps/api/event";
 import App from "../App";
 import { useWorkspacesStore } from "../features/workspaces/state/workspaceStore";
-import { useCompareStore } from "../features/compare/state/compareStore";
+import { useWorkspaceStore } from "../features/workspace/state/workspaceStore";
 import { seedCurrentPrompt } from "./helpers/seedWorkspace";
 
 const handlers: Record<string, EventCallback<unknown>> = {};
@@ -57,7 +57,7 @@ beforeEach(() => {
     if (cmd === "save_prompt") return Promise.resolve(useWorkspacesStore.getState().current);
     return Promise.reject(new Error(`unknown ${cmd}`));
   });
-  useCompareStore.getState().reset();
+  useWorkspaceStore.setState({ selectedModel: null, activeBackend: "ollama" });
   seedCurrentPrompt();
 });
 
@@ -74,7 +74,7 @@ describe("Phase 1 E2E smoke — edit → run → re-run", () => {
     fireEvent.change(editor, { target: { value: "Why is the sky blue?" } });
     // Pick one model (a chip) → single-run mode
     fireEvent.click(await screen.findByTestId("model-dropdown"));
-    fireEvent.click(within(await screen.findByTestId("model-option-llama3.2:1b")).getByRole("checkbox"));
+    fireEvent.click(await screen.findByTestId("model-option-llama3.2:1b"));
 
     // 2. RUN — tokens stream into UI, metrics displayed
     fireEvent.click(screen.getByRole("button", { name: /^run$/i }));
@@ -122,7 +122,7 @@ describe("Phase 1 E2E smoke — edit → run → re-run", () => {
       target: { value: "x" },
     });
     fireEvent.click(await screen.findByTestId("model-dropdown"));
-    fireEvent.click(within(await screen.findByTestId("model-option-llama3.2:1b")).getByRole("checkbox"));
+    fireEvent.click(await screen.findByTestId("model-option-llama3.2:1b"));
     fireEvent.click(screen.getByRole("button", { name: /^run$/i }));
     act(() => fire("prompt-token", { text: "partial" }));
     fireEvent.click(screen.getByRole("button", { name: /cancel/i }));

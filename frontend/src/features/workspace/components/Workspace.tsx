@@ -1,38 +1,28 @@
-import { useEffect } from "react";
 import { PromptEditor } from "./prompt/PromptEditor";
 import { ParamsPanel } from "./prompt/ParamsPanel";
 import { StatusBar } from "./status/StatusBar";
 import { ModelSelectBar } from "./model-select/ModelSelectBar";
 import { SingleRun } from "./run/SingleRun";
-import { MultiRun } from "./run/MultiRun";
-import { HardwareSummary } from "../../compare/components/HardwareSummary";
-import { useCompareStore } from "../../compare/state/compareStore";
 import { useWorkspaceStore } from "../state/workspaceStore";
 import { useWorkspacesStore } from "../../workspaces/state/workspaceStore";
 
+/// Single-model run surface, scoped to the active backend. Multi-model
+/// comparison lives in the Bench tab (see CompareTab).
 export function Workspace() {
   const current = useWorkspacesStore((s) => s.current);
   const patch = useWorkspacesStore((s) => s.patch);
-  const selectedModels = useCompareStore((s) => s.selectedModels);
-  const count = selectedModels.length;
-  const primaryModel = selectedModels[0]?.name ?? null;
-
-  // Mirror the primary model for the StatusBar + feedback diagnostics.
-  useEffect(() => {
-    useWorkspaceStore.getState().setSelectedModel(primaryModel);
-  }, [primaryModel]);
+  const model = useWorkspaceStore((s) => s.selectedModel);
 
   return (
     <div className="space-y-3">
       <ModelSelectBar />
-      <HardwareSummary />
       {!current ? (
         <p data-testid="workspace-empty" className="text-sm text-gray-500 px-2 py-8 text-center">
           Select a prompt from the Files panel, or click <strong>+ New</strong> to create one.
         </p>
       ) : (
         <>
-          {count < 2 && <ParamsPanel running={false} />}
+          <ParamsPanel running={false} />
           <PromptEditor
             value={current.system}
             onChange={(v) => patch({ system: v })}
@@ -46,10 +36,10 @@ export function Workspace() {
             label="User prompt"
             testId="user-prompt-editor"
           />
-          {count >= 2 ? <MultiRun /> : <SingleRun model={primaryModel} />}
+          <SingleRun model={model} />
         </>
       )}
-      <StatusBar model={primaryModel} onModelClick={() => undefined} />
+      <StatusBar model={model} onModelClick={() => undefined} />
     </div>
   );
 }

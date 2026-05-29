@@ -1,11 +1,10 @@
 import { describe, it, expect, vi, beforeEach } from "vitest";
-import { render, screen, fireEvent, within, act } from "@testing-library/react";
+import { render, screen, fireEvent, act } from "@testing-library/react";
 
 vi.mock("@tauri-apps/api/core", () => ({ invoke: vi.fn().mockResolvedValue([]) }));
 
 import { ModelDropdown } from "../model-select/ModelDropdown";
 import { useInstalledModelsStore } from "../../../models/state/installedModelsStore";
-import { useCompareStore } from "../../../compare/state/compareStore";
 import { useWorkspaceStore } from "../../state/workspaceStore";
 
 const model = (name: string, backend: "ollama" | "llama_cpp") =>
@@ -14,8 +13,7 @@ const model = (name: string, backend: "ollama" | "llama_cpp") =>
 
 beforeEach(() => {
   vi.clearAllMocks();
-  useCompareStore.getState().reset();
-  useWorkspaceStore.setState({ activeBackend: "ollama" });
+  useWorkspaceStore.setState({ activeBackend: "ollama", selectedModel: null });
   useInstalledModelsStore.setState({
     list: [model("llama3:1b", "ollama"), model("phi3", "llama_cpp"), model("qwen", "llama_cpp")],
     status: "ready", error: null,
@@ -38,32 +36,17 @@ describe("ModelDropdown backend scoping", () => {
     expect(screen.queryByTestId("model-option-llama3:1b")).toBeNull();
   });
 
-  it("is single-select for llama.cpp — a second pick replaces the first", () => {
-    act(() => useWorkspaceStore.setState({ activeBackend: "llama_cpp" }));
+  it("clears the selection when it isn't in the active backend (switch)", () => {
+    useWorkspaceStore.setState({ selectedModel: "llama3:1b" });
     render(<ModelDropdown />);
-    fireEvent.click(screen.getByTestId("model-dropdown"));
-    fireEvent.click(within(screen.getByTestId("model-option-phi3")).getByRole("checkbox"));
-    fireEvent.click(within(screen.getByTestId("model-option-qwen")).getByRole("checkbox"));
-    expect(useCompareStore.getState().selectedModels.map((m) => m.name)).toEqual(["qwen"]);
-  });
-
-  it("clears the selection when the backend switches", () => {
-    render(<ModelDropdown />);
-    act(() => useCompareStore.setState({ selectedModels: [{ name: "llama3:1b", size_bytes: 1 }] }));
     act(() => useWorkspaceStore.getState().setActiveBackend("llama_cpp"));
-    expect(useCompareStore.getState().selectedModels).toEqual([]);
+    expect(useWorkspaceStore.getState().selectedModel).toBeNull();
   });
 
-  it("prunes a stale other-backend pick that has no row on this backend", () => {
-    // On Ollama, a leaked llama.cpp bare-name selection (no `:latest` row here)
-    // must be dropped automatically so it can't linger and inflate the count.
-    act(() =>
-      useCompareStore.setState({ selectedModels: [
-        { name: "llama3:1b", size_bytes: 1 },   // ollama model in the list
-        { name: "phi3", size_bytes: 1 },         // llama.cpp-only — not on Ollama
-      ] }),
-    );
+  it("prunes a stale selection that has no row on this backend", () => {
+    // On Ollama, a leaked llama.cpp pick (no row here) is dropped automatically.
+    useWorkspaceStore.setState({ activeBackend: "ollama", selectedModel: "phi3" });
     render(<ModelDropdown />);
-    expect(useCompareStore.getState().selectedModels.map((m) => m.name)).toEqual(["llama3:1b"]);
+    expect(useWorkspaceStore.getState().selectedModel).toBeNull();
   });
 });
