@@ -1,6 +1,7 @@
 use crate::commands::emit::log_emit;
 use crate::commands::gguf::gguf_cmd::{install_local_gguf_inner, EVENT_MODELS_CHANGED};
 use crate::commands::hf::hf_phase::{HfPhase, EVENT_HF_PROGRESS};
+use crate::commands::storage::storage_disk::{gguf_dest, gguf_dir};
 use crate::errors::{AppError, AppResult};
 use crate::inference::hf::hf_download::{download_gguf, DownloadProgress};
 use crate::inference::hf::hf_resume::partial_path;
@@ -24,10 +25,11 @@ pub async fn install_hf_gguf_inner(
     repo: &str, filename: &str, name: &str,
 ) -> AppResult<()> {
     validate_name(name)?;
-    let temp_dir = std::env::temp_dir().join("quantamind-hf");
-    fs::create_dir_all(&temp_dir).map_err(|e| AppError::Io(e.to_string()))?;
-    let safe = name.replace([':', '/'], "_");
-    let dest = temp_dir.join(format!("{safe}.gguf"));
+    // Download into the persistent GGUF store so the file is retained for the
+    // llama.cpp backend (not deleted after the Ollama import).
+    let dir = gguf_dir();
+    fs::create_dir_all(&dir).map_err(|e| AppError::Io(e.to_string()))?;
+    let dest = gguf_dest(&dir, name);
 
     let token = CancellationToken::new();
     {
@@ -60,7 +62,8 @@ pub async fn install_hf_gguf_inner(
         log_emit(&install_app, EVENT_HF_PROGRESS, HfPhase::from_create(phase));
     };
     let result = install_local_gguf_inner(DEFAULT_OLLAMA, &dest.to_string_lossy(), name, on_install).await;
-    let _ = fs::remove_file(&dest);
+    // Keep `dest` (the GGUF) for the llama.cpp backend; only the resume marker
+    // is transient.
     let _ = fs::remove_file(partial_path(&dest));
     if result.is_ok() {
         log_emit(&app, EVENT_MODELS_CHANGED, ());
