@@ -16,7 +16,7 @@ where
 {
     move |t| match emit(t) {
         Ok(()) => {
-            timing.lock_recover().record_token();
+            timing.lock_recover().record_token(t);
         }
         Err(()) => {
             cancel.cancel();

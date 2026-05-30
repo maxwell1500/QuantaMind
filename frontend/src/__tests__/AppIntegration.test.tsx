@@ -97,7 +97,7 @@ describe("Phase 1 E2E smoke — edit → run → re-run", () => {
       fire("prompt-token", { text: "blue." });
     });
     act(() => {
-      fire("prompt-done", { ttft_ms: 8, tokens_per_sec: 32.0, token_count: 4 });
+      fire("prompt-done", { ttft_ms: 8, tokens_per_sec: 32.0, token_count: 4, timeline: [] });
     });
     const expected = "TTFT 8ms · 32.0 tok/s · 4 tokens";
     expect(await screen.findByTestId("compare-output-llama3.2:1b")).toHaveTextContent(

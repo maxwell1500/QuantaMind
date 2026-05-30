@@ -1,3 +1,4 @@
+use crate::metrics::timeline::TokenTiming;
 use crate::metrics::timing::RunTiming;
 use crate::sync::MutexExt;
 use serde::Serialize;
@@ -13,6 +14,7 @@ pub struct DonePayload {
     pub ttft_ms: Option<u64>,
     pub tokens_per_sec: Option<f64>,
     pub token_count: usize,
+    pub timeline: Vec<TokenTiming>,
 }
 
 #[derive(Serialize, Clone)]
@@ -30,5 +32,31 @@ pub fn done_payload(timing: &Mutex<RunTiming>) -> DonePayload {
         ttft_ms: t.ttft_ms(),
         tokens_per_sec: t.tokens_per_sec(),
         token_count: t.token_count,
+        timeline: t.timeline().to_vec(),
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn timeline_length_matches_token_count() {
+        let timing = Mutex::new(RunTiming::start());
+        for tok in ["a", "b", "c"] {
+            timing.lock_recover().record_token(tok);
+        }
+        let p = done_payload(&timing);
+        assert_eq!(p.token_count, 3);
+        assert_eq!(p.timeline.len(), p.token_count);
+        assert_eq!(p.timeline[2].n, 3);
+    }
+
+    #[test]
+    fn empty_run_yields_empty_timeline() {
+        let timing = Mutex::new(RunTiming::start());
+        let p = done_payload(&timing);
+        assert_eq!(p.token_count, 0);
+        assert!(p.timeline.is_empty());
     }
 }

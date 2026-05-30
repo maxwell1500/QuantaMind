@@ -67,7 +67,7 @@ describe("useStreamingRun — IPC event validation (F6)", () => {
     await waitFor(() => expect(handlers["prompt-done"]).toBeDefined());
     await act(async () => { await result.current.start("m", "p"); });
 
-    const payload = { ttft_ms: 12, tokens_per_sec: 50.0, token_count: 4 };
+    const payload = { ttft_ms: 12, tokens_per_sec: 50.0, token_count: 4, timeline: [] };
     act(() => fire("prompt-done", payload));
 
     expect(result.current.status).toBe("done");
