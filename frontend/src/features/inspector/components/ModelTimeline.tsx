@@ -1,13 +1,15 @@
 import { useState } from "react";
 import type { CompareRow } from "../../compare/state/compareRow";
+import type { LoadedModel } from "../../../shared/ipc/system/vram";
 import { buildLatencyBars, type LatencyBar } from "../format/timeline";
 import { TokenTimeline } from "./TokenTimeline";
 import { TtftBreakdown } from "./TtftBreakdown";
+import { VramBar } from "./VramBar";
 
 const tag = (k: LatencyBar["kind"]) => (k === "ttft" ? " (TTFT)" : k === "outlier" ? " (outlier)" : "");
 
 /// One model's timing: name + summary, a hover readout, and its bar chart.
-export function ModelTimeline({ row, width }: { row: CompareRow; width: number }) {
+export function ModelTimeline({ row, width, vram }: { row: CompareRow; width: number; vram?: LoadedModel }) {
   const [hovered, setHovered] = useState<LatencyBar | null>(null);
   const m = row.metrics;
   const { bars, stats } = buildLatencyBars(m?.timeline ?? [], m?.ttft_ms ?? null);
@@ -25,6 +27,7 @@ export function ModelTimeline({ row, width }: { row: CompareRow; width: number }
         </span>
       </div>
       <TtftBreakdown ttftMs={m?.ttft_ms ?? null} stats={m?.stats} />
+      <VramBar entry={vram} />
       <div className="text-xs text-gray-500 h-4" data-testid={`readout-${row.model}`}>
         {hovered
           ? `#${hovered.index} · ${hovered.latencyMs}ms${tag(hovered.kind)} — ${JSON.stringify(hovered.token)}`

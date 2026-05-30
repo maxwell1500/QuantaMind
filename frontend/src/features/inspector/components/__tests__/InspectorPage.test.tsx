@@ -1,5 +1,8 @@
-import { describe, it, expect, beforeEach } from "vitest";
+import { describe, it, expect, beforeEach, vi } from "vitest";
 import { render, screen } from "@testing-library/react";
+
+vi.mock("../../../../shared/ipc/system/vram", () => ({ loadedModels: vi.fn().mockResolvedValue([]) }));
+
 import { InspectorPage } from "../InspectorPage";
 import { useCompareStore } from "../../../compare/state/compareStore";
 import type { CompareRow } from "../../../compare/state/compareRow";

@@ -369,7 +369,11 @@ so users can see *why* it was fast or slow. Built one step at a time.
   shows a stacked TTFT bar per model — Model load + Prompt prefill +
   Network/first-token (remainder) — segmented only by what the backend reports;
   otherwise "not available". Pure math in `features/inspector/format/ttft.ts`.
-- **4.4** VRAM allocation (Ollama `/api/ps`); honest "not available" elsewhere.
+- **4.4 VRAM allocation (done).** `get_loaded_models` reads Ollama `/api/ps`;
+  the Inspector shows a per-model bar — In VRAM (`size_vram`) vs offloaded to
+  system RAM (`size − size_vram`), `context_length` in the tooltip. Models not
+  loaded / non-Ollama backends → "Not available" (never a fabricated
+  weights/KV/free split). Device free/total VRAM deferred to 4.5 (GPU probe).
 - **4.5** Hardware detection (CPU/GPU/RAM/OS via `sysinfo`) → Settings.
 - **4.6** Inter-token latency histogram. **4.7** Cold- vs warm-start.
 - **4.8** Memory-leak heuristic. **4.9** Regression alerts vs 7-day baseline.

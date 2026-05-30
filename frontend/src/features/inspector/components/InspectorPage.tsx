@@ -1,5 +1,6 @@
 import { useCompareStore } from "../../compare/state/compareStore";
 import { useParentWidth } from "../hooks/useParentWidth";
+import { useLoadedModels } from "../hooks/useLoadedModels";
 import { ModelTimeline } from "./ModelTimeline";
 
 const SWATCH = [
@@ -14,6 +15,7 @@ const SWATCH = [
 export function InspectorPage() {
   const rows = useCompareStore((s) => s.rows);
   const [ref, width] = useParentWidth<HTMLDivElement>();
+  const { byName, refresh } = useLoadedModels();
   const charted = rows.filter((r) => (r.metrics?.timeline?.length ?? 0) > 0);
 
   if (charted.length === 0) {
@@ -26,16 +28,22 @@ export function InspectorPage() {
 
   return (
     <div className="space-y-4" data-testid="inspector" ref={ref}>
-      <div className="flex gap-3 text-xs text-gray-500">
-        {SWATCH.map((s) => (
-          <span key={s.kind} className="flex items-center gap-1">
-            <span className="inline-block h-2 w-2 rounded-sm" style={{ background: s.color }} />
-            {s.label}
-          </span>
-        ))}
+      <div className="flex items-center justify-between">
+        <div className="flex gap-3 text-xs text-gray-500">
+          {SWATCH.map((s) => (
+            <span key={s.kind} className="flex items-center gap-1">
+              <span className="inline-block h-2 w-2 rounded-sm" style={{ background: s.color }} />
+              {s.label}
+            </span>
+          ))}
+        </div>
+        <button type="button" onClick={() => void refresh()}
+          className="text-xs text-blue-600 hover:text-blue-800" data-testid="vram-refresh">
+          Refresh VRAM
+        </button>
       </div>
       {charted.map((row) => (
-        <ModelTimeline key={row.model} row={row} width={width} />
+        <ModelTimeline key={row.model} row={row} width={width} vram={byName.get(row.model)} />
       ))}
     </div>
   );
