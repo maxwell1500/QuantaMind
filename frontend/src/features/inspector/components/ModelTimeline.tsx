@@ -9,6 +9,7 @@ import { LatencyHistogram } from "./LatencyHistogram";
 import { TtftBreakdown } from "./TtftBreakdown";
 import { VramBar } from "./VramBar";
 import { ColdWarmPanel } from "./ColdWarmPanel";
+import { RegressionAlert } from "./RegressionAlert";
 
 const tag = (k: LatencyBar["kind"]) => (k === "ttft" ? " (TTFT)" : k === "outlier" ? " (outlier)" : "");
 
@@ -34,6 +35,7 @@ export function ModelTimeline({ row, width, vram, history = [] }: { row: Compare
       <TtftBreakdown ttftMs={m?.ttft_ms ?? null} stats={m?.stats} />
       <VramBar entry={vram} />
       <ColdWarmPanel model={row.model} history={history} />
+      <RegressionAlert model={row.model} history={history} />
       <div className="text-xs text-gray-500 h-4" data-testid={`readout-${row.model}`}>
         {hovered
           ? `#${hovered.index} · ${hovered.latencyMs}ms${tag(hovered.kind)} — ${JSON.stringify(hovered.token)}`
