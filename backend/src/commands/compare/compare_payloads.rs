@@ -1,3 +1,4 @@
+use crate::metrics::timeline::TokenTiming;
 use serde::{Deserialize, Serialize};
 
 pub const EVENT_COMPARE_TOKEN: &str = "compare-token";
@@ -27,6 +28,7 @@ pub struct CompareDonePayload {
     pub ttft_ms: Option<u64>,
     pub tokens_per_sec: Option<f64>,
     pub token_count: usize,
+    pub timeline: Vec<TokenTiming>,
 }
 
 #[derive(Serialize, Clone)]

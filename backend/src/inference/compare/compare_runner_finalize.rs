@@ -21,7 +21,7 @@ pub(crate) fn finalize_row(
         }
         Ok(()) => {
             let t = timing.lock_recover();
-            sink.done(&id, &row.model, t.ttft_ms(), t.tokens_per_sec(), t.token_count);
+            sink.done(&id, &row.model, t.ttft_ms(), t.tokens_per_sec(), t.token_count, t.timeline());
         }
         Err(err) => {
             let (kind, message) = app_error_split(&err);

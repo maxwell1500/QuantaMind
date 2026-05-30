@@ -1,4 +1,5 @@
 import { create } from "zustand";
+import type { TokenTiming } from "../../../shared/ipc/events/events";
 import type { HardwareSnapshot } from "../../../shared/ipc/compare/hardware";
 import type { InferenceParams } from "../../../shared/ipc/workspace/prompts";
 import type { StrategyId } from "./strategy";
@@ -28,7 +29,7 @@ interface CompareStore {
   initRun: (models: CompareModel[]) => void;
   setRowLoading: (model: string, modelId: string) => void;
   appendToken: (model: string, modelId: string, text: string) => void;
-  setRowDone: (p: { model: string; ttft_ms: number | null; tokens_per_sec: number | null; token_count: number }) => void;
+  setRowDone: (p: { model: string; ttft_ms: number | null; tokens_per_sec: number | null; token_count: number; timeline?: TokenTiming[] }) => void;
   setRowCancelled: (p: { model: string; token_count: number }) => void;
   setRowError: (p: { model: string; kind: string; message: string }) => void;
   setSingleRun: (row: CompareRow) => void;
@@ -70,7 +71,7 @@ export const useCompareStore = create<CompareStore>((set) => ({
       : r) })),
   setRowDone: (p) =>
     set((s) => ({ rows: updateRow(s.rows, p.model, { status: "done", endedAt: new Date().toISOString(),
-      metrics: { ttft_ms: p.ttft_ms, tokens_per_sec: p.tokens_per_sec, token_count: p.token_count } }) })),
+      metrics: { ttft_ms: p.ttft_ms, tokens_per_sec: p.tokens_per_sec, token_count: p.token_count, timeline: p.timeline ?? [] } }) })),
   setRowCancelled: (p) =>
     set((s) => ({ rows: updateRow(s.rows, p.model, { status: "cancelled", endedAt: new Date().toISOString() }) })),
   setRowError: (p) =>

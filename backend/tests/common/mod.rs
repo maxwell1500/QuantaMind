@@ -4,6 +4,7 @@ use quantamind_lib::commands::compare::compare_payloads::{
     EVENT_COMPARE_RUN_DONE, EVENT_COMPARE_TOKEN,
 };
 use quantamind_lib::inference::compare::compare_sink::CompareSink;
+use quantamind_lib::metrics::timeline::TokenTiming;
 use serde_json::json;
 use std::sync::{Arc, Mutex};
 
@@ -28,10 +29,11 @@ impl CompareSink for RecordingSink {
     fn token(&self, model_id: &str, model: &str, text: &str) {
         self.push(EVENT_COMPARE_TOKEN, json!({"model_id": model_id, "model": model, "text": text}));
     }
-    fn done(&self, model_id: &str, model: &str, ttft_ms: Option<u64>, tokens_per_sec: Option<f64>, token_count: usize) {
+    fn done(&self, model_id: &str, model: &str, ttft_ms: Option<u64>, tokens_per_sec: Option<f64>, token_count: usize, timeline: &[TokenTiming]) {
         self.push(EVENT_COMPARE_DONE, json!({
             "model_id": model_id, "model": model,
             "ttft_ms": ttft_ms, "tokens_per_sec": tokens_per_sec, "token_count": token_count,
+            "timeline": timeline,
         }));
     }
     fn cancelled(&self, model_id: &str, model: &str, token_count: usize) {
