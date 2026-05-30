@@ -14,7 +14,12 @@ export function StorageSection() {
   const [error, setError] = useState<string | null>(null);
 
   useEffect(() => {
-    getDiskUsage().then(setUsage).catch((e) => setError(formatIpcError(e)));
+    getDiskUsage()
+      .then((u) => {
+        setUsage(u);
+        setError(null);
+      })
+      .catch((e) => setError(formatIpcError(e)));
   }, [list]);
 
   return (

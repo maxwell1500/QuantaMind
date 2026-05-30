@@ -1,7 +1,6 @@
 use crate::commands::emit::log_emit;
 use crate::commands::gguf::gguf_cmd::EVENT_MODELS_CHANGED;
-use crate::commands::storage::storage_disk::{compute_disk_usage, models_dir};
-use crate::commands::storage::storage_types::{DiskUsage, InstalledModelInfo, TagsResponse};
+use crate::commands::storage::storage_types::{InstalledModelInfo, TagsResponse};
 use crate::errors::{AppError, AppResult};
 use crate::inference::backend::backend_kind::BackendKind;
 use reqwest::Client;
@@ -86,9 +85,3 @@ pub async fn remove_model(app: AppHandle, name: String) -> Result<(), AppError> 
     r
 }
 
-#[tauri::command]
-pub async fn get_disk_usage() -> Result<DiskUsage, AppError> {
-    let models = fetch_installed_with_stats(DEFAULT_OLLAMA).await?;
-    let sum: u64 = models.iter().map(|m| m.size_bytes).sum();
-    Ok(compute_disk_usage(&models_dir(), sum))
-}
