@@ -1,17 +1,19 @@
 import { useState } from "react";
 import type { CompareRow } from "../../compare/state/compareRow";
 import type { LoadedModel } from "../../../shared/ipc/system/vram";
+import type { HistoryEntry } from "../../../shared/ipc/workspace/history";
 import { buildLatencyBars, type LatencyBar } from "../format/timeline";
 import { buildHistogram } from "../format/histogram";
 import { TokenTimeline } from "./TokenTimeline";
 import { LatencyHistogram } from "./LatencyHistogram";
 import { TtftBreakdown } from "./TtftBreakdown";
 import { VramBar } from "./VramBar";
+import { ColdWarmPanel } from "./ColdWarmPanel";
 
 const tag = (k: LatencyBar["kind"]) => (k === "ttft" ? " (TTFT)" : k === "outlier" ? " (outlier)" : "");
 
 /// One model's timing: name + summary, a hover readout, and its bar chart.
-export function ModelTimeline({ row, width, vram }: { row: CompareRow; width: number; vram?: LoadedModel }) {
+export function ModelTimeline({ row, width, vram, history = [] }: { row: CompareRow; width: number; vram?: LoadedModel; history?: HistoryEntry[] }) {
   const [hovered, setHovered] = useState<LatencyBar | null>(null);
   const m = row.metrics;
   const { bars, stats } = buildLatencyBars(m?.timeline ?? [], m?.ttft_ms ?? null);
@@ -31,6 +33,7 @@ export function ModelTimeline({ row, width, vram }: { row: CompareRow; width: nu
       </div>
       <TtftBreakdown ttftMs={m?.ttft_ms ?? null} stats={m?.stats} />
       <VramBar entry={vram} />
+      <ColdWarmPanel model={row.model} history={history} />
       <div className="text-xs text-gray-500 h-4" data-testid={`readout-${row.model}`}>
         {hovered
           ? `#${hovered.index} · ${hovered.latencyMs}ms${tag(hovered.kind)} — ${JSON.stringify(hovered.token)}`

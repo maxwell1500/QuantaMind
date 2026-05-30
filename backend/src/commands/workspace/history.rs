@@ -20,6 +20,12 @@ pub struct AppendArgs {
     pub params: InferenceParams,
     pub output: String,
     pub token_count: u32,
+    #[serde(default)]
+    pub ttft_ms: Option<u64>,
+    #[serde(default)]
+    pub tokens_per_sec: Option<f64>,
+    #[serde(default)]
+    pub load_ms: Option<u64>,
 }
 
 fn qdir(state: &WorkspaceState) -> AppResult<PathBuf> {
@@ -46,7 +52,9 @@ pub fn history_append(
         system: entry.system, user: entry.user, params: entry.params,
         output_preview: history::preview(&entry.output),
         output_len: entry.output.chars().count(),
-        token_count: entry.token_count, ran_at: now_utc(),
+        token_count: entry.token_count,
+        ttft_ms: entry.ttft_ms, tokens_per_sec: entry.tokens_per_sec, load_ms: entry.load_ms,
+        ran_at: now_utc(),
     };
     let evicted = history::record(&mut h, rec);
     history::save(&history_path(&q), &h)?;

@@ -3,6 +3,7 @@ import { useCompareStore } from "../../compare/state/compareStore";
 import { useNavStore } from "../../../shared/state/navStore";
 import { useParentWidth } from "../hooks/useParentWidth";
 import { useLoadedModels } from "../hooks/useLoadedModels";
+import { useRunHistory } from "../hooks/useRunHistory";
 import { pickLoaded } from "../format/vram";
 import { ModelTimeline } from "./ModelTimeline";
 
@@ -20,11 +21,15 @@ export function InspectorPage() {
   const topView = useNavStore((s) => s.topView);
   const [ref, width] = useParentWidth<HTMLDivElement>();
   const { byName, refresh } = useLoadedModels();
-  // The page is always mounted (hidden tab), so re-read /api/ps each time the
-  // Inspector is opened — the model that just ran is loaded by then.
+  const { entries, refresh: refreshHistory } = useRunHistory();
+  // The page is always mounted (hidden tab), so re-read /api/ps + history each
+  // time the Inspector is opened — the model that just ran is loaded by then.
   useEffect(() => {
-    if (topView === "inspector") void refresh();
-  }, [topView, refresh]);
+    if (topView === "inspector") {
+      void refresh();
+      void refreshHistory();
+    }
+  }, [topView, refresh, refreshHistory]);
   const charted = rows.filter((r) => (r.metrics?.timeline?.length ?? 0) > 0);
 
   if (charted.length === 0) {
@@ -52,7 +57,7 @@ export function InspectorPage() {
         </button>
       </div>
       {charted.map((row) => (
-        <ModelTimeline key={row.model} row={row} width={width} vram={pickLoaded(byName, row.model)} />
+        <ModelTimeline key={row.model} row={row} width={width} vram={pickLoaded(byName, row.model)} history={entries} />
       ))}
     </div>
   );

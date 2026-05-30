@@ -24,6 +24,12 @@ pub struct HistoryEntry {
     pub output_preview: String,
     pub output_len: usize,
     pub token_count: u32,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub ttft_ms: Option<u64>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub tokens_per_sec: Option<f64>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub load_ms: Option<u64>,
     pub ran_at: String,
 }
 

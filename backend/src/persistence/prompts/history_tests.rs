@@ -7,7 +7,9 @@ fn entry(id: &str) -> HistoryEntry {
         prompt_path: Some("/ws/a.quantamind.yaml".into()),
         model: "llama3".into(), system: "".into(), user: "hi".into(),
         params: InferenceParams::default(), output_preview: "out".into(),
-        output_len: 3, token_count: 1, ran_at: "t".into(),
+        output_len: 3, token_count: 1,
+        ttft_ms: Some(120), tokens_per_sec: Some(40.0), load_ms: Some(50),
+        ran_at: "t".into(),
     }
 }
 

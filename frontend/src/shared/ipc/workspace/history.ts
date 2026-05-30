@@ -13,6 +13,9 @@ export const HistoryEntrySchema = z.object({
   output_preview: z.string().default(""),
   output_len: z.number().int(),
   token_count: z.number().int(),
+  ttft_ms: z.number().int().nonnegative().nullable().optional(),
+  tokens_per_sec: z.number().nonnegative().nullable().optional(),
+  load_ms: z.number().int().nonnegative().nullable().optional(),
   ran_at: z.string(),
 });
 export type HistoryEntry = z.infer<typeof HistoryEntrySchema>;
@@ -26,6 +29,9 @@ export interface AppendArgs {
   params: InferenceParams;
   output: string;
   token_count: number;
+  ttft_ms?: number | null;
+  tokens_per_sec?: number | null;
+  load_ms?: number | null;
 }
 
 export async function historyAppend(entry: AppendArgs): Promise<void> {
