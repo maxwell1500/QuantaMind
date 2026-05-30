@@ -363,8 +363,12 @@ so users can see *why* it was fast or slow. Built one step at a time.
   for both single and multi-model runs (Compare now carries a per-token
   `timeline` on its done event). Hovering a bar shows a `#index · ms — token`
   readout.
-- **4.3** TTFT breakdown — capture Ollama's discarded `done` chunk
-  (`prompt_eval_*`/`eval_*`); stacked bar.
+- **4.3 TTFT breakdown (done).** `generate` now returns a `GenerateStats` from
+  each backend's final chunk (Ollama's `load_duration`/`prompt_eval_*`/`eval_*`,
+  ns→ms; llama.cpp's `timings`), carried on the done payloads. The Inspector
+  shows a stacked TTFT bar per model — Model load + Prompt prefill +
+  Network/first-token (remainder) — segmented only by what the backend reports;
+  otherwise "not available". Pure math in `features/inspector/format/ttft.ts`.
 - **4.4** VRAM allocation (Ollama `/api/ps`); honest "not available" elsewhere.
 - **4.5** Hardware detection (CPU/GPU/RAM/OS via `sysinfo`) → Settings.
 - **4.6** Inter-token latency histogram. **4.7** Cold- vs warm-start.

@@ -5,6 +5,7 @@ use crate::commands::compare::compare_payloads::{
 };
 use crate::commands::emit::log_emit;
 use crate::inference::compare::compare_sink::CompareSink;
+use crate::inference::generate::generate_stats::GenerateStats;
 use crate::metrics::timeline::TokenTiming;
 use tauri::AppHandle;
 
@@ -31,10 +32,10 @@ impl CompareSink for TauriCompareSink {
             model_id: model_id.into(), model: model.into(), text: text.into(),
         });
     }
-    fn done(&self, model_id: &str, model: &str, ttft_ms: Option<u64>, tokens_per_sec: Option<f64>, token_count: usize, timeline: &[TokenTiming]) {
+    fn done(&self, model_id: &str, model: &str, ttft_ms: Option<u64>, tokens_per_sec: Option<f64>, token_count: usize, timeline: &[TokenTiming], stats: &GenerateStats) {
         log_emit(&self.app, EVENT_COMPARE_DONE, CompareDonePayload {
             model_id: model_id.into(), model: model.into(), ttft_ms, tokens_per_sec, token_count,
-            timeline: timeline.to_vec(),
+            timeline: timeline.to_vec(), stats: stats.clone(),
         });
     }
     fn cancelled(&self, model_id: &str, model: &str, token_count: usize) {

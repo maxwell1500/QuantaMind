@@ -2,6 +2,7 @@ import { useState } from "react";
 import type { CompareRow } from "../../compare/state/compareRow";
 import { buildLatencyBars, type LatencyBar } from "../format/timeline";
 import { TokenTimeline } from "./TokenTimeline";
+import { TtftBreakdown } from "./TtftBreakdown";
 
 const tag = (k: LatencyBar["kind"]) => (k === "ttft" ? " (TTFT)" : k === "outlier" ? " (outlier)" : "");
 
@@ -23,6 +24,7 @@ export function ModelTimeline({ row, width }: { row: CompareRow; width: number }
           <span data-testid={`outliers-${row.model}`}>{outliers} outlier{outliers === 1 ? "" : "s"}</span>
         </span>
       </div>
+      <TtftBreakdown ttftMs={m?.ttft_ms ?? null} stats={m?.stats} />
       <div className="text-xs text-gray-500 h-4" data-testid={`readout-${row.model}`}>
         {hovered
           ? `#${hovered.index} · ${hovered.latencyMs}ms${tag(hovered.kind)} — ${JSON.stringify(hovered.token)}`

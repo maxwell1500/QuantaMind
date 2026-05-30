@@ -1,5 +1,5 @@
 import { z } from "zod";
-import { TokenTimingSchema } from "./events";
+import { GenerateStatsSchema, TokenTimingSchema } from "./events";
 
 export const EVENT_COMPARE_TOKEN = "compare-token";
 export const EVENT_COMPARE_DONE = "compare-done";
@@ -26,6 +26,7 @@ export const CompareDonePayloadSchema = z.object({
   tokens_per_sec: z.number().nullable(),
   token_count: z.number().int().nonnegative(),
   timeline: z.array(TokenTimingSchema).default([]),
+  stats: GenerateStatsSchema.optional(),
 });
 
 export const CompareCancelledPayloadSchema = z.object({

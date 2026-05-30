@@ -1,29 +1,10 @@
 use crate::errors::{AppError, AppResult};
 use crate::inference::http::http::{body_or_note, streaming_client};
 pub use crate::inference::generate::generate_options::GenerateOptions;
+use crate::inference::generate::generate_stats::GenerateStats;
+use crate::inference::ollama::ollama_wire::{GenerateChunk, GenerateRequest};
 use futures_util::StreamExt;
-use serde::{Deserialize, Serialize};
 use tokio_util::sync::CancellationToken;
-
-#[derive(Serialize)]
-struct GenerateRequest<'a> {
-    model: &'a str,
-    prompt: &'a str,
-    #[serde(skip_serializing_if = "Option::is_none")]
-    system: Option<&'a str>,
-    #[serde(skip_serializing_if = "Option::is_none")]
-    options: Option<GenerateOptions>,
-    #[serde(skip_serializing_if = "Option::is_none")]
-    keep_alive: Option<i32>,
-    stream: bool,
-}
-
-#[derive(Deserialize)]
-struct GenerateChunk {
-    #[serde(default)]
-    response: String,
-    done: bool,
-}
 
 pub async fn stream_generate(
     endpoint: &str,
@@ -34,7 +15,7 @@ pub async fn stream_generate(
     keep_alive: Option<i32>,
     cancel: CancellationToken,
     mut on_token: impl FnMut(&str),
-) -> AppResult<()> {
+) -> AppResult<GenerateStats> {
     let client = streaming_client()?;
     let options = options.filter(|o| !o.is_empty());
     let body = GenerateRequest { model, prompt, system, options, keep_alive, stream: true };
@@ -61,7 +42,7 @@ pub async fn stream_generate(
     let mut buf: Vec<u8> = Vec::new();
     loop {
         tokio::select! {
-            _ = cancel.cancelled() => return Ok(()),
+            _ = cancel.cancelled() => return Ok(GenerateStats::default()),
             piece = bytes.next() => {
                 let Some(piece) = piece else { break };
                 let piece = piece.map_err(|e| AppError::Inference(e.to_string()))?;
@@ -75,11 +56,11 @@ pub async fn stream_generate(
                     if !chunk.response.is_empty() {
                         on_token(&chunk.response);
                     }
-                    if cancel.is_cancelled() { return Ok(()); }
-                    if chunk.done { return Ok(()); }
+                    if cancel.is_cancelled() { return Ok(GenerateStats::default()); }
+                    if chunk.done { return Ok(chunk.stats()); }
                 }
             }
         }
     }
-    Ok(())
+    Ok(GenerateStats::default())
 }

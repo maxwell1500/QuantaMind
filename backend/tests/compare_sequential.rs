@@ -75,6 +75,7 @@ async fn done_payload_carries_a_timeline_matching_token_count() {
     assert_eq!(timeline.len(), 1, "OK_BODY streams one token");
     assert_eq!(timeline[0]["text"], "hi");
     assert_eq!(timeline[0]["n"], 1);
+    assert!(done.1.get("stats").is_some(), "done payload carries a stats object");
 }
 
 #[tokio::test]

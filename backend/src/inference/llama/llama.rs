@@ -1,5 +1,6 @@
 use crate::errors::{AppError, AppResult};
 use crate::inference::generate::generate_options::GenerateOptions;
+use crate::inference::generate::generate_stats::GenerateStats;
 use crate::inference::http::http::{body_or_note, streaming_client};
 use crate::inference::http::ndjson::next_line;
 use crate::inference::llama::llama_wire::{strip_sse, CompletionChunk, CompletionRequest};
@@ -17,7 +18,7 @@ pub async fn stream_generate(
     options: Option<GenerateOptions>,
     cancel: CancellationToken,
     mut on_token: impl FnMut(&str),
-) -> AppResult<()> {
+) -> AppResult<GenerateStats> {
     let client = streaming_client()?;
     let full = match system {
         Some(s) if !s.is_empty() => format!("{s}\n\n{prompt}"),
@@ -47,7 +48,7 @@ pub async fn stream_generate(
     let mut buf: Vec<u8> = Vec::new();
     loop {
         tokio::select! {
-            _ = cancel.cancelled() => return Ok(()),
+            _ = cancel.cancelled() => return Ok(GenerateStats::default()),
             piece = bytes.next() => {
                 let Some(piece) = piece else { break };
                 let piece = piece.map_err(|e| AppError::Inference(e.to_string()))?;
@@ -60,11 +61,13 @@ pub async fn stream_generate(
                     if !chunk.content.is_empty() {
                         on_token(&chunk.content);
                     }
-                    if cancel.is_cancelled() { return Ok(()); }
-                    if chunk.stop { return Ok(()); }
+                    if cancel.is_cancelled() { return Ok(GenerateStats::default()); }
+                    if chunk.stop {
+                        return Ok(chunk.timings.unwrap_or_default().stats());
+                    }
                 }
             }
         }
     }
-    Ok(())
+    Ok(GenerateStats::default())
 }

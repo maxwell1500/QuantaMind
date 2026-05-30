@@ -4,6 +4,7 @@ use crate::errors::{AppError, AppResult};
 use crate::inference::backend::backend::InferenceBackend;
 use crate::inference::backend::backend_kind::BackendKind;
 use crate::inference::generate::generate_spec::GenerateSpec;
+use crate::inference::generate::generate_stats::GenerateStats;
 use crate::inference::llama::llama_backend::LlamaCppBackend;
 use crate::inference::ollama::ollama::GenerateOptions;
 use crate::inference::ollama::ollama_backend::OllamaBackend;
@@ -29,7 +30,7 @@ pub async fn run_prompt_inner(
     keep_alive: Option<i32>,
     cancel: CancellationToken,
     on_token: impl FnMut(&str),
-) -> AppResult<()> {
+) -> AppResult<GenerateStats> {
     validate(model, prompt)?;
     let spec = GenerateSpec {
         model: model.to_string(),

@@ -1,6 +1,7 @@
 use quantamind_lib::commands::compare::compare_payloads::{
     CompareDonePayload, CompareTokenPayload, RunCompareArgs, Strategy,
 };
+use quantamind_lib::inference::generate::generate_stats::GenerateStats;
 use quantamind_lib::metrics::timeline::TokenTiming;
 
 #[test]
@@ -43,6 +44,7 @@ fn done_payload_includes_optional_metric_fields() {
             TokenTiming { text: "a".into(), t_ms: 42, n: 1 },
             TokenTiming { text: "b".into(), t_ms: 60, n: 2 },
         ],
+        stats: GenerateStats { prompt_eval_count: Some(12), prompt_eval_ms: Some(30), ..Default::default() },
     };
     let json = serde_json::to_string(&p).unwrap();
     assert!(json.contains(r#""ttft_ms":42"#));

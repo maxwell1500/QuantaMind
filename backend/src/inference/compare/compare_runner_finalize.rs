@@ -2,6 +2,7 @@
 use crate::errors::AppError;
 use crate::inference::compare::compare_runner::RowSpec;
 use crate::inference::compare::compare_sink::CompareSink;
+use crate::inference::generate::generate_stats::GenerateStats;
 use crate::metrics::timing::RunTiming;
 use crate::sync::MutexExt;
 use std::sync::{Arc, Mutex};
@@ -12,16 +13,16 @@ pub(crate) fn finalize_row(
     row: &RowSpec,
     timing: &Arc<Mutex<RunTiming>>,
     row_token: &CancellationToken,
-    result: Result<(), AppError>,
+    result: Result<GenerateStats, AppError>,
 ) {
     let id = row.model_id.to_string();
     match result {
-        Ok(()) if row_token.is_cancelled() => {
+        Ok(_) if row_token.is_cancelled() => {
             sink.cancelled(&id, &row.model, timing.lock_recover().token_count);
         }
-        Ok(()) => {
+        Ok(stats) => {
             let t = timing.lock_recover();
-            sink.done(&id, &row.model, t.ttft_ms(), t.tokens_per_sec(), t.token_count, t.timeline());
+            sink.done(&id, &row.model, t.ttft_ms(), t.tokens_per_sec(), t.token_count, t.timeline(), &stats);
         }
         Err(err) => {
             let (kind, message) = app_error_split(&err);

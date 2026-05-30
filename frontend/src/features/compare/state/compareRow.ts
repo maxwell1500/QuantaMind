@@ -1,4 +1,4 @@
-import type { TokenTiming } from "../../../shared/ipc/events/events";
+import type { GenerateStats, TokenTiming } from "../../../shared/ipc/events/events";
 
 export type CompareModel = { name: string; size_bytes: number };
 export type RowStatus = "pending" | "loading" | "running" | "done" | "cancelled" | "error";
@@ -13,6 +13,7 @@ export interface CompareRow {
     tokens_per_sec: number | null;
     token_count: number;
     timeline?: TokenTiming[];
+    stats?: GenerateStats;
   } | null;
   error: { kind: string; message: string } | null;
   startedAt: string | null;

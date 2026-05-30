@@ -1,3 +1,4 @@
+use crate::inference::generate::generate_stats::GenerateStats;
 use crate::metrics::timeline::TokenTiming;
 use serde::{Deserialize, Serialize};
 
@@ -29,6 +30,7 @@ pub struct CompareDonePayload {
     pub tokens_per_sec: Option<f64>,
     pub token_count: usize,
     pub timeline: Vec<TokenTiming>,
+    pub stats: GenerateStats,
 }
 
 #[derive(Serialize, Clone)]

@@ -1,4 +1,5 @@
 use crate::inference::generate::generate_options::GenerateOptions;
+use crate::inference::llama::llama_timings::Timings;
 use serde::{Deserialize, Serialize};
 
 /// llama-server `/completion` request. Field names follow llama.cpp's server
@@ -44,6 +45,8 @@ pub struct CompletionChunk {
     #[serde(default)]
     pub content: String,
     pub stop: bool,
+    #[serde(default)]
+    pub timings: Option<Timings>,
 }
 
 /// Strip an SSE `data: ` prefix if present. llama-server streams `/completion`

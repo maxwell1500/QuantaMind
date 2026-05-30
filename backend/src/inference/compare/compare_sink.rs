@@ -1,3 +1,4 @@
+use crate::inference::generate::generate_stats::GenerateStats;
 use crate::metrics::timeline::TokenTiming;
 
 /// Domain-level sink for compare-run events. The IPC layer implements this
@@ -15,6 +16,7 @@ pub trait CompareSink: Send + Sync {
         tokens_per_sec: Option<f64>,
         token_count: usize,
         timeline: &[TokenTiming],
+        stats: &GenerateStats,
     );
     fn cancelled(&self, model_id: &str, model: &str, token_count: usize);
     fn error(&self, model_id: &str, model: &str, kind: &str, message: &str);

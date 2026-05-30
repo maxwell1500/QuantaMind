@@ -15,11 +15,25 @@ export const TokenTimingSchema = z.object({
   n: z.number().int().positive(),
 });
 
+// Server-reported final metrics (ms). Every field optional/nullable: a backend
+// reports only what it knows; null/absent = "not measured", never 0.
+const optMs = z.number().int().nonnegative().nullable().optional();
+export const GenerateStatsSchema = z.object({
+  prompt_eval_count: optMs,
+  prompt_eval_ms: optMs,
+  eval_count: optMs,
+  eval_ms: optMs,
+  load_ms: optMs,
+  total_ms: optMs,
+});
+export type GenerateStats = z.infer<typeof GenerateStatsSchema>;
+
 export const DonePayloadSchema = z.object({
   ttft_ms: z.number().nullable(),
   tokens_per_sec: z.number().nullable(),
   token_count: z.number().int().nonnegative(),
   timeline: z.array(TokenTimingSchema),
+  stats: GenerateStatsSchema.optional(),
 });
 
 export const CancelledPayloadSchema = z.object({

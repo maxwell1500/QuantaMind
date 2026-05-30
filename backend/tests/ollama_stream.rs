@@ -25,6 +25,39 @@ async fn streams_ordered_utf8_chunks_until_done() {
 }
 
 #[tokio::test]
+async fn final_chunk_metrics_are_returned_as_ms() {
+    let mut server = Server::new_async().await;
+    // Ollama reports nanosecond durations on the final chunk.
+    let body = "{\"response\":\"hi\",\"done\":false}\n\
+                {\"response\":\"\",\"done\":true,\"load_duration\":540000000,\
+                \"prompt_eval_count\":128,\"prompt_eval_duration\":210000000,\
+                \"eval_count\":42,\"eval_duration\":900000000,\"total_duration\":1700000000}\n";
+    let _mock = server.mock("POST", "/api/generate")
+        .with_status(200).with_body(body).create_async().await;
+
+    let stats = stream_generate(&server.url(), "x", "p", None, None, None,
+        CancellationToken::new(), |_| {}).await.unwrap();
+    assert_eq!(stats.load_ms, Some(540));
+    assert_eq!(stats.prompt_eval_count, Some(128));
+    assert_eq!(stats.prompt_eval_ms, Some(210));
+    assert_eq!(stats.eval_count, Some(42));
+    assert_eq!(stats.eval_ms, Some(900));
+    assert_eq!(stats.total_ms, Some(1700));
+}
+
+#[tokio::test]
+async fn missing_final_metrics_stay_none_not_zero() {
+    let mut server = Server::new_async().await;
+    let body = "{\"response\":\"hi\",\"done\":false}\n{\"response\":\"\",\"done\":true}\n";
+    let _mock = server.mock("POST", "/api/generate")
+        .with_status(200).with_body(body).create_async().await;
+    let stats = stream_generate(&server.url(), "x", "p", None, None, None,
+        CancellationToken::new(), |_| {}).await.unwrap();
+    assert_eq!(stats.prompt_eval_ms, None);
+    assert_eq!(stats.load_ms, None);
+}
+
+#[tokio::test]
 async fn http_error_returns_inference_app_error() {
     let mut server = Server::new_async().await;
     let _mock = server.mock("POST", "/api/generate")
