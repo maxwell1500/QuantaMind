@@ -2,7 +2,9 @@ import { useState } from "react";
 import type { CompareRow } from "../../compare/state/compareRow";
 import type { LoadedModel } from "../../../shared/ipc/system/vram";
 import { buildLatencyBars, type LatencyBar } from "../format/timeline";
+import { buildHistogram } from "../format/histogram";
 import { TokenTimeline } from "./TokenTimeline";
+import { LatencyHistogram } from "./LatencyHistogram";
 import { TtftBreakdown } from "./TtftBreakdown";
 import { VramBar } from "./VramBar";
 
@@ -13,6 +15,7 @@ export function ModelTimeline({ row, width, vram }: { row: CompareRow; width: nu
   const [hovered, setHovered] = useState<LatencyBar | null>(null);
   const m = row.metrics;
   const { bars, stats } = buildLatencyBars(m?.timeline ?? [], m?.ttft_ms ?? null);
+  const histogram = buildHistogram(bars);
   const outliers = bars.filter((b) => b.kind === "outlier").length;
   const tps = m?.tokens_per_sec;
 
@@ -35,6 +38,12 @@ export function ModelTimeline({ row, width, vram }: { row: CompareRow; width: nu
       </div>
       <TokenTimeline bars={bars} stats={stats} width={width || 640} height={140}
         hoveredIndex={hovered?.index ?? null} onHover={setHovered} />
+      {histogram.length > 0 && (
+        <div data-testid={`histogram-${row.model}`}>
+          <div className="text-[11px] text-gray-400">Latency distribution</div>
+          <LatencyHistogram buckets={histogram} width={width || 640} height={90} />
+        </div>
+      )}
     </div>
   );
 }
