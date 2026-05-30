@@ -1,3 +1,5 @@
+import type { LoadedModel } from "../../../shared/ipc/system/vram";
+
 export type VramSegmentKey = "vram" | "offload";
 export interface VramSegment {
   key: VramSegmentKey;
@@ -20,4 +22,14 @@ export function buildVramSegments(sizeBytes: number, sizeVramBytes: number): Vra
   if (vram > 0) segments.push({ key: "vram", label: "In VRAM", bytes: vram });
   if (offload > 0) segments.push({ key: "offload", label: "Offloaded to RAM", bytes: offload });
   return { segments, total };
+}
+
+/// Look up a run's model in /api/ps results, tolerating the `:latest` tag form
+/// (a run may use "phi3.5" while /api/ps reports "phi3.5:latest", or vice versa).
+export function pickLoaded(
+  byName: Map<string, LoadedModel>,
+  model: string,
+): LoadedModel | undefined {
+  const base = model.replace(/:latest$/, "");
+  return byName.get(model) ?? byName.get(base) ?? byName.get(`${base}:latest`);
 }

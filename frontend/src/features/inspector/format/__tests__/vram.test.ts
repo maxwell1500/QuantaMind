@@ -1,5 +1,8 @@
 import { describe, it, expect } from "vitest";
-import { buildVramSegments } from "../vram";
+import { buildVramSegments, pickLoaded } from "../vram";
+import type { LoadedModel } from "../../../../shared/ipc/system/vram";
+
+const lm = (name: string): LoadedModel => ({ name, size_bytes: 1, size_vram_bytes: 1 });
 
 describe("buildVramSegments", () => {
   it("fully-resident model → a single in-VRAM segment", () => {
@@ -24,5 +27,22 @@ describe("buildVramSegments", () => {
     const r = buildVramSegments(1000, 5000);
     expect(r.segments.map((s) => s.key)).toEqual(["vram"]);
     expect(r.segments[0].bytes).toBe(1000);
+  });
+});
+
+describe("pickLoaded", () => {
+  const byName = new Map([["phi3.5:latest", lm("phi3.5:latest")]]);
+  it("matches exactly", () => {
+    expect(pickLoaded(byName, "phi3.5:latest")?.name).toBe("phi3.5:latest");
+  });
+  it("matches a bare name against a :latest entry", () => {
+    expect(pickLoaded(byName, "phi3.5")?.name).toBe("phi3.5:latest");
+  });
+  it("matches a :latest query against a bare entry", () => {
+    const m = new Map([["mistral", lm("mistral")]]);
+    expect(pickLoaded(m, "mistral:latest")?.name).toBe("mistral");
+  });
+  it("returns undefined when absent", () => {
+    expect(pickLoaded(byName, "llama3.2:1b")).toBeUndefined();
   });
 });

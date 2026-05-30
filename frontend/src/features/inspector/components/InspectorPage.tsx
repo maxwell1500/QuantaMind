@@ -1,6 +1,9 @@
+import { useEffect } from "react";
 import { useCompareStore } from "../../compare/state/compareStore";
+import { useNavStore } from "../../../shared/state/navStore";
 import { useParentWidth } from "../hooks/useParentWidth";
 import { useLoadedModels } from "../hooks/useLoadedModels";
+import { pickLoaded } from "../format/vram";
 import { ModelTimeline } from "./ModelTimeline";
 
 const SWATCH = [
@@ -14,8 +17,14 @@ const SWATCH = [
 /// compare rows, which hold both single runs (mirrored) and multi-model runs.
 export function InspectorPage() {
   const rows = useCompareStore((s) => s.rows);
+  const topView = useNavStore((s) => s.topView);
   const [ref, width] = useParentWidth<HTMLDivElement>();
   const { byName, refresh } = useLoadedModels();
+  // The page is always mounted (hidden tab), so re-read /api/ps each time the
+  // Inspector is opened — the model that just ran is loaded by then.
+  useEffect(() => {
+    if (topView === "inspector") void refresh();
+  }, [topView, refresh]);
   const charted = rows.filter((r) => (r.metrics?.timeline?.length ?? 0) > 0);
 
   if (charted.length === 0) {
@@ -43,7 +52,7 @@ export function InspectorPage() {
         </button>
       </div>
       {charted.map((row) => (
-        <ModelTimeline key={row.model} row={row} width={width} vram={byName.get(row.model)} />
+        <ModelTimeline key={row.model} row={row} width={width} vram={pickLoaded(byName, row.model)} />
       ))}
     </div>
   );
