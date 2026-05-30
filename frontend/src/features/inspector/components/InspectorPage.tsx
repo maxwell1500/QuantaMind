@@ -7,6 +7,7 @@ import { useRunHistory } from "../hooks/useRunHistory";
 import { pickLoaded } from "../format/vram";
 import { ModelTimeline } from "./ModelTimeline";
 import { LeakBanner } from "./LeakBanner";
+import { ExportReportButton } from "../report/ExportReportButton";
 
 const SWATCH = [
   { kind: "ttft", label: "TTFT", color: "#7c3aed" },
@@ -53,10 +54,13 @@ export function InspectorPage() {
             </span>
           ))}
         </div>
-        <button type="button" onClick={() => void refresh()}
-          className="text-xs text-blue-600 hover:text-blue-800" data-testid="vram-refresh">
-          Refresh VRAM
-        </button>
+        <div className="flex items-center gap-3">
+          <button type="button" onClick={() => void refresh()}
+            className="text-xs text-blue-600 hover:text-blue-800" data-testid="vram-refresh">
+            Refresh VRAM
+          </button>
+          <ExportReportButton />
+        </div>
       </div>
       {charted.map((row) => (
         <ModelTimeline key={row.model} row={row} width={width} vram={pickLoaded(byName, row.model)} history={entries} />

@@ -344,7 +344,7 @@ prompt-template library.
 forward-looking notes in `inference/backend/`), so a future phase can add it
 without rework. With 3.10 out of scope, Phase 3 ships at 3.1–3.9 and is complete.
 
-### Phase 4 — v0.4 "The Inspector" (in progress)
+### Phase 4 — v0.4 "The Inspector" (complete)
 
 Performance instrumentation: surface the raw timing/memory signal behind a run
 so users can see *why* it was fast or slow. Built one step at a time.
@@ -384,10 +384,17 @@ so users can see *why* it was fast or slow. Built one step at a time.
   the cold-load TTFT delta (`format/coldwarm.ts`).
 - **4.8 Memory-leak heuristic (done).** `get_ollama_rss` (sysinfo processes)
   sampled per run into a session series; a banner flags a monotonic climb across
-  5 runs (`format/leak.ts`). **4.9** Regression alerts vs 7-day baseline.
-- **4.10** Self-contained HTML performance report.
+  5 runs (`format/leak.ts`).
+- **4.9 Regression alerts (done).** Per model, the latest run is compared to the
+  rolling 7-day average of prior same-prompt runs (from history); a ≥20% tok/s
+  drop is flagged (`format/regression.ts`).
+- **4.10 HTML report (done).** A self-contained inline-SVG/HTML report (hardware,
+  per-model metrics, TTFT/VRAM bars, timeline + histogram, cold/warm +
+  regression) exported via the dialog + `save_compare_report` (now allows
+  `html`). Builders in `features/inspector/report/`.
 
-Metrics stay nullable (`null` = not measured, never `0`); reports follow
+**Phase 4 (v0.4 The Inspector) is complete (4.1–4.10).** Metrics stay nullable
+(`null` = not measured, never `0`); reports follow
 [#analysis-schema](reference.md#analysis-schema).
 
 ### Phase 5+
