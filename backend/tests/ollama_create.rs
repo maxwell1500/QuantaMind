@@ -1,8 +1,8 @@
 use mockito::Server;
 use sha2::{Digest, Sha256};
 use quantamind_lib::errors::AppError;
-use quantamind_lib::inference::create_spec::{CreateParameters, CreateSpec};
-use quantamind_lib::inference::ollama_create::ollama_create;
+use quantamind_lib::inference::create::create_spec::{CreateParameters, CreateSpec};
+use quantamind_lib::inference::ollama::ollama_create::ollama_create;
 use std::io::Write;
 use tempfile::NamedTempFile;
 

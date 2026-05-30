@@ -1,65 +1,68 @@
-import { useRef, useState } from "react";
-import { ModelPicker } from "./ModelPicker";
-import { PromptEditor } from "./PromptEditor";
-import { OutputStream } from "./OutputStream";
-import { RunControls } from "./RunControls";
-import { StatusBar } from "./StatusBar";
-import { useStreamingRun } from "../hooks/useStreamingRun";
-import { useWorkspaceStore } from "../state/workspaceStore";
-import { formatMetrics } from "../format";
+import { PromptEditor } from "./prompt/PromptEditor";
+import { ParamsPanel } from "./prompt/ParamsPanel";
+import { StatusBar } from "./status/StatusBar";
+import { ModelSelectBar } from "./model-select/ModelSelectBar";
+import { SingleRun } from "./run/SingleRun";
+import { MultiRun } from "./run/MultiRun";
+import { ModelParamControls } from "./prompt/ModelParamControls";
+import { HardwareSummary } from "../../compare/components/HardwareSummary";
+import { RunStrategyPicker } from "../../compare/components/RunStrategyPicker";
+import { PromptTemplatePicker } from "../../../shared/ui/PromptTemplatePicker";
+import { useWorkspacesStore } from "../../workspaces/state/workspaceStore";
+import { useCompareStore } from "../../compare/state/compareStore";
 
+/// The run surface, scoped to the active backend. One selected model → single
+/// streaming run; 2+ (Ollama) → a sequential/parallel compare into columns.
 export function Workspace() {
-  const model = useWorkspaceStore((s) => s.selectedModel);
-  const setModel = useWorkspaceStore((s) => s.setSelectedModel);
-  const ollamaHealthy = useWorkspaceStore((s) => s.ollamaHealthy);
-  const [systemPrompt, setSystemPrompt] = useState("");
-  const [prompt, setPrompt] = useState("");
-  const { output, status, error, metrics, cancelledInfo, start, cancel } =
-    useStreamingRun();
-  const pickerRef = useRef<HTMLDivElement>(null);
+  const current = useWorkspacesStore((s) => s.current);
+  const patch = useWorkspacesStore((s) => s.patch);
+  const selected = useCompareStore((s) => s.selectedModels);
+  const useSharedParams = useCompareStore((s) => s.useSharedParams);
+  const model = selected[0]?.name ?? null;
+  const multi = selected.length >= 2;
+  // One parameters UI at a time: the shared panel when single, or when a 2+
+  // compare keeps "same for all"; otherwise the per-model cards (in ModelParamControls).
+  const showSharedParams = !multi || useSharedParams;
+
   return (
     <div className="space-y-3">
-      <div ref={pickerRef}>
-        <ModelPicker value={model} onChange={setModel} />
-      </div>
-      <PromptEditor
-        value={systemPrompt}
-        onChange={setSystemPrompt}
-        label="System prompt (optional)"
-        testId="system-prompt-editor"
-        height="120px"
-      />
-      <PromptEditor
-        value={prompt}
-        onChange={setPrompt}
-        label="User prompt"
-        testId="user-prompt-editor"
-      />
-      <RunControls
-        status={status}
-        canRun={!!model && prompt.trim().length > 0}
-        ollamaHealthy={ollamaHealthy}
-        onRun={() => model && start(model, prompt, systemPrompt)}
-        onCancel={cancel}
-      />
-      <OutputStream output={output} loading={status === "running" && !output} />
-      {metrics && (
-        <p className="text-xs text-gray-600" data-testid="metrics">
-          {formatMetrics(metrics)}
+      <ModelSelectBar />
+      {!current ? (
+        <p data-testid="workspace-empty" className="text-sm text-gray-500 px-2 py-8 text-center">
+          Select a prompt from the Files panel, or click <strong>+ New</strong> to create one.
         </p>
+      ) : (
+        <>
+          {showSharedParams && <ParamsPanel running={false} />}
+          {multi && <ModelParamControls />}
+          <PromptEditor
+            value={current.system}
+            onChange={(v) => patch({ system: v })}
+            label="System prompt (optional)"
+            testId="system-prompt-editor"
+            height="120px"
+          />
+          <div className="flex items-center justify-between">
+            <span className="text-xs text-gray-600">User prompt</span>
+            <PromptTemplatePicker onInsert={(body) => patch({ user: body })} />
+          </div>
+          <PromptEditor
+            value={current.user}
+            onChange={(v) => patch({ user: v })}
+            testId="user-prompt-editor"
+          />
+          {multi ? (
+            <>
+              <HardwareSummary />
+              <RunStrategyPicker />
+              <MultiRun />
+            </>
+          ) : (
+            <SingleRun model={model} />
+          )}
+        </>
       )}
-      {cancelledInfo && (
-        <p className="text-xs text-amber-700" data-testid="cancelled-info">
-          Cancelled · {cancelledInfo.token_count} tokens
-        </p>
-      )}
-      {error && <p className="text-red-600 text-sm">{error}</p>}
-      <StatusBar
-        model={model}
-        onModelClick={() =>
-          pickerRef.current?.scrollIntoView({ behavior: "smooth" })
-        }
-      />
+      <StatusBar model={model} onModelClick={() => undefined} />
     </div>
   );
 }

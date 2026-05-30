@@ -1,8 +1,8 @@
 import { useEffect, useState } from "react";
 import { useSubmitFeedback } from "../hooks/useSubmitFeedback";
 import { useToast } from "../../../shared/ui/Toast";
-import { useWorkspaceStore } from "../../workspace/state/workspaceStore";
-import { MIN_MESSAGE_LEN, MAX_MESSAGE_LEN } from "../../../shared/ipc/feedback";
+import { useCompareStore } from "../../compare/state/compareStore";
+import { MIN_MESSAGE_LEN, MAX_MESSAGE_LEN } from "../../../shared/ipc/system/feedback";
 
 type Props = { onClose: () => void };
 
@@ -11,7 +11,7 @@ export function FeedbackModal({ onClose }: Props) {
   const [includeDiagnostics, setIncludeDiagnostics] = useState(false);
   const { status, error, submit, reset } = useSubmitFeedback();
   const showToast = useToast();
-  const currentModel = useWorkspaceStore((s) => s.selectedModel);
+  const currentModel = useCompareStore((s) => s.selectedModels[0]?.name ?? null);
 
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
@@ -38,7 +38,7 @@ export function FeedbackModal({ onClose }: Props) {
       className="fixed inset-0 z-40 bg-black/40 flex items-center justify-center p-4">
       <div role="dialog" aria-modal="true" aria-labelledby="feedback-title"
         onClick={(e) => e.stopPropagation()}
-        className="bg-white rounded-lg shadow-xl max-w-lg w-full p-5 space-y-3"
+        className="bg-surface rounded-lg shadow-xl max-w-lg w-full p-5 space-y-3"
         data-testid="feedback-modal">
         <h2 id="feedback-title" className="text-lg font-semibold">Send us feedback</h2>
         <p className="text-sm text-gray-600">

@@ -2,12 +2,12 @@ import { describe, it, expect, vi, beforeEach } from "vitest";
 import { render, screen, fireEvent, waitFor } from "@testing-library/react";
 
 vi.mock("@tauri-apps/api/core", () => ({ invoke: vi.fn() }));
-vi.mock("../../../../../shared/ipc/hf_install", () => ({
+vi.mock("../../../../../shared/ipc/models/hf_install", () => ({
   cancelHfInstall: vi.fn(),
 }));
 
 import { invoke } from "@tauri-apps/api/core";
-import { cancelHfInstall } from "../../../../../shared/ipc/hf_install";
+import { cancelHfInstall } from "../../../../../shared/ipc/models/hf_install";
 import { DownloadsActive } from "../DownloadsActive";
 import { useModelStore } from "../../../state/modelStore";
 

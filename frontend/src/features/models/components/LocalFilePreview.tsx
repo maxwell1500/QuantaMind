@@ -1,4 +1,4 @@
-import type { GgufMetadata } from "../../../shared/ipc/gguf";
+import type { GgufMetadata } from "../../../shared/ipc/models/gguf";
 
 type Props = {
   path: string;

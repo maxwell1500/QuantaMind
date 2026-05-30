@@ -22,6 +22,11 @@ vi.mock("@monaco-editor/react", () => ({
 import { invoke } from "@tauri-apps/api/core";
 import { listen, type EventCallback } from "@tauri-apps/api/event";
 import App from "../App";
+import { useWorkspacesStore } from "../features/workspaces/state/workspaceStore";
+import { useWorkspaceStore } from "../features/workspace/state/workspaceStore";
+import { useCompareStore } from "../features/compare/state/compareStore";
+import { useNavStore } from "../shared/state/navStore";
+import { seedCurrentPrompt } from "./helpers/seedWorkspace";
 
 const handlers: Record<string, EventCallback<unknown>> = {};
 
@@ -44,15 +49,20 @@ beforeEach(() => {
       return Promise.resolve(["llama3.2:1b", "mistral:7b"]);
     if (cmd === "get_installed_models_with_stats")
       return Promise.resolve([
-        { name: "llama3.2:1b", size_bytes: 1_000_000_000, modified_at: "", family: "llama", parameter_size: "1B", quantization: "Q4_K_M" },
-        { name: "mistral:7b", size_bytes: 4_000_000_000, modified_at: "", family: "llama", parameter_size: "7B", quantization: "Q4_K_M" },
+        { name: "llama3.2:1b", size_bytes: 1_000_000_000, modified_at: "", family: "llama", parameter_size: "1B", quantization: "Q4_K_M", backend: "ollama" },
+        { name: "mistral:7b", size_bytes: 4_000_000_000, modified_at: "", family: "llama", parameter_size: "7B", quantization: "Q4_K_M", backend: "ollama" },
       ]);
     if (cmd === "check_ollama_health")
       return Promise.resolve({ available: true, version: "0.1.32" });
     if (cmd === "run_prompt") return Promise.resolve();
     if (cmd === "stop_prompt") return Promise.resolve();
+    if (cmd === "save_prompt") return Promise.resolve(useWorkspacesStore.getState().current);
     return Promise.reject(new Error(`unknown ${cmd}`));
   });
+  useWorkspaceStore.setState({ activeBackend: "ollama" });
+  useCompareStore.getState().reset();
+  useNavStore.setState({ topView: "workspace", history: [] });
+  seedCurrentPrompt();
 });
 
 describe("Phase 1 E2E smoke — edit → run → re-run", () => {
@@ -66,20 +76,20 @@ describe("Phase 1 E2E smoke — edit → run → re-run", () => {
     const userEditorWrap = await screen.findByTestId("user-prompt-editor");
     const editor = within(userEditorWrap).getByTestId("prompt-input");
     fireEvent.change(editor, { target: { value: "Why is the sky blue?" } });
-    const select = (await screen.findByRole("combobox", {
-      name: /model/i,
-    })) as HTMLSelectElement;
-    await screen.findByRole("option", { name: "llama3.2:1b" });
-    fireEvent.change(select, { target: { value: "llama3.2:1b" } });
+    // Pick one model (a chip) → single-run mode
+    fireEvent.click(await screen.findByTestId("model-dropdown"));
+    fireEvent.click(await screen.findByTestId("model-option-llama3.2:1b"));
 
-    // 2. RUN — tokens stream into UI, metrics displayed
+    // 2. RUN — navigates to Analysis; the response streams into the M1 column
     fireEvent.click(screen.getByRole("button", { name: /^run$/i }));
     await waitFor(() =>
       expect(invoke).toHaveBeenCalledWith("run_prompt", {
         model: "llama3.2:1b",
         prompt: "Why is the sky blue?",
+        backend: "ollama",
       }),
     );
+    expect(useNavStore.getState().topView).toBe("analysis");
     act(() => {
       fire("prompt-token", { text: "The " });
       fire("prompt-token", { text: "sky " });
@@ -89,23 +99,22 @@ describe("Phase 1 E2E smoke — edit → run → re-run", () => {
     act(() => {
       fire("prompt-done", { ttft_ms: 8, tokens_per_sec: 32.0, token_count: 4 });
     });
-    expect(screen.getByTestId("output-stream")).toHaveTextContent(
+    const expected = "TTFT 8ms · 32.0 tok/s · 4 tokens";
+    expect(await screen.findByTestId("compare-output-llama3.2:1b")).toHaveTextContent(
       "The sky is blue.",
     );
-    const inline = screen.getByTestId("metrics");
-    const bar = screen.getByTestId("status-bar-metrics");
-    const expected = "TTFT 8ms · 32.0 tok/s · 4 tokens";
-    expect(inline).toHaveTextContent(expected);
-    expect(bar).toHaveTextContent(expected);
-    expect(inline.textContent).toEqual(bar.textContent);
+    expect(screen.getByTestId("compare-metrics-llama3.2:1b")).toHaveTextContent(expected);
+    // The Workspace status bar still reflects the last run's metrics.
+    expect(screen.getByTestId("status-bar-metrics")).toHaveTextContent(expected);
     expect(screen.getByTestId("run-status")).toHaveTextContent("done");
 
-    // 3. RE-RUN with the same in-memory state succeeds without re-typing
-    expect(select.value).toBe("llama3.2:1b");
+    // 3. RE-RUN from the Workspace succeeds without re-typing
+    fireEvent.click(screen.getByTestId("view-tab-workspace"));
     fireEvent.click(screen.getByRole("button", { name: /^run$/i }));
     expect(invoke).toHaveBeenCalledWith("run_prompt", {
       model: "llama3.2:1b",
       prompt: "Why is the sky blue?",
+      backend: "ollama",
     });
   });
 
@@ -116,20 +125,18 @@ describe("Phase 1 E2E smoke — edit → run → re-run", () => {
     fireEvent.change(within(userWrap).getByTestId("prompt-input"), {
       target: { value: "x" },
     });
-    await screen.findByRole("option", { name: "llama3.2:1b" });
-    fireEvent.change(
-      screen.getByRole("combobox", { name: /model/i }) as HTMLSelectElement,
-      { target: { value: "llama3.2:1b" } },
-    );
+    fireEvent.click(await screen.findByTestId("model-dropdown"));
+    fireEvent.click(await screen.findByTestId("model-option-llama3.2:1b"));
     fireEvent.click(screen.getByRole("button", { name: /^run$/i }));
+    expect(useNavStore.getState().topView).toBe("analysis");
     act(() => fire("prompt-token", { text: "partial" }));
+    // Cancel from the Workspace (where the run trigger lives).
+    fireEvent.click(screen.getByTestId("view-tab-workspace"));
     fireEvent.click(screen.getByRole("button", { name: /cancel/i }));
     await waitFor(() => expect(invoke).toHaveBeenCalledWith("stop_prompt"));
     act(() => fire("prompt-cancelled", { token_count: 1 }));
     expect(screen.getByTestId("run-status")).toHaveTextContent("cancelled");
-    expect(screen.getByTestId("cancelled-info")).toHaveTextContent(
-      "Cancelled · 1 tokens",
-    );
-    expect(screen.queryByTestId("metrics")).toBeNull();
+    // A cancelled run shows no metrics in its Analysis column.
+    expect(screen.queryByTestId("compare-metrics-llama3.2:1b")).toBeNull();
   });
 });

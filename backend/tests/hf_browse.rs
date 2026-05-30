@@ -1,6 +1,6 @@
 use mockito::{Matcher, Server};
 use quantamind_lib::errors::AppError;
-use quantamind_lib::inference::hf_browse::search_models;
+use quantamind_lib::inference::hf::hf_browse::search_models;
 
 #[tokio::test]
 async fn search_returns_parsed_hits_with_query_params_set() {

@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useState } from "react";
 import { useModelStore, type DownloadEntry } from "../../state/modelStore";
-import { formatIpcError } from "../../../../shared/ipc/error";
+import { formatIpcError } from "../../../../shared/ipc/core/error";
 import { cancelEntry } from "./cancelEntry";
 import { DownloadEntryRow } from "./DownloadEntryRow";
 

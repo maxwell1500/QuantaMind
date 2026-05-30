@@ -1,4 +1,5 @@
 import { useUpdater } from "../hooks/useUpdater";
+import { Markdown } from "../../../shared/markdown";
 
 function pct(downloaded: number, total: number | null): string {
   if (!total || total <= 0) return "downloading…";
@@ -13,7 +14,7 @@ export function UpdateChecker() {
   return (
     <section
       data-testid="update-checker"
-      className="border rounded p-3 bg-white flex flex-col gap-2"
+      className="border rounded p-3 bg-surface flex flex-col gap-2"
     >
       <div className="flex items-center justify-between gap-2">
         <div>
@@ -46,9 +47,9 @@ export function UpdateChecker() {
             {update.date && <span className="text-gray-600"> · {update.date}</span>}.
           </div>
           {update.body && (
-            <pre className="text-[11px] whitespace-pre-wrap text-gray-700 bg-white border rounded p-2 max-h-48 overflow-auto">
-              {update.body}
-            </pre>
+            <div className="bg-surface border rounded p-2 max-h-48 overflow-auto">
+              <Markdown text={update.body} />
+            </div>
           )}
           <button
             type="button"

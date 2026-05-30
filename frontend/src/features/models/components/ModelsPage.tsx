@@ -1,6 +1,6 @@
-import { useEffect } from "react";
 import { useModelStore, type TabId } from "../state/modelStore";
 import { useNavStore } from "../../../shared/state/navStore";
+import { useHotkey } from "../../../shared/ui/useHotkey";
 import { OllamaLibraryTab } from "./tabs/OllamaLibraryTab";
 import { HuggingFaceTab } from "./tabs/HuggingFaceTab";
 import { LocalFileTab } from "./tabs/LocalFileTab";
@@ -13,24 +13,16 @@ const TABS: Tab[] = [
 ];
 
 const subTabClass = (active: boolean) =>
-  `px-4 py-2 text-sm ${active ? "border-b-2 border-blue-600 font-medium" : "text-gray-600 hover:text-black"}`;
+  `px-4 py-2 text-sm ${active ? "border-b-2 border-blue-600 font-medium" : "text-gray-600 hover:text-ink"}`;
 
 export function ModelsPage() {
   const activeTab = useModelStore((s) => s.activeTab);
   const setActiveTab = useModelStore((s) => s.setActiveTab);
-
-  useEffect(() => {
-    const handler = (e: KeyboardEvent) => {
-      // Only honor Cmd+1/2/3 when the user is actually on the Models top tab.
-      if (useNavStore.getState().topView !== "models") return;
-      if (!e.metaKey || !/^[1-3]$/.test(e.key)) return;
-      e.preventDefault();
-      const idx = parseInt(e.key, 10) - 1;
-      setActiveTab(TABS[idx].id);
-    };
-    document.addEventListener("keydown", handler);
-    return () => document.removeEventListener("keydown", handler);
-  }, [setActiveTab]);
+  const onModels = useNavStore((s) => s.topView) === "models";
+  // Cmd+1/2/3 switch sub-tabs, only while the Models top tab is active.
+  useHotkey("mod+1", () => setActiveTab(TABS[0].id), onModels);
+  useHotkey("mod+2", () => setActiveTab(TABS[1].id), onModels);
+  useHotkey("mod+3", () => setActiveTab(TABS[2].id), onModels);
 
   return (
     <section data-testid="page-models" className="flex flex-col gap-3 h-full">

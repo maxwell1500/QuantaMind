@@ -3,11 +3,12 @@ import {
   cancelHfInstall,
   installHfGguf,
   type HfPhase,
-} from "../../../shared/ipc/hf_install";
+} from "../../../shared/ipc/models/hf_install";
 import { friendlyInstallError } from "../../../shared/install_error";
 import { useModelStore } from "../state/modelStore";
 import { useInstalledModelsStore } from "../state/installedModelsStore";
 import { startDownloadEventBus } from "../state/downloadEventBus";
+import { useWorkspaceStore } from "../../workspace/state/workspaceStore";
 
 export type HfStatus = "idle" | "downloading" | "installing" | "success" | "error";
 
@@ -58,7 +59,9 @@ export function useHfInstall() {
     setActiveHfName(name);
     upsertDownload({ id: name, source: "huggingface", name, status: "downloading", percent: 0 });
     try {
-      await installHfGguf(repo, filename, name);
+      // Download for the active backend: Ollama imports it; llama.cpp just keeps the GGUF.
+      const backend = useWorkspaceStore.getState().activeBackend;
+      await installHfGguf(repo, filename, name, backend);
       upsertDownload({ id: name, source: "huggingface", name, status: "success", percent: 100 });
       // Don't rely solely on the Tauri `models-changed` broadcast — refresh
       // the installed-models store ourselves so consumers see the new model

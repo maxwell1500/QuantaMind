@@ -1,6 +1,6 @@
 use mockito::Server;
 use sha2::{Digest, Sha256};
-use quantamind_lib::inference::ollama_blob::{blob_exists, sha256_file, upload_blob};
+use quantamind_lib::inference::ollama::ollama_blob::{blob_exists, sha256_file, upload_blob};
 use std::io::Write;
 use std::sync::{Arc, Mutex};
 use tempfile::NamedTempFile;

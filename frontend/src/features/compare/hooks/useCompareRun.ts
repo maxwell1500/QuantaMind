@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useState } from "react";
-import { runCompare, stopCompare } from "../../../shared/ipc/compare";
-import { formatIpcError } from "../../../shared/ipc/error";
+import { runCompare, stopCompare } from "../../../shared/ipc/compare/compare";
+import { formatIpcError } from "../../../shared/ipc/core/error";
 import { useCompareStore } from "../state/compareStore";
 import { startCompareEventBus } from "../state/compareEventBus";
 import { assessStrategies } from "../state/strategy";
@@ -13,7 +13,8 @@ export function useCompareRun() {
   useEffect(() => { void startCompareEventBus(); }, []);
 
   const start = useCallback(async () => {
-    const { selectedModels, prompt, systemPrompt, strategy, hardwareSnapshot, initRun, finishRun } = useCompareStore.getState();
+    const { selectedModels, prompt, systemPrompt, strategy, hardwareSnapshot,
+      useSharedParams, baseParams, perModelParams, initRun, finishRun } = useCompareStore.getState();
     if (selectedModels.length === 0) { setStartError("Pick at least one model."); return; }
     if (prompt.trim().length === 0) { setStartError("Type a prompt first."); return; }
     const matrix = assessStrategies(selectedModels, hardwareSnapshot);
@@ -32,6 +33,8 @@ export function useCompareRun() {
         prompt,
         strategy,
         ...(system ? { system } : {}),
+        params: baseParams,
+        ...(useSharedParams ? {} : { perModelParams }),
       });
     } catch (e) {
       setStartError(formatIpcError(e));
@@ -43,9 +46,5 @@ export function useCompareRun() {
     try { await stopCompare(); } catch { /* best-effort */ }
   }, []);
 
-  const skip = useCallback(async (modelId: string) => {
-    try { await stopCompare(modelId); } catch { /* best-effort */ }
-  }, []);
-
-  return { isRunning, startError, start, cancelAll, skip };
+  return { isRunning, startError, start, cancelAll };
 }

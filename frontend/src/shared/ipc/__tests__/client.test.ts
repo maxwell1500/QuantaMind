@@ -5,7 +5,7 @@ vi.mock("@tauri-apps/api/core", () => ({
 }));
 
 import { invoke } from "@tauri-apps/api/core";
-import { listModels, checkOllamaHealth } from "../client";
+import { listModels, checkOllamaHealth } from "../core/client";
 
 describe("ipc client", () => {
   beforeEach(() => {

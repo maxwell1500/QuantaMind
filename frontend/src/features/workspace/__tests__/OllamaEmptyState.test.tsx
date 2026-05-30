@@ -7,7 +7,7 @@ vi.mock("@tauri-apps/api/event", () => ({ listen: vi.fn().mockResolvedValue(() =
 
 import { invoke } from "@tauri-apps/api/core";
 import { open as openExternal } from "@tauri-apps/plugin-shell";
-import { OllamaEmptyState } from "../components/OllamaEmptyState";
+import { OllamaEmptyState } from "../components/status/OllamaEmptyState";
 import { useWorkspaceStore } from "../state/workspaceStore";
 import { useInstalledModelsStore } from "../../models/state/installedModelsStore";
 

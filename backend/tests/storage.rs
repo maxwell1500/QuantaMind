@@ -1,6 +1,6 @@
 use mockito::Server;
-use quantamind_lib::commands::storage::{fetch_installed_with_stats, remove_model_inner};
-use quantamind_lib::commands::storage_disk::compute_disk_usage;
+use quantamind_lib::commands::storage::storage::{fetch_installed_with_stats, remove_model_inner};
+use quantamind_lib::commands::storage::storage_disk::compute_disk_usage;
 use quantamind_lib::errors::AppError;
 use std::path::Path;
 
@@ -27,6 +27,11 @@ async fn fetch_installed_parses_details_and_sorts_by_size_desc() {
     assert_eq!(out[0].quantization, "Q4_K_M");
     assert_eq!(out[1].name, "mid:3b");
     assert_eq!(out[2].name, "small:1b");
+    // Ollama-listed models are tagged backend=ollama (serialized snake_case)
+    // and omit the llama.cpp-only `path` field.
+    let json = serde_json::to_string(&out[0]).expect("serialize");
+    assert!(json.contains(r#""backend":"ollama""#), "json: {json}");
+    assert!(!json.contains("\"path\""), "Ollama models omit path: {json}");
 }
 
 #[tokio::test]

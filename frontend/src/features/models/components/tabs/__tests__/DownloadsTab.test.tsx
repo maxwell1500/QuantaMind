@@ -5,12 +5,13 @@ vi.mock("@tauri-apps/api/event", () => ({
   listen: vi.fn().mockResolvedValue(() => {}),
 }));
 vi.mock("@tauri-apps/api/core", () => ({ invoke: vi.fn() }));
-vi.mock("../../../../../shared/ipc/storage", () => ({
+vi.mock("../StorageSection", () => ({ StorageSection: () => null }));
+vi.mock("../../../../../shared/ipc/models/storage", () => ({
   getInstalledModelsWithStats: vi.fn(),
   removeModel: vi.fn(),
 }));
 
-import { getInstalledModelsWithStats } from "../../../../../shared/ipc/storage";
+import { getInstalledModelsWithStats } from "../../../../../shared/ipc/models/storage";
 import { DownloadsTab } from "../DownloadsTab";
 import { useModelStore } from "../../../state/modelStore";
 import { useInstalledModelsStore } from "../../../state/installedModelsStore";
@@ -50,11 +51,11 @@ describe("DownloadsTab", () => {
       {
         name: "phi3.5:latest",
         family: "phi3", parameter_size: "3.8B", quantization: "Q4_K_M",
-        size_bytes: 2_400_000_000, modified_at: "2026-05-22",
+        size_bytes: 2_400_000_000, modified_at: "2026-05-22", backend: "ollama" as const,
       },
     ]);
     render(<DownloadsTab />);
-    expect(await screen.findByTestId("download-installed-phi3.5:latest")).toBeInTheDocument();
-    expect(screen.getByRole("button", { name: /delete phi3.5:latest/i })).toBeInTheDocument();
+    expect(await screen.findByTestId("download-installed-phi3.5")).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: /delete phi3\.5/i })).toBeInTheDocument();
   });
 });

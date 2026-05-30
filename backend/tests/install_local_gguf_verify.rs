@@ -1,5 +1,5 @@
 use mockito::Server;
-use quantamind_lib::commands::gguf_cmd::verify_model_registered;
+use quantamind_lib::commands::gguf::verify_install::verify_model_registered;
 use quantamind_lib::errors::AppError;
 
 const TAGS_WITH: &str = r#"{"models":[

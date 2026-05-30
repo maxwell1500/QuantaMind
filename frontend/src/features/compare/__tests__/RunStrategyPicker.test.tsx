@@ -12,11 +12,11 @@ const HW = (availGB: number, totalGB = 32) => ({
 beforeEach(() => useCompareStore.getState().reset());
 
 describe("RunStrategyPicker", () => {
-  it("renders three radio cards with sequential active by default", () => {
+  it("renders the strategy radio cards with sequential active by default", () => {
     render(<RunStrategyPicker />);
     expect(screen.getByTestId("strategy-sequential")).toHaveAttribute("aria-checked", "true");
     expect(screen.getByTestId("strategy-parallel")).toHaveAttribute("aria-checked", "false");
-    expect(screen.getByTestId("strategy-sequential_skippable")).toHaveAttribute("aria-checked", "false");
+    expect(screen.queryByTestId("strategy-sequential_skippable")).toBeNull();
   });
 
   it("clicking a card updates compareStore.strategy", () => {

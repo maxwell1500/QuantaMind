@@ -1,4 +1,4 @@
-use quantamind_lib::commands::compare_payloads::{
+use quantamind_lib::commands::compare::compare_payloads::{
     CompareDonePayload, CompareTokenPayload, RunCompareArgs, Strategy,
 };
 
@@ -19,10 +19,6 @@ fn token_payload_uses_snake_case_fields() {
 fn strategy_serializes_as_snake_case_variants() {
     assert_eq!(serde_json::to_string(&Strategy::Sequential).unwrap(), r#""sequential""#);
     assert_eq!(serde_json::to_string(&Strategy::Parallel).unwrap(), r#""parallel""#);
-    assert_eq!(
-        serde_json::to_string(&Strategy::SequentialSkippable).unwrap(),
-        r#""sequential_skippable""#,
-    );
 }
 
 #[test]

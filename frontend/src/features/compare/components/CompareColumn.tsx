@@ -1,6 +1,4 @@
 import type { CompareRow, RowStatus } from "../state/compareStore";
-import { useCompareStore } from "../state/compareStore";
-import { useCompareRun } from "../hooks/useCompareRun";
 
 type Props = { row: CompareRow };
 
@@ -29,9 +27,6 @@ const formatMetrics = (m: NonNullable<CompareRow["metrics"]>): string => {
 };
 
 export function CompareColumn({ row }: Props) {
-  const strategy = useCompareStore((s) => s.strategy);
-  const { skip } = useCompareRun();
-  const showSkip = strategy === "sequential_skippable" && row.status === "running" && row.modelId !== null;
   return (
     <div
       data-testid={`compare-column-${row.model}`}
@@ -39,21 +34,9 @@ export function CompareColumn({ row }: Props) {
     >
       <div className="flex items-center justify-between gap-2">
         <span className="text-sm font-medium break-all">{row.model}</span>
-        <div className="flex items-center gap-2">
-          {showSkip && (
-            <button
-              type="button"
-              onClick={() => row.modelId && void skip(row.modelId)}
-              className="text-xs border rounded px-2 py-0.5"
-              data-testid={`compare-skip-${row.model}`}
-            >
-              Skip
-            </button>
-          )}
-          <span data-testid={`compare-status-${row.model}`} className={`text-xs px-2 py-0.5 rounded ${STATUS_CLASS[row.status]}`}>
-            {STATUS_LABEL[row.status]}
-          </span>
-        </div>
+        <span data-testid={`compare-status-${row.model}`} className={`text-xs px-2 py-0.5 rounded ${STATUS_CLASS[row.status]}`}>
+          {STATUS_LABEL[row.status]}
+        </span>
       </div>
       {row.status === "loading" && !row.output ? (
         <div

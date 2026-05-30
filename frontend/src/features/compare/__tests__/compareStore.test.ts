@@ -16,6 +16,18 @@ describe("compareStore reducer", () => {
       .toEqual([{ model: "a", status: "pending" }, { model: "b", status: "pending" }]);
   });
 
+  it("setSingleRun replaces rows with the one bridged run row", () => {
+    useCompareStore.getState().initRun([M("a"), M("b")]); // a prior multi run
+    useCompareStore.getState().setSingleRun({
+      model: "solo", modelId: null, status: "running", output: "hi",
+      metrics: null, error: null, startedAt: null, endedAt: null,
+    });
+    const s = useCompareStore.getState();
+    expect(s.rows).toHaveLength(1);
+    expect(s.rows[0]).toMatchObject({ model: "solo", status: "running", output: "hi" });
+    expect(s.isRunning).toBe(true);
+  });
+
   it("appendToken transitions a pending row to running and accumulates output", () => {
     useCompareStore.getState().initRun([M("a")]);
     useCompareStore.getState().appendToken("a", "uuid-1", "hi ");

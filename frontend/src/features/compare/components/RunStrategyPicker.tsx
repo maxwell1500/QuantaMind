@@ -7,8 +7,6 @@ const OPTIONS: Option[] = [
     help: "Run models one after another. Memory needed: max(model)." },
   { id: "parallel", title: "Parallel",
     help: "Issue all runs concurrently. Memory needed: sum(models)." },
-  { id: "sequential_skippable", title: "Sequential w/ skip",
-    help: "Like Sequential, plus a Skip button per row mid-run." },
 ];
 
 const VERDICT_LABEL: Record<Verdict, string> = { ok: "OK", risky: "Risky", wont_fit: "Won't fit" };

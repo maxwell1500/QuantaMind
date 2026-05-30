@@ -1,50 +1,54 @@
 import { formatBytes } from "../../../shared/format/bytes";
-import type { CompareReport, CompareReportModel } from "./buildReport";
+import type { AnalysisDocument, DocRun, DocRunMetrics } from "./schema";
+import { REPORT_FOOTER } from "./branding";
 
-const metricsLine = (m: NonNullable<CompareReportModel["metrics"]>): string => {
+const metricsLine = (m: DocRunMetrics): string => {
   const parts: string[] = [];
   if (m.ttft_ms != null) parts.push(`TTFT ${m.ttft_ms}ms`);
-  if (m.tokens_per_sec != null) parts.push(`${m.tokens_per_sec.toFixed(1)} tok/s`);
-  parts.push(`${m.token_count} tokens`);
+  if (m.tokens_per_second != null) parts.push(`${m.tokens_per_second.toFixed(1)} tok/s`);
+  parts.push(`${m.total_tokens_generated} tokens`);
   return parts.join(" · ");
 };
 
-const hardwareLine = (r: CompareReport): string | null => {
-  const hw = r.hardware_snapshot;
-  if (!hw) return null;
-  const label = hw.is_apple_silicon ? "Apple Silicon, unified" : "RAM";
-  return `- Hardware: ${formatBytes(hw.total_memory_bytes)} total · ${formatBytes(hw.available_memory_bytes)} available (${label})`;
+const hardwareLine = (d: AnalysisDocument): string | null => {
+  const mem = d.environment?.memory;
+  if (!mem) return null;
+  const label = d.environment?.gpu?.unified_memory ? "Apple Silicon, unified" : "RAM";
+  return `- Hardware: ${formatBytes(mem.total_bytes)} total · ${formatBytes(mem.available_bytes_at_start)} available (${label})`;
 };
 
-const selectedLine = (r: CompareReport): string => {
-  const names = r.models.map((m) => m.size_bytes != null ? `${m.name} (${formatBytes(m.size_bytes)})` : m.name);
-  return `- Selected models (${r.models.length}): ${names.join(", ")}`;
+const selectedLine = (d: AnalysisDocument): string => {
+  const names = d.models.map((m) => m.size_bytes != null ? `${m.name} (${formatBytes(m.size_bytes)})` : m.name);
+  return `- Models (${d.models.length}): ${names.join(", ")}`;
 };
 
-const modelSection = (m: CompareReportModel): string[] => {
-  const lines: string[] = ["", "---", "", `## ${m.name}`];
-  if (m.started_at) lines.push(`- Started: ${m.started_at}`);
-  if (m.ended_at) lines.push(`- Ended: ${m.ended_at}`);
-  if (m.status === "error" && m.error) {
-    lines.push(`- Error: ${m.error.kind}: ${m.error.message}`);
+const modelName = (d: AnalysisDocument, id: string) => d.models.find((m) => m.id === id)?.name ?? id;
+
+const runSection = (d: AnalysisDocument, r: DocRun): string[] => {
+  const lines: string[] = ["", "---", "", `## ${modelName(d, r.model_id)}`];
+  if (r.started_at) lines.push(`- Started: ${r.started_at}`);
+  if (r.completed_at) lines.push(`- Ended: ${r.completed_at}`);
+  if (r.errors.length > 0) {
+    lines.push(`- Error: ${r.errors[0].kind}: ${r.errors[0].message}`);
     return lines;
   }
-  if (m.metrics) lines.push(`- Metrics: ${metricsLine(m.metrics)}`);
-  if (m.status === "cancelled") lines.push(`- Status: cancelled`);
-  lines.push("");
-  lines.push(m.output);
+  if (r.metrics) lines.push(`- Metrics: ${metricsLine(r.metrics)}`);
+  if (r.status === "cancelled") lines.push(`- Status: cancelled`);
+  lines.push("", r.output.text);
   return lines;
 };
 
-export function toMarkdown(r: CompareReport): string {
+export function toMarkdown(d: AnalysisDocument): string {
   const lines: string[] = ["# QuantaMind Compare Report"];
-  lines.push(`- Run at: ${r.generated_at}`);
-  lines.push(`- Strategy: ${r.strategy}`);
-  const hw = hardwareLine(r);
+  lines.push(`- Run at: ${d.created_at}`);
+  if (d.run_strategy) lines.push(`- Strategy: ${d.run_strategy}`);
+  const hw = hardwareLine(d);
   if (hw) lines.push(hw);
-  lines.push(selectedLine(r));
+  lines.push(selectedLine(d));
+  const p = d.prompts[0];
   lines.push("", "## Prompt");
-  for (const ln of r.prompt.split("\n")) lines.push(`> ${ln}`);
-  for (const m of r.models) lines.push(...modelSection(m));
+  for (const ln of (p?.user_prompt ?? "").split("\n")) lines.push(`> ${ln}`);
+  for (const r of d.runs) lines.push(...runSection(d, r));
+  lines.push("", "---", "", `_${REPORT_FOOTER}_`);
   return lines.join("\n");
 }

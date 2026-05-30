@@ -1,7 +1,7 @@
 use mockito::Server;
 use quantamind_lib::errors::AppError;
-use quantamind_lib::inference::pull::pull_model;
-use quantamind_lib::inference::pull_progress::PullProgress;
+use quantamind_lib::inference::pull::pull::pull_model;
+use quantamind_lib::inference::pull::pull_progress::PullProgress;
 use std::sync::{Arc, Mutex};
 use tokio_util::sync::CancellationToken;
 

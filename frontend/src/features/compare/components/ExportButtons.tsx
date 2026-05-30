@@ -1,8 +1,9 @@
 import { useState } from "react";
 import { save } from "@tauri-apps/plugin-dialog";
-import { saveCompareReport, type CompareReportFormat } from "../../../shared/ipc/compare";
-import { formatIpcError } from "../../../shared/ipc/error";
+import { saveCompareReport, type CompareReportFormat } from "../../../shared/ipc/compare/compare";
+import { formatIpcError } from "../../../shared/ipc/core/error";
 import { useCompareStore } from "../state/compareStore";
+import { useInstalledModelsStore } from "../../models/state/installedModelsStore";
 import { buildReport } from "../format/buildReport";
 import { toMarkdown } from "../format/markdownReport";
 import { toJson } from "../format/jsonReport";
@@ -23,9 +24,10 @@ export function ExportButtons() {
     if (!path) return;
     const s = useCompareStore.getState();
     const report = buildReport({
-      prompt: s.prompt, strategy: s.strategy,
+      prompt: s.prompt, systemPrompt: s.systemPrompt, strategy: s.strategy,
       hardwareSnapshot: s.hardwareSnapshot,
       selectedModels: s.selectedModels, rows: s.rows,
+      installed: useInstalledModelsStore.getState().list,
     });
     const contents = format === "md" ? toMarkdown(report) : toJson(report);
     try {

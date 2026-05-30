@@ -1,4 +1,4 @@
-import type { PullProgress } from "../../../shared/ipc/pull_events";
+import type { PullProgress } from "../../../shared/ipc/events/pull_events";
 
 export type InstallStatus =
   | "idle"

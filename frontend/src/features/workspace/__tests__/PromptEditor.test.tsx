@@ -18,7 +18,7 @@ vi.mock("@monaco-editor/react", () => ({
   ),
 }));
 
-import { PromptEditor } from "../components/PromptEditor";
+import { PromptEditor } from "../components/prompt/PromptEditor";
 
 function Controlled({ initial = "" }: { initial?: string }) {
   const [v, setV] = useState(initial);

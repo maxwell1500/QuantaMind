@@ -1,5 +1,5 @@
 use quantamind_lib::errors::AppError;
-use quantamind_lib::inference::gguf::inspect_gguf;
+use quantamind_lib::inference::gguf::gguf::inspect_gguf;
 use std::io::Write;
 
 mod common {

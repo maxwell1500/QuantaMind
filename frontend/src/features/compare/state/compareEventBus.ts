@@ -11,7 +11,7 @@ import {
   EVENT_COMPARE_LOADING,
   EVENT_COMPARE_RUN_DONE,
   EVENT_COMPARE_TOKEN,
-} from "../../../shared/ipc/compare_events";
+} from "../../../shared/ipc/events/compare_events";
 import { useCompareStore } from "./compareStore";
 
 let starting: Promise<void> | null = null;

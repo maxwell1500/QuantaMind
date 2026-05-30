@@ -1,6 +1,6 @@
-import { HfPhaseSchema } from "../../../shared/ipc/hf_install";
-import { LocalInstallPhaseSchema } from "../../../shared/ipc/local_install";
-import { PullProgressEventSchema } from "../../../shared/ipc/pull_events";
+import { HfPhaseSchema } from "../../../shared/ipc/models/hf_install";
+import { LocalInstallPhaseSchema } from "../../../shared/ipc/models/local_install";
+import { PullProgressEventSchema } from "../../../shared/ipc/events/pull_events";
 import { useModelStore } from "./modelStore";
 
 const pct = (done: number, total: number) =>

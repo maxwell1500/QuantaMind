@@ -2,7 +2,7 @@ import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
 import { act, render } from "@testing-library/react";
 
 vi.mock("@tauri-apps/api/core", () => ({ invoke: vi.fn() }));
-vi.mock("../../../../../shared/ipc/hf_install", () => ({
+vi.mock("../../../../../shared/ipc/models/hf_install", () => ({
   cancelHfInstall: vi.fn(),
 }));
 

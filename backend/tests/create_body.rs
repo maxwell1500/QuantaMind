@@ -1,6 +1,6 @@
-use quantamind_lib::inference::chat_template_data::LLAMA3;
-use quantamind_lib::inference::create_body::build_create_body;
-use quantamind_lib::inference::create_spec::{CreateParameters, CreateSpec};
+use quantamind_lib::inference::chat::chat_template_data::LLAMA3;
+use quantamind_lib::inference::create::create_body::build_create_body;
+use quantamind_lib::inference::create::create_spec::{CreateParameters, CreateSpec};
 use std::path::PathBuf;
 
 fn spec_minimal() -> CreateSpec {

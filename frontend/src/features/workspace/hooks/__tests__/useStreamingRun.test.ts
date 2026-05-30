@@ -30,7 +30,7 @@ describe("useStreamingRun", () => {
     vi.mocked(invoke).mockReset();
     vi.mocked(listen).mockReset();
     installListenMock();
-    useWorkspaceStore.setState({ lastRunMetrics: null });
+    useWorkspaceStore.setState({ lastRunMetrics: null, activeBackend: "ollama" });
   });
 
   it("tokens append in order, no dup, no drop; status -> done", async () => {
@@ -67,6 +67,22 @@ describe("useStreamingRun", () => {
     expect(invoke).toHaveBeenCalledWith("run_prompt", {
       model: "llama3.2:1b",
       prompt: "Why is the sky blue?",
+      backend: "ollama",
+    });
+  });
+
+  it("sends the active backend with the run", async () => {
+    vi.mocked(invoke).mockResolvedValue(undefined);
+    useWorkspaceStore.setState({ activeBackend: "llama_cpp" });
+    const { result } = renderHook(() => useStreamingRun());
+    await waitFor(() => expect(handlers["prompt-token"]).toBeDefined());
+    await act(async () => {
+      await result.current.start("phi3", "hi");
+    });
+    expect(invoke).toHaveBeenCalledWith("run_prompt", {
+      model: "phi3",
+      prompt: "hi",
+      backend: "llama_cpp",
     });
   });
 

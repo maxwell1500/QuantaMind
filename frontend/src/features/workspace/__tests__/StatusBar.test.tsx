@@ -1,18 +1,18 @@
 import { describe, it, expect, vi, beforeEach } from "vitest";
 import { render, screen, waitFor, fireEvent } from "@testing-library/react";
 
-vi.mock("../../../shared/ipc/client", () => ({
+vi.mock("../../../shared/ipc/core/client", () => ({
   checkOllamaHealth: vi.fn(),
 }));
 
-import { checkOllamaHealth } from "../../../shared/ipc/client";
-import { StatusBar } from "../components/StatusBar";
+import { checkOllamaHealth } from "../../../shared/ipc/core/client";
+import { StatusBar } from "../components/status/StatusBar";
 import { useWorkspaceStore } from "../state/workspaceStore";
 
 describe("StatusBar", () => {
   beforeEach(() => {
     vi.mocked(checkOllamaHealth).mockReset();
-    useWorkspaceStore.setState({ lastRunMetrics: null });
+    useWorkspaceStore.setState({ lastRunMetrics: null, activeBackend: "ollama", llamaHealthy: null });
   });
 
   it("renders 'no run yet' before any run completes", async () => {
@@ -58,6 +58,25 @@ describe("StatusBar", () => {
       .getByLabelText("Ollama health")
       .querySelector("span") as HTMLElement;
     expect(dot.className).toMatch(/bg-red-500/);
+  });
+
+  it("on the llama.cpp backend, names the running model instead of Ollama", async () => {
+    vi.mocked(checkOllamaHealth).mockResolvedValue({ available: false, version: null });
+    useWorkspaceStore.setState({ activeBackend: "llama_cpp", llamaHealthy: true });
+    render(<StatusBar model="phi3" />);
+    const status = await screen.findByLabelText("llama.cpp health");
+    expect(status).toHaveTextContent("llama.cpp · running (phi3)");
+    expect(status).not.toHaveTextContent("Ollama not running");
+    expect(status.querySelector("span")?.className).toMatch(/bg-green-500/);
+  });
+
+  it("on the llama.cpp backend, shows 'not started' when the server is down", async () => {
+    vi.mocked(checkOllamaHealth).mockResolvedValue({ available: false, version: null });
+    useWorkspaceStore.setState({ activeBackend: "llama_cpp", llamaHealthy: false });
+    render(<StatusBar model="phi3" />);
+    const status = await screen.findByLabelText("llama.cpp health");
+    expect(status).toHaveTextContent("llama.cpp · not started");
+    expect(status.querySelector("span")?.className).toMatch(/bg-red-500/);
   });
 
   it("renders metrics from the store with correct precision", () => {

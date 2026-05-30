@@ -1,6 +1,6 @@
 import { describe, it, expect, vi } from "vitest";
 import { render, screen, fireEvent } from "@testing-library/react";
-import { RunControls } from "../components/RunControls";
+import { RunControls } from "../components/run/RunControls";
 
 describe("RunControls", () => {
   it("Run is enabled when idle + canRun; Cancel is disabled", () => {

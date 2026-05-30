@@ -11,7 +11,7 @@ export function FeedbackButton() {
         aria-label="Send feedback"
         title="Send feedback"
         data-testid="feedback-button"
-        className="fixed bottom-4 right-4 z-30 rounded-full border bg-white shadow opacity-60 hover:opacity-100 transition-opacity p-2 flex items-center gap-1 text-sm"
+        className="fixed bottom-4 right-4 z-30 rounded-full border bg-surface shadow opacity-60 hover:opacity-100 transition-opacity p-2 flex items-center gap-1 text-sm"
       >
         <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor"
           strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden>

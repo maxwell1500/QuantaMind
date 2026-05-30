@@ -1,4 +1,4 @@
-import type { HardwareSnapshot } from "../../../shared/ipc/hardware";
+import type { HardwareSnapshot } from "../../../shared/ipc/compare/hardware";
 
 /// Compare verdict per run strategy. Pure module — no React, no IPC.
 /// `required_bytes` is in bytes; uses a 1.3× safety multiplier over the
@@ -6,7 +6,7 @@ import type { HardwareSnapshot } from "../../../shared/ipc/hardware";
 /// buffer). `risky` kicks in above 70% of available memory.
 
 export type Verdict = "ok" | "risky" | "wont_fit";
-export type StrategyId = "sequential" | "parallel" | "sequential_skippable";
+export type StrategyId = "sequential" | "parallel";
 export type StrategyAssessment = { status: Verdict; required_bytes: number };
 export type StrategyMatrix = Record<StrategyId, StrategyAssessment>;
 
@@ -34,6 +34,5 @@ export function assessStrategies(
   return {
     sequential: { status: verdict(maxReq, avail), required_bytes: maxReq },
     parallel: { status: verdict(sumReq, avail), required_bytes: sumReq },
-    sequential_skippable: { status: verdict(maxReq, avail), required_bytes: maxReq },
   };
 }

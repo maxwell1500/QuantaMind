@@ -1,5 +1,5 @@
-import type { CompareReport } from "./buildReport";
+import type { AnalysisDocument } from "./schema";
 
-export function toJson(r: CompareReport): string {
-  return JSON.stringify(r, null, 2);
+export function toJson(d: AnalysisDocument): string {
+  return JSON.stringify(d, null, 2);
 }

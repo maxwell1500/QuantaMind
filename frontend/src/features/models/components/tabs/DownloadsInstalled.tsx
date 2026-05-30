@@ -1,8 +1,14 @@
 import { useEffect, useState } from "react";
-import { removeModel } from "../../../../shared/ipc/storage";
+import { removeModel } from "../../../../shared/ipc/models/storage";
+import { deleteLlamaModel } from "../../../../shared/ipc/models/llama_start";
 import { formatBytes } from "../../../../shared/format/bytes";
-import { formatIpcError } from "../../../../shared/ipc/error";
+import { formatIpcError } from "../../../../shared/ipc/core/error";
 import { useInstalledModelsStore } from "../../state/installedModelsStore";
+import { groupInstalled } from "../../state/installedGroups";
+import { ConfirmRemove } from "../ConfirmRemove";
+import { AddToOllamaButton } from "./AddToOllamaButton";
+
+const badge = "text-[10px] px-1 py-0.5 rounded";
 
 export function DownloadsInstalled() {
   const list = useInstalledModelsStore((s) => s.list);
@@ -16,10 +22,15 @@ export function DownloadsInstalled() {
     if (status === "idle") void refresh();
   }, [status, refresh]);
 
-  const onDelete = async (name: string) => {
+  const groups = groupInstalled(list);
+  const target = groups.find((g) => g.name === pending);
+
+  const onDelete = async (alsoLlama: boolean) => {
+    if (!target) return;
     setError(null);
     try {
-      await removeModel(name);
+      if (target.ollamaName) await removeModel(target.ollamaName);
+      if (target.llamaPath && alsoLlama) await deleteLlamaModel(target.llamaPath);
       await refresh();
       setPending(null);
     } catch (e) {
@@ -28,71 +39,50 @@ export function DownloadsInstalled() {
   };
 
   const showErr = error ?? storeError;
-
-  if (list.length === 0) {
+  if (groups.length === 0) {
     return (
       <div className="text-xs text-gray-500" data-testid="downloads-empty-installed">
-        No installed models yet. Browse the Ollama Library, Hugging Face,
-        or Local File tabs to install one.
+        No installed models yet. Browse the Ollama Library, Hugging Face, or Local File tabs.
       </div>
     );
   }
-
-  const pendingSize = pending
-    ? list.find((m) => m.name === pending)?.size_bytes ?? 0
-    : 0;
 
   return (
     <div className="flex flex-col gap-2" data-testid="downloads-installed-list">
       {showErr && <div role="alert" className="text-red-600 text-xs">{showErr}</div>}
       <ul className="divide-y border rounded">
-        {list.map((m) => (
-          <li
-            key={m.name}
-            data-testid={`download-installed-${m.name}`}
-            className="px-3 py-2 flex items-center justify-between gap-2"
-          >
+        {groups.map((g) => (
+          <li key={g.name} data-testid={`download-installed-${g.name}`}
+            className="px-3 py-2 flex items-center justify-between gap-2">
             <div className="min-w-0">
-              <div className="text-sm truncate">{m.name}</div>
+              <div className="text-sm truncate flex items-center gap-1">
+                {g.name}
+                {g.ollamaName && <span className={`${badge} bg-blue-50 text-blue-700`}>Ollama</span>}
+                {g.llamaPath && <span className={`${badge} bg-amber-50 text-amber-700`}>llama.cpp</span>}
+              </div>
               <div className="text-[11px] text-gray-500">
-                {m.family} · {m.parameter_size} · {m.quantization} · {formatBytes(m.size_bytes)}
+                {g.family} · {g.parameterSize} · {g.quantization} · {formatBytes(g.sizeBytes)}
               </div>
             </div>
-            <button
-              type="button"
-              onClick={() => setPending(m.name)}
-              className="text-xs border rounded px-2 py-1"
-              aria-label={`Delete ${m.name}`}
-            >
-              Delete
-            </button>
+            <div className="flex items-center gap-1 shrink-0">
+              {g.llamaPath && !g.ollamaName && <AddToOllamaButton path={g.llamaPath} name={g.name} />}
+              <button type="button" onClick={() => setPending(g.name)}
+                className="text-xs border rounded px-2 py-1" aria-label={`Delete ${g.name}`}>
+                Delete
+              </button>
+            </div>
           </li>
         ))}
       </ul>
-      {pending && (
-        <div
-          role="alertdialog"
-          data-testid="downloads-confirm-delete"
-          className="border rounded p-3 bg-amber-50 text-xs"
-        >
-          Remove <strong>{pending}</strong>? This will free {formatBytes(pendingSize)}.
-          <div className="flex gap-2 mt-2">
-            <button
-              type="button"
-              onClick={() => onDelete(pending)}
-              className="border rounded px-2 py-1 bg-red-600 text-white"
-            >
-              Remove
-            </button>
-            <button
-              type="button"
-              onClick={() => setPending(null)}
-              className="border rounded px-2 py-1"
-            >
-              Cancel
-            </button>
-          </div>
-        </div>
+      {target && (
+        <ConfirmRemove
+          name={target.name}
+          sizeBytes={target.sizeBytes}
+          inOllama={!!target.ollamaName}
+          inLlama={!!target.llamaPath}
+          onConfirm={(alsoLlama) => void onDelete(alsoLlama)}
+          onCancel={() => setPending(null)}
+        />
       )}
     </div>
   );

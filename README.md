@@ -674,8 +674,8 @@ Inline `#[cfg(test)]` for unit tests; `backend/tests/` for integration (cargo co
 Contributions welcome. Before you open a PR:
 
 1. **Read [`CLAUDE.md`](./CLAUDE.md)** — the engineering principles are non-negotiable.
-2. **Read [`docs/workflow.md`](./docs/workflow.md)** — the one-step-at-a-time loop.
-3. **Read [`docs/conventions.md`](./docs/conventions.md)** — naming, commits, branches.
+2. **Read [`docs/process.md#workflow`](./docs/process.md#workflow)** — the one-step-at-a-time loop.
+3. **Read [`docs/process.md#conventions`](./docs/process.md#conventions)** — naming, commits, branches.
 4. **Stay under 100 lines per file.** No exceptions for source/test/config.
 5. **Tests pass AND outputs are verified.** A green CI run is necessary, not sufficient.
 
