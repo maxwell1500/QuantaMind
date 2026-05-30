@@ -38,6 +38,12 @@ Phase 3 additions (locked; installed when their step lands):
 | Secret storage (Rust) | `keyring` | OS-native keychain for cloud API keys — never plaintext on disk. |
 | llama.cpp backend | `llama-server` (Tauri sidecar binary) | Local GGUF inference over HTTP, mirroring the Ollama path. Subprocess, not in-process FFI. |
 
+Phase 4 additions (locked; installed when their step lands):
+
+| Layer | Choice | Why |
+|---|---|---|
+| Charting (TS) | `visx` v4 (`@next`, scale/shape/group) | React-19-native (stable v3 pins React ≤18). Modular SVG primitives for the Inspector charts; we draw axes/legends ourselves. Pin the alpha until v4 ships stable. |
+
 ### What is explicitly NOT installed (yet)
 
 - Logging library — use `println!` / `console.log` until Phase 2.
@@ -338,11 +344,40 @@ prompt-template library.
 forward-looking notes in `inference/backend/`), so a future phase can add it
 without rework. With 3.10 out of scope, Phase 3 ships at 3.1–3.9 and is complete.
 
-### Phase 4+
+### Phase 4 — v0.4 "The Inspector" (in progress)
 
-Phases 4–5 are sketched in the v0.1 planning notes (Inspector / deep profiling,
-MLX backend, etc.) but not yet broken into steps. Owners flesh out the next
-phase's section here when the current phase lands.
+Performance instrumentation: surface the raw timing/memory signal behind a run
+so users can see *why* it was fast or slow. Built one step at a time.
+
+- **4.1 Per-token timing instrumentation (done).** `RunTiming` records a
+  `TokenTiming { text, t_ms, n }` per accepted token (`t_ms` = ms since run
+  start, monotonic; `n` = 1-based count). The `prompt-done` event's
+  `DonePayload` gains a `timeline` array, mirrored by the frontend zod schema.
+  The first entry's `t_ms` equals `ttft_ms` by construction. Foundation for the
+  views below; no UI yet.
+- **4.2 Token-timeline chart (done).** New **Inspector** tab plots the last
+  run's per-token latency (x = token index, y = gap from previous token) with
+  the TTFT bar annotated and >2σ gaps flagged as outliers. Pure math in
+  `features/inspector/format/timeline.ts`; rendered with `visx` v4 (`@next`).
+  Driven off `compareStore.rows`, so it shows **one labeled chart per model**
+  for both single and multi-model runs (Compare now carries a per-token
+  `timeline` on its done event). Hovering a bar shows a `#index · ms — token`
+  readout.
+- **4.3** TTFT breakdown — capture Ollama's discarded `done` chunk
+  (`prompt_eval_*`/`eval_*`); stacked bar.
+- **4.4** VRAM allocation (Ollama `/api/ps`); honest "not available" elsewhere.
+- **4.5** Hardware detection (CPU/GPU/RAM/OS via `sysinfo`) → Settings.
+- **4.6** Inter-token latency histogram. **4.7** Cold- vs warm-start.
+- **4.8** Memory-leak heuristic. **4.9** Regression alerts vs 7-day baseline.
+- **4.10** Self-contained HTML performance report.
+
+Metrics stay nullable (`null` = not measured, never `0`); reports follow
+[#analysis-schema](reference.md#analysis-schema).
+
+### Phase 5+
+
+Sketched in the v0.1 planning notes (MLX backend, etc.) but not yet broken into
+steps. Owners flesh out the next phase's section here when the current lands.
 
 ---
 

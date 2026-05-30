@@ -6,11 +6,12 @@ type Props = {
   nodes: TreeNode[];
   currentPath: string | null;
   onSelect: (path: string) => void;
+  onRename: (path: string, name: string) => void;
   onDelete: (path: string) => void;
   depth?: number;
 };
 
-export function FilesTree({ nodes, currentPath, onSelect, onDelete, depth = 0 }: Props) {
+export function FilesTree({ nodes, currentPath, onSelect, onRename, onDelete, depth = 0 }: Props) {
   return (
     <ul className="text-sm">
       {nodes.map((node) =>
@@ -20,6 +21,7 @@ export function FilesTree({ nodes, currentPath, onSelect, onDelete, depth = 0 }:
             node={node}
             currentPath={currentPath}
             onSelect={onSelect}
+            onRename={onRename}
             onDelete={onDelete}
             depth={depth}
           />
@@ -29,6 +31,7 @@ export function FilesTree({ nodes, currentPath, onSelect, onDelete, depth = 0 }:
             node={node}
             active={node.path === currentPath}
             onSelect={onSelect}
+            onRename={onRename}
             onDelete={onDelete}
             depth={depth}
           />
@@ -38,10 +41,11 @@ export function FilesTree({ nodes, currentPath, onSelect, onDelete, depth = 0 }:
   );
 }
 
-function FolderRow({ node, currentPath, onSelect, onDelete, depth }: {
+function FolderRow({ node, currentPath, onSelect, onRename, onDelete, depth }: {
   node: Extract<TreeNode, { kind: "folder" }>;
   currentPath: string | null;
   onSelect: (p: string) => void;
+  onRename: (p: string, name: string) => void;
   onDelete: (p: string) => void;
   depth: number;
 }) {
@@ -62,6 +66,7 @@ function FolderRow({ node, currentPath, onSelect, onDelete, depth }: {
           nodes={node.children}
           currentPath={currentPath}
           onSelect={onSelect}
+          onRename={onRename}
           onDelete={onDelete}
           depth={depth + 1}
         />
