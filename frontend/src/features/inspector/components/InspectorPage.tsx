@@ -6,6 +6,7 @@ import { useLoadedModels } from "../hooks/useLoadedModels";
 import { useRunHistory } from "../hooks/useRunHistory";
 import { pickLoaded } from "../format/vram";
 import { ModelTimeline } from "./ModelTimeline";
+import { LeakBanner } from "./LeakBanner";
 
 const SWATCH = [
   { kind: "ttft", label: "TTFT", color: "#7c3aed" },
@@ -42,6 +43,7 @@ export function InspectorPage() {
 
   return (
     <div className="space-y-4" data-testid="inspector" ref={ref}>
+      <LeakBanner />
       <div className="flex items-center justify-between">
         <div className="flex gap-3 text-xs text-gray-500">
           {SWATCH.map((s) => (

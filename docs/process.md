@@ -374,9 +374,17 @@ so users can see *why* it was fast or slow. Built one step at a time.
   system RAM (`size − size_vram`), `context_length` in the tooltip. Models not
   loaded / non-Ollama backends → "Not available" (never a fabricated
   weights/KV/free split). Device free/total VRAM deferred to 4.5 (GPU probe).
-- **4.5** Hardware detection (CPU/GPU/RAM/OS via `sysinfo`) → Settings.
-- **4.6** Inter-token latency histogram. **4.7** Cold- vs warm-start.
-- **4.8** Memory-leak heuristic. **4.9** Regression alerts vs 7-day baseline.
+- **4.5 Hardware detection (done).** CPU/cores/RAM/OS/arch via `sysinfo` + a
+  shell-out GPU probe (`nvidia-smi` CSV → bytes; macOS `sysctl` chip name +
+  unified memory; else "Not available") in a new **Settings › Hardware** view.
+- **4.6 Inter-token latency histogram (done).** Per-model visx histogram of the
+  inter-token gaps; outlier bins highlighted (`format/histogram.ts`).
+- **4.7 Cold- vs warm-start (done).** `HistoryEntry` records ttft/tok-s/load_ms;
+  the Inspector compares cold (load_ms>500ms) vs warm runs per model and shows
+  the cold-load TTFT delta (`format/coldwarm.ts`).
+- **4.8 Memory-leak heuristic (done).** `get_ollama_rss` (sysinfo processes)
+  sampled per run into a session series; a banner flags a monotonic climb across
+  5 runs (`format/leak.ts`). **4.9** Regression alerts vs 7-day baseline.
 - **4.10** Self-contained HTML performance report.
 
 Metrics stay nullable (`null` = not measured, never `0`); reports follow
