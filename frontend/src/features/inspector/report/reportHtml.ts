@@ -22,9 +22,12 @@ h1{font-size:18px}h2{font-size:14px;margin:18px 0 6px}section{border-top:1px sol
 /// SVG, no external assets). Pure string builder.
 export function buildInspectorHtml(input: ReportInput): string {
   const nowMs = Date.parse(input.generatedAtIso) || 0;
+  const g = input.hardware?.gpu;
+  const unified = !!g?.unified;
+  const deviceTotal = unified ? input.hardware?.total_memory_bytes ?? null : g?.vram_total_bytes ?? null;
   const charted = input.rows.filter((r) => (r.metrics?.timeline?.length ?? 0) > 0);
   const models = charted
-    .map((r) => modelSectionHtml(r, pickLoaded(input.vramByName, r.model), input.history, nowMs))
+    .map((r) => modelSectionHtml(r, pickLoaded(input.vramByName, r.model), input.history, nowMs, deviceTotal, unified))
     .join("");
   return `<!doctype html><html><head><meta charset="utf-8">` +
     `<title>QuantaMind Performance Report</title><style>${STYLE}</style></head><body>` +

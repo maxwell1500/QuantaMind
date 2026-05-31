@@ -1,27 +1,23 @@
 import type { LoadedModel } from "../../../shared/ipc/system/vram";
 
-export type VramSegmentKey = "vram" | "offload";
-export interface VramSegment {
-  key: VramSegmentKey;
-  label: string;
-  bytes: number;
-}
-export interface VramAllocation {
-  segments: VramSegment[];
-  total: number;
+export interface VramUsage {
+  usedBytes: number; // resident in the device pool (VRAM / unified memory)
+  totalBytes: number; // device memory total (falls back to the model size)
+  offloadBytes: number; // footprint spilled to system RAM (discrete GPUs)
+  pct: number; // usedBytes / totalBytes, clamped to 100
 }
 
-/// Split a model's footprint into the VRAM-resident portion and the part
-/// offloaded to system RAM. `size_vram` is clamped to `size`; zero-byte
-/// segments are dropped (fully-resident → one segment). Pure.
-export function buildVramSegments(sizeBytes: number, sizeVramBytes: number): VramAllocation {
-  const total = Math.max(0, sizeBytes);
-  const vram = Math.max(0, Math.min(sizeVramBytes, total));
-  const offload = Math.max(0, total - vram);
-  const segments: VramSegment[] = [];
-  if (vram > 0) segments.push({ key: "vram", label: "In VRAM", bytes: vram });
-  if (offload > 0) segments.push({ key: "offload", label: "Offloaded to RAM", bytes: offload });
-  return { segments, total };
+/// A model's memory footprint as a fraction of the device's memory pool.
+/// `deviceTotalBytes` = unified RAM (Apple) or VRAM total (NVIDIA); when
+/// unknown, falls back to the model size so the bar still renders. `offload`
+/// is the part spilled to system RAM (size − resident). Pure.
+export function vramUsage(sizeBytes: number, sizeVramBytes: number, deviceTotalBytes?: number | null): VramUsage {
+  const size = Math.max(0, sizeBytes);
+  const usedBytes = Math.max(0, Math.min(sizeVramBytes, size));
+  const offloadBytes = Math.max(0, size - usedBytes);
+  const totalBytes = deviceTotalBytes && deviceTotalBytes > 0 ? deviceTotalBytes : size || 1;
+  const pct = Math.min(100, (usedBytes / totalBytes) * 100);
+  return { usedBytes, totalBytes, offloadBytes, pct };
 }
 
 /// Look up a run's model in /api/ps results, tolerating the `:latest` tag form

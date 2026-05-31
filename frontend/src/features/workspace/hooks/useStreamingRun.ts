@@ -63,7 +63,7 @@ export function useStreamingRun() {
           tokens_per_sec: p.data.tokens_per_sec,
           load_ms: p.data.stats?.load_ms,
         });
-        void useLeakStore.getState().sample();
+        void useLeakStore.getState().sample(ctxRef.current?.model ?? "");
       });
       if (cancelled) { ud(); return; }
       unsubs.push(ud);

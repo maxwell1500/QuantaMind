@@ -6,7 +6,7 @@ import { formatBytes } from "../../../shared/format/bytes";
 import { buildLatencyBars } from "../format/timeline";
 import { buildHistogram } from "../format/histogram";
 import { buildTtftSegments } from "../format/ttft";
-import { buildVramSegments } from "../format/vram";
+import { vramUsage } from "../format/vram";
 import { coldWarmSummary } from "../format/coldwarm";
 import { regressionVerdict } from "../format/regression";
 import { timelineSvg, histogramSvg, stackedBarHtml } from "./svg";
@@ -30,18 +30,22 @@ export function hardwareHtml(hw: HardwareSnapshot | null): string {
     row("Arch", hw.arch || "—") + "</section>";
 }
 
-export function modelSectionHtml(r: CompareRow, vram: LoadedModel | undefined, history: HistoryEntry[], nowMs: number): string {
+export function modelSectionHtml(r: CompareRow, vram: LoadedModel | undefined, history: HistoryEntry[], nowMs: number, deviceTotalBytes: number | null, unified: boolean): string {
   const m = r.metrics;
   const { bars, stats } = buildLatencyBars(m?.timeline ?? [], m?.ttft_ms ?? null);
   const tps = m?.tokens_per_sec != null ? `${m.tokens_per_sec.toFixed(1)} tok/s` : "— tok/s";
   const ttft = buildTtftSegments(m?.ttft_ms ?? null, m?.stats);
   const ttftBar = stackedBarHtml(ttft.segments.map((s) => ({ label: s.label, value: s.ms, color: TTFT_COLOR[s.key] })), ttft.total);
-  const vramHtml = vram
-    ? stackedBarHtml(buildVramSegments(vram.size_bytes, vram.size_vram_bytes).segments
-        .map((s) => ({ label: s.label, value: s.bytes, color: s.key === "vram" ? "#059669" : "#9ca3af" })), vram.size_bytes)
-    : "<span class=muted>VRAM not available</span>";
+  let vramHtml = "<span class=muted>VRAM not available</span>";
+  if (vram) {
+    const u = vramUsage(vram.size_bytes, vram.size_vram_bytes, deviceTotalBytes);
+    const where = unified ? "in unified memory" : "in VRAM";
+    vramHtml = stackedBarHtml([{ label: where, value: u.usedBytes, color: "#059669" }], u.totalBytes) +
+      `<p class=muted>${formatBytes(u.usedBytes)} ${where} of ${formatBytes(u.totalBytes)} (${u.pct.toFixed(0)}%)` +
+      `${u.offloadBytes > 0 ? ` · ${formatBytes(u.offloadBytes)} offloaded to RAM` : ""}</p>`;
+  }
   const cw = coldWarmSummary(history, r.model);
-  const cwText = cw ? `Cold TTFT ${cw.cold.avgTtftMs}ms vs warm ${cw.warm.avgTtftMs}ms (cold adds ~${cw.deltaTtftMs}ms)` : "no cold/warm comparison yet";
+  const cwText = cw ? `Cold start adds ~${cw.deltaLoadMs ?? cw.cold.avgLoadMs}ms model load (TTFT ${cw.cold.avgTtftMs}ms vs ${cw.warm.avgTtftMs}ms, prompt-dependent)` : "no cold/warm comparison yet";
   const reg = regressionVerdict(history, r.model, nowMs);
   const regText = reg.status === "slow" ? `⚠ ${Math.round(reg.pctSlower)}% slower than 7-day baseline`
     : reg.status === "ok" ? "on par with 7-day baseline" : "no baseline yet";

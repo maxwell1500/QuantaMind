@@ -2,6 +2,8 @@ import { describe, it, expect } from "vitest";
 import { render, screen } from "@testing-library/react";
 import { VramBar } from "../VramBar";
 
+const GB = 1024 ** 3;
+
 describe("VramBar", () => {
   it("shows 'not available' with no entry", () => {
     render(<VramBar />);
@@ -9,17 +11,22 @@ describe("VramBar", () => {
     expect(screen.queryByTestId("vram-bar")).toBeNull();
   });
 
-  it("renders a single in-VRAM segment for a fully-resident model", () => {
-    render(<VramBar entry={{ name: "m", size_bytes: 4_000_000_000, size_vram_bytes: 4_000_000_000, context_length: 4096 }} />);
-    expect(screen.getByTestId("vram-seg-vram")).toBeInTheDocument();
-    expect(screen.queryByTestId("vram-seg-offload")).toBeNull();
-    expect(screen.getByText(/in VRAM of/)).toBeInTheDocument();
+  it("scales the footprint against unified memory and labels it", () => {
+    render(
+      <VramBar
+        entry={{ name: "m", size_bytes: 4 * GB, size_vram_bytes: 4 * GB, context_length: 4096 }}
+        deviceTotalBytes={16 * GB}
+        unified
+      />,
+    );
+    expect(screen.getByTestId("vram-seg-used")).toHaveStyle({ width: "25%" });
+    expect(screen.getByText(/in unified memory of 16.0GB \(25%\)/)).toBeInTheDocument();
     expect(screen.getByText(/4096 ctx/)).toBeInTheDocument();
   });
 
-  it("renders both segments for a partially-offloaded model", () => {
-    render(<VramBar entry={{ name: "m", size_bytes: 1000, size_vram_bytes: 600 }} />);
-    expect(screen.getByTestId("vram-seg-vram")).toBeInTheDocument();
-    expect(screen.getByTestId("vram-seg-offload")).toBeInTheDocument();
+  it("notes offload to RAM for a partially-offloaded discrete GPU", () => {
+    render(<VramBar entry={{ name: "m", size_bytes: 1000, size_vram_bytes: 600 }} deviceTotalBytes={4000} />);
+    expect(screen.getByText(/in VRAM of/)).toBeInTheDocument();
+    expect(screen.getByText(/offloaded to RAM/)).toBeInTheDocument();
   });
 });

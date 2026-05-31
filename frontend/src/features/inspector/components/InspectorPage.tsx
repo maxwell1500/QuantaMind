@@ -4,6 +4,7 @@ import { useNavStore } from "../../../shared/state/navStore";
 import { useParentWidth } from "../hooks/useParentWidth";
 import { useLoadedModels } from "../hooks/useLoadedModels";
 import { useRunHistory } from "../hooks/useRunHistory";
+import { useHardware, deviceMemory } from "../hooks/useHardware";
 import { pickLoaded } from "../format/vram";
 import { ModelTimeline } from "./ModelTimeline";
 import { LeakBanner } from "./LeakBanner";
@@ -24,6 +25,7 @@ export function InspectorPage() {
   const [ref, width] = useParentWidth<HTMLDivElement>();
   const { byName, refresh } = useLoadedModels();
   const { entries, refresh: refreshHistory } = useRunHistory();
+  const dev = deviceMemory(useHardware());
   // The page is always mounted (hidden tab), so re-read /api/ps + history each
   // time the Inspector is opened — the model that just ran is loaded by then.
   useEffect(() => {
@@ -63,7 +65,8 @@ export function InspectorPage() {
         </div>
       </div>
       {charted.map((row) => (
-        <ModelTimeline key={row.model} row={row} width={width} vram={pickLoaded(byName, row.model)} history={entries} />
+        <ModelTimeline key={row.model} row={row} width={width} vram={pickLoaded(byName, row.model)}
+          history={entries} deviceTotalBytes={dev.totalBytes} unified={dev.unified} />
       ))}
     </div>
   );

@@ -13,7 +13,8 @@ export interface SideStats {
 export interface ColdWarm {
   cold: SideStats;
   warm: SideStats;
-  deltaTtftMs: number | null; // cold avg TTFT − warm avg TTFT
+  deltaTtftMs: number | null; // cold avg TTFT − warm avg TTFT (prompt-dependent)
+  deltaLoadMs: number | null; // cold avg load − warm avg load (the real cold-start cost)
 }
 
 const avg = (xs: number[]): number | null =>
@@ -37,5 +38,6 @@ export function coldWarmSummary(entries: HistoryEntry[], model: string): ColdWar
     cold: c,
     warm: w,
     deltaTtftMs: c.avgTtftMs != null && w.avgTtftMs != null ? c.avgTtftMs - w.avgTtftMs : null,
+    deltaLoadMs: c.avgLoadMs != null ? c.avgLoadMs - (w.avgLoadMs ?? 0) : null,
   };
 }

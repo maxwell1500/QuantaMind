@@ -24,6 +24,8 @@ describe("coldWarmSummary", () => {
     expect(s.cold.avgTtftMs).toBe(13000);
     expect(s.warm.avgTtftMs).toBe(650);
     expect(s.deltaTtftMs).toBe(12350);
+    // cold load 2400 vs warm avg (30+10)/2=20 → 2380ms (the honest cold-start cost)
+    expect(s.deltaLoadMs).toBe(2380);
   });
 
   it("ignores other models and entries without load_ms", () => {

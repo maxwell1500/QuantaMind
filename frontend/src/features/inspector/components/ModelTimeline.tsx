@@ -14,7 +14,10 @@ import { RegressionAlert } from "./RegressionAlert";
 const tag = (k: LatencyBar["kind"]) => (k === "ttft" ? " (TTFT)" : k === "outlier" ? " (outlier)" : "");
 
 /// One model's timing: name + summary, a hover readout, and its bar chart.
-export function ModelTimeline({ row, width, vram, history = [] }: { row: CompareRow; width: number; vram?: LoadedModel; history?: HistoryEntry[] }) {
+export function ModelTimeline({ row, width, vram, history = [], deviceTotalBytes, unified }: {
+  row: CompareRow; width: number; vram?: LoadedModel; history?: HistoryEntry[];
+  deviceTotalBytes?: number | null; unified?: boolean;
+}) {
   const [hovered, setHovered] = useState<LatencyBar | null>(null);
   const m = row.metrics;
   const { bars, stats } = buildLatencyBars(m?.timeline ?? [], m?.ttft_ms ?? null);
@@ -33,7 +36,7 @@ export function ModelTimeline({ row, width, vram, history = [] }: { row: Compare
         </span>
       </div>
       <TtftBreakdown ttftMs={m?.ttft_ms ?? null} stats={m?.stats} />
-      <VramBar entry={vram} />
+      <VramBar entry={vram} deviceTotalBytes={deviceTotalBytes} unified={unified} />
       <ColdWarmPanel model={row.model} history={history} />
       <RegressionAlert model={row.model} history={history} />
       <div className="text-xs text-gray-500 h-4" data-testid={`readout-${row.model}`}>

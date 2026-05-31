@@ -1,32 +1,33 @@
 import { describe, it, expect } from "vitest";
-import { buildVramSegments, pickLoaded } from "../vram";
+import { vramUsage, pickLoaded } from "../vram";
 import type { LoadedModel } from "../../../../shared/ipc/system/vram";
 
 const lm = (name: string): LoadedModel => ({ name, size_bytes: 1, size_vram_bytes: 1 });
 
-describe("buildVramSegments", () => {
-  it("fully-resident model → a single in-VRAM segment", () => {
-    const r = buildVramSegments(3826793472, 3826793472);
-    expect(r.segments.map((s) => s.key)).toEqual(["vram"]);
-    expect(r.total).toBe(3826793472);
+describe("vramUsage", () => {
+  it("scales the resident footprint against device total", () => {
+    const u = vramUsage(4 * 1024 ** 3, 4 * 1024 ** 3, 16 * 1024 ** 3);
+    expect(u.usedBytes).toBe(4 * 1024 ** 3);
+    expect(u.totalBytes).toBe(16 * 1024 ** 3);
+    expect(Math.round(u.pct)).toBe(25);
+    expect(u.offloadBytes).toBe(0);
   });
 
-  it("partial offload → in-VRAM + offload summing to size", () => {
-    const r = buildVramSegments(1000, 600);
-    expect(r.segments.map((s) => s.key)).toEqual(["vram", "offload"]);
-    expect(r.segments.reduce((s, x) => s + x.bytes, 0)).toBe(1000);
-    expect(r.segments.find((s) => s.key === "offload")?.bytes).toBe(400);
+  it("reports offload when the model exceeds resident VRAM", () => {
+    const u = vramUsage(1000, 600, 4000);
+    expect(u.usedBytes).toBe(600);
+    expect(u.offloadBytes).toBe(400);
+    expect(Math.round(u.pct)).toBe(15);
   });
 
-  it("size_vram 0 (100% CPU) → only an offload segment", () => {
-    const r = buildVramSegments(1000, 0);
-    expect(r.segments.map((s) => s.key)).toEqual(["offload"]);
+  it("falls back to model size when device total is unknown", () => {
+    const u = vramUsage(1000, 1000, null);
+    expect(u.totalBytes).toBe(1000);
+    expect(u.pct).toBe(100);
   });
 
-  it("clamps size_vram larger than size", () => {
-    const r = buildVramSegments(1000, 5000);
-    expect(r.segments.map((s) => s.key)).toEqual(["vram"]);
-    expect(r.segments[0].bytes).toBe(1000);
+  it("clamps resident larger than size", () => {
+    expect(vramUsage(1000, 5000, 4000).usedBytes).toBe(1000);
   });
 });
 
