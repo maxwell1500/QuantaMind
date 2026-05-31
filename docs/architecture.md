@@ -54,9 +54,10 @@ HTTP to a local Ollama server.
   `run_prompt` is backend-aware (dispatches to Ollama or the `llama-server`
   sidecar per the request's `backend`); the workspace sidebar's backend list picks it.
 - `inference/` — backend adapters behind the `InferenceBackend` trait
-  (`backend.rs`). `OllamaBackend` and `LlamaCppBackend` (a `llama-server`
-  sidecar) today; callers build one by matching `BackendKind` (a closed
-  enum — no `dyn`/`async-trait`). Cloud adds another variant.
+  (`backend.rs`). `OllamaBackend`, `LlamaCppBackend` (a `llama-server` sidecar),
+  and `MlxBackend` (`mlx_lm.server`, Apple Silicon, HTTP-only) today; callers
+  build one by matching `BackendKind` (a closed enum — no `dyn`/`async-trait`).
+  Cloud adds another variant.
   **Tauri-free and must not import `crate::commands`** — when it must report
   progress it takes a sink trait (see [Layering](#layering)), not an `AppHandle`.
 - `metrics/` — measurements: TTFT, tokens/sec, VRAM.
@@ -233,7 +234,8 @@ one folder per commit, behavior unchanged).
 - **backend `commands/`** (was 36 files): `prompt/` · `compare/` · `models/` ·
   `hf/` · `gguf/` · `ollama/` · `workspace/` · `storage/` · `settings/` ·
   `system/` (health, feasibility, hardware, onboarding)
-- **backend `inference/`** (was 33 files): `ollama/` · `gguf/` · `hf/` · `pull/` ·
+- **backend `inference/`** (was 33 files): `ollama/` · `llama/` · `mlx/`
+  (wire + chunk + stats + stream + backend) · `gguf/` · `hf/` · `pull/` ·
   `create/` · `compare/` · `http/` (http + ndjson) · `backend/` (trait + kind) ·
   `generate/` (spec + options) · `chat/` (templates)
 - **frontend `features/workspace/components/`** (was 17 files): `model-select/` ·

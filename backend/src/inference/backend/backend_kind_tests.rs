@@ -25,6 +25,18 @@ fn llama_cpp_round_trips_through_serde() {
 }
 
 #[test]
+fn mlx_serializes_as_snake_case_string() {
+    let json = serde_json::to_string(&BackendKind::Mlx).unwrap();
+    assert_eq!(json, "\"mlx\"");
+}
+
+#[test]
+fn mlx_round_trips_through_serde() {
+    let parsed: BackendKind = serde_json::from_str("\"mlx\"").unwrap();
+    assert_eq!(parsed, BackendKind::Mlx);
+}
+
+#[test]
 fn default_is_ollama() {
     assert_eq!(BackendKind::default(), BackendKind::Ollama);
 }

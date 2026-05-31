@@ -7,6 +7,7 @@ pub mod gguf;
 pub mod hf;
 pub mod http;
 pub mod llama;
+pub mod mlx;
 pub mod ollama;
 pub mod pull;
 pub mod token_handler;
