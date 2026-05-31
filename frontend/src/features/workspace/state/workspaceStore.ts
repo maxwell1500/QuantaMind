@@ -9,10 +9,12 @@ export interface WorkspaceStore {
   lastRunMetrics: DonePayload | null;
   ollamaHealthy: boolean | null;
   llamaHealthy: boolean | null;
+  mlxHealthy: boolean | null;
   activeBackend: BackendKind;
   setLastRunMetrics: (m: DonePayload) => void;
   setOllamaHealthy: (h: boolean) => void;
   setLlamaHealthy: (h: boolean) => void;
+  setMlxHealthy: (h: boolean) => void;
   setActiveBackend: (b: BackendKind) => void;
 }
 
@@ -20,9 +22,11 @@ export const useWorkspaceStore = create<WorkspaceStore>((set) => ({
   lastRunMetrics: null,
   ollamaHealthy: null,
   llamaHealthy: null,
+  mlxHealthy: null,
   activeBackend: "ollama",
   setLastRunMetrics: (m) => set({ lastRunMetrics: m }),
   setOllamaHealthy: (h) => set({ ollamaHealthy: h }),
   setLlamaHealthy: (h) => set({ llamaHealthy: h }),
+  setMlxHealthy: (h) => set({ mlxHealthy: h }),
   setActiveBackend: (b) => set({ activeBackend: b }),
 }));

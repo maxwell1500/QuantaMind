@@ -1,7 +1,7 @@
 import { invoke } from "@tauri-apps/api/core";
 import { z } from "zod";
 
-export const BackendKindSchema = z.enum(["ollama", "llama_cpp"]);
+export const BackendKindSchema = z.enum(["ollama", "llama_cpp", "mlx"]);
 export type BackendKind = z.infer<typeof BackendKindSchema>;
 
 export const InstalledModelInfoSchema = z.object({
