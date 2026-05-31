@@ -23,13 +23,21 @@ describe("buildLatencyBars", () => {
     expect(bars.slice(1).every((b) => b.kind !== "ttft")).toBe(true);
   });
 
-  it("flags a >2σ gap as an outlier (and leaves steady ones normal)", () => {
-    // eight steady 10ms gaps, then a 200ms spike -> clear outlier
+  it("flags a clear spike as an outlier (near-quantized gaps → mean+2σ fallback)", () => {
+    // eight steady 10ms gaps (MAD=0), then a 200ms spike
     const { bars } = buildLatencyBars(tl([5, 15, 25, 35, 45, 55, 65, 75, 85, 285]), 5);
     const spike = bars[bars.length - 1];
     expect(spike.kind).toBe("outlier");
     expect(spike.latencyMs).toBe(200);
     expect(bars.slice(1, -1).every((b) => b.kind === "normal")).toBe(true);
+  });
+
+  it("robust rule flags only the spike, not moderately-high gaps (MAD>0)", () => {
+    // gaps 10,12,14,11,13,12,10,15 + a 100ms spike → median≈12, MAD≈2
+    const { bars } = buildLatencyBars(tl([0, 10, 22, 36, 47, 60, 72, 82, 97, 197]), 0);
+    const outliers = bars.filter((b) => b.kind === "outlier");
+    expect(outliers).toHaveLength(1);
+    expect(outliers[0].latencyMs).toBe(100);
   });
 
   it("flags no outliers when gaps are uniform (std 0)", () => {

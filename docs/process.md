@@ -357,7 +357,8 @@ so users can see *why* it was fast or slow. Built one step at a time.
   views below; no UI yet.
 - **4.2 Token-timeline chart (done).** New **Inspector** tab plots the last
   run's per-token latency (x = token index, y = gap from previous token) with
-  the TTFT bar annotated and >2σ gaps flagged as outliers. Pure math in
+  the TTFT bar annotated and latency-spike gaps flagged as outliers (robust
+  median/MAD modified-z rule). Pure math in
   `features/inspector/format/timeline.ts`; rendered with `visx` v4 (`@next`).
   Driven off `compareStore.rows`, so it shows **one labeled chart per model**
   for both single and multi-model runs (Compare now carries a per-token

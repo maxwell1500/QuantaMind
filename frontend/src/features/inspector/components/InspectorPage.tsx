@@ -13,7 +13,7 @@ import { ExportReportButton } from "../report/ExportReportButton";
 const SWATCH = [
   { kind: "ttft", label: "TTFT", color: "#7c3aed" },
   { kind: "normal", label: "Token gap", color: "#2563eb" },
-  { kind: "outlier", label: "Outlier (>2σ)", color: "#e11d48" },
+  { kind: "outlier", label: "Outlier (latency spike)", color: "#e11d48" },
 ];
 
 /// Inspector view: per-token timing for the last run, one labeled chart per
