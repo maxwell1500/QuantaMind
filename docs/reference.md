@@ -169,6 +169,20 @@ on first use.
 - If it persists, the model may be too large for this machine; see
   [out of memory](#out-of-memory).
 
+### MLX not detected {#mlx-not-detected}
+
+The **MLX** backend appears in the workspace rail only on Apple Silicon, and
+talks to a `mlx_lm.server` you run yourself. A grey dot / "MLX not detected"
+means QuantaMind couldn't reach it.
+
+- Install it once: `pip install mlx-lm`.
+- Run the server on the port QuantaMind expects (8082, distinct from
+  llama-server's 8080): `mlx_lm.server --model mlx-community/<model> --port 8082`.
+- Confirm it's up: `curl http://localhost:8082/v1/models` should return JSON.
+- **Reproducibility note:** mlx_lm.server has no seed parameter, so MLX runs are
+  not seed-reproducible the way Ollama and llama.cpp runs are — a fixed seed in
+  the params is ignored for MLX.
+
 ### Reporting something else
 
 Use the in-app **Feedback** button (bottom-right). Tick "Include diagnostic info"

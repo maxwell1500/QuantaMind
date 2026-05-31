@@ -401,10 +401,43 @@ green + `cargo clippy` error-free; 560 frontend (vitest) + `tsc`; `pnpm build`
 succeeds. Shipped on branch `phase-4/per-token-timing`. Live GUI verification
 pending (same gate as earlier phases).
 
-### Phase 5+
+### Phase 5 — v0.5 Quantization & Backends (in progress)
 
-Sketched in the v0.1 planning notes (MLX backend, etc.) but not yet broken into
-steps. Owners flesh out the next phase's section here when the current lands.
+Broaden *which* models and backends users can run, and help them pick the right
+one. Built one step at a time.
+
+- **5.1 MLX inference backend (in progress).** A `MlxBackend` streams from
+  `mlx_lm.server`'s OpenAI-compatible `/v1/chat/completions` (SSE), reached over
+  HTTP — no FFI, consistent with the locked stack. **Apple Silicon only.**
+  mlx_lm is user-installed (`pip install mlx-lm`), not bundled; QuantaMind only
+  health-probes it read-only via `GET /v1/models` and shows MLX in the workspace
+  backend rail only on Apple Silicon. `BackendKind::Mlx` listens on `:8082`
+  (mlx_lm defaults to `:8080`, which collides with llama-server — launch with
+  `--port 8082`). Wire mapping: `num_predict→max_tokens`, `top_k→top_k`,
+  `repeat_penalty→repetition_penalty`; **`seed` is dropped** (mlx_lm has no seed
+  field, so MLX runs are **not seed-reproducible**). Stats are token counts only
+  (all `*_ms` stay `None` — mlx_lm reports no per-phase timing); TTFT and
+  tokens/sec come from the client-side `RunTiming`. Sub-steps: 5.1.1 enum +
+  endpoint + dispatch; 5.1.2 wire request; 5.1.3 stats; 5.1.4 stream + backend;
+  5.1.5 cancellation; 5.1.6 health command + Apple-Silicon gate; 5.1.7 frontend
+  rail + gating + not-detected hint; 5.1.8 docs.
+- **5.2 Model download manager.** Extend `features/models/` to list GGUF / MLX /
+  AWQ variants with size, quality estimate, hardware fit, and resumable HF pulls.
+- **5.3 Quantization comparison view.** Run one model across quants
+  (Q4_K_M/Q5_K_M/Q8_0) side-by-side via the compare runner; show quality (mini
+  eval), speed, size, VRAM.
+- **5.4 Built-in mini-eval suite.** 5–10 small evals (HumanEval subset,
+  summarization, classification, reasoning) scoring any model.
+- **5.5 Smart quant recommender.** Combine `HardwareSnapshot` + use case + 5.4
+  eval data to recommend a quant.
+- **5.6 Backend auto-selection.** Given a model, auto-pick MLX (Apple Silicon,
+  supported) / llama.cpp / Ollama; user override.
+- **5.7 Model card viewer.** Inline HF model-card render (description, license,
+  recommended use) in the model browser.
+
+### Phase 6+
+
+Owners flesh out the next phase's section here when the current lands.
 
 ---
 
