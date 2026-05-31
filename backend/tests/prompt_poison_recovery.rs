@@ -1,4 +1,5 @@
 use quantamind_lib::commands::prompt::prompt_payloads::done_payload;
+use quantamind_lib::inference::generate::generate_stats::GenerateStats;
 use quantamind_lib::metrics::timing::RunTiming;
 use quantamind_lib::sync::MutexExt;
 use std::sync::{Arc, Mutex};
@@ -13,8 +14,8 @@ fn poisoned_timing_recovers_recorded_metrics_not_zero() {
     let timing = Arc::new(Mutex::new(RunTiming::start()));
     {
         let mut g = timing.lock().expect("setup");
-        g.record_token();
-        g.record_token();
+        g.record_token("a");
+        g.record_token("b");
     }
     let t_for_panic = timing.clone();
 
@@ -27,7 +28,7 @@ fn poisoned_timing_recovers_recorded_metrics_not_zero() {
 
     assert!(timing.is_poisoned(), "test precondition: mutex must be poisoned");
 
-    let payload = done_payload(&timing);
+    let payload = done_payload(&timing, &GenerateStats::default());
     assert_eq!(payload.token_count, 2, "recovers the real recorded count, not a fabricated 0");
     assert!(payload.ttft_ms.is_some(), "recovers the recorded ttft, not None");
 }

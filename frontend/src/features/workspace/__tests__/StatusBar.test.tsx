@@ -85,7 +85,7 @@ describe("StatusBar", () => {
       version: null,
     });
     useWorkspaceStore.setState({
-      lastRunMetrics: { ttft_ms: 137, tokens_per_sec: 47.345, token_count: 92 },
+      lastRunMetrics: { ttft_ms: 137, tokens_per_sec: 47.345, token_count: 92, timeline: [] },
     });
     render(<StatusBar model="llama3.2:1b" />);
     const m = screen.getByTestId("status-bar-metrics");

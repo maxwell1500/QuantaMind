@@ -36,7 +36,7 @@ beforeEach(() => {
   seedCurrentPrompt();
 });
 
-const ALL = ["workspace", "models", "downloads"] as const;
+const ALL = ["workspace", "inspector", "models", "downloads", "settings"] as const;
 
 describe("App tab strip", () => {
   it("renders the tabs with Workspace active by default", () => {

@@ -13,7 +13,9 @@ fn entry(id: &str, output: &str) -> HistoryEntry {
         model: "llama3".into(), system: String::new(), user: format!("run {id}"),
         params: InferenceParams::default(),
         output_preview: history::preview(output),
-        output_len: output.chars().count(), token_count: 4, ran_at: "t".into(),
+        output_len: output.chars().count(), token_count: 4,
+        ttft_ms: None, tokens_per_sec: None, load_ms: None,
+        ran_at: "t".into(),
     }
 }
 

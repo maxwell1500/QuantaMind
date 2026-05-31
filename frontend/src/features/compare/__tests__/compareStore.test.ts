@@ -39,15 +39,22 @@ describe("compareStore reducer", () => {
     expect(row.startedAt).toBeTypeOf("string");
   });
 
-  it("setRowDone records metrics and sets endedAt", () => {
+  it("setRowDone records metrics (incl. timeline) and sets endedAt", () => {
     useCompareStore.getState().initRun([M("a")]);
+    const timeline = [{ text: "hi", t_ms: 12, n: 1 }];
     useCompareStore.getState().setRowDone({
-      model: "a", ttft_ms: 42, tokens_per_sec: 38.2, token_count: 218,
+      model: "a", ttft_ms: 42, tokens_per_sec: 38.2, token_count: 1, timeline,
     });
     const row = useCompareStore.getState().rows[0];
     expect(row.status).toBe("done");
-    expect(row.metrics).toEqual({ ttft_ms: 42, tokens_per_sec: 38.2, token_count: 218 });
+    expect(row.metrics).toEqual({ ttft_ms: 42, tokens_per_sec: 38.2, token_count: 1, timeline });
     expect(row.endedAt).toBeTypeOf("string");
+  });
+
+  it("setRowDone defaults timeline to [] when omitted", () => {
+    useCompareStore.getState().initRun([M("a")]);
+    useCompareStore.getState().setRowDone({ model: "a", ttft_ms: 1, tokens_per_sec: 10, token_count: 0 });
+    expect(useCompareStore.getState().rows[0].metrics?.timeline).toEqual([]);
   });
 
   it("setRowError stores kind + message and ends the row", () => {

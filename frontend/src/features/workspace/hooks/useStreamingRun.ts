@@ -16,6 +16,7 @@ import { formatIpcError } from "../../../shared/ipc/core/error";
 import { useWorkspaceStore } from "../state/workspaceStore";
 import type { InferenceParams } from "../../../shared/ipc/workspace/prompts";
 import { recordRun, type RunContext } from "../../history/recordRun";
+import { useLeakStore } from "../../inspector/state/leakStore";
 
 const hasParam = (p?: InferenceParams) =>
   !!p && Object.values(p).some((v) => v !== undefined && v !== null);
@@ -56,7 +57,13 @@ export function useStreamingRun() {
         if (!p.success) return fail("prompt-done", p.error.issues);
         setMetrics(p.data); setStatus("done");
         useWorkspaceStore.getState().setLastRunMetrics(p.data);
-        void recordRun(ctxRef.current, outputRef.current, p.data.token_count);
+        void recordRun(ctxRef.current, outputRef.current, {
+          token_count: p.data.token_count,
+          ttft_ms: p.data.ttft_ms,
+          tokens_per_sec: p.data.tokens_per_sec,
+          load_ms: p.data.stats?.load_ms,
+        });
+        void useLeakStore.getState().sample(ctxRef.current?.model ?? "");
       });
       if (cancelled) { ud(); return; }
       unsubs.push(ud);

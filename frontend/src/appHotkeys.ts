@@ -10,7 +10,7 @@ import { useOpenWorkspace } from "./features/workspaces/hooks/useOpenWorkspace";
 export function useGlobalHotkeys() {
   const ws = useNavStore((s) => s.topView) === "workspace";
   const toggleCheatsheet = useUiStore((s) => s.toggleCheatsheet);
-  const toggleFiles = useUiStore((s) => s.toggleFiles);
+  const toggleSidebar = useUiStore((s) => s.toggleSidebar);
   const toggleHistory = useHistoryStore((s) => s.toggle);
   const requestNewPrompt = useUiStore((s) => s.setCreatingPrompt);
   const { browse } = useOpenWorkspace();
@@ -18,6 +18,6 @@ export function useGlobalHotkeys() {
   useHotkey(comboFor("new"), () => requestNewPrompt(true), ws);
   useHotkey(comboFor("open"), () => void browse(), true);
   useHotkey(comboFor("history"), toggleHistory, ws);
-  useHotkey(comboFor("files"), toggleFiles, ws);
+  useHotkey(comboFor("files"), toggleSidebar, ws);
   useHotkey(comboFor("cheatsheet"), toggleCheatsheet, true);
 }

@@ -17,7 +17,7 @@ export const SHORTCUTS: Shortcut[] = [
   { id: "new", combo: "mod+n", label: "New prompt", scope: "Global" },
   { id: "open", combo: "mod+o", label: "Open workspace", scope: "Global" },
   { id: "history", combo: "mod+y", label: "Toggle History", scope: "Global" },
-  { id: "files", combo: "mod+b", label: "Toggle Files", scope: "Global" },
+  { id: "files", combo: "mod+b", label: "Toggle Sidebar", scope: "Global" },
   { id: "cheatsheet", combo: "mod+/", label: "Keyboard shortcuts", scope: "Global" },
 ];
 

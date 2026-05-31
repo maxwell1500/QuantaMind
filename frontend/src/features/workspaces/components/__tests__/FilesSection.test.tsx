@@ -3,6 +3,7 @@ import { render, screen, fireEvent, waitFor } from "@testing-library/react";
 
 vi.mock("../../../../shared/ipc/workspace/prompts", () => ({
   createPrompt: vi.fn().mockResolvedValue("/ws/foo.quantamind.yaml"),
+  renamePath: vi.fn().mockResolvedValue(undefined),
   loadPrompt: vi.fn().mockResolvedValue({
     name: "foo", system: "", user: "", model: null, params: {},
     created_at: "t", updated_at: "t", auto_rerun: false,
@@ -23,7 +24,7 @@ vi.mock("../../../../shared/ipc/workspace/history", () => ({
   historyClear: vi.fn().mockResolvedValue(undefined),
 }));
 
-import { FilesPanel } from "../FilesPanel";
+import { FilesSection } from "../FilesSection";
 import { useWorkspacesStore } from "../../state/workspaceStore";
 import { useUiStore } from "../../../../shared/state/uiStore";
 import { createPrompt } from "../../../../shared/ipc/workspace/prompts";
@@ -34,16 +35,16 @@ beforeEach(() => {
   useUiStore.setState({ creatingPrompt: false });
 });
 
-describe("FilesPanel inline create", () => {
+describe("FilesSection inline create", () => {
   it("shows an inline input when + New is clicked (no window.prompt)", () => {
-    render(<FilesPanel />);
+    render(<FilesSection />);
     fireEvent.click(screen.getByTestId("files-new"));
     expect(screen.getByTestId("files-new-input")).toBeTruthy();
   });
 
   it("Enter on the input creates the prompt with the typed name", async () => {
     useUiStore.setState({ creatingPrompt: true });
-    render(<FilesPanel />);
+    render(<FilesSection />);
     const input = screen.getByTestId("files-new-input");
     fireEvent.change(input, { target: { value: "my-prompt" } });
     fireEvent.keyDown(input, { key: "Enter" });
@@ -52,7 +53,7 @@ describe("FilesPanel inline create", () => {
 
   it("Escape cancels without creating", () => {
     useUiStore.setState({ creatingPrompt: true });
-    render(<FilesPanel />);
+    render(<FilesSection />);
     fireEvent.keyDown(screen.getByTestId("files-new-input"), { key: "Escape" });
     expect(useUiStore.getState().creatingPrompt).toBe(false);
     expect(createPrompt).not.toHaveBeenCalled();

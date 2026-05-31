@@ -1,8 +1,8 @@
 import { useCallback, useState } from "react";
 import { ask } from "@tauri-apps/plugin-dialog";
 import { useWorkspacesStore } from "../state/workspaceStore";
-import { useOpenWorkspace } from "../hooks/useOpenWorkspace";
 import { useCreatePrompt } from "../hooks/useCreatePrompt";
+import { useRenamePrompt } from "../hooks/useRenamePrompt";
 import { useToast } from "../../../shared/ui/Toast";
 import { useUiStore } from "../../../shared/state/uiStore";
 import { formatIpcError } from "../../../shared/ipc/core/error";
@@ -10,19 +10,18 @@ import { deletePath } from "../../../shared/ipc/workspace/workspaces";
 import { historyRemoveByPath } from "../../../shared/ipc/workspace/history";
 import { useHistoryStore } from "../../history/state/historyStore";
 import { FilesTree } from "./FilesTree";
-import { WorkspaceSwitcher } from "./WorkspaceSwitcher";
 
-export function FilesPanel() {
+export function FilesSection() {
   const root = useWorkspacesStore((s) => s.root);
   const tree = useWorkspacesStore((s) => s.tree);
   const currentPath = useWorkspacesStore((s) => s.currentPath);
   const selectPrompt = useWorkspacesStore((s) => s.selectPrompt);
-  const setTree = useWorkspacesStore((s) => s.refreshTree);
+  const refreshTree = useWorkspacesStore((s) => s.refreshTree);
   const clearSelection = useWorkspacesStore((s) => s.clearSelection);
   const creating = useUiStore((s) => s.creatingPrompt);
   const setCreating = useUiStore((s) => s.setCreatingPrompt);
-  const { browse } = useOpenWorkspace();
   const create = useCreatePrompt();
+  const rename = useRenamePrompt();
   const showToast = useToast();
   const [name, setName] = useState("");
 
@@ -39,18 +38,17 @@ export function FilesPanel() {
     try {
       await deletePath(path);
       if (currentPath === path) clearSelection();
-      await setTree();
+      await refreshTree();
       // Keep History in sync: drop runs that belonged to the deleted prompt.
       await historyRemoveByPath(path);
       await useHistoryStore.getState().load();
     } catch (e) { showToast(`Couldn't delete: ${formatIpcError(e)}`); }
-  }, [currentPath, clearSelection, setTree, showToast]);
+  }, [currentPath, clearSelection, refreshTree, showToast]);
 
   return (
-    <aside data-testid="files-panel" className="w-64 shrink-0 border-r pr-3 pl-1 py-2 overflow-y-auto">
-      <WorkspaceSwitcher />
+    <div data-testid="files-section">
       <div className="flex items-center justify-between px-2 pb-2">
-        <span className="text-xs font-semibold uppercase tracking-wide text-gray-500">Files</span>
+        <span className="text-[11px] uppercase tracking-wide font-semibold text-gray-400">Files</span>
         {root && (
           <button type="button" onClick={() => setCreating(true)} className="text-xs text-blue-600 hover:text-blue-800" data-testid="files-new">
             + New
@@ -70,14 +68,12 @@ export function FilesPanel() {
         />
       )}
       {!root ? (
-        <button type="button" onClick={browse} className="w-full text-sm text-left px-2 py-2 text-blue-600 hover:bg-gray-100 rounded">
-          Open folder…
-        </button>
+        <p className="px-2 text-xs text-gray-500">Open a folder above to start.</p>
       ) : tree.length === 0 ? (
         <p className="px-2 text-xs text-gray-500">No prompts yet. Click + New.</p>
       ) : (
-        <FilesTree nodes={tree} currentPath={currentPath} onSelect={selectPrompt} onDelete={onDelete} />
+        <FilesTree nodes={tree} currentPath={currentPath} onSelect={selectPrompt} onRename={rename} onDelete={onDelete} />
       )}
-    </aside>
+    </div>
   );
 }

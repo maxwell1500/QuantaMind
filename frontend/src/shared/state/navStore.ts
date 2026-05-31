@@ -8,8 +8,10 @@ import { create } from "zustand";
 export type TopView =
   | "workspace"
   | "analysis"
+  | "inspector"
   | "models"
   | "downloads"
+  | "settings"
   | "help";
 
 interface NavStore {

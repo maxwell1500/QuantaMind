@@ -1,6 +1,7 @@
 use crate::errors::AppResult;
 use crate::inference::backend::backend::InferenceBackend;
 use crate::inference::generate::generate_spec::GenerateSpec;
+use crate::inference::generate::generate_stats::GenerateStats;
 use crate::inference::ollama::ollama::stream_generate;
 use tokio_util::sync::CancellationToken;
 
@@ -21,7 +22,7 @@ impl InferenceBackend for OllamaBackend {
         spec: &GenerateSpec,
         cancel: CancellationToken,
         on_token: F,
-    ) -> AppResult<()> {
+    ) -> AppResult<GenerateStats> {
         stream_generate(
             &self.endpoint,
             &spec.model,

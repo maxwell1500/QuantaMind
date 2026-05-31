@@ -1,5 +1,4 @@
 import type { BackendKind } from "../../../../shared/ipc/models/storage";
-import { useUiStore } from "../../../../shared/state/uiStore";
 import { useWorkspaceStore } from "../../state/workspaceStore";
 
 const BACKENDS: { id: BackendKind; label: string }[] = [
@@ -32,42 +31,17 @@ function BackendRow({ id, label }: { id: BackendKind; label: string }) {
   );
 }
 
-/// Collapsible left rail to pick the active inference backend. The Workspace
-/// scopes its models and runs to whichever is selected.
-export function BackendPanel() {
-  const visible = useUiStore((s) => s.backendPanelVisible);
-  const toggle = useUiStore((s) => s.toggleBackendPanel);
-
-  if (!visible) {
-    return (
-      <button
-        type="button"
-        onClick={toggle}
-        aria-label="Show backends"
-        data-testid="backend-panel-open"
-        className="text-gray-500 hover:text-ink px-1 py-1 text-lg self-start"
-      >
-        ›
-      </button>
-    );
-  }
+/// The "Backends" section of the workspace rail: pick the active inference
+/// backend. The Workspace scopes its models and runs to whichever is selected.
+export function BackendList() {
   return (
-    <aside data-testid="backend-panel" className="w-40 shrink-0 border-r pr-2 space-y-0.5">
-      <div className="flex items-center justify-between px-2 py-1">
+    <div data-testid="backend-list" className="space-y-0.5">
+      <div className="px-2 py-1">
         <span className="text-[11px] uppercase tracking-wide font-semibold text-gray-400">Backends</span>
-        <button
-          type="button"
-          onClick={toggle}
-          aria-label="Hide backends"
-          data-testid="backend-panel-close"
-          className="text-gray-500 hover:text-ink text-lg leading-none"
-        >
-          ‹
-        </button>
       </div>
       {BACKENDS.map((b) => (
         <BackendRow key={b.id} id={b.id} label={b.label} />
       ))}
-    </aside>
+    </div>
   );
 }

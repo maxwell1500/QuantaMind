@@ -54,7 +54,7 @@ describe("useStreamingRun", () => {
     });
 
     act(() => {
-      fire("prompt-done", { ttft_ms: 12, tokens_per_sec: 50.0, token_count: 4 });
+      fire("prompt-done", { ttft_ms: 12, tokens_per_sec: 50.0, token_count: 4, timeline: [] });
     });
 
     expect(result.current.output).toBe("The sky is blue.");
@@ -63,6 +63,7 @@ describe("useStreamingRun", () => {
       ttft_ms: 12,
       tokens_per_sec: 50.0,
       token_count: 4,
+      timeline: [],
     });
     expect(invoke).toHaveBeenCalledWith("run_prompt", {
       model: "llama3.2:1b",
@@ -92,7 +93,7 @@ describe("useStreamingRun", () => {
 
     await waitFor(() => expect(handlers["prompt-done"]).toBeDefined());
 
-    const payload = { ttft_ms: 200, tokens_per_sec: 30.5, token_count: 12 };
+    const payload = { ttft_ms: 200, tokens_per_sec: 30.5, token_count: 12, timeline: [] };
     act(() => {
       fire("prompt-done", payload);
     });

@@ -20,7 +20,7 @@ export async function stopCompare(modelId?: string): Promise<void> {
   await invoke("stop_compare", { modelId: modelId ?? null });
 }
 
-export type CompareReportFormat = "md" | "json";
+export type CompareReportFormat = "md" | "json" | "html";
 
 export async function saveCompareReport(
   path: string,

@@ -38,6 +38,12 @@ Phase 3 additions (locked; installed when their step lands):
 | Secret storage (Rust) | `keyring` | OS-native keychain for cloud API keys — never plaintext on disk. |
 | llama.cpp backend | `llama-server` (Tauri sidecar binary) | Local GGUF inference over HTTP, mirroring the Ollama path. Subprocess, not in-process FFI. |
 
+Phase 4 additions (locked; installed when their step lands):
+
+| Layer | Choice | Why |
+|---|---|---|
+| Charting (TS) | `visx` v4 (`@next`, scale/shape/group) | React-19-native (stable v3 pins React ≤18). Modular SVG primitives for the Inspector charts; we draw axes/legends ourselves. Pin the alpha until v4 ships stable. |
+
 ### What is explicitly NOT installed (yet)
 
 - Logging library — use `println!` / `console.log` until Phase 2.
@@ -285,7 +291,7 @@ Where each phase begins and ends. Workflow per step is in [Workflow](#workflow)
 Day-zero usable single-prompt workspace. Tests: 67 backend + 336 frontend
 passing.
 
-### Phase 2 — v0.2 Daily-driver polish (in progress)
+### Phase 2 — v0.2 Daily-driver polish (complete)
 
 Turns v0.1 into a daily driver: prompts on disk, every inference knob exposed,
 auto-rerun on save, error states that tell you what to do, ships on Windows +
@@ -338,11 +344,67 @@ prompt-template library.
 forward-looking notes in `inference/backend/`), so a future phase can add it
 without rework. With 3.10 out of scope, Phase 3 ships at 3.1–3.9 and is complete.
 
-### Phase 4+
+### Phase 4 — v0.4 "The Inspector" (complete)
 
-Phases 4–5 are sketched in the v0.1 planning notes (Inspector / deep profiling,
-MLX backend, etc.) but not yet broken into steps. Owners flesh out the next
-phase's section here when the current phase lands.
+Performance instrumentation: surface the raw timing/memory signal behind a run
+so users can see *why* it was fast or slow. Built one step at a time.
+
+- **4.1 Per-token timing instrumentation (done).** `RunTiming` records a
+  `TokenTiming { text, t_ms, n }` per accepted token (`t_ms` = ms since run
+  start, monotonic; `n` = 1-based count). The `prompt-done` event's
+  `DonePayload` gains a `timeline` array, mirrored by the frontend zod schema.
+  The first entry's `t_ms` equals `ttft_ms` by construction. Foundation for the
+  views below; no UI yet.
+- **4.2 Token-timeline chart (done).** New **Inspector** tab plots the last
+  run's per-token latency (x = token index, y = gap from previous token) with
+  the TTFT bar annotated and latency-spike gaps flagged as outliers (robust
+  median/MAD modified-z rule). Pure math in
+  `features/inspector/format/timeline.ts`; rendered with `visx` v4 (`@next`).
+  Driven off `compareStore.rows`, so it shows **one labeled chart per model**
+  for both single and multi-model runs (Compare now carries a per-token
+  `timeline` on its done event). Hovering a bar shows a `#index · ms — token`
+  readout.
+- **4.3 TTFT breakdown (done).** `generate` now returns a `GenerateStats` from
+  each backend's final chunk (Ollama's `load_duration`/`prompt_eval_*`/`eval_*`,
+  ns→ms; llama.cpp's `timings`), carried on the done payloads. The Inspector
+  shows a stacked TTFT bar per model — Model load + Prompt prefill +
+  Network/first-token (remainder) — segmented only by what the backend reports;
+  otherwise "not available". Pure math in `features/inspector/format/ttft.ts`.
+- **4.4 VRAM allocation (done).** `get_loaded_models` reads Ollama `/api/ps`;
+  the Inspector shows a per-model bar — In VRAM (`size_vram`) vs offloaded to
+  system RAM (`size − size_vram`), `context_length` in the tooltip. Models not
+  loaded / non-Ollama backends → "Not available" (never a fabricated
+  weights/KV/free split). Device free/total VRAM deferred to 4.5 (GPU probe).
+- **4.5 Hardware detection (done).** CPU/cores/RAM/OS/arch via `sysinfo` + a
+  shell-out GPU probe (`nvidia-smi` CSV → bytes; macOS `sysctl` chip name +
+  unified memory; else "Not available") in a new **Settings › Hardware** view.
+- **4.6 Inter-token latency histogram (done).** Per-model visx histogram of the
+  inter-token gaps; outlier bins highlighted (`format/histogram.ts`).
+- **4.7 Cold- vs warm-start (done).** `HistoryEntry` records ttft/tok-s/load_ms;
+  the Inspector compares cold (load_ms>500ms) vs warm runs per model and shows
+  the cold-load TTFT delta (`format/coldwarm.ts`).
+- **4.8 Memory-leak heuristic (done).** `get_ollama_rss` (sysinfo processes)
+  sampled per run into a session series; a banner flags a monotonic climb across
+  5 runs (`format/leak.ts`).
+- **4.9 Regression alerts (done).** Per model, the latest run is compared to the
+  rolling 7-day average of prior same-prompt runs (from history); a ≥20% tok/s
+  drop is flagged (`format/regression.ts`).
+- **4.10 HTML report (done).** A self-contained inline-SVG/HTML report (hardware,
+  per-model metrics, TTFT/VRAM bars, timeline + histogram, cold/warm +
+  regression) exported via the dialog + `save_compare_report` (now allows
+  `html`). Builders in `features/inspector/report/`.
+
+**Phase 4 (v0.4 The Inspector) is complete (4.1–4.10).** Metrics stay nullable
+(`null` = not measured, never `0`); reports follow
+[#analysis-schema](reference.md#analysis-schema). Tests: full `cargo test`
+green + `cargo clippy` error-free; 560 frontend (vitest) + `tsc`; `pnpm build`
+succeeds. Shipped on branch `phase-4/per-token-timing`. Live GUI verification
+pending (same gate as earlier phases).
+
+### Phase 5+
+
+Sketched in the v0.1 planning notes (MLX backend, etc.) but not yet broken into
+steps. Owners flesh out the next phase's section here when the current lands.
 
 ---
 

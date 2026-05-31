@@ -52,7 +52,7 @@ HTTP to a local Ollama server.
 - `commands/` — IPC entry points. Thin: validate, wire Tauri, delegate to a pure
   core. The **only** layer that names `tauri::` types. See [Layering](#layering).
   `run_prompt` is backend-aware (dispatches to Ollama or the `llama-server`
-  sidecar per the request's `backend`); the frontend's `BackendPanel` picks it.
+  sidecar per the request's `backend`); the workspace sidebar's backend list picks it.
 - `inference/` — backend adapters behind the `InferenceBackend` trait
   (`backend.rs`). `OllamaBackend` and `LlamaCppBackend` (a `llama-server`
   sidecar) today; callers build one by matching `BackendKind` (a closed

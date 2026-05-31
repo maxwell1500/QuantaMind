@@ -70,18 +70,18 @@ pub async fn run_prompt(
 
     *state.current.lock_recover() = None;
 
-    if result.is_ok() {
+    if let Ok(stats) = &result {
         if token.is_cancelled() {
             let count = timing.lock_recover().token_count;
             app.emit(EVENT_CANCELLED, CancelledPayload { token_count: count })
                 .map_err(|e| AppError::Internal(e.to_string()))?;
         } else {
-            let payload = done_payload(&timing);
+            let payload = done_payload(&timing, stats);
             app.emit(EVENT_DONE, &payload)
                 .map_err(|e| AppError::Internal(e.to_string()))?;
         }
     }
-    result
+    result.map(|_| ())
 }
 
 #[tauri::command]

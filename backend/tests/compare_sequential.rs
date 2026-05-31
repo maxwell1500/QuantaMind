@@ -60,6 +60,25 @@ async fn sequential_error_in_one_row_continues_to_next() {
 }
 
 #[tokio::test]
+async fn done_payload_carries_a_timeline_matching_token_count() {
+    let mut s = Server::new_async().await;
+    let _m = s.mock("POST", "/api/generate")
+        .with_status(200).with_body(OK_BODY).create_async().await;
+    let (sink, log) = recording_sink();
+    let state = CompareRunState::default();
+    run_sequential(sink, &state, &s.url(), rows_for(&["a".into()], |_| None), "ping", None, None)
+        .await.expect("ok");
+    let log = log.lock().unwrap();
+    let done = log.iter().find(|(n, _)| n == EVENT_COMPARE_DONE).expect("done");
+    let timeline = done.1["timeline"].as_array().expect("timeline array");
+    assert_eq!(timeline.len(), done.1["token_count"].as_u64().unwrap() as usize);
+    assert_eq!(timeline.len(), 1, "OK_BODY streams one token");
+    assert_eq!(timeline[0]["text"], "hi");
+    assert_eq!(timeline[0]["n"], 1);
+    assert!(done.1.get("stats").is_some(), "done payload carries a stats object");
+}
+
+#[tokio::test]
 async fn token_payload_carries_model_id_and_model_name() {
     let mut s = Server::new_async().await;
     let _m = s.mock("POST", "/api/generate")

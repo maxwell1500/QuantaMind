@@ -1,14 +1,15 @@
 import { useEffect } from "react";
 import { Workspace } from "./features/workspace/components/Workspace";
 import { AnalysisTab } from "./features/compare/components/AnalysisTab";
+import { InspectorPage } from "./features/inspector/components/InspectorPage";
+import { SettingsPage } from "./features/settings/components/SettingsPage";
 import { ModelsPage } from "./features/models/components/ModelsPage";
 import { DownloadsPage } from "./features/models/components/DownloadsPage";
 import { startInstalledModelsBus } from "./features/models/state/installedModelsBus";
 import { useModelSettingsStore } from "./features/models/state/modelSettingsStore";
 import { FeedbackButton } from "./features/feedback/components/FeedbackButton";
 import { HelpPage } from "./features/help/components/HelpPage";
-import { FilesPanel } from "./features/workspaces/components/FilesPanel";
-import { BackendPanel } from "./features/workspace/components/backend/BackendPanel";
+import { WorkspaceSidebar } from "./WorkspaceSidebar";
 import { useAutoSave } from "./features/workspaces/hooks/useAutoSave";
 import { HistoryPanel } from "./features/history/components/HistoryPanel";
 import { StartupUpdate } from "./features/help/components/StartupUpdate";
@@ -17,14 +18,15 @@ import { AppHeader } from "./AppHeader";
 import { useGlobalHotkeys } from "./appHotkeys";
 import { CheatsheetModal } from "./shared/ui/CheatsheetModal";
 import { ToastHost } from "./shared/ui/Toast";
-import { useUiStore } from "./shared/state/uiStore";
 import { useNavStore, type TopView } from "./shared/state/navStore";
 
 const TABS: { id: TopView; label: string }[] = [
   { id: "workspace", label: "Workspace" },
   { id: "analysis", label: "Analysis" },
+  { id: "inspector", label: "Inspector" },
   { id: "models", label: "Models" },
   { id: "downloads", label: "Downloads" },
+  { id: "settings", label: "Settings" },
   { id: "help", label: "Help" },
 ];
 
@@ -44,7 +46,6 @@ export default function App() {
   }, []);
   useAutoSave();
   useGlobalHotkeys();
-  const filesVisible = useUiStore((s) => s.filesVisible);
   return (
     <main className="min-h-screen p-6 pb-14 font-sans space-y-3">
       <AppHeader />
@@ -66,14 +67,15 @@ export default function App() {
       </nav>
       <div hidden={view !== "workspace"} data-testid="view-workspace">
         <div className="flex gap-4">
-          <BackendPanel />
-          {filesVisible && <FilesPanel />}
+          <WorkspaceSidebar />
           <div className="flex-1 min-w-0"><Workspace /></div>
         </div>
       </div>
       <div hidden={view !== "analysis"} data-testid="view-analysis"><AnalysisTab /></div>
+      <div hidden={view !== "inspector"} data-testid="view-inspector"><InspectorPage /></div>
       <div hidden={view !== "models"} data-testid="view-models"><ModelsPage /></div>
       <div hidden={view !== "downloads"} data-testid="view-downloads"><DownloadsPage /></div>
+      <div hidden={view !== "settings"} data-testid="view-settings"><SettingsPage /></div>
       <div hidden={view !== "help"} data-testid="view-help"><HelpPage /></div>
       <FeedbackButton />
       <HistoryPanel />
