@@ -34,7 +34,7 @@ mod tests {
         let dir = std::env::temp_dir().join("qm_export_test.html");
         let p = dir.to_string_lossy();
         assert!(save_inner(&p, "html", "<!doctype html>").is_ok());
-        assert_eq!(std::fs::read_to_string(&*p).unwrap(), "<!doctype html>");
+        assert_eq!(std::fs::read_to_string(&*p).expect("read back report"), "<!doctype html>");
         let _ = std::fs::remove_file(&*p);
     }
 }
