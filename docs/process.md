@@ -291,7 +291,7 @@ Where each phase begins and ends. Workflow per step is in [Workflow](#workflow)
 Day-zero usable single-prompt workspace. Tests: 67 backend + 336 frontend
 passing.
 
-### Phase 2 — v0.2 Daily-driver polish (in progress)
+### Phase 2 — v0.2 Daily-driver polish (complete)
 
 Turns v0.1 into a daily driver: prompts on disk, every inference knob exposed,
 auto-rerun on save, error states that tell you what to do, ships on Windows +
@@ -396,7 +396,10 @@ so users can see *why* it was fast or slow. Built one step at a time.
 
 **Phase 4 (v0.4 The Inspector) is complete (4.1–4.10).** Metrics stay nullable
 (`null` = not measured, never `0`); reports follow
-[#analysis-schema](reference.md#analysis-schema).
+[#analysis-schema](reference.md#analysis-schema). Tests: full `cargo test`
+green + `cargo clippy` error-free; 560 frontend (vitest) + `tsc`; `pnpm build`
+succeeds. Shipped on branch `phase-4/per-token-timing`. Live GUI verification
+pending (same gate as earlier phases).
 
 ### Phase 5+
 
