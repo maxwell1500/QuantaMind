@@ -5,6 +5,7 @@ pub mod emit;
 pub mod gguf;
 pub mod hf;
 pub mod llama;
+pub mod mlx;
 pub mod models;
 pub mod ollama;
 pub mod prompt;

@@ -38,6 +38,7 @@ pub fn run() {
             commands::hf::hf_install::install_hf_gguf,
             commands::hf::hf_install::cancel_hf_install,
             commands::system::health::check_ollama_health,
+            commands::mlx::health_mlx::check_mlx_health,
             commands::settings::model_settings::get_model_settings,
             commands::settings::model_settings::set_model_temperature,
             commands::models::models::list_models,
