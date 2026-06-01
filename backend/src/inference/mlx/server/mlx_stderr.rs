@@ -1,5 +1,9 @@
+use crate::sync::MutexExt;
 use serde::Serialize;
 use std::collections::VecDeque;
+use std::io::{BufRead, BufReader};
+use std::process::ChildStderr;
+use std::sync::{Arc, Mutex};
 
 /// Coarse launch phase reported to the UI. `Downloading`/`Starting` come from
 /// stderr; `Ready` is decided by the health probe and `Exited` by `try_wait` —
@@ -35,6 +39,26 @@ pub fn push_tail(tail: &mut VecDeque<String>, line: String, cap: usize) {
         tail.pop_front();
     }
     tail.push_back(line);
+}
+
+const TAIL_CAP: usize = 20;
+
+/// Drain the child's piped stderr on a background thread, updating the shared
+/// `phase` on confident signals and keeping the last `TAIL_CAP` lines for the
+/// death diagnosis. Ends when the stream closes (process exit).
+pub fn spawn_stderr_reader(
+    stderr: ChildStderr,
+    phase: Arc<Mutex<Phase>>,
+    tail: Arc<Mutex<VecDeque<String>>>,
+) {
+    std::thread::spawn(move || {
+        for line in BufReader::new(stderr).lines().map_while(Result::ok) {
+            if let Some(p) = phase_from_line(&line) {
+                *phase.lock_recover() = p;
+            }
+            push_tail(&mut tail.lock_recover(), line, TAIL_CAP);
+        }
+    });
 }
 
 #[cfg(test)]

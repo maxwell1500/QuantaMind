@@ -1,5 +1,5 @@
 use crate::commands::system::health::HealthStatus;
-use crate::inference::backend::endpoint::MLX_SERVER;
+use crate::inference::mlx::server::mlx_endpoint::mlx_endpoint;
 use reqwest::Client;
 use std::time::Duration;
 
@@ -30,7 +30,7 @@ pub async fn mlx_health(endpoint: &str) -> HealthStatus {
 
 #[tauri::command]
 pub async fn check_mlx_health() -> HealthStatus {
-    mlx_health(MLX_SERVER).await
+    mlx_health(&mlx_endpoint()).await
 }
 
 #[cfg(test)]

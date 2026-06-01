@@ -21,6 +21,7 @@ pub fn run() {
         .manage(commands::settings::model_settings::ModelSettingsState::default())
         .manage(commands::ollama::ollama_start::OllamaStartState::default())
         .manage(commands::llama::llama_server_types::LlamaServerState::default())
+        .manage(commands::mlx::mlx_server_types::MlxServerState::default())
         .manage(commands::workspace::workspaces::WorkspaceState::default())
         .manage(commands::settings::user_settings::UserSettingsState::default())
         .invoke_handler(tauri::generate_handler![
@@ -40,6 +41,9 @@ pub fn run() {
             commands::system::health::check_ollama_health,
             commands::mlx::health_mlx::check_mlx_health,
             commands::mlx::mlx_models::list_mlx_models,
+            commands::mlx::mlx_start::start_mlx_server,
+            commands::mlx::mlx_start::stop_mlx_server,
+            commands::mlx::mlx_start::mlx_server_status,
             commands::settings::model_settings::get_model_settings,
             commands::settings::model_settings::set_model_temperature,
             commands::models::models::list_models,

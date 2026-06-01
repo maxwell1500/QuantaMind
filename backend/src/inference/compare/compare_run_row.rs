@@ -4,6 +4,7 @@ use crate::inference::backend::backend_kind::BackendKind;
 use crate::inference::backend::endpoint;
 use crate::inference::llama::llama_backend::LlamaCppBackend;
 use crate::inference::mlx::mlx_backend::MlxBackend;
+use crate::inference::mlx::server::mlx_endpoint::mlx_endpoint;
 use crate::inference::compare::compare_runner::RowSpec;
 use crate::inference::compare::compare_runner_finalize::finalize_row;
 use crate::inference::compare::compare_sink::CompareSink;
@@ -17,11 +18,13 @@ use std::sync::{Arc, Mutex};
 use tokio_util::sync::CancellationToken;
 
 /// The HTTP endpoint a compare row talks to. Ollama rows use the run's
-/// configured endpoint; llama.cpp and MLX rows use their sidecar/server default.
+/// configured endpoint; llama.cpp uses its sidecar default; MLX uses the
+/// app-managed server's dynamic port (or the :8082 manual default).
 fn endpoint_for(ollama_endpoint: &str, backend: BackendKind) -> String {
     match backend {
         BackendKind::Ollama => ollama_endpoint.to_string(),
-        BackendKind::LlamaCpp | BackendKind::Mlx => endpoint::default_for(backend).to_string(),
+        BackendKind::LlamaCpp => endpoint::default_for(backend).to_string(),
+        BackendKind::Mlx => mlx_endpoint(),
     }
 }
 

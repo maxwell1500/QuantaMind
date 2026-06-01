@@ -15,8 +15,9 @@ fn llama_rows_use_the_sidecar_default_not_the_ollama_endpoint() {
 }
 
 #[test]
-fn mlx_rows_use_the_mlx_server_default_not_the_ollama_endpoint() {
+fn mlx_rows_use_the_mlx_endpoint_not_the_ollama_endpoint() {
+    // MLX resolves via the (dynamic) mlx_endpoint(), never the ollama endpoint.
     let ep = endpoint_for("http://localhost:9999", BackendKind::Mlx);
-    assert_eq!(ep, endpoint::MLX_SERVER);
+    assert!(ep.starts_with("http://"));
     assert_ne!(ep, "http://localhost:9999");
 }

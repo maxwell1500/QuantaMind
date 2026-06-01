@@ -1,7 +1,7 @@
 use crate::commands::storage::storage_types::InstalledModelInfo;
 use crate::errors::AppError;
 use crate::inference::backend::backend_kind::BackendKind;
-use crate::inference::backend::endpoint::MLX_SERVER;
+use crate::inference::mlx::server::mlx_endpoint::mlx_endpoint;
 use reqwest::Client;
 use serde::Deserialize;
 use std::time::Duration;
@@ -61,7 +61,7 @@ pub async fn fetch_mlx_models(endpoint: &str) -> Result<Vec<InstalledModelInfo>,
 
 #[tauri::command]
 pub async fn list_mlx_models() -> Result<Vec<InstalledModelInfo>, AppError> {
-    fetch_mlx_models(MLX_SERVER).await
+    fetch_mlx_models(&mlx_endpoint()).await
 }
 
 #[cfg(test)]
