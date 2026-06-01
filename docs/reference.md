@@ -171,14 +171,22 @@ on first use.
 
 ### MLX not detected {#mlx-not-detected}
 
-The **MLX** backend appears in the workspace rail only on Apple Silicon, and
-talks to a `mlx_lm.server` you run yourself. A grey dot / "MLX not detected"
-means QuantaMind couldn't reach it.
+The **MLX** backend appears in the workspace rail only on Apple Silicon. Install
+mlx-lm once (`pip install mlx-lm`), then use the header **Start MLX** control:
+type an MLX repo (e.g. `mlx-community/Llama-3.2-3B-Instruct-4bit`) and Start —
+QuantaMind launches `mlx_lm.server` for you (it downloads the repo on first run,
+so "Downloading weights…" can last a few minutes), and the model appears in the
+dropdown once it's up.
 
-- Install it once: `pip install mlx-lm`.
-- Run the server on the port QuantaMind expects (8082, distinct from
-  llama-server's 8080): `mlx_lm.server --model mlx-community/<model> --port 8082`.
-- Confirm it's up: `curl http://localhost:8082/v1/models` should return JSON.
+- **"mlx_lm.server not found"** — QuantaMind searches `PATH` and common venvs
+  (`~/mlx-env/bin`, `~/.venv/bin`, Homebrew, conda). If yours is elsewhere, set
+  `QUANTAMIND_MLX_SERVER` to its full path and restart.
+- **"Port 8082 in use" / "no free port"** — it auto-picks a free port in
+  8082–8092; only if all are taken does it fail. Free one and retry.
+- **It exited** — the error shows the server's stderr tail (e.g. a missing
+  Python dep). Fix it in your venv and Start again.
+- **Manual fallback:** you can still run `mlx_lm.server --model … --port 8082`
+  yourself; QuantaMind discovers a manually-run server on the default `:8082`.
 - **Reproducibility note:** mlx_lm.server has no seed parameter, so MLX runs are
   not seed-reproducible the way Ollama and llama.cpp runs are — a fixed seed in
   the params is ignored for MLX.

@@ -55,9 +55,12 @@ HTTP to a local Ollama server.
   sidecar per the request's `backend`); the workspace sidebar's backend list picks it.
 - `inference/` — backend adapters behind the `InferenceBackend` trait
   (`backend.rs`). `OllamaBackend`, `LlamaCppBackend` (a `llama-server` sidecar),
-  and `MlxBackend` (`mlx_lm.server`, Apple Silicon, HTTP-only) today; callers
-  build one by matching `BackendKind` (a closed enum — no `dyn`/`async-trait`).
-  Cloud adds another variant.
+  and `MlxBackend` (`mlx_lm.server`, Apple Silicon) today; callers build one by
+  matching `BackendKind` (a closed enum — no `dyn`/`async-trait`). Cloud adds
+  another variant. Both sidecar backends have an **app-managed lifecycle**: the
+  app spawns/kills the server (`commands/{llama,mlx}/…start`), reaps children on
+  exit (`commands/app_lifecycle.rs`), and the MLX server runs on a dynamic port
+  resolved via `inference/mlx/server/mlx_endpoint.rs` — not a hardcoded `:8082`.
   **Tauri-free and must not import `crate::commands`** — when it must report
   progress it takes a sink trait (see [Layering](#layering)), not an `AppHandle`.
 - `metrics/` — measurements: TTFT, tokens/sec, VRAM.
@@ -235,7 +238,8 @@ one folder per commit, behavior unchanged).
   `hf/` · `gguf/` · `ollama/` · `workspace/` · `storage/` · `settings/` ·
   `system/` (health, feasibility, hardware, onboarding)
 - **backend `inference/`** (was 33 files): `ollama/` · `llama/` · `mlx/`
-  (wire + chunk + stats + stream + backend) · `gguf/` · `hf/` · `pull/` ·
+  (wire + chunk + stats + stream + backend, plus `mlx/server/` =
+  runtime/locate/stderr/endpoint for the launcher) · `gguf/` · `hf/` · `pull/` ·
   `create/` · `compare/` · `http/` (http + ndjson) · `backend/` (trait + kind) ·
   `generate/` (spec + options) · `chat/` (templates)
 - **frontend `features/workspace/components/`** (was 17 files): `model-select/` ·

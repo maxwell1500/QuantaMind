@@ -406,7 +406,7 @@ pending (same gate as earlier phases).
 Broaden *which* models and backends users can run, and help them pick the right
 one. Built one step at a time.
 
-- **5.1 MLX inference backend (in progress).** A `MlxBackend` streams from
+- **5.1 MLX inference backend (done; live-verified).** A `MlxBackend` streams from
   `mlx_lm.server`'s OpenAI-compatible `/v1/chat/completions` (SSE), reached over
   HTTP — no FFI, consistent with the locked stack. **Apple Silicon only.**
   mlx_lm is user-installed (`pip install mlx-lm`), not bundled; QuantaMind only
@@ -424,8 +424,24 @@ one. Built one step at a time.
   loaded model is listed via `GET /v1/models` (a third source alongside Ollama
   and llama.cpp) so MLX is selectable and runnable; size/quant aren't reported
   by that endpoint, so they show blank rather than a fabricated `0`.
-- **5.2 Model download manager.** Extend `features/models/` to list GGUF / MLX /
-  AWQ variants with size, quality estimate, hardware fit, and resumable HF pulls.
+- **5.2 Model fit + MLX launcher (done).** Two parts. **5.2A:** hardware-fit
+  badges on the HF download table — green "Fits" / amber "Tight" / red "Won't
+  fit" per variant from `features/models/fit.ts` (the compare feature's
+  1.3×-safety, 70%-tight rule); the column is omitted, never guessed, when no
+  hardware snapshot. **5.2B:** QuantaMind now **starts `mlx_lm.server`** for a
+  user-chosen HF repo (the dropdown-driven flow), reversing 5.1's "no in-app
+  start" — `mlx_lm.server --model <repo>` downloads the repo on launch, so this
+  is download + run in one flow. It mirrors the llama-server lifecycle with
+  three hardenings: (1) **no false-fail** — start returns immediately, a stderr
+  reader thread reports `Downloading`/`Starting`, readiness is the health probe
+  (never a timeout during a multi-minute download), and `mlx_server_status`
+  surfaces a died process's stderr tail; (2) **exit-reap** —
+  `RunEvent::ExitRequested` kills the child (also llama-server) so no zombie
+  holds memory/port; (3) **dynamic port** — `find_available_port(8082..=8092)`
+  picks a free port stored in a process-global, and the MLX endpoint is
+  state-derived (`mlx_endpoint()`), so health/discovery/dispatch follow it (no
+  hardcoded `:8082`). Set `QUANTAMIND_MLX_SERVER` to override the executable
+  path. (AWQ variants + resumable multi-file pulls deferred.)
 - **5.3 Quantization comparison view.** Run one model across quants
   (Q4_K_M/Q5_K_M/Q8_0) side-by-side via the compare runner; show quality (mini
   eval), speed, size, VRAM.
