@@ -62,6 +62,9 @@ pub async fn stream_generate(
                     let payload = strip_sse(&line);
                     if payload.is_empty() { continue; }
                     if payload == b"[DONE]" { return Ok(from_usage(usage)); }
+                    // Skip SSE keep-alive/comment (": ...") and any non-data
+                    // framing (event:/id:); only JSON-object chunks are parsed.
+                    if payload.first() != Some(&b'{') { continue; }
                     let chunk: ChatChunk = serde_json::from_slice(payload)
                         .map_err(|e| AppError::Inference(format!("bad chunk: {e}")))?;
                     if chunk.usage.is_some() { usage = chunk.usage; }
