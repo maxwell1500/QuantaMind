@@ -80,6 +80,15 @@ impl MlxServerState {
     }
 }
 
+/// Backstop: `std::process::Child` detaches (does not kill) on drop, so reap
+/// explicitly when the managed state is torn down. The exit hook in `lib.rs` is
+/// the primary path; this covers other teardown.
+impl Drop for MlxServerState {
+    fn drop(&mut self) {
+        let _ = self.kill_all_servers();
+    }
+}
+
 #[cfg(test)]
 #[path = "mlx_server_types_tests.rs"]
 mod tests;

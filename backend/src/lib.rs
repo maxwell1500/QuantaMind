@@ -86,6 +86,7 @@ pub fn run() {
             commands::settings::user_settings::resolve_models_folder,
             commands::system::onboarding::scaffold_onboarding_workspace,
         ])
-        .run(tauri::generate_context!())
-        .expect("error while running tauri application");
+        .build(tauri::generate_context!())
+        .expect("error while building tauri application")
+        .run(commands::app_lifecycle::reap_on_exit);
 }
