@@ -1,5 +1,5 @@
 import { describe, it, expect } from "vitest";
-import { coldWarmSummary } from "../coldwarm";
+import { coldWarmSummary, coldWarmState } from "../coldwarm";
 import type { HistoryEntry } from "../../../../shared/ipc/workspace/history";
 
 const e = (model: string, load_ms: number | null, ttft_ms: number | null): HistoryEntry => ({
@@ -35,5 +35,22 @@ describe("coldWarmSummary", () => {
     )!;
     expect(s.cold.n).toBe(1);
     expect(s.warm.n).toBe(1);
+  });
+});
+
+describe("coldWarmState", () => {
+  it("is 'unsupported' when runs exist but none report load_ms (MLX/llama.cpp)", () => {
+    const st = coldWarmState([e("m", null, 600), e("m", null, 620), e("m", null, 590)], "m");
+    expect(st.kind).toBe("unsupported");
+  });
+
+  it("is 'insufficient' with no runs, or with timing but not both cold and warm", () => {
+    expect(coldWarmState([], "m").kind).toBe("insufficient");
+    expect(coldWarmState([e("m", 30, 600)], "m").kind).toBe("insufficient"); // only warm
+  });
+
+  it("is 'ready' once a cold and a warm run exist", () => {
+    const st = coldWarmState([e("m", 2400, 13000), e("m", 30, 600)], "m");
+    expect(st.kind).toBe("ready");
   });
 });

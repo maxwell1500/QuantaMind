@@ -41,3 +41,19 @@ export function coldWarmSummary(entries: HistoryEntry[], model: string): ColdWar
     deltaLoadMs: c.avgLoadMs != null ? c.avgLoadMs - (w.avgLoadMs ?? 0) : null,
   };
 }
+
+export type ColdWarmState =
+  | { kind: "ready"; data: ColdWarm }
+  | { kind: "insufficient" } // timing-capable backend, just needs a cold + a warm run
+  | { kind: "unsupported" }; // backend reports no model-load time (MLX, llama.cpp)
+
+/// Classify what the cold/warm panel can show. Distinguishes "run it again" from
+/// "this backend can't report model-load time", so MLX/llama.cpp don't show a
+/// forever-misleading "run cold and again warm" hint.
+export function coldWarmState(entries: HistoryEntry[], model: string): ColdWarmState {
+  const data = coldWarmSummary(entries, model);
+  if (data) return { kind: "ready", data };
+  const mine = entries.filter((e) => e.model === model);
+  const anyTimed = mine.some((e) => e.load_ms != null);
+  return mine.length === 0 || anyTimed ? { kind: "insufficient" } : { kind: "unsupported" };
+}
