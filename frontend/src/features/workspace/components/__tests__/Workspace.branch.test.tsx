@@ -36,6 +36,17 @@ describe("Workspace branches by selection count", () => {
     expect((screen.getByRole("button", { name: /^run$/i }) as HTMLButtonElement).disabled).toBe(true);
   });
 
+  it("MLX: Run is disabled until the MLX server is healthy", () => {
+    useWorkspaceStore.setState({ activeBackend: "mlx", mlxHealthy: false });
+    useCompareStore.getState().setSelectedModels([{ name: "stub-mlx", size_bytes: 0 }]);
+    const { rerender } = render(<Workspace />);
+    const runBtn = () => screen.getByRole("button", { name: /^run$/i }) as HTMLButtonElement;
+    expect(runBtn().disabled).toBe(true);
+    act(() => useWorkspaceStore.setState({ mlxHealthy: true }));
+    rerender(<Workspace />);
+    expect(runBtn().disabled).toBe(false);
+  });
+
   it("two models → the compare surface with a sequential/parallel picker", () => {
     useCompareStore.getState().setSelectedModels([
       { name: "llama3.2:1b", size_bytes: 1 }, { name: "mistral:7b", size_bytes: 1 },

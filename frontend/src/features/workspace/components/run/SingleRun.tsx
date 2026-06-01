@@ -17,6 +17,7 @@ export function SingleRun({ model }: { model: string | null }) {
   const saveDraftAuto = useWorkspacesStore((s) => s.saveDraftAuto);
   const ollamaHealthy = useWorkspaceStore((s) => s.ollamaHealthy);
   const llamaHealthy = useWorkspaceStore((s) => s.llamaHealthy);
+  const mlxHealthy = useWorkspaceStore((s) => s.mlxHealthy);
   const activeBackend = useWorkspaceStore((s) => s.activeBackend);
   const setSingleRun = useCompareStore((s) => s.setSingleRun);
   const active = useNavStore((s) => s.topView) === "workspace";
@@ -38,7 +39,12 @@ export function SingleRun({ model }: { model: string | null }) {
 
   const prompt = current?.user ?? "";
   const system = current?.system ?? "";
-  const backendReady = activeBackend === "ollama" || llamaHealthy === true;
+  // Ollama's readiness is enforced downstream by RunControls (healthBlocked);
+  // llama.cpp and MLX each gate here on their own server's health.
+  const backendReady =
+    activeBackend === "ollama" ||
+    (activeBackend === "llama_cpp" && llamaHealthy === true) ||
+    (activeBackend === "mlx" && mlxHealthy === true);
   const canRun = !!model && prompt.trim().length > 0 && backendReady;
   const runNow = () => {
     if (!model) return;
