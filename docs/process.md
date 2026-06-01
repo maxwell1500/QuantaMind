@@ -420,7 +420,10 @@ one. Built one step at a time.
   tokens/sec come from the client-side `RunTiming`. Sub-steps: 5.1.1 enum +
   endpoint + dispatch; 5.1.2 wire request; 5.1.3 stats; 5.1.4 stream + backend;
   5.1.5 cancellation; 5.1.6 health command + Apple-Silicon gate; 5.1.7 frontend
-  rail + gating + not-detected hint; 5.1.8 docs.
+  rail + gating + not-detected hint; 5.1.8 docs; 5.1.9 model discovery — the
+  loaded model is listed via `GET /v1/models` (a third source alongside Ollama
+  and llama.cpp) so MLX is selectable and runnable; size/quant aren't reported
+  by that endpoint, so they show blank rather than a fabricated `0`.
 - **5.2 Model download manager.** Extend `features/models/` to list GGUF / MLX /
   AWQ variants with size, quality estimate, hardware fit, and resumable HF pulls.
 - **5.3 Quantization comparison view.** Run one model across quants

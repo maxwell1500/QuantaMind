@@ -87,7 +87,9 @@ export function ModelDropdown() {
                 {has(m.name) ? "✓" : ""}
               </span>
               <span className="flex-1 truncate">{m.name}</span>
-              <span className="text-[10px] text-gray-400">{formatBytes(m.size_bytes)}</span>
+              {m.size_bytes > 0 && (
+                <span className="text-[10px] text-gray-400">{formatBytes(m.size_bytes)}</span>
+              )}
             </button>
           ))}
         </div>
