@@ -456,8 +456,13 @@ one. Built one step at a time.
   required keys + top-level types. Honest framing: a quality *smoke test*, not a
   rigorous benchmark. `inference/eval` (pure scoring, Tauri-free) + `commands/eval`
   (`list_evals`, `run_eval_task` — runs temp-0, accumulates output, scores).
-- **5.5 Smart quant recommender.** Combine `HardwareSnapshot` + use case + 5.4
-  eval data to recommend a quant.
+- **5.5 Smart quant recommender (done).** A **Quant** tab: pick a model that has
+  several installed quantizations (grouped by family + size in `quantPick.ts`)
+  and a use case (fast-chat / quality-writing / coding / reasoning) → a
+  recommended quant + plain-language why. Pure `recommendQuant` combines the
+  `HardwareSnapshot` fit (reusing `memoryFit`'s 1.3× rule) with a quant-quality
+  rank: fast-chat picks the smallest fitting quant, quality use-cases the
+  highest-quality one; honest when nothing fits or hardware is unknown.
 - **5.6 Backend auto-selection (done).** A backend is **coupled to the model's
   weight format** — an MLX model runs only on MLX, a GGUF only on
   llama.cpp/Ollama — so selection is the absolute `model.backend` mapping, never
