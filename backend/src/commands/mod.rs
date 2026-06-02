@@ -3,6 +3,7 @@ pub mod app_lifecycle;
 pub mod bench;
 pub mod compare;
 pub mod emit;
+pub mod eval;
 pub mod gguf;
 pub mod hf;
 pub mod llama;

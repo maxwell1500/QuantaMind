@@ -2,6 +2,7 @@ pub mod backend;
 pub mod chat;
 pub mod compare;
 pub mod create;
+pub mod eval;
 pub mod generate;
 pub mod gguf;
 pub mod hf;
