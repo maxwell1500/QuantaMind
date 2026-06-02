@@ -10,7 +10,7 @@ import { TemplatePanel } from "../components/card/TemplatePanel";
 const base = {
   available: true, note: null, template: "{{ .Prompt }}", capabilities: ["completion"],
   family: "llama", parameter_size: "7B", quantization: "Q4_K_M",
-  is_base_guess: false, base_reason: null,
+  is_base_guess: false, base_reason: null, dims: null,
 };
 
 beforeEach(() => vi.clearAllMocks());

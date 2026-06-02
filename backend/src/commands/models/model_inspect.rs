@@ -5,6 +5,18 @@ use crate::inference::ollama::ollama_show::show_model;
 use crate::inference::vram_math::calculate_kv_cache_bytes;
 use serde::Serialize;
 
+/// Architecture dimensions needed for the KV-cache predictor, read from
+/// `/api/show` `model_info`. `None` on `ModelInspect` when any key is missing or
+/// the backend isn't Ollama.
+#[derive(Serialize, Default, Clone, Debug, PartialEq)]
+pub struct ModelDims {
+    pub layers: u64,
+    pub head_count: u64,
+    pub head_count_kv: u64,
+    pub embedding_length: u64,
+    pub context_length: u64,
+}
+
 /// Model metadata for the inspector / template guard. `available` is false for
 /// non-Ollama backends (the data comes from Ollama's `/api/show`); the frontend
 /// then shows "Not available — Ollama only" instead of a fabricated value.
@@ -19,6 +31,22 @@ pub struct ModelInspect {
     pub quantization: Option<String>,
     pub is_base_guess: bool,
     pub base_reason: Option<String>,
+    pub dims: Option<ModelDims>,
+}
+
+/// Extract KV-cache dimensions from `/api/show` `model_info`. Keys are namespaced
+/// by `general.architecture` (e.g. `llama.block_count`). All five must be present
+/// — otherwise `None`, so the predictor falls back rather than guess.
+fn dims_from_model_info(info: &serde_json::Map<String, serde_json::Value>) -> Option<ModelDims> {
+    let arch = info.get("general.architecture")?.as_str()?;
+    let g = |suffix: &str| info.get(&format!("{arch}.{suffix}")).and_then(|v| v.as_u64());
+    Some(ModelDims {
+        layers: g("block_count")?,
+        head_count: g("attention.head_count")?,
+        head_count_kv: g("attention.head_count_kv")?,
+        embedding_length: g("embedding_length")?,
+        context_length: g("context_length")?,
+    })
 }
 
 fn has_role_markers(template: &str) -> bool {
@@ -62,6 +90,7 @@ pub async fn inspect_model(
     }
     let r = show_model(endpoint::OLLAMA, &model).await?;
     let (is_base_guess, base_reason) = classify_base(&r.template, &r.capabilities);
+    let dims = dims_from_model_info(&r.model_info);
     Ok(ModelInspect {
         available: true,
         note: None,
@@ -72,6 +101,7 @@ pub async fn inspect_model(
         quantization: r.details.quantization_level,
         is_base_guess,
         base_reason,
+        dims,
     })
 }
 
@@ -117,5 +147,28 @@ mod tests {
         let (base, why) = classify_base("", &["completion".into()]);
         assert!(base);
         assert!(why.unwrap().contains("empty chat template"));
+    }
+
+    #[test]
+    fn dims_parse_from_namespaced_model_info() {
+        let info = serde_json::json!({
+            "general.architecture": "llama",
+            "llama.block_count": 32,
+            "llama.attention.head_count": 32,
+            "llama.attention.head_count_kv": 8,
+            "llama.embedding_length": 4096,
+            "llama.context_length": 8192
+        });
+        let d = dims_from_model_info(info.as_object().unwrap()).unwrap();
+        assert_eq!(d, ModelDims { layers: 32, head_count: 32, head_count_kv: 8, embedding_length: 4096, context_length: 8192 });
+    }
+
+    #[test]
+    fn dims_none_when_a_key_is_missing() {
+        let info = serde_json::json!({
+            "general.architecture": "llama",
+            "llama.block_count": 32
+        });
+        assert!(dims_from_model_info(info.as_object().unwrap()).is_none());
     }
 }
