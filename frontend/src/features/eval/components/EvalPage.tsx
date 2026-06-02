@@ -9,6 +9,7 @@ import { ToolCallPanel } from "./ToolCallPanel";
 import { DatasetBar } from "./DatasetBar";
 import { TemplatePanel } from "../../models/components/card/TemplatePanel";
 import { CpuFallbackBanner } from "./CpuFallbackBanner";
+import { ContextCliffPanel } from "./ContextCliffPanel";
 import { servesModelsByName, SINGLE_MODEL_NOTE } from "../../../shared/models/backendSupport";
 
 /// The Eval tab: run the bundled deterministic eval suite against an installed
@@ -90,6 +91,7 @@ export function EvalPage() {
       <div className="border-t pt-3 space-y-2">
         <DatasetBar />
         <ToolCallPanel />
+        <ContextCliffPanel />
       </div>
     </div>
   );
