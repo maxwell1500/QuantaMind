@@ -25,4 +25,21 @@ describe("ModelCardReader", () => {
     expect(container.querySelector("script")).toBeNull();
     expect(screen.getByText(/<script>/)).toBeTruthy();
   });
+
+  it("drops HTML comments (single- and multi-line)", () => {
+    render(
+      <ModelCardReader markdown={"<!-- ### quantize_version: 2 -->\n# Real\n<!--\nmulti\nline\n-->\nbody"} />,
+    );
+    expect(screen.queryByText(/quantize_version/)).toBeNull();
+    expect(screen.queryByText(/multi/)).toBeNull();
+    expect(screen.getByRole("heading", { name: "Real" })).toBeTruthy();
+    expect(screen.getByText("body")).toBeTruthy();
+  });
+
+  it("collapses markdown links and images to their label (no URL spam, no injection)", () => {
+    render(<ModelCardReader markdown={"See [GGUF](https://huggingface.co/x.gguf) and ![img](http://e/p.png)"} />);
+    const p = screen.getByText(/See GGUF and img/);
+    expect(p.textContent).not.toContain("https://");
+    expect(p.querySelector("a")).toBeNull();
+  });
 });
