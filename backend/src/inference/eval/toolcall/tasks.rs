@@ -1,14 +1,14 @@
 use serde::Deserialize;
 use serde_json::Value;
-use std::collections::BTreeMap;
 
-/// A tool the model may call: name, a one-line description, and a flat
-/// field→type map (e.g. `{ "city": "string" }`).
+/// A tool the model may call: name, a one-line description, and a JSON-Schema
+/// `parameters` object (`{ "type": "object", "properties": {…}, "required": […] }`)
+/// — the shape developers paste from their real tool definitions.
 #[derive(Deserialize, Clone, Debug, PartialEq)]
 pub struct ToolSchema {
     pub name: String,
     pub description: String,
-    pub parameters: BTreeMap<String, String>,
+    pub parameters: Value,
 }
 
 /// A concrete tool call: a tool name + its argument object.

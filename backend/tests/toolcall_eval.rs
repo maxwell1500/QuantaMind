@@ -3,7 +3,6 @@ use quantamind_lib::inference::backend::backend_kind::BackendKind;
 use quantamind_lib::inference::eval::toolcall::eval::run_eval;
 use quantamind_lib::inference::eval::toolcall::tasks::{Call, Expected, ToolSchema, ToolTask};
 use serde_json::json;
-use std::collections::BTreeMap;
 
 fn ndjson(completion: &str) -> String {
     let chunk = json!({ "response": completion, "done": false }).to_string();
@@ -19,7 +18,7 @@ fn weather_task() -> ToolTask {
         tools: vec![ToolSchema {
             name: "get_weather".into(),
             description: "Get weather".into(),
-            parameters: BTreeMap::from([("city".into(), "string".into())]),
+            parameters: json!({ "type": "object", "properties": { "city": { "type": "string" } }, "required": ["city"] }),
         }],
         expected: Expected::Call(Call { name: "get_weather".into(), args: json!({ "city": "Paris" }) }),
     }

@@ -4,7 +4,7 @@
     "category": "single",
     "prompt": "What's the weather in Paris right now?",
     "tools": [
-      { "name": "get_weather", "description": "Get the current weather for a city", "parameters": { "city": "string" } }
+      { "name": "get_weather", "description": "Get the current weather for a city", "parameters": { "type": "object", "properties": { "city": { "type": "string", "description": "City name" } }, "required": ["city"] } }
     ],
     "expected": { "type": "call", "name": "get_weather", "args": { "city": "Paris" } }
   },
@@ -13,7 +13,7 @@
     "category": "single",
     "prompt": "What time is it in Tokyo?",
     "tools": [
-      { "name": "get_time", "description": "Get the current time in a timezone or city", "parameters": { "timezone": "string" } }
+      { "name": "get_time", "description": "Get the current time in a timezone or city", "parameters": { "type": "object", "properties": { "timezone": { "type": "string", "description": "Timezone or city" } }, "required": ["timezone"] } }
     ],
     "expected": { "type": "call", "name": "get_time", "args": { "timezone": "Tokyo" } }
   },
@@ -22,7 +22,7 @@
     "category": "single",
     "prompt": "Tell me the weather in New York.",
     "tools": [
-      { "name": "get_weather", "description": "Get the current weather for a city", "parameters": { "city": "string" } }
+      { "name": "get_weather", "description": "Get the current weather for a city", "parameters": { "type": "object", "properties": { "city": { "type": "string", "description": "City name" } }, "required": ["city"] } }
     ],
     "expected": { "type": "call", "name": "get_weather", "args": { "city": "New York" } }
   },
@@ -31,10 +31,10 @@
     "category": "select",
     "prompt": "What's the weather in Berlin?",
     "tools": [
-      { "name": "get_weather", "description": "Get the current weather for a city", "parameters": { "city": "string" } },
-      { "name": "get_time", "description": "Get the current time in a timezone or city", "parameters": { "timezone": "string" } },
-      { "name": "search_web", "description": "Search the web for a query", "parameters": { "query": "string" } },
-      { "name": "send_email", "description": "Send an email", "parameters": { "to": "string", "subject": "string" } }
+      { "name": "get_weather", "description": "Get the current weather for a city", "parameters": { "type": "object", "properties": { "city": { "type": "string", "description": "City name" } }, "required": ["city"] } },
+      { "name": "get_time", "description": "Get the current time in a timezone or city", "parameters": { "type": "object", "properties": { "timezone": { "type": "string", "description": "Timezone or city" } }, "required": ["timezone"] } },
+      { "name": "search_web", "description": "Search the web for a query", "parameters": { "type": "object", "properties": { "query": { "type": "string", "description": "Search query" } }, "required": ["query"] } },
+      { "name": "send_email", "description": "Send an email", "parameters": { "type": "object", "properties": { "to": { "type": "string", "description": "Recipient address" }, "subject": { "type": "string", "description": "Email subject" } }, "required": ["to", "subject"] } }
     ],
     "expected": { "type": "call", "name": "get_weather", "args": { "city": "Berlin" } }
   },
@@ -43,9 +43,9 @@
     "category": "select",
     "prompt": "What is the current time in London?",
     "tools": [
-      { "name": "get_weather", "description": "Get the current weather for a city", "parameters": { "city": "string" } },
-      { "name": "get_time", "description": "Get the current time in a timezone or city", "parameters": { "timezone": "string" } },
-      { "name": "search_web", "description": "Search the web for a query", "parameters": { "query": "string" } }
+      { "name": "get_weather", "description": "Get the current weather for a city", "parameters": { "type": "object", "properties": { "city": { "type": "string", "description": "City name" } }, "required": ["city"] } },
+      { "name": "get_time", "description": "Get the current time in a timezone or city", "parameters": { "type": "object", "properties": { "timezone": { "type": "string", "description": "Timezone or city" } }, "required": ["timezone"] } },
+      { "name": "search_web", "description": "Search the web for a query", "parameters": { "type": "object", "properties": { "query": { "type": "string", "description": "Search query" } }, "required": ["query"] } }
     ],
     "expected": { "type": "call", "name": "get_time", "args": { "timezone": "London" } }
   },
@@ -54,9 +54,9 @@
     "category": "select",
     "prompt": "Send an email to alice@example.com with the subject Lunch.",
     "tools": [
-      { "name": "get_weather", "description": "Get the current weather for a city", "parameters": { "city": "string" } },
-      { "name": "send_email", "description": "Send an email", "parameters": { "to": "string", "subject": "string" } },
-      { "name": "search_web", "description": "Search the web for a query", "parameters": { "query": "string" } }
+      { "name": "get_weather", "description": "Get the current weather for a city", "parameters": { "type": "object", "properties": { "city": { "type": "string", "description": "City name" } }, "required": ["city"] } },
+      { "name": "send_email", "description": "Send an email", "parameters": { "type": "object", "properties": { "to": { "type": "string", "description": "Recipient address" }, "subject": { "type": "string", "description": "Email subject" } }, "required": ["to", "subject"] } },
+      { "name": "search_web", "description": "Search the web for a query", "parameters": { "type": "object", "properties": { "query": { "type": "string", "description": "Search query" } }, "required": ["query"] } }
     ],
     "expected": { "type": "call", "name": "send_email", "args": { "to": "alice@example.com", "subject": "Lunch" } }
   },
@@ -65,7 +65,7 @@
     "category": "parallel",
     "prompt": "Get me the weather in Paris and in Tokyo.",
     "tools": [
-      { "name": "get_weather", "description": "Get the current weather for a city", "parameters": { "city": "string" } }
+      { "name": "get_weather", "description": "Get the current weather for a city", "parameters": { "type": "object", "properties": { "city": { "type": "string", "description": "City name" } }, "required": ["city"] } }
     ],
     "expected": { "type": "parallel", "calls": [
       { "name": "get_weather", "args": { "city": "Paris" } },
@@ -77,7 +77,7 @@
     "category": "parallel",
     "prompt": "What time is it in London and Tokyo?",
     "tools": [
-      { "name": "get_time", "description": "Get the current time in a timezone or city", "parameters": { "timezone": "string" } }
+      { "name": "get_time", "description": "Get the current time in a timezone or city", "parameters": { "type": "object", "properties": { "timezone": { "type": "string", "description": "Timezone or city" } }, "required": ["timezone"] } }
     ],
     "expected": { "type": "parallel", "calls": [
       { "name": "get_time", "args": { "timezone": "London" } },
@@ -89,7 +89,7 @@
     "category": "abstain",
     "prompt": "Write me a short haiku about autumn leaves.",
     "tools": [
-      { "name": "get_weather", "description": "Get the current weather for a city", "parameters": { "city": "string" } }
+      { "name": "get_weather", "description": "Get the current weather for a city", "parameters": { "type": "object", "properties": { "city": { "type": "string", "description": "City name" } }, "required": ["city"] } }
     ],
     "expected": { "type": "no_call" }
   },
@@ -98,8 +98,8 @@
     "category": "abstain",
     "prompt": "Thanks, that's everything I needed!",
     "tools": [
-      { "name": "get_weather", "description": "Get the current weather for a city", "parameters": { "city": "string" } },
-      { "name": "get_time", "description": "Get the current time in a timezone or city", "parameters": { "timezone": "string" } }
+      { "name": "get_weather", "description": "Get the current weather for a city", "parameters": { "type": "object", "properties": { "city": { "type": "string", "description": "City name" } }, "required": ["city"] } },
+      { "name": "get_time", "description": "Get the current time in a timezone or city", "parameters": { "type": "object", "properties": { "timezone": { "type": "string", "description": "Timezone or city" } }, "required": ["timezone"] } }
     ],
     "expected": { "type": "no_call" }
   },
@@ -108,7 +108,7 @@
     "category": "abstain",
     "prompt": "What is the capital of France?",
     "tools": [
-      { "name": "get_weather", "description": "Get the current weather for a city", "parameters": { "city": "string" } }
+      { "name": "get_weather", "description": "Get the current weather for a city", "parameters": { "type": "object", "properties": { "city": { "type": "string", "description": "City name" } }, "required": ["city"] } }
     ],
     "expected": { "type": "no_call" }
   },
@@ -117,7 +117,7 @@
     "category": "abstain",
     "prompt": "Hi there, how are you doing today?",
     "tools": [
-      { "name": "search_web", "description": "Search the web for a query", "parameters": { "query": "string" } }
+      { "name": "search_web", "description": "Search the web for a query", "parameters": { "type": "object", "properties": { "query": { "type": "string", "description": "Search query" } }, "required": ["query"] } }
     ],
     "expected": { "type": "no_call" }
   },
@@ -126,7 +126,7 @@
     "category": "single",
     "prompt": "Search the web for: best mechanical keyboards 2026",
     "tools": [
-      { "name": "search_web", "description": "Search the web for a query", "parameters": { "query": "string" } }
+      { "name": "search_web", "description": "Search the web for a query", "parameters": { "type": "object", "properties": { "query": { "type": "string", "description": "Search query" } }, "required": ["query"] } }
     ],
     "expected": { "type": "call", "name": "search_web", "args": { "query": "best mechanical keyboards 2026" } }
   }
