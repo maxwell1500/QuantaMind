@@ -188,6 +188,13 @@ QuantaMind launches `mlx_lm.server` for you (it downloads the repo on first run,
 so "Downloading weights…" can last a few minutes), and the model appears in the
 dropdown once it's up.
 
+**Finding MLX repos:** the **Models → HuggingFace** tab has a **GGUF / MLX**
+toggle. GGUF (the default) searches repos tagged `gguf` and downloads a file;
+MLX searches repos tagged `mlx` (mostly `mlx-community`) and, on selecting one,
+fills the repo into **Start MLX** and switches you to the workspace — there's no
+separate download step, since `mlx_lm.server` fetches the repo on Start. MLX
+models are never downloaded through the GGUF file flow.
+
 - **"mlx_lm.server not found"** — QuantaMind searches `PATH` and common venvs
   (`~/mlx-env/bin`, `~/.venv/bin`, Homebrew, conda). If yours is elsewhere, set
   `QUANTAMIND_MLX_SERVER` to its full path and restart.

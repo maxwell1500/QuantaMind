@@ -7,6 +7,8 @@ vi.mock("@tauri-apps/api/event", () => ({ listen: vi.fn().mockResolvedValue(() =
 import { invoke } from "@tauri-apps/api/core";
 import { HuggingFaceTab } from "../HuggingFaceTab";
 import { useModelStore } from "../../../state/modelStore";
+import { useWorkspaceStore } from "../../../../workspace/state/workspaceStore";
+import { useNavStore } from "../../../../../shared/state/navStore";
 
 const HIT = (id: string, downloads = 100) => ({
   id, downloads, likes: 1, tags: ["gguf"], last_modified: null,
@@ -18,11 +20,12 @@ beforeEach(() => {
     if (cmd === "hf_search")
       return Promise.resolve([HIT("bartowski/Llama-GGUF", 1234), HIT("other/Repo-GGUF", 42)]);
     if (cmd === "hf_repo_files") return Promise.resolve([]);
+    if (cmd === "hf_model_card") return Promise.resolve(null);
     if (cmd === "list_models") return Promise.resolve([]);
     return Promise.reject(new Error(`unknown ${cmd}`));
   });
   // Reset the persisted HF state so tests don't leak query/selected across runs.
-  useModelStore.setState({ hfSearchQuery: "", hfSelectedRepo: null });
+  useModelStore.setState({ hfSearchQuery: "", hfSelectedRepo: null, hfRepoKind: "gguf" });
 });
 
 describe("HuggingFaceTab (live search)", () => {
@@ -36,7 +39,7 @@ describe("HuggingFaceTab (live search)", () => {
     render(<HuggingFaceTab />);
     fireEvent.change(screen.getByLabelText("Search Hugging Face"), { target: { value: "llama" } });
     await waitFor(
-      () => expect(invoke).toHaveBeenCalledWith("hf_search", { query: "llama", limit: 30 }),
+      () => expect(invoke).toHaveBeenCalledWith("hf_search", { query: "llama", limit: 30, kind: "gguf" }),
       { timeout: 1000 },
     );
     await screen.findByTestId("hf-card-bartowski/Llama-GGUF");
@@ -62,6 +65,36 @@ describe("HuggingFaceTab (live search)", () => {
     expect(screen.getByTestId("hf-repo-detail")).toBeInTheDocument();
     expect(screen.getByTestId("hf-repo-detail")).toHaveTextContent("bartowski/Llama-GGUF");
     expect(useModelStore.getState().hfSelectedRepo).toBe("bartowski/Llama-GGUF");
+  });
+
+  it("switching to MLX re-searches with kind=mlx", async () => {
+    render(<HuggingFaceTab />);
+    fireEvent.change(screen.getByLabelText("Search Hugging Face"), { target: { value: "llama" } });
+    await waitFor(
+      () => expect(invoke).toHaveBeenCalledWith("hf_search", { query: "llama", limit: 30, kind: "gguf" }),
+      { timeout: 1000 },
+    );
+    fireEvent.click(screen.getByTestId("hf-kind-mlx"));
+    await waitFor(
+      () => expect(invoke).toHaveBeenCalledWith("hf_search", { query: "llama", limit: 30, kind: "mlx" }),
+      { timeout: 1000 },
+    );
+  });
+
+  it("selecting an MLX repo routes it into Start MLX and the workspace", async () => {
+    useWorkspaceStore.setState({ mlxRepo: null, activeBackend: "ollama" });
+    useNavStore.setState({ topView: "models", history: [] });
+    render(<HuggingFaceTab />);
+    fireEvent.click(screen.getByTestId("hf-kind-mlx"));
+    fireEvent.change(screen.getByLabelText("Search Hugging Face"), { target: { value: "llama" } });
+    const card = await screen.findByTestId("hf-card-bartowski/Llama-GGUF", undefined, { timeout: 1000 });
+    fireEvent.click(card);
+    // MLX repos get the MLX detail (no GGUF variant table).
+    const useBtn = await screen.findByTestId("mlx-use-button");
+    fireEvent.click(useBtn);
+    expect(useWorkspaceStore.getState().mlxRepo).toBe("bartowski/Llama-GGUF");
+    expect(useWorkspaceStore.getState().activeBackend).toBe("mlx");
+    expect(useNavStore.getState().topView).toBe("workspace");
   });
 
   it("the search query survives a select-then-back round-trip", async () => {

@@ -49,4 +49,12 @@ describe("modelStore (M.3)", () => {
     useModelStore.getState().setHfSelectedRepo(null);
     expect(useModelStore.getState().hfSelectedRepo).toBeNull();
   });
+
+  it("hfRepoKind defaults to gguf; switching kind clears the open repo detail", () => {
+    useModelStore.setState({ hfRepoKind: "gguf", hfSelectedRepo: "bartowski/Test-GGUF" });
+    expect(useModelStore.getState().hfRepoKind).toBe("gguf");
+    useModelStore.getState().setHfRepoKind("mlx");
+    expect(useModelStore.getState().hfRepoKind).toBe("mlx");
+    expect(useModelStore.getState().hfSelectedRepo).toBeNull();
+  });
 });

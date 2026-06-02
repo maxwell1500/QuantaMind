@@ -11,11 +11,15 @@ export interface WorkspaceStore {
   llamaHealthy: boolean | null;
   mlxHealthy: boolean | null;
   activeBackend: BackendKind;
+  // HF repo id to prefill the "Start MLX" control — set when the user picks an
+  // MLX repo from HuggingFace search, then routes to the workspace.
+  mlxRepo: string | null;
   setLastRunMetrics: (m: DonePayload) => void;
   setOllamaHealthy: (h: boolean) => void;
   setLlamaHealthy: (h: boolean) => void;
   setMlxHealthy: (h: boolean) => void;
   setActiveBackend: (b: BackendKind) => void;
+  setMlxRepo: (repo: string | null) => void;
 }
 
 export const useWorkspaceStore = create<WorkspaceStore>((set) => ({
@@ -24,9 +28,11 @@ export const useWorkspaceStore = create<WorkspaceStore>((set) => ({
   llamaHealthy: null,
   mlxHealthy: null,
   activeBackend: "ollama",
+  mlxRepo: null,
   setLastRunMetrics: (m) => set({ lastRunMetrics: m }),
   setOllamaHealthy: (h) => set({ ollamaHealthy: h }),
   setLlamaHealthy: (h) => set({ llamaHealthy: h }),
   setMlxHealthy: (h) => set({ mlxHealthy: h }),
   setActiveBackend: (b) => set({ activeBackend: b }),
+  setMlxRepo: (repo) => set({ mlxRepo: repo }),
 }));

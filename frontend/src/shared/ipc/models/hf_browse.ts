@@ -16,8 +16,16 @@ export const HfRepoFileSchema = z.object({
 });
 export type HfRepoFile = z.infer<typeof HfRepoFileSchema>;
 
-export async function hfSearch(query: string, limit?: number): Promise<HfSearchHit[]> {
-  const raw = await invoke("hf_search", { query, limit });
+/// Which backend a repo must be usable by — selects the HF tag the search
+/// filters on. `gguf` for Ollama/llama.cpp, `mlx` for the MLX server.
+export type RepoKind = "gguf" | "mlx";
+
+export async function hfSearch(
+  query: string,
+  limit?: number,
+  kind: RepoKind = "gguf",
+): Promise<HfSearchHit[]> {
+  const raw = await invoke("hf_search", { query, limit, kind });
   return z.array(HfSearchHitSchema).parse(raw);
 }
 

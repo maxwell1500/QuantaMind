@@ -4,6 +4,25 @@ use crate::inference::hf::hf_request::{map_status, validate_repo};
 use crate::inference::http::http::probe_client;
 use serde::{Deserialize, Serialize};
 
+/// Which backend a HuggingFace repo must be usable by. Selects the HF library
+/// tag the search filters on: GGUF repos (Ollama / llama.cpp) vs MLX-native
+/// safetensors repos (`mlx_lm.server`, mostly under `mlx-community`).
+#[derive(Serialize, Deserialize, Clone, Copy, Debug, PartialEq, Eq)]
+#[serde(rename_all = "lowercase")]
+pub enum RepoKind {
+    Gguf,
+    Mlx,
+}
+
+impl RepoKind {
+    fn tag(self) -> &'static str {
+        match self {
+            RepoKind::Gguf => "gguf",
+            RepoKind::Mlx => "mlx",
+        }
+    }
+}
+
 #[derive(Serialize, Deserialize, Clone, Debug)]
 pub struct HfSearchHit {
     pub id: String,
@@ -35,7 +54,12 @@ struct RawTreeEntry {
     #[serde(default)] size: u64,
 }
 
-pub async fn search_models(endpoint: &str, query: &str, limit: u32) -> AppResult<Vec<HfSearchHit>> {
+pub async fn search_models(
+    endpoint: &str,
+    query: &str,
+    limit: u32,
+    kind: RepoKind,
+) -> AppResult<Vec<HfSearchHit>> {
     if query.trim().is_empty() {
         return Err(AppError::Validation("search query is empty".into()));
     }
@@ -44,10 +68,10 @@ pub async fn search_models(endpoint: &str, query: &str, limit: u32) -> AppResult
         .get(format!("{endpoint}/api/models"))
         .query(&[
             ("search", query.to_string()),
-            // No server-side tag filter — HF's `filter=gguf` index lags
-            // real-world tag state and silently misses legitimate GGUF
-            // mirrors. The post-filter below (`tags.contains("gguf")`)
-            // is the single source of truth for the "must be GGUF"
+            // No server-side tag filter — HF's `filter=<tag>` index lags
+            // real-world tag state and silently misses legitimate mirrors.
+            // The post-filter below (`tags.contains(kind.tag())`) is the
+            // single source of truth for the "must match this backend"
             // invariant.
             ("sort", "downloads".to_string()),
             ("direction", "-1".to_string()),
@@ -58,11 +82,12 @@ pub async fn search_models(endpoint: &str, query: &str, limit: u32) -> AppResult
     if let Some(err) = map_status(resp.status(), "hf search") { return Err(err); }
     let raw: Vec<RawHit> = resp.json().await
         .map_err(|e| AppError::Inference(format!("bad HF search body: {e}")))?;
-    // Defense-in-depth: HF occasionally returns repos missing the gguf
-    // tag despite the filter (stale index). Drop any hit that doesn't
-    // carry the tag so the user only ever sees GGUF-ready repos.
+    // Defense-in-depth: HF occasionally returns repos missing the tag
+    // despite the filter (stale index). Drop any hit that doesn't carry
+    // the backend's tag so the user only ever sees usable repos.
+    let want = kind.tag();
     Ok(raw.into_iter()
-        .filter(|h| h.tags.iter().any(|t| t.eq_ignore_ascii_case("gguf")))
+        .filter(|h| h.tags.iter().any(|t| t.eq_ignore_ascii_case(want)))
         .map(|h| HfSearchHit {
             id: h.id, downloads: h.downloads, likes: h.likes,
             tags: h.tags, last_modified: h.last_modified,

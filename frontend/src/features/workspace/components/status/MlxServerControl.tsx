@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { useWorkspaceStore } from "../../state/workspaceStore";
 import { useMlxServer } from "../../hooks/useMlxServer";
 
@@ -9,8 +9,15 @@ const DEFAULT_REPO = "mlx-community/Llama-3.2-3B-Instruct-4bit";
 /// model dropdown. Shows the download/start phase and any launch error.
 export function MlxServerControl() {
   const healthy = useWorkspaceStore((s) => s.mlxHealthy);
-  const [repo, setRepo] = useState(DEFAULT_REPO);
+  const prefill = useWorkspaceStore((s) => s.mlxRepo);
+  const [repo, setRepo] = useState(prefill ?? DEFAULT_REPO);
   const { start, stop, starting, phase, error } = useMlxServer();
+
+  // A repo picked from HuggingFace search lands here — adopt it in the input
+  // (the user still clicks Start, since the first run downloads several GB).
+  useEffect(() => {
+    if (prefill) setRepo(prefill);
+  }, [prefill]);
 
   if (healthy) {
     return (

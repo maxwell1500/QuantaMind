@@ -13,7 +13,7 @@ import { useWorkspaceStore } from "../../state/workspaceStore";
 
 beforeEach(() => {
   vi.clearAllMocks();
-  useWorkspaceStore.setState({ mlxHealthy: null });
+  useWorkspaceStore.setState({ mlxHealthy: null, mlxRepo: null });
 });
 
 describe("MlxServerControl", () => {
@@ -22,6 +22,14 @@ describe("MlxServerControl", () => {
     expect((screen.getByTestId("mlx-repo-input") as HTMLInputElement).value).toContain("mlx-community/");
     expect(screen.getByTestId("mlx-start")).toHaveTextContent("Start MLX");
     expect(screen.queryByTestId("mlx-stop")).toBeNull();
+  });
+
+  it("prefills the repo picked from HuggingFace search", () => {
+    useWorkspaceStore.setState({ mlxRepo: "mlx-community/Qwen2.5-3B-Instruct-4bit" });
+    render(<MlxServerControl />);
+    expect((screen.getByTestId("mlx-repo-input") as HTMLInputElement).value).toBe(
+      "mlx-community/Qwen2.5-3B-Instruct-4bit",
+    );
   });
 
   it("shows Stop when MLX is healthy", () => {

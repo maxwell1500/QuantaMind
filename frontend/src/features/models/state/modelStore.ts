@@ -1,5 +1,6 @@
 import { create } from "zustand";
 import { z } from "zod";
+import type { RepoKind } from "../../../shared/ipc/models/hf_browse";
 
 // Narrowed to the three Add-Model sub-tabs now that AddModelModal is
 // gone (M.5.81). Downloads and Storage are top-level tabs via
@@ -37,6 +38,7 @@ export interface ModelStore {
   pullNames: Record<string, string>;
   hfSearchQuery: string;
   hfSelectedRepo: string | null;
+  hfRepoKind: RepoKind;
   setActiveTab: (t: TabId) => void;
   setPendingLocalPath: (p: string | null) => void;
   upsertDownload: (entry: DownloadEntry) => void;
@@ -47,6 +49,7 @@ export interface ModelStore {
   removePullName: (pullId: string) => void;
   setHfSearchQuery: (q: string) => void;
   setHfSelectedRepo: (repo: string | null) => void;
+  setHfRepoKind: (k: RepoKind) => void;
 }
 
 export const useModelStore = create<ModelStore>((set) => ({
@@ -58,6 +61,7 @@ export const useModelStore = create<ModelStore>((set) => ({
   pullNames: {},
   hfSearchQuery: "",
   hfSelectedRepo: null,
+  hfRepoKind: "gguf",
   setActiveTab: (t) => set({ activeTab: t }),
   setPendingLocalPath: (p) => set({ pendingLocalPath: p }),
   upsertDownload: (entry) =>
@@ -80,6 +84,9 @@ export const useModelStore = create<ModelStore>((set) => ({
     }),
   setHfSearchQuery: (q) => set({ hfSearchQuery: q }),
   setHfSelectedRepo: (repo) => set({ hfSelectedRepo: repo }),
+  // Switching kind drops any open repo detail — a GGUF repo's detail makes no
+  // sense under MLX and vice versa.
+  setHfRepoKind: (k) => set({ hfRepoKind: k, hfSelectedRepo: null }),
 }));
 
 /// Pick the first download entry that's actively in flight, if any.
