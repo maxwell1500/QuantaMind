@@ -4,6 +4,7 @@ import { useInstalledModelsStore } from "../../models/state/installedModelsStore
 import { useEvalStore, passRate } from "../state/evalStore";
 import { useEvalRun } from "../hooks/useEvalRun";
 import { EvalRow } from "./EvalRow";
+import { ToolCallPanel } from "./ToolCallPanel";
 
 /// The Eval tab: run the bundled deterministic eval suite against an installed
 /// model and see a pass-rate + per-task pass/fail. A quality *smoke test*, not a
@@ -68,6 +69,7 @@ export function EvalPage() {
           <EvalRow key={t.id} task={t} result={results[t.id] ?? null} running={running && currentId === t.id} />
         ))}
       </div>
+      <ToolCallPanel />
     </div>
   );
 }

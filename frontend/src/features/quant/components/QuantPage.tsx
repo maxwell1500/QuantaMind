@@ -8,6 +8,13 @@ import { memoryFit, fitBadge } from "../../models/fit";
 import { groupQuantVariants } from "../quantPick";
 import { recommendQuant, USE_CASES, type UseCase } from "../recommend";
 import { useQuantEval, type QuantScore } from "../useQuantEval";
+import { useQuantToolcall } from "../useQuantToolcall";
+
+function toolcallText(score: number | null | undefined, running: boolean): string {
+  if (score === undefined) return running ? "…" : "—";
+  if (score === null) return "n/a";
+  return `${Math.round(score * 100)}%`;
+}
 
 function qualityText(score: QuantScore | undefined, running: boolean): string {
   if (!score) return running ? "…" : "—";
@@ -26,6 +33,7 @@ export function QuantPage() {
   const setSelectedModels = useCompareStore((s) => s.setSelectedModels);
   const goTo = useNavStore((s) => s.setTopView);
   const { scores, running, run } = useQuantEval();
+  const toolcall = useQuantToolcall();
   const [usecase, setUsecase] = useState<UseCase>("quality-writing");
   const [groupKey, setGroupKey] = useState("");
 
@@ -78,6 +86,15 @@ export function QuantPage() {
         </button>
         <button
           type="button"
+          disabled={!group || toolcall.running}
+          onClick={() => group && void toolcall.run(group.variants)}
+          data-testid="quant-run-toolcall"
+          className="px-3 py-1 rounded bg-blue-600 text-white text-sm disabled:opacity-50"
+        >
+          {toolcall.running ? "Scoring…" : "Run tool-call evals"}
+        </button>
+        <button
+          type="button"
           disabled={!group}
           onClick={compareInBench}
           data-testid="quant-compare-bench"
@@ -100,7 +117,7 @@ export function QuantPage() {
         <table className="text-xs w-full border-collapse" data-testid="quant-table">
           <thead>
             <tr className="text-left text-gray-500">
-              <th>Quant</th><th>Size</th>{snapshot && <th>Fit</th>}<th>Quality</th>
+              <th>Quant</th><th>Size</th>{snapshot && <th>Fit</th>}<th>Quality</th><th>Tool-calls</th>
             </tr>
           </thead>
           <tbody>
@@ -113,6 +130,9 @@ export function QuantPage() {
                   {fit && <td className={`py-1 pr-2 ${fit.cls}`}>{fit.text}</td>}
                   <td className="py-1 pr-2" data-testid={`quant-quality-${v.quantization}`}>
                     {qualityText(scores[v.name], running)}
+                  </td>
+                  <td className="py-1 pr-2" data-testid={`quant-toolcall-${v.quantization}`}>
+                    {toolcallText(toolcall.scores[v.name], toolcall.running)}
                   </td>
                 </tr>
               );
