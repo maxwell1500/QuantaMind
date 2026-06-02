@@ -3,16 +3,15 @@ import { render, screen, fireEvent, waitFor } from "@testing-library/react";
 
 vi.mock("@tauri-apps/api/core", () => ({ invoke: vi.fn() }));
 vi.mock("../../../shared/ipc/eval/toolcall", () => ({ runToolcallEval: vi.fn() }));
-vi.mock("../../../shared/ipc/eval/registry", () => ({ getBuiltinTasks: vi.fn() }));
 
 import { runToolcallEval } from "../../../shared/ipc/eval/toolcall";
-import { getBuiltinTasks } from "../../../shared/ipc/eval/registry";
 import { ToolCallPanel } from "../components/ToolCallPanel";
 import { useInstalledModelsStore } from "../../models/state/installedModelsStore";
+import { useEvalRegistryStore } from "../state/evalRegistryStore";
 
 const builtinTasks = [
   { id: "weather", category: "single", prompt: "p", tools: [{ name: "get_weather", description: "", parameters: { type: "object", properties: {} } }], expected: { type: "call", name: "get_weather", args: {} } },
-];
+] as never;
 
 const report = {
   n: 2,
@@ -25,7 +24,7 @@ const report = {
 
 beforeEach(() => {
   vi.clearAllMocks();
-  vi.mocked(getBuiltinTasks).mockResolvedValue(builtinTasks as never);
+  useEvalRegistryStore.setState({ tasks: builtinTasks, builtin: builtinTasks, selected: "builtin", collections: [] });
   useInstalledModelsStore.setState({
     list: [{ name: "m", size_bytes: 1, modified_at: "", family: "", parameter_size: "", quantization: "", backend: "ollama" }],
     status: "ready", error: null, lastRefreshedAt: 1,

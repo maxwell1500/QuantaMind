@@ -1,6 +1,6 @@
-import { useEffect, useState } from "react";
+import { useState } from "react";
 import { runToolcallEval, type ToolCallReport } from "../../../shared/ipc/eval/toolcall";
-import { getBuiltinTasks, type ToolTask } from "../../../shared/ipc/eval/registry";
+import { useEvalRegistryStore } from "../state/evalRegistryStore";
 import { useInstalledModelsStore } from "../../models/state/installedModelsStore";
 import { formatIpcError } from "../../../shared/ipc/core/error";
 import { servesModelsByName, SINGLE_MODEL_NOTE } from "../../../shared/models/backendSupport";
@@ -26,11 +26,7 @@ export function ToolCallPanel() {
   const [report, setReport] = useState<ToolCallReport | null>(null);
   const [running, setRunning] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  const [tasks, setTasks] = useState<ToolTask[]>([]);
-
-  useEffect(() => {
-    getBuiltinTasks().then(setTasks).catch(() => {});
-  }, []);
+  const tasks = useEvalRegistryStore((s) => s.tasks);
 
   const selected = list.find((m) => m.name === model);
   const run = async () => {
@@ -71,7 +67,7 @@ export function ToolCallPanel() {
         >
           {running ? "Running…" : "Run"}
         </button>
-        <span className="text-[11px] text-gray-400">prompt-based · single-turn · structural — indicative</span>
+        <span className="text-[11px] text-gray-400" data-testid="toolcall-dataset">prompt-based · single-turn · structural — indicative · {tasks.length} tasks</span>
       </div>
       {selected && !servesModelsByName(selected.backend) && (
         <p className="text-[11px] text-amber-700" data-testid="toolcall-single-model-note">{SINGLE_MODEL_NOTE}</p>

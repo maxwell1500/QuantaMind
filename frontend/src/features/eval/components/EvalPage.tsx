@@ -2,9 +2,11 @@ import { useEffect, useState } from "react";
 import { listEvals } from "../../../shared/ipc/eval/evals";
 import { useInstalledModelsStore } from "../../models/state/installedModelsStore";
 import { useEvalStore, passRate } from "../state/evalStore";
+import { useEvalRegistryStore } from "../state/evalRegistryStore";
 import { useEvalRun } from "../hooks/useEvalRun";
 import { EvalRow } from "./EvalRow";
 import { ToolCallPanel } from "./ToolCallPanel";
+import { DatasetBar } from "./DatasetBar";
 import { servesModelsByName, SINGLE_MODEL_NOTE } from "../../../shared/models/backendSupport";
 
 /// The Eval tab: run the bundled deterministic eval suite against an installed
@@ -22,10 +24,14 @@ export function EvalPage() {
   const refresh = useInstalledModelsStore((s) => s.refresh);
   const [model, setModel] = useState("");
   const { run } = useEvalRun();
+  const initRegistry = useEvalRegistryStore((s) => s.init);
 
   useEffect(() => {
     listEvals().then(setTasks).catch(() => {});
   }, [setTasks]);
+  useEffect(() => {
+    void initRegistry().catch(() => {});
+  }, [initRegistry]);
   useEffect(() => {
     if (status === "idle") void refresh();
   }, [status, refresh]);
@@ -73,7 +79,10 @@ export function EvalPage() {
           <EvalRow key={t.id} task={t} result={results[t.id] ?? null} running={running && currentId === t.id} />
         ))}
       </div>
-      <ToolCallPanel />
+      <div className="border-t pt-3 space-y-2">
+        <DatasetBar />
+        <ToolCallPanel />
+      </div>
     </div>
   );
 }
