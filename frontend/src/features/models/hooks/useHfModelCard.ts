@@ -1,22 +1,23 @@
 import { useEffect, useState } from "react";
-import { hfModelCard } from "../../../shared/ipc/models/hf_browse";
+import { hfModelCard, type ModelCard } from "../../../shared/ipc/models/hf_browse";
 
 export type CardStatus = "loading" | "ready" | "none" | "error";
 
-/// Fetch a repo's model card. `none` = the repo has no README (not an error).
-export function useHfModelCard(repo: string): { markdown: string | null; status: CardStatus } {
-  const [markdown, setMarkdown] = useState<string | null>(null);
+/// Fetch a repo's structured model card. `none` = the repo has no README (not
+/// an error).
+export function useHfModelCard(repo: string): { card: ModelCard | null; status: CardStatus } {
+  const [card, setCard] = useState<ModelCard | null>(null);
   const [status, setStatus] = useState<CardStatus>("loading");
   useEffect(() => {
     let cancelled = false;
     setStatus("loading");
-    setMarkdown(null);
+    setCard(null);
     hfModelCard(repo)
-      .then((md) => {
+      .then((c) => {
         if (cancelled) return;
-        if (md == null) setStatus("none");
+        if (c == null) setStatus("none");
         else {
-          setMarkdown(md);
+          setCard(c);
           setStatus("ready");
         }
       })
@@ -25,5 +26,5 @@ export function useHfModelCard(repo: string): { markdown: string | null; status:
       cancelled = true;
     };
   }, [repo]);
-  return { markdown, status };
+  return { card, status };
 }

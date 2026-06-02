@@ -26,9 +26,18 @@ export async function hfRepoFiles(repo: string): Promise<HfRepoFile[]> {
   return z.array(HfRepoFileSchema).parse(raw);
 }
 
-/// A repo's model card (README.md body, frontmatter stripped), or null when the
-/// repo has none.
-export async function hfModelCard(repo: string): Promise<string | null> {
+export const ModelCardSchema = z.object({
+  description: z.string(),
+  license: z.string().nullable(),
+  base_model: z.string().nullable(),
+  pipeline_tag: z.string().nullable(),
+  tags: z.array(z.string()),
+});
+export type ModelCard = z.infer<typeof ModelCardSchema>;
+
+/// A repo's structured model card (license, base model, task, tags,
+/// description), or null when the repo has none.
+export async function hfModelCard(repo: string): Promise<ModelCard | null> {
   const raw = await invoke("hf_model_card", { repo });
-  return z.string().nullable().parse(raw);
+  return ModelCardSchema.nullable().parse(raw);
 }

@@ -476,13 +476,16 @@ one. Built one step at a time.
   rows wrongly went to Ollama). When the required backend isn't healthy, Run is
   **blocked with a hint** ("Start the MLX backend to run this model") rather than
   rerouting (`features/workspace/state/runHint.ts`).
-- **5.7 Model card viewer (done).** A collapsible "Model card" section in the HF
-  repo detail fetches the repo's `README.md` (`hf_model_card` → strips YAML
-  frontmatter; 404 → "no model card", not an error) and renders it with a flat,
-  line-by-line transformer (`ModelCardReader`). **Crash-safe:** every line is
-  React string children (auto-escaped) — never `dangerouslySetInnerHTML`; raw
-  HTML / `<script>` lines render as inert `<pre>` text, so heavy READMEs degrade
-  without breaking the DOM.
+- **5.7 Model card viewer (done).** Real READMEs are arbitrary HTML, so the card
+  is treated as a **data source, not a document**: `hf_model_card` fetches the
+  README and `to_card` reduces it to structured data — `license`, `base_model`,
+  `pipeline_tag`, `tags` (parsed from the YAML frontmatter via the existing
+  `serde_yaml`, handling string-or-list shapes) + a `description` (the first ~3
+  prose paragraphs, skipping HTML/tables/headings). The frontend
+  `ModelCardDetail` maps that JSON to **native components** — badges, a tag list,
+  the description, and an **"Open full card on Hugging Face →"** button (shell).
+  Crash-proof by construction (controlled values, never injected HTML); 404 →
+  "no model card", not an error.
 
 ### Phase 6+
 

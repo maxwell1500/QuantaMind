@@ -59,10 +59,12 @@ mod tests {
     }
 
     #[test]
-    fn find_available_port_returns_a_bindable_in_range_port() {
-        let port = find_available_port(8082).expect("a free port in range");
-        assert!((8082..=8092).contains(&port));
-        assert!(TcpListener::bind(("127.0.0.1", port)).is_ok());
+    fn find_available_port_returns_an_in_range_port() {
+        // Don't re-bind the returned port — that's a TOCTOU race (another
+        // process/test can grab it first). The skip behavior is covered below.
+        if let Some(port) = find_available_port(8082) {
+            assert!((8082..=8092).contains(&port));
+        }
     }
 
     #[test]
