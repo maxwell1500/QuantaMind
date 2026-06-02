@@ -1,46 +1,47 @@
 import { create } from "zustand";
 import {
-  getBuiltinTasks,
+  getBuiltinCollection,
+  listBuiltinCollections,
   listCustomCollections,
   loadCustomCollection,
   saveCustomCollection,
   deleteCustomCollection,
   importCustomCollection,
   type ToolTask,
+  type BuiltinCollectionInfo,
 } from "../../../shared/ipc/eval/registry";
 
-/// The sentinel for the bundled curated suite (vs a named custom collection).
-export const BUILTIN = "builtin";
+/// The default read-only preset id (the curated suite).
+export const DEFAULT_PRESET = "curated";
 
 interface EvalRegistryStore {
-  builtin: ToolTask[];
-  collections: string[]; // custom collection names
-  selected: string; // BUILTIN or a collection name
+  presets: BuiltinCollectionInfo[]; // read-only built-in collections (id + label)
+  collections: string[]; // user custom collection names
+  selected: string; // a preset id OR a custom collection name
   tasks: ToolTask[]; // the active task set for the current selection
   init: () => Promise<void>;
-  select: (name: string) => Promise<void>;
+  select: (idOrName: string) => Promise<void>;
   save: (name: string, tasks: ToolTask[]) => Promise<void>;
   remove: (name: string) => Promise<void>;
   importFile: (path: string) => Promise<void>;
+  isPreset: (idOrName: string) => boolean;
 }
 
-/// Holds the available datasets (built-in + user collections) and the active
-/// selection. The runner is always handed `tasks` — it never reads files.
+/// Holds the available datasets (read-only built-in presets + user collections)
+/// and the active selection. The runner is always handed `tasks`.
 export const useEvalRegistryStore = create<EvalRegistryStore>((set, get) => ({
-  builtin: [],
+  presets: [],
   collections: [],
-  selected: BUILTIN,
+  selected: DEFAULT_PRESET,
   tasks: [],
+  isPreset: (v) => get().presets.some((p) => p.id === v),
   init: async () => {
-    const [builtin, collections] = await Promise.all([getBuiltinTasks(), listCustomCollections()]);
-    set({ builtin, collections, tasks: builtin, selected: BUILTIN });
+    const [presets, collections] = await Promise.all([listBuiltinCollections(), listCustomCollections()]);
+    set({ presets, collections, tasks: await getBuiltinCollection(DEFAULT_PRESET), selected: DEFAULT_PRESET });
   },
-  select: async (name) => {
-    if (name === BUILTIN) {
-      set({ selected: BUILTIN, tasks: get().builtin });
-      return;
-    }
-    set({ selected: name, tasks: await loadCustomCollection(name) });
+  select: async (v) => {
+    const tasks = get().isPreset(v) ? await getBuiltinCollection(v) : await loadCustomCollection(v);
+    set({ selected: v, tasks });
   },
   save: async (name, tasks) => {
     await saveCustomCollection(name, tasks);
@@ -50,7 +51,7 @@ export const useEvalRegistryStore = create<EvalRegistryStore>((set, get) => ({
   remove: async (name) => {
     await deleteCustomCollection(name);
     set({ collections: await listCustomCollections() });
-    if (get().selected === name) await get().select(BUILTIN);
+    if (get().selected === name) await get().select(DEFAULT_PRESET);
   },
   importFile: async (path) => {
     const name = await importCustomCollection(path);

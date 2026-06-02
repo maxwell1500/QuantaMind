@@ -1,17 +1,17 @@
 import { useState } from "react";
 import { open } from "@tauri-apps/plugin-dialog";
-import { useEvalRegistryStore, BUILTIN } from "../state/evalRegistryStore";
+import { useEvalRegistryStore } from "../state/evalRegistryStore";
 import { EvalEditor } from "./EvalEditor";
 import { formatIpcError } from "../../../shared/ipc/core/error";
 
-/// Choose the dataset to run the tool-call eval against — the curated built-in
-/// suite or a user-authored collection — and manage collections (new / edit /
-/// delete / import). Import passes only the file PATH to the backend.
+/// Choose the dataset to run the tool-call eval against — a read-only built-in
+/// preset (Curated / Finance) or a user-authored collection — and manage custom
+/// collections (new / edit / delete / import). Import passes only the file PATH.
 export function DatasetBar() {
-  const { selected, collections, tasks, select, remove, importFile } = useEvalRegistryStore();
+  const { presets, selected, collections, tasks, select, remove, importFile, isPreset } = useEvalRegistryStore();
   const [editing, setEditing] = useState<{ name: string; json: string } | null>(null);
   const [error, setError] = useState<string | null>(null);
-  const isCustom = selected !== BUILTIN;
+  const isCustom = !isPreset(selected);
 
   const guard = async (fn: () => Promise<void>) => {
     setError(null);
@@ -37,7 +37,9 @@ export function DatasetBar() {
           data-testid="dataset-select"
           className="border rounded px-2 py-1 text-sm"
         >
-          <option value={BUILTIN}>Curated Suite (Built-in)</option>
+          {presets.map((p) => (
+            <option key={p.id} value={p.id}>{p.label}</option>
+          ))}
           {collections.map((c) => (
             <option key={c} value={c}>{c}</option>
           ))}

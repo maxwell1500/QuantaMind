@@ -24,7 +24,7 @@ const report = {
 
 beforeEach(() => {
   vi.clearAllMocks();
-  useEvalRegistryStore.setState({ tasks: builtinTasks, builtin: builtinTasks, selected: "builtin", collections: [] });
+  useEvalRegistryStore.setState({ tasks: builtinTasks, presets: [{ id: "curated", label: "Curated Suite" }], selected: "curated", collections: [] });
   useInstalledModelsStore.setState({
     list: [{ name: "m", size_bytes: 1, modified_at: "", family: "", parameter_size: "", quantization: "", backend: "ollama" }],
     status: "ready", error: null, lastRefreshedAt: 1,

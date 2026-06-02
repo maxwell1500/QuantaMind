@@ -122,12 +122,33 @@ pub fn validate_tasks(tasks: &[ToolTask]) -> AppResult<()> {
 }
 
 const FIXTURE: &str = include_str!("tasks.json");
+const FINANCE_FIXTURE: &str = include_str!("tasks_finance.json");
 
 /// The bundled, curated tool-call task set (single / parallel / select /
 /// abstain). Embedded at compile time — indicative, prompt-based, not a
 /// leaderboard.
 pub fn tasks() -> Vec<ToolTask> {
     serde_json::from_str(FIXTURE).expect("bundled toolcall tasks.json is valid")
+}
+
+/// A finance-themed tool-call set (balances / sums / transaction search +
+/// abstain). Structural tool-call reliability — NOT a PDF/data parser.
+pub fn finance_tasks() -> Vec<ToolTask> {
+    serde_json::from_str(FINANCE_FIXTURE).expect("bundled tasks_finance.json is valid")
+}
+
+/// Read-only built-in presets: `(id, label)`. The runner is still handed a
+/// `Vec<ToolTask>` — these just enumerate the bundled sets.
+pub const BUILTIN_COLLECTIONS: &[(&str, &str)] =
+    &[("curated", "Curated Suite"), ("finance", "Finance (preset)")];
+
+/// Tasks for a built-in preset id, or `None` if unknown.
+pub fn builtin_collection(id: &str) -> Option<Vec<ToolTask>> {
+    match id {
+        "curated" => Some(tasks()),
+        "finance" => Some(finance_tasks()),
+        _ => None,
+    }
 }
 
 #[cfg(test)]

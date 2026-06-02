@@ -42,6 +42,19 @@ export async function getBuiltinTasks(): Promise<ToolTask[]> {
   return TaskArraySchema.parse(await invoke("get_builtin_tasks"));
 }
 
+export const BuiltinCollectionInfoSchema = z.object({ id: z.string(), label: z.string() });
+export type BuiltinCollectionInfo = z.infer<typeof BuiltinCollectionInfoSchema>;
+
+/// The read-only built-in presets (id + label) for the dataset picker.
+export async function listBuiltinCollections(): Promise<BuiltinCollectionInfo[]> {
+  return z.array(BuiltinCollectionInfoSchema).parse(await invoke("list_builtin_collections"));
+}
+
+/// Tasks for a built-in preset id (e.g. "curated" / "finance").
+export async function getBuiltinCollection(id: string): Promise<ToolTask[]> {
+  return TaskArraySchema.parse(await invoke("get_builtin_collection", { id }));
+}
+
 export async function listCustomCollections(): Promise<string[]> {
   return z.array(z.string()).parse(await invoke("list_custom_collections"));
 }

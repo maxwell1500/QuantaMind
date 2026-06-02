@@ -29,6 +29,22 @@ fn bundled_fixture_passes_validation() {
 }
 
 #[test]
+fn finance_preset_is_valid_and_covers_categories() {
+    let f = finance_tasks();
+    validate_tasks(&f).expect("finance preset is valid");
+    for cat in ["single", "select", "parallel", "abstain"] {
+        assert!(f.iter().any(|t| t.category == cat), "finance missing category: {cat}");
+    }
+}
+
+#[test]
+fn builtin_collection_routes_known_ids() {
+    assert!(builtin_collection("curated").is_some());
+    assert!(builtin_collection("finance").is_some());
+    assert!(builtin_collection("nope").is_none());
+}
+
+#[test]
 fn rejects_empty_collection() {
     assert!(matches!(validate_tasks(&[]), Err(AppError::InvalidTaskSchema(_))));
 }

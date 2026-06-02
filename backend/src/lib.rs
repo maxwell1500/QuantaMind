@@ -78,6 +78,8 @@ pub fn run() {
             commands::eval::eval_run::run_eval_task,
             commands::eval::toolcall_cmd::run_toolcall_eval,
             commands::eval::toolcall_cmd::get_builtin_tasks,
+            commands::eval::toolcall_cmd::list_builtin_collections,
+            commands::eval::toolcall_cmd::get_builtin_collection,
             commands::eval::eval_registry::list_custom_collections,
             commands::eval::eval_registry::load_custom_collection,
             commands::eval::eval_registry::save_custom_collection,
