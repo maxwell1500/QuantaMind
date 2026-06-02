@@ -308,6 +308,34 @@ the recommendation honours the same gate.
 - **Speed is memory-bandwidth-bound, not FLOPS-bound.** Token throughput tracks GB/s, so the tab
   shows the chip's nominal bandwidth (curated table) or "Not available" — never a guessed number.
 
+## Silent CPU fallback {#cpu-fallback}
+
+When a model doesn't fully fit the accelerator, Ollama quietly offloads layers to system RAM and
+keeps running — far slower, and it silently ruins any speed/eval timing. The Eval tab flags this for
+the selected model from `/api/ps` (`size_vram` vs `size`): "⚠ ~X% of this model is on CPU". Shown
+only when an accelerator is present and weights are actually spilled — **Ollama-only**, nothing
+fabricated on other backends or when the model isn't loaded.
+
+## Context budget {#context-budget}
+
+The Inspector shows how much of the context window a run consumed — the exact server-reported
+`prompt_eval_count` over the model's `context_length` — turning red at ≥95% (past which earlier
+tokens are silently dropped). Exact counts only; "Not available" when either number is missing.
+
+## Built-in presets & the finance set {#builtin-presets}
+
+The tool-call eval ships read-only built-in presets — **Curated Suite** and **Finance (preset)** —
+selectable alongside your own collections. The finance set exercises balance / sum / transaction-search
+tools (+ abstention). It measures **structural tool-call reliability** (does the model emit the right
+call?), **not** data/PDF parsing — the "expected" is the *command*, never the underlying data.
+
+## Context-cliff probe {#context-cliff}
+
+Runs the selected dataset at increasing prompt lengths and graphs where tool-call accuracy collapses
+— the "context cliff" many local models hit well before their advertised window. Read it as
+**indicative**: padding is approximate (≈tokens via chars/4, no tokenizer), single-turn, and the
+x-axis is approximate context size. A failed rung is recorded as a gap, never a fabricated score.
+
 ## Comparing across models/quants needs Ollama {#multi-model-ollama-only}
 
 Anything that runs *several models* in one go — the **Quant** tab's quality and

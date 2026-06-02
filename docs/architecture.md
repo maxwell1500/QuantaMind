@@ -251,7 +251,13 @@ one folder per commit, behavior unchanged).
   (which also parses `ModelInspect.dims` + exposes `estimate_kv_cache_bytes`); frontend IPC
   in `shared/ipc/system/inspect.ts`. The Quant tab's KV-aware VRAM fit / OOM gate lives in
   `features/quant` (`useVramFit`, `QuantPage`, `fit.ts::fitOfNeed`); the curated memory-bandwidth
-  lookup is in `commands/system/hardware_mem.rs`.
+  lookup is in `commands/system/hardware_mem.rs`. The 5.12–5.15 diagnostics are mostly frontend over
+  data already fetched: `features/eval/CpuFallbackBanner` (silent CPU fallback, from `/api/ps`),
+  `QuantPage::toolcallDelta` (quant parse-rate delta), `features/inspector/ContextBudgetBar`
+  (prompt_eval_count / context_length), and the context-cliff probe (`features/eval/cliff.ts` +
+  `useContextCliff` + `ContextCliffChart`, visx). Built-in eval presets (curated + `tasks_finance.json`)
+  are enumerated by `toolcall/tasks.rs::BUILTIN_COLLECTIONS` behind `list_builtin_collections` /
+  `get_builtin_collection`.
 - **frontend `features/workspace/components/`** (was 17 files): `model-select/` ·
   `prompt/` (editor + params) · `run/` (single/multi + controls + output) ·
   `status/` (status bar, ollama control, errors)

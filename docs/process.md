@@ -544,6 +544,26 @@ one. Built one step at a time.
   showing the curated GB/s or "Not available". `vram_math.rs` + `hardware_mem.rs` (bandwidth) +
   `features/quant` (`useVramFit`, `QuantPage`, `fit.ts::fitOfNeed`).
 
+- **5.12 Silent-CPU-fallback guard (done).** The Eval tab warns when the selected model is loaded
+  with weights off the accelerator (the silent fallback that tanks speed and ruins eval timings):
+  `cpuOffload(size, vram)` over `/api/ps` data, gated on an accelerator being present. Ollama-only;
+  renders nothing when fully resident / not loaded / other backend. `features/eval/CpuFallbackBanner`.
+
+- **5.13 Quant parse-rate delta (done).** The Quant table shows the quality lost to a smaller quant
+  in percentage points vs the highest-quality scored quant (e.g. Q4_K_M "−17pp") + a "Δ vs Q8_0"
+  note on the spread line. Pure `toolcallDelta`.
+
+- **5.14 Context-budget readout + finance preset (done).** (a) A `ContextBudgetBar` in the Inspector
+  shows the exact `prompt_eval_count / context_length`, red ≥95% (about to overflow and drop tokens);
+  "Not available" when unknown. (b) A second **read-only built-in preset**, "Finance (preset)"
+  (`tasks_finance.json`), via `list_builtin_collections` / `get_builtin_collection(id)`; the dataset
+  picker lists Curated + Finance as read-only. Structural tool-call reliability — **not** PDF parsing.
+
+- **5.15 Context-Cliff probe (done).** Runs the selected dataset at growing prompt lengths and graphs
+  where tool-call accuracy collapses (`cliff.ts` + `useContextCliff` + a visx `ContextCliffChart` on
+  the Eval tab). **Frontend-only**, padding is approximate (≈tokens via chars/4) and **labelled
+  indicative** — no tokenizer; a failed rung records null, never a fabricated score.
+
 ### Phase 6+
 
 Owners flesh out the next phase's section here when the current lands.
