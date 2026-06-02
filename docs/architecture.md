@@ -240,8 +240,9 @@ one folder per commit, behavior unchanged).
 - **backend `inference/`** (was 33 files): `ollama/` · `llama/` · `mlx/`
   (wire + chunk + stats + stream + backend, plus `mlx/server/` =
   runtime/locate/stderr/endpoint for the launcher) · `gguf/` · `hf/` · `pull/` ·
-  `create/` · `compare/` · `http/` (http + ndjson) · `backend/` (trait + kind) ·
-  `generate/` (spec + options) · `chat/` (templates)
+  `create/` · `compare/` · `eval/` (deterministic eval task + scoring) · `http/`
+  (http + ndjson) · `backend/` (trait + kind) · `generate/` (spec + options) ·
+  `chat/` (templates)
 - **frontend `features/workspace/components/`** (was 17 files): `model-select/` ·
   `prompt/` (editor + params) · `run/` (single/multi + controls + output) ·
   `status/` (status bar, ollama control, errors)

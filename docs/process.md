@@ -446,8 +446,16 @@ one. Built one step at a time.
 - **5.3 Quantization comparison view.** Run one model across quants
   (Q4_K_M/Q5_K_M/Q8_0) side-by-side via the compare runner; show quality (mini
   eval), speed, size, VRAM.
-- **5.4 Built-in mini-eval suite.** 5–10 small evals (HumanEval subset,
-  summarization, classification, reasoning) scoring any model.
+- **5.4 Built-in mini-eval suite (done).** Bundled `docs/evals/*.yaml` tasks
+  (classification, reasoning, extraction, schema) run against any installed
+  model from the **Eval** tab → a pass-rate + per-task pass/fail. **Scoring is
+  deterministic** (locked stack has no sandbox/judge): exact-match,
+  multiple-choice (first whole-word choice token), and — for the "code"
+  category — **JSON schema-conformance** (BFCL-style): a balanced-brace
+  extractor finds the first object that parses, then a flat depth-1 check of
+  required keys + top-level types. Honest framing: a quality *smoke test*, not a
+  rigorous benchmark. `inference/eval` (pure scoring, Tauri-free) + `commands/eval`
+  (`list_evals`, `run_eval_task` — runs temp-0, accumulates output, scores).
 - **5.5 Smart quant recommender.** Combine `HardwareSnapshot` + use case + 5.4
   eval data to recommend a quant.
 - **5.6 Backend auto-selection.** Given a model, auto-pick MLX (Apple Silicon,
