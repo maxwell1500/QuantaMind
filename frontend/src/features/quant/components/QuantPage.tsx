@@ -80,7 +80,6 @@ export function QuantPage() {
 
   const groups = groupQuantVariants(list);
   const group = groups.find((g) => g.key === groupKey) ?? groups[0] ?? null;
-  const rec = group ? recommendQuant(usecase, snapshot, group.variants) : null;
   // Cross-quant runs only work on Ollama (single-model llama.cpp/MLX can't
   // switch quants on one server). Size/fit/recommendation still work either way.
   const canCompare = !!group && group.variants.every((v) => servesModelsByName(v.backend));
@@ -94,6 +93,7 @@ export function QuantPage() {
   const ctxOptions = CTX_OPTIONS.filter((c) => !dims || c <= dims.context_length);
   const runnable = group ? group.variants.filter((v) => !(gated && predictFit(v.sizeBytes, kvBytes, avail).oom)) : [];
   const noneRunnable = !!group && runnable.length === 0;
+  const rec = group ? recommendQuant(usecase, snapshot, group.variants, kvBytes) : null;
 
   const compareInBench = () => {
     if (!group) return;

@@ -1,5 +1,5 @@
 import type { HardwareSnapshot } from "../../shared/ipc/compare/hardware";
-import { memoryFit } from "../models/fit";
+import { memoryFit, fitOfNeed, type Fit } from "../models/fit";
 import { formatBytes } from "../../shared/format/bytes";
 import type { QuantVariant } from "./quantPick";
 
@@ -46,12 +46,17 @@ export function recommendQuant(
   usecase: UseCase,
   hw: HardwareSnapshot | null,
   variants: QuantVariant[],
+  kvBytes: number | null = null,
 ): Recommendation {
   if (variants.length === 0) return { pick: null, why: "No installed quant variants for this model." };
   const avail = hw?.available_memory_bytes ?? 0;
-  const fits = hw ? variants.filter((v) => memoryFit(v.sizeBytes, avail) !== "wont-fit") : variants;
+  // KV-aware when dims are known (base + KV cache at the chosen context); else
+  // the file-size heuristic. Keeps the recommendation consistent with the table.
+  const fitOf = (v: QuantVariant): Fit =>
+    kvBytes != null ? fitOfNeed(v.sizeBytes + kvBytes, avail) : memoryFit(v.sizeBytes, avail);
+  const fits = hw ? variants.filter((v) => fitOf(v) !== "wont-fit") : variants;
   if (hw && fits.length === 0) {
-    return { pick: null, why: `None of these quants fit your ~${formatBytes(avail)} of available memory — try a smaller model.` };
+    return { pick: null, why: `None of these quants fit your ~${formatBytes(avail)} of available memory at this context — try a smaller model or context.` };
   }
   const speedFirst = usecase === "fast-chat";
   const pick = [...fits].sort((a, b) =>
