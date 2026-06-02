@@ -8,6 +8,7 @@ import { EvalRow } from "./EvalRow";
 import { ToolCallPanel } from "./ToolCallPanel";
 import { DatasetBar } from "./DatasetBar";
 import { TemplatePanel } from "../../models/components/card/TemplatePanel";
+import { CpuFallbackBanner } from "./CpuFallbackBanner";
 import { servesModelsByName, SINGLE_MODEL_NOTE } from "../../../shared/models/backendSupport";
 
 /// The Eval tab: run the bundled deterministic eval suite against an installed
@@ -76,7 +77,8 @@ export function EvalPage() {
         <p className="text-xs text-red-600" data-testid="eval-error">{error}</p>
       )}
       {selected && (
-        <div className="border rounded p-2" data-testid="eval-inspect">
+        <div className="border rounded p-2 space-y-2" data-testid="eval-inspect">
+          <CpuFallbackBanner model={selected.name} backend={selected.backend} />
           <TemplatePanel model={selected.name} backend={selected.backend} />
         </div>
       )}
