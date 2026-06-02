@@ -30,3 +30,17 @@ export type ModelInspect = z.infer<typeof ModelInspectSchema>;
 export async function inspectModel(model: string, backend: BackendKind): Promise<ModelInspect> {
   return ModelInspectSchema.parse(await invoke("inspect_model", { model, backend }));
 }
+
+/// f16 KV-cache size (bytes) for a model's dims at a context length — computed
+/// by the canonical Rust formula (single source of truth).
+export async function estimateKvCacheBytes(dims: ModelDims, contextLength: number): Promise<number> {
+  return z.number().parse(
+    await invoke("estimate_kv_cache_bytes", {
+      layers: dims.layers,
+      headCount: dims.head_count,
+      headCountKv: dims.head_count_kv,
+      embeddingLength: dims.embedding_length,
+      contextLength,
+    }),
+  );
+}

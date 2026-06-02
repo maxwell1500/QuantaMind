@@ -8,12 +8,19 @@ export type Fit = "fits" | "tight" | "wont-fit";
 const SAFETY = 1.3;
 const TIGHT_FRACTION = 0.7;
 
-export function memoryFit(sizeBytes: number, availBytes: number): Fit {
-  const need = Math.ceil(sizeBytes * SAFETY);
-  if (availBytes <= 0) return sizeBytes > 0 ? "wont-fit" : "fits";
-  if (need > availBytes) return "wont-fit";
-  if (need > availBytes * TIGHT_FRACTION) return "tight";
+/// Fit verdict for a precomputed memory NEED (e.g. base weights + KV cache),
+/// without the blanket safety multiplier — used by the KV-aware VRAM predictor.
+export function fitOfNeed(needBytes: number, availBytes: number): Fit {
+  if (availBytes <= 0) return needBytes > 0 ? "wont-fit" : "fits";
+  if (needBytes > availBytes) return "wont-fit";
+  if (needBytes > availBytes * TIGHT_FRACTION) return "tight";
   return "fits";
+}
+
+/// File-size-only fit for the download table: a 1.3× multiplier approximates
+/// runtime memory when the model's architecture (and thus KV cache) is unknown.
+export function memoryFit(sizeBytes: number, availBytes: number): Fit {
+  return fitOfNeed(Math.ceil(sizeBytes * SAFETY), availBytes);
 }
 
 /// Display text + Tailwind colour for a fit verdict.

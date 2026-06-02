@@ -4,12 +4,34 @@ import { useHardwareSnapshot } from "../../models/hooks/useHardwareSnapshot";
 import { useCompareStore } from "../../compare/state/compareStore";
 import { useNavStore } from "../../../shared/state/navStore";
 import { formatBytes } from "../../../shared/format/bytes";
-import { memoryFit, fitBadge } from "../../models/fit";
+import { memoryFit, fitOfNeed, fitBadge, type Fit } from "../../models/fit";
 import { groupQuantVariants } from "../quantPick";
 import { recommendQuant, USE_CASES, type UseCase } from "../recommend";
 import { useQuantEval, type QuantScore } from "../useQuantEval";
 import { useQuantToolcall } from "../useQuantToolcall";
+import { useVramFit } from "../useVramFit";
 import { servesModelsByName, QUANT_OLLAMA_ONLY_NOTE } from "../../../shared/models/backendSupport";
+
+const CTX_OPTIONS = [4096, 8192, 32768, 131072];
+const ctxLabel = (n: number) => (n % 1024 === 0 ? `${n / 1024}K` : `${n}`);
+
+interface RowFit {
+  fit: Fit;
+  oom: boolean;
+  approx: boolean;
+}
+
+/// KV-aware fit: base weights + KV cache(context) vs available memory. Falls
+/// back to the file-size×1.3 heuristic (flagged approx) when dims are unknown
+/// (non-Ollama). `oom` blocks running that quant at the chosen context.
+export function predictFit(sizeBytes: number, kvBytes: number | null, avail: number): RowFit {
+  if (kvBytes != null) {
+    const fit = fitOfNeed(sizeBytes + kvBytes, avail);
+    return { fit, oom: fit === "wont-fit", approx: false };
+  }
+  const fit = memoryFit(sizeBytes, avail);
+  return { fit, oom: fit === "wont-fit", approx: true };
+}
 
 function toolcallText(score: number | null | undefined, running: boolean): string {
   if (score === undefined) return running ? "…" : "—";
@@ -50,6 +72,7 @@ export function QuantPage() {
   const toolcall = useQuantToolcall();
   const [usecase, setUsecase] = useState<UseCase>("quality-writing");
   const [groupKey, setGroupKey] = useState("");
+  const [ctxLen, setCtxLen] = useState(8192);
 
   useEffect(() => {
     if (status === "idle") void refresh();
@@ -61,6 +84,16 @@ export function QuantPage() {
   // Cross-quant runs only work on Ollama (single-model llama.cpp/MLX can't
   // switch quants on one server). Size/fit/recommendation still work either way.
   const canCompare = !!group && group.variants.every((v) => servesModelsByName(v.backend));
+
+  // KV-aware VRAM prediction: dims (Ollama /api/show) + KV bytes at the chosen
+  // context. Same dims for all quants of one model, so fetch once for the group.
+  const { dims, kvBytes } = useVramFit(group?.variants[0]?.name, group?.variants[0]?.backend, ctxLen);
+  const avail = snapshot?.available_memory_bytes ?? 0;
+  // Only gate on OOM when hardware is actually known; unknown memory must not block runs.
+  const gated = !!snapshot && avail > 0;
+  const ctxOptions = CTX_OPTIONS.filter((c) => !dims || c <= dims.context_length);
+  const runnable = group ? group.variants.filter((v) => !(gated && predictFit(v.sizeBytes, kvBytes, avail).oom)) : [];
+  const noneRunnable = !!group && runnable.length === 0;
 
   const compareInBench = () => {
     if (!group) return;
@@ -92,10 +125,21 @@ export function QuantPage() {
             <option key={u.id} value={u.id}>{u.label}</option>
           ))}
         </select>
+        <select
+          value={ctxLen}
+          onChange={(e) => setCtxLen(Number(e.target.value))}
+          data-testid="quant-ctx-select"
+          className="border rounded px-2 py-1 text-sm"
+          title="Context length — drives the KV-cache VRAM estimate"
+        >
+          {ctxOptions.map((c) => (
+            <option key={c} value={c}>{ctxLabel(c)} ctx</option>
+          ))}
+        </select>
         <button
           type="button"
-          disabled={!canCompare || running}
-          onClick={() => group && void run(group.variants)}
+          disabled={!canCompare || running || noneRunnable}
+          onClick={() => void run(runnable)}
           data-testid="quant-run-evals"
           className="px-3 py-1 rounded bg-blue-600 text-white text-sm disabled:opacity-50"
         >
@@ -103,8 +147,8 @@ export function QuantPage() {
         </button>
         <button
           type="button"
-          disabled={!canCompare || toolcall.running}
-          onClick={() => group && void toolcall.run(group.variants)}
+          disabled={!canCompare || toolcall.running || noneRunnable}
+          onClick={() => void toolcall.run(runnable)}
           data-testid="quant-run-toolcall"
           className="px-3 py-1 rounded bg-blue-600 text-white text-sm disabled:opacity-50"
         >
@@ -141,6 +185,16 @@ export function QuantPage() {
         </p>
       )}
 
+      {snapshot && (
+        <p className="text-[11px] text-gray-500" data-testid="quant-bandwidth">
+          {snapshot.estimated_bandwidth_gbps != null
+            ? `Speed is memory-bandwidth-bound, not FLOPS-bound — ~${snapshot.estimated_bandwidth_gbps} GB/s.`
+            : "Memory bandwidth: Not available."}
+          {kvBytes != null && ` KV cache @ ${ctxLabel(ctxLen)} ctx ≈ ${formatBytes(kvBytes)}.`}
+          {group && kvBytes == null && " VRAM fit is approximate — KV-aware fit needs Ollama."}
+        </p>
+      )}
+
       {group && (
         <table className="text-xs w-full border-collapse" data-testid="quant-table">
           <thead>
@@ -150,12 +204,17 @@ export function QuantPage() {
           </thead>
           <tbody>
             {group.variants.map((v) => {
-              const fit = snapshot ? fitBadge(memoryFit(v.sizeBytes, snapshot.available_memory_bytes)) : null;
+              const p = snapshot ? predictFit(v.sizeBytes, kvBytes, avail) : null;
+              const badge = p ? fitBadge(p.fit) : null;
               return (
                 <tr key={v.name} className="border-t" data-testid={`quant-variant-${v.quantization}`}>
                   <td className="py-1 pr-2">{v.quantization}</td>
                   <td className="py-1 pr-2">{formatBytes(v.sizeBytes)}</td>
-                  {fit && <td className={`py-1 pr-2 ${fit.cls}`}>{fit.text}</td>}
+                  {p && badge && (
+                    <td className={`py-1 pr-2 ${p.oom ? "text-red-600 font-medium" : badge.cls}`} data-testid={`quant-fit-${v.quantization}`}>
+                      {p.oom ? "OOM Risk" : `${badge.text}${p.approx ? " ~" : ""}`}
+                    </td>
+                  )}
                   <td className="py-1 pr-2" data-testid={`quant-quality-${v.quantization}`}>
                     {qualityText(scores[v.name], running)}
                   </td>
