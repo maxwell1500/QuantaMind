@@ -6,7 +6,7 @@ import { useNavStore } from "../../../shared/state/navStore";
 import { formatBytes } from "../../../shared/format/bytes";
 import { memoryFit, fitOfNeed, fitBadge, type Fit } from "../../models/fit";
 import { groupQuantVariants } from "../quantPick";
-import { recommendQuant, USE_CASES, type UseCase } from "../recommend";
+import { recommendQuant, quantRank, USE_CASES, type UseCase } from "../recommend";
 import { useQuantEval, type QuantScore } from "../useQuantEval";
 import { useQuantToolcall } from "../useQuantToolcall";
 import { useVramFit } from "../useVramFit";
@@ -58,6 +58,25 @@ export function toolcallSpread(
   return parts.length ? parts.join(" · ") : null;
 }
 
+/// Per-quant tool-call delta vs the highest-quality scored quant (the baseline),
+/// in percentage points — makes the quality lost to a smaller quant explicit
+/// (e.g. Q4 "−17pp vs Q8_0"). Needs ≥2 scored quants; baseline row has no delta.
+export function toolcallDelta(
+  variants: { name: string; quantization: string }[],
+  scores: Record<string, number | null>,
+): { baseline: string | null; deltas: Record<string, number> } {
+  const scored = variants.filter((v) => typeof scores[v.name] === "number");
+  if (scored.length < 2) return { baseline: null, deltas: {} };
+  const base = scored.reduce((a, b) => (quantRank(b.quantization) > quantRank(a.quantization) ? b : a));
+  const baseScore = scores[base.name] as number;
+  const deltas: Record<string, number> = {};
+  for (const v of scored) {
+    if (v.name === base.name) continue;
+    deltas[v.name] = Math.round(((scores[v.name] as number) - baseScore) * 100);
+  }
+  return { baseline: base.quantization, deltas };
+}
+
 /// The Quant tab: pick a model that has several installed quantizations, and
 /// compare them — recommendation, per-quant size/fit, eval quality (pass-rate),
 /// and a hand-off to the Bench for speed/VRAM.
@@ -94,6 +113,7 @@ export function QuantPage() {
   const runnable = group ? group.variants.filter((v) => !(gated && predictFit(v.sizeBytes, kvBytes, avail).oom)) : [];
   const noneRunnable = !!group && runnable.length === 0;
   const rec = group ? recommendQuant(usecase, snapshot, group.variants, kvBytes) : null;
+  const tcDelta = group ? toolcallDelta(group.variants, toolcall.scores) : { baseline: null, deltas: {} };
 
   const compareInBench = () => {
     if (!group) return;
@@ -182,6 +202,7 @@ export function QuantPage() {
         <p data-testid="quant-toolcall-spread" className="text-xs text-gray-700">
           <span className="text-gray-500">Tool-call spread: </span>
           {toolcallSpread(group.variants, toolcall.scores)}
+          {tcDelta.baseline && <span className="text-gray-500"> · Δ vs {tcDelta.baseline}</span>}
         </p>
       )}
 
@@ -220,6 +241,14 @@ export function QuantPage() {
                   </td>
                   <td className="py-1 pr-2" data-testid={`quant-toolcall-${v.quantization}`}>
                     {toolcallText(toolcall.scores[v.name], toolcall.running)}
+                    {tcDelta.deltas[v.name] != null && (
+                      <span
+                        className={`ml-1 ${tcDelta.deltas[v.name] < 0 ? "text-red-600" : "text-green-600"}`}
+                        data-testid={`quant-delta-${v.quantization}`}
+                      >
+                        ({tcDelta.deltas[v.name] > 0 ? "+" : ""}{tcDelta.deltas[v.name]}pp)
+                      </span>
+                    )}
                   </td>
                 </tr>
               );
