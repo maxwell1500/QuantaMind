@@ -150,6 +150,16 @@ run.
   GGUF).
 - Names are exact, including the tag: `llama3.2:1b`, not `llama3.2`.
 
+### Duplicate models in the picker {#duplicate-models}
+
+If the same model was imported into Ollama under more than one tag (e.g. a local
+GGUF added as both `mymodel_q3_k_l:latest` and `mymodel:q3_k_l`), Ollama's
+`/api/tags` lists each tag separately. They point to the same blob and share one
+`digest`, so the **model picker collapses them to a single entry** (first tag
+wins). The **Models → Storage** view still lists every tag so you can delete the
+redundant one. Different quantizations (`Q3_K_L` vs `Q2_K`) have different
+digests and remain distinct — they are not duplicates.
+
 ### Out of memory {#out-of-memory}
 
 "Not enough memory for this model" means it didn't fit in available RAM/VRAM.

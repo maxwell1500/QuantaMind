@@ -1,6 +1,7 @@
 import { useEffect } from "react";
 import { useInstalledModelsStore } from "../../../models/state/installedModelsStore";
 import { isEmbeddingModel } from "../../../../shared/models/classify";
+import { dedupeByDigest } from "../../../../shared/models/dedupeDigest";
 import { useWorkspaceStore } from "../../state/workspaceStore";
 import { useNavStore } from "../../../../shared/state/navStore";
 import { ModelTemperaturePopover } from "./ModelTemperaturePopover";
@@ -31,7 +32,7 @@ export function ModelPicker({ value, onChange }: Props) {
     if (ollamaHealthy === true) void refresh();
   }, [ollamaHealthy, refresh]);
 
-  const generative = list.filter((m) => !isEmbeddingModel(m));
+  const generative = dedupeByDigest(list.filter((m) => !isEmbeddingModel(m)));
 
   return (
     <div className="flex gap-2 items-center flex-wrap">

@@ -12,6 +12,9 @@ export const InstalledModelInfoSchema = z.object({
   parameter_size: z.string(),
   quantization: z.string(),
   backend: BackendKindSchema,
+  // Content hash of the model blob. Ollama sends one per tag (shared across
+  // tags of the same model); absent for llama.cpp/MLX. The picker dedupes on it.
+  digest: z.string().optional(),
   // Absolute GGUF path — present for llama.cpp models, absent for Ollama.
   path: z.string().optional(),
 });

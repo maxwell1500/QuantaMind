@@ -35,6 +35,7 @@ fn to_info(id: String) -> InstalledModelInfo {
         parameter_size: String::new(),
         quantization: String::new(),
         backend: BackendKind::Mlx,
+        digest: String::new(),
         path: None,
     }
 }

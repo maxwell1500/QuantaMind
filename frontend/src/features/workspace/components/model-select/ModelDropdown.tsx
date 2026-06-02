@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState } from "react";
 import { useInstalledModelsStore } from "../../../models/state/installedModelsStore";
 import { isEmbeddingModel } from "../../../../shared/models/classify";
+import { dedupeByDigest } from "../../../../shared/models/dedupeDigest";
 import { formatBytes } from "../../../../shared/format/bytes";
 import { useWorkspaceStore } from "../../state/workspaceStore";
 import { useCompareStore } from "../../../compare/state/compareStore";
@@ -19,7 +20,9 @@ export function ModelDropdown() {
   const ref = useRef<HTMLDivElement>(null);
 
   const multi = activeBackend === "ollama";
-  const generative = list.filter((m) => !isEmbeddingModel(m) && m.backend === activeBackend);
+  const generative = dedupeByDigest(
+    list.filter((m) => !isEmbeddingModel(m) && m.backend === activeBackend),
+  );
   const has = (name: string) => selected.some((s) => s.name === name);
 
   useEffect(() => { if (status === "idle") void refresh(); }, [status, refresh]);
