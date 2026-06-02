@@ -5,6 +5,7 @@ use crate::commands::compare::compare_sink::TauriCompareSink;
 use crate::commands::prompt::prompt_options::validate_params;
 use crate::commands::settings::model_settings::ModelSettingsState;
 use crate::errors::{AppError, AppResult};
+use crate::inference::backend::backend_kind::BackendKind;
 use crate::inference::compare::compare_runner::{rows_for, run_parallel, run_sequential};
 use crate::inference::compare::compare_sink::CompareSink;
 use crate::persistence::prompts::schema::InferenceParams;
@@ -39,6 +40,7 @@ pub async fn run_compare(
     system: Option<String>,
     params: Option<InferenceParams>,
     per_model_params: Option<HashMap<String, InferenceParams>>,
+    backends: Option<Vec<BackendKind>>,
 ) -> Result<(), AppError> {
     validate(&models, &prompt)?;
     settings.ensure_loaded(&app)?;
@@ -47,9 +49,10 @@ pub async fn run_compare(
     if let Some(map) = &per_model_params {
         for p in map.values() { validate_params(p)?; }
     }
-    // Per-model params override the shared params; temperature falls back to the
-    // per-model setting when nobody set one.
-    let rows = rows_for(&models, |m| {
+    // Each model dispatches to its own backend; per-model params override the
+    // shared params, temperature falls back to the per-model setting.
+    let backends = backends.unwrap_or_default();
+    let rows = rows_for(&models, &backends, |m| {
         Some(options_for(m, params.as_ref(), per_model_params.as_ref(), settings.temperature_for(m)))
     });
     let sink: Arc<dyn CompareSink> = Arc::new(TauriCompareSink::new(app));

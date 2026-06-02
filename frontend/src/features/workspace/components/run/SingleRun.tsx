@@ -6,6 +6,7 @@ import { useWorkspaceStore } from "../../state/workspaceStore";
 import { useWorkspacesStore } from "../../../workspaces/state/workspaceStore";
 import { useNavStore } from "../../../../shared/state/navStore";
 import { useCompareStore } from "../../../compare/state/compareStore";
+import { backendRunHint } from "../../state/runHint";
 
 /// Single-model run trigger: run_prompt streaming with per-prompt params and
 /// history. The response is shown on the Analysis tab — this mirrors the live
@@ -39,13 +40,14 @@ export function SingleRun({ model }: { model: string | null }) {
 
   const prompt = current?.user ?? "";
   const system = current?.system ?? "";
-  // Ollama's readiness is enforced downstream by RunControls (healthBlocked);
-  // llama.cpp and MLX each gate here on their own server's health.
-  const backendReady =
-    activeBackend === "ollama" ||
-    (activeBackend === "llama_cpp" && llamaHealthy === true) ||
-    (activeBackend === "mlx" && mlxHealthy === true);
-  const canRun = !!model && prompt.trim().length > 0 && backendReady;
+  // A backend is coupled to the model's weight format — no fallback. If the
+  // active backend isn't healthy, Run is blocked with a "start it" hint.
+  const blockedHint = backendRunHint(activeBackend, {
+    ollama: ollamaHealthy,
+    llama: llamaHealthy,
+    mlx: mlxHealthy,
+  });
+  const canRun = !!model && prompt.trim().length > 0 && !blockedHint;
   const runNow = () => {
     if (!model) return;
     useNavStore.getState().setTopView("analysis");
@@ -60,7 +62,7 @@ export function SingleRun({ model }: { model: string | null }) {
     <RunControls
       status={status}
       canRun={canRun}
-      ollamaHealthy={activeBackend === "ollama" ? ollamaHealthy : true}
+      blockedHint={blockedHint}
       onRun={runNow}
       onCancel={cancel}
     />

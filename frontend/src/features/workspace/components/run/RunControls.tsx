@@ -3,7 +3,8 @@ import type { RunStatus } from "../../hooks/useStreamingRun";
 type Props = {
   status: RunStatus;
   canRun: boolean;
-  ollamaHealthy?: boolean | null;
+  // Set when the active backend isn't healthy — blocks Run and explains why.
+  blockedHint?: string | null;
   onRun: () => void;
   onCancel: () => void;
 };
@@ -11,16 +12,14 @@ type Props = {
 export function RunControls({
   status,
   canRun,
-  ollamaHealthy = true,
+  blockedHint,
   onRun,
   onCancel,
 }: Props) {
   const running = status === "running";
-  const healthBlocked = ollamaHealthy === false;
-  const runDisabled = running || !canRun || healthBlocked;
-  const runTitle = healthBlocked && canRun && !running
-    ? "Start Ollama first"
-    : undefined;
+  const blocked = !!blockedHint;
+  const runDisabled = running || !canRun || blocked;
+  const runTitle = blocked && canRun && !running ? (blockedHint ?? undefined) : undefined;
   return (
     <div className="flex gap-2 items-center">
       <button
@@ -32,6 +31,9 @@ export function RunControls({
       >
         Run
       </button>
+      {runTitle && (
+        <span className="text-xs text-amber-700" data-testid="run-blocked-hint">{runTitle}</span>
+      )}
       <button
         type="button"
         onClick={onCancel}

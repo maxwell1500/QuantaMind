@@ -458,8 +458,15 @@ one. Built one step at a time.
   (`list_evals`, `run_eval_task` — runs temp-0, accumulates output, scores).
 - **5.5 Smart quant recommender.** Combine `HardwareSnapshot` + use case + 5.4
   eval data to recommend a quant.
-- **5.6 Backend auto-selection.** Given a model, auto-pick MLX (Apple Silicon,
-  supported) / llama.cpp / Ollama; user override.
+- **5.6 Backend auto-selection (done).** A backend is **coupled to the model's
+  weight format** — an MLX model runs only on MLX, a GGUF only on
+  llama.cpp/Ollama — so selection is the absolute `model.backend` mapping, never
+  a health-based fallback. Compare rows are now **backend-aware** (`rows_for`
+  takes a backend per model; `run_compare` forwards each model's backend, so a
+  mixed-backend compare dispatches each row to the right server — previously all
+  rows wrongly went to Ollama). When the required backend isn't healthy, Run is
+  **blocked with a hint** ("Start the MLX backend to run this model") rather than
+  rerouting (`features/workspace/state/runHint.ts`).
 - **5.7 Model card viewer.** Inline HF model-card render (description, license,
   recommended use) in the model browser.
 

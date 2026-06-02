@@ -5,6 +5,7 @@ import { useCompareStore } from "../state/compareStore";
 import { startCompareEventBus } from "../state/compareEventBus";
 import { assessStrategies } from "../state/strategy";
 import { formatBytes } from "../../../shared/format/bytes";
+import { useInstalledModelsStore } from "../../models/state/installedModelsStore";
 
 export function useCompareRun() {
   const isRunning = useCompareStore((s) => s.isRunning);
@@ -28,6 +29,12 @@ export function useCompareRun() {
     initRun(selectedModels);
     try {
       const system = systemPrompt.trim();
+      // Resolve each model's own backend (coupled to its weight format) from the
+      // installed list; fall back to Ollama if unknown.
+      const installed = useInstalledModelsStore.getState().list;
+      const backends = selectedModels.map(
+        (m) => installed.find((i) => i.name === m.name)?.backend ?? "ollama",
+      );
       await runCompare({
         models: selectedModels.map((m) => m.name),
         prompt,
@@ -35,6 +42,7 @@ export function useCompareRun() {
         ...(system ? { system } : {}),
         params: baseParams,
         ...(useSharedParams ? {} : { perModelParams }),
+        backends,
       });
     } catch (e) {
       setStartError(formatIpcError(e));
