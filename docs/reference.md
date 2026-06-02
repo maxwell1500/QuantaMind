@@ -222,3 +222,23 @@ an agent — entirely offline and deterministic. Read the scores with these cave
   task exercises it. An unreachable backend → **"Not available"**, never a score.
 - **Custom tasks** (your own tool fixtures) are a planned extension; today the
   bundled set is fixed.
+
+## Comparing across models/quants needs Ollama {#multi-model-ollama-only}
+
+Anything that runs *several models* in one go — the **Quant** tab's quality and
+tool-call comparison columns, and "Compare speed in Bench" — only works on
+**Ollama**. Ollama serves any installed model by name, so QuantaMind can switch
+between quants on a single running server.
+
+`llama.cpp` (`llama-server`) and **MLX** (`mlx_lm.server`) are **single-model
+servers**: each loads one model at launch and serves whatever it has loaded,
+ignoring the requested name. So on those backends:
+
+- The Quant comparison buttons are **disabled** with a note — size/fit and the
+  recommendation still work (they're computed from the file, not the server).
+- The Eval / tool-call panels show a note: the run targets **whichever model the
+  server has loaded**, so load the exact model you mean to test (or use Ollama to
+  compare across models).
+
+This is a property of those servers, not a QuantaMind limitation; auto-restarting
+a single-model server per model is a deferred future option.

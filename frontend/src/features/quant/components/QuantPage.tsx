@@ -9,6 +9,7 @@ import { groupQuantVariants } from "../quantPick";
 import { recommendQuant, USE_CASES, type UseCase } from "../recommend";
 import { useQuantEval, type QuantScore } from "../useQuantEval";
 import { useQuantToolcall } from "../useQuantToolcall";
+import { servesModelsByName, QUANT_OLLAMA_ONLY_NOTE } from "../../../shared/models/backendSupport";
 
 function toolcallText(score: number | null | undefined, running: boolean): string {
   if (score === undefined) return running ? "…" : "—";
@@ -44,6 +45,9 @@ export function QuantPage() {
   const groups = groupQuantVariants(list);
   const group = groups.find((g) => g.key === groupKey) ?? groups[0] ?? null;
   const rec = group ? recommendQuant(usecase, snapshot, group.variants) : null;
+  // Cross-quant runs only work on Ollama (single-model llama.cpp/MLX can't
+  // switch quants on one server). Size/fit/recommendation still work either way.
+  const canCompare = !!group && group.variants.every((v) => servesModelsByName(v.backend));
 
   const compareInBench = () => {
     if (!group) return;
@@ -77,7 +81,7 @@ export function QuantPage() {
         </select>
         <button
           type="button"
-          disabled={!group || running}
+          disabled={!canCompare || running}
           onClick={() => group && void run(group.variants)}
           data-testid="quant-run-evals"
           className="px-3 py-1 rounded bg-blue-600 text-white text-sm disabled:opacity-50"
@@ -86,7 +90,7 @@ export function QuantPage() {
         </button>
         <button
           type="button"
-          disabled={!group || toolcall.running}
+          disabled={!canCompare || toolcall.running}
           onClick={() => group && void toolcall.run(group.variants)}
           data-testid="quant-run-toolcall"
           className="px-3 py-1 rounded bg-blue-600 text-white text-sm disabled:opacity-50"
@@ -95,7 +99,7 @@ export function QuantPage() {
         </button>
         <button
           type="button"
-          disabled={!group}
+          disabled={!canCompare}
           onClick={compareInBench}
           data-testid="quant-compare-bench"
           className="border rounded px-3 py-1 text-sm disabled:opacity-50"
@@ -103,6 +107,10 @@ export function QuantPage() {
           Compare speed in Bench →
         </button>
       </div>
+
+      {group && !canCompare && (
+        <p data-testid="quant-ollama-only" className="text-xs text-amber-700">{QUANT_OLLAMA_ONLY_NOTE}</p>
+      )}
 
       {rec?.pick && (
         <div data-testid="quant-recommendation" className="border rounded p-2 bg-blue-50 text-sm">

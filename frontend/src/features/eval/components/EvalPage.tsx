@@ -5,6 +5,7 @@ import { useEvalStore, passRate } from "../state/evalStore";
 import { useEvalRun } from "../hooks/useEvalRun";
 import { EvalRow } from "./EvalRow";
 import { ToolCallPanel } from "./ToolCallPanel";
+import { servesModelsByName, SINGLE_MODEL_NOTE } from "../../../shared/models/backendSupport";
 
 /// The Eval tab: run the bundled deterministic eval suite against an installed
 /// model and see a pass-rate + per-task pass/fail. A quality *smoke test*, not a
@@ -61,6 +62,9 @@ export function EvalPage() {
           </span>
         )}
       </div>
+      {selected && !servesModelsByName(selected.backend) && (
+        <p className="text-[11px] text-amber-700" data-testid="eval-single-model-note">{SINGLE_MODEL_NOTE}</p>
+      )}
       {error && (
         <p className="text-xs text-red-600" data-testid="eval-error">{error}</p>
       )}

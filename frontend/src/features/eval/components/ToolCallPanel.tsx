@@ -2,6 +2,7 @@ import { useState } from "react";
 import { runToolcallEval, type ToolCallReport } from "../../../shared/ipc/eval/toolcall";
 import { useInstalledModelsStore } from "../../models/state/installedModelsStore";
 import { formatIpcError } from "../../../shared/ipc/core/error";
+import { servesModelsByName, SINGLE_MODEL_NOTE } from "../../../shared/models/backendSupport";
 
 const pct = (v: number | null) => (v == null ? "n/a" : `${Math.round(v * 100)}%`);
 const mark = (b: boolean) => (b ? "✓" : "✗");
@@ -66,6 +67,9 @@ export function ToolCallPanel() {
         </button>
         <span className="text-[11px] text-gray-400">prompt-based · single-turn · structural — indicative</span>
       </div>
+      {selected && !servesModelsByName(selected.backend) && (
+        <p className="text-[11px] text-amber-700" data-testid="toolcall-single-model-note">{SINGLE_MODEL_NOTE}</p>
+      )}
       {error && (
         <p className="text-xs text-red-600" data-testid="toolcall-error">Not available — {error}</p>
       )}
