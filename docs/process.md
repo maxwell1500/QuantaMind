@@ -145,9 +145,10 @@ matches the convention; PR body references "closes #N" when applicable.
 
 ### File size
 
-- **Hard limit: 100 lines** including blank lines and headers (this guide is the
-  sole exception — see CLAUDE.md rule #3).
-- At 95 lines, split now. Do not wait. Splits are by concern, not by halving.
+- **Keep each file single-concern.** There is no hard line-count limit; split a
+  file when it starts doing *two things*, not when it crosses a number. Splits
+  are by responsibility, never by halving. (The ≤10-files-per-folder taxonomy
+  rule still holds — see `architecture.md#folder-taxonomy`.)
 
 ### Comments
 
@@ -232,7 +233,7 @@ For every unit of work (one step, one ticket, one feature slice):
 ### Stop conditions
 
 Stop and ask the user if a step's spec is ambiguous, the data-quality gate fails
-and the fix would change the spec, a file is about to exceed 100 lines and the
+and the fix would change the spec, a file's concern boundary is unclear and the
 split is non-obvious, or a test requires hardware that may not be present.
 
 ---
@@ -319,8 +320,8 @@ Never add in Phase 2: browser-based inference, team features, cloud sync
 
 Step-level acceptance gate (each step "done" only when all true): code merged
 behind a `phase-2/<step>` PR; full Vitest + cargo suites green; output verified
-per [Data quality](#data-quality); relevant docs updated in the same commit; no
-file >100 lines; locked stack honored.
+per [Data quality](#data-quality); relevant docs updated in the same commit;
+files single-concern (≤10 per folder); locked stack honored.
 
 **Phase 2.4 complete** — backend 95 lib + 2 lifecycle integration; frontend 361
 (11 new for workspaces). Verified via `workspace_lifecycle.rs` (round-trip, tree
@@ -492,13 +493,6 @@ hardened runtime, submits to Apple, waits, and staples the ticket. Verify with
 notarytool rejections: missing secure timestamp (add `--timestamp`), JIT not
 entitled (add `com.apple.security.cs.allow-jit` to `macos.entitlements`),
 hardened runtime not enabled (confirm `--options runtime`).
-
-### scripts/release.sh exceeds 100-line file limit
-
-`scripts/release.sh` is 138 lines — a pre-existing violation of CLAUDE.md rule 3.
-Split into `release.sh` (orchestrator), `bump-version.sh`, `build-bundle.sh`, and
-`write-manifest.sh` in a dedicated refactor commit. No behavior change; each
-split file <100 lines.
 
 ### Windows code-signing certificate
 
