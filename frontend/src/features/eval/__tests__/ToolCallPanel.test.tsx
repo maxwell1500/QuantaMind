@@ -3,10 +3,16 @@ import { render, screen, fireEvent, waitFor } from "@testing-library/react";
 
 vi.mock("@tauri-apps/api/core", () => ({ invoke: vi.fn() }));
 vi.mock("../../../shared/ipc/eval/toolcall", () => ({ runToolcallEval: vi.fn() }));
+vi.mock("../../../shared/ipc/eval/registry", () => ({ getBuiltinTasks: vi.fn() }));
 
 import { runToolcallEval } from "../../../shared/ipc/eval/toolcall";
+import { getBuiltinTasks } from "../../../shared/ipc/eval/registry";
 import { ToolCallPanel } from "../components/ToolCallPanel";
 import { useInstalledModelsStore } from "../../models/state/installedModelsStore";
+
+const builtinTasks = [
+  { id: "weather", category: "single", prompt: "p", tools: [{ name: "get_weather", description: "", parameters: { type: "object", properties: {} } }], expected: { type: "call", name: "get_weather", args: {} } },
+];
 
 const report = {
   n: 2,
@@ -19,6 +25,7 @@ const report = {
 
 beforeEach(() => {
   vi.clearAllMocks();
+  vi.mocked(getBuiltinTasks).mockResolvedValue(builtinTasks as never);
   useInstalledModelsStore.setState({
     list: [{ name: "m", size_bytes: 1, modified_at: "", family: "", parameter_size: "", quantization: "", backend: "ollama" }],
     status: "ready", error: null, lastRefreshedAt: 1,
@@ -30,6 +37,7 @@ describe("ToolCallPanel", () => {
     vi.mocked(runToolcallEval).mockResolvedValue(report);
     render(<ToolCallPanel />);
     fireEvent.change(screen.getByTestId("toolcall-model-select"), { target: { value: "m" } });
+    await waitFor(() => expect(screen.getByTestId("toolcall-run")).not.toBeDisabled());
     fireEvent.click(screen.getByTestId("toolcall-run"));
     await waitFor(() => expect(screen.getByTestId("toolcall-scores")).toHaveTextContent("Composite 75%"));
     expect(screen.getByTestId("toolcall-scores")).toHaveTextContent("Tool 50%");
@@ -41,6 +49,7 @@ describe("ToolCallPanel", () => {
     vi.mocked(runToolcallEval).mockRejectedValue(new Error("backend down"));
     render(<ToolCallPanel />);
     fireEvent.change(screen.getByTestId("toolcall-model-select"), { target: { value: "m" } });
+    await waitFor(() => expect(screen.getByTestId("toolcall-run")).not.toBeDisabled());
     fireEvent.click(screen.getByTestId("toolcall-run"));
     await waitFor(() => expect(screen.getByTestId("toolcall-error")).toHaveTextContent("Not available"));
     expect(screen.queryByTestId("toolcall-scores")).toBeNull();

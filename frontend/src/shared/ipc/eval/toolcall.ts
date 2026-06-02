@@ -1,6 +1,7 @@
 import { invoke } from "@tauri-apps/api/core";
 import { z } from "zod";
 import type { BackendKind } from "../models/storage";
+import type { ToolTask } from "./registry";
 
 export const VerdictSchema = z.object({
   parsed: z.boolean(),
@@ -27,8 +28,12 @@ export const ToolCallReportSchema = z.object({
 export type ToolCallReport = z.infer<typeof ToolCallReportSchema>;
 export type ToolTaskResult = z.infer<typeof ToolTaskResultSchema>;
 
-/// Run the bundled tool-call reliability eval (prompt-based, single-turn,
-/// structural) against a model on its backend.
-export async function runToolcallEval(model: string, backend: BackendKind): Promise<ToolCallReport> {
-  return ToolCallReportSchema.parse(await invoke("run_toolcall_eval", { model, backend }));
+/// Run a tool-call reliability eval (prompt-based, single-turn, structural) over
+/// the given tasks (built-in or custom) against a model on its backend.
+export async function runToolcallEval(
+  model: string,
+  backend: BackendKind,
+  tasks: ToolTask[],
+): Promise<ToolCallReport> {
+  return ToolCallReportSchema.parse(await invoke("run_toolcall_eval", { model, backend, tasks }));
 }

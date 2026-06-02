@@ -1,5 +1,6 @@
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { runToolcallEval, type ToolCallReport } from "../../../shared/ipc/eval/toolcall";
+import { getBuiltinTasks, type ToolTask } from "../../../shared/ipc/eval/registry";
 import { useInstalledModelsStore } from "../../models/state/installedModelsStore";
 import { formatIpcError } from "../../../shared/ipc/core/error";
 import { servesModelsByName, SINGLE_MODEL_NOTE } from "../../../shared/models/backendSupport";
@@ -25,15 +26,20 @@ export function ToolCallPanel() {
   const [report, setReport] = useState<ToolCallReport | null>(null);
   const [running, setRunning] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [tasks, setTasks] = useState<ToolTask[]>([]);
+
+  useEffect(() => {
+    getBuiltinTasks().then(setTasks).catch(() => {});
+  }, []);
 
   const selected = list.find((m) => m.name === model);
   const run = async () => {
-    if (!selected) return;
+    if (!selected || tasks.length === 0) return;
     setRunning(true);
     setError(null);
     setReport(null);
     try {
-      setReport(await runToolcallEval(selected.name, selected.backend));
+      setReport(await runToolcallEval(selected.name, selected.backend, tasks));
     } catch (e) {
       setError(formatIpcError(e));
     } finally {
@@ -58,7 +64,7 @@ export function ToolCallPanel() {
         </select>
         <button
           type="button"
-          disabled={!selected || running}
+          disabled={!selected || running || tasks.length === 0}
           onClick={() => void run()}
           data-testid="toolcall-run"
           className="px-3 py-1 rounded bg-blue-600 text-white text-sm disabled:opacity-50"
