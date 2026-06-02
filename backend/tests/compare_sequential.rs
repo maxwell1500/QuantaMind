@@ -20,7 +20,7 @@ async fn sequential_two_models_emits_token_done_per_row_then_final_run_done() {
 
     let (sink, log) = recording_sink();
     let state = CompareRunState::default();
-    run_sequential(sink, &state, &s.url(), rows_for(&["a".into(), "b".into()], |_| None), "ping", None, None)
+    run_sequential(sink, &state, &s.url(), rows_for(&["a".into(), "b".into()], &[], |_| None), "ping", None, None)
         .await.expect("run_sequential ok");
 
     let names: Vec<String> = log.lock().unwrap().iter().map(|(n, _)| n.clone()).collect();
@@ -46,7 +46,7 @@ async fn sequential_error_in_one_row_continues_to_next() {
 
     let (sink, log) = recording_sink();
     let state = CompareRunState::default();
-    run_sequential(sink, &state, &s.url(), rows_for(&["a".into(), "b".into()], |_| None), "ping", None, None)
+    run_sequential(sink, &state, &s.url(), rows_for(&["a".into(), "b".into()], &[], |_| None), "ping", None, None)
         .await.expect("run_sequential ok");
 
     let log = log.lock().unwrap();
@@ -66,7 +66,7 @@ async fn done_payload_carries_a_timeline_matching_token_count() {
         .with_status(200).with_body(OK_BODY).create_async().await;
     let (sink, log) = recording_sink();
     let state = CompareRunState::default();
-    run_sequential(sink, &state, &s.url(), rows_for(&["a".into()], |_| None), "ping", None, None)
+    run_sequential(sink, &state, &s.url(), rows_for(&["a".into()], &[], |_| None), "ping", None, None)
         .await.expect("ok");
     let log = log.lock().unwrap();
     let done = log.iter().find(|(n, _)| n == EVENT_COMPARE_DONE).expect("done");
@@ -85,7 +85,7 @@ async fn token_payload_carries_model_id_and_model_name() {
         .with_status(200).with_body(OK_BODY).create_async().await;
     let (sink, log) = recording_sink();
     let state = CompareRunState::default();
-    run_sequential(sink, &state, &s.url(), rows_for(&["llama3.2:1b".into()], |_| None), "ping", None, None)
+    run_sequential(sink, &state, &s.url(), rows_for(&["llama3.2:1b".into()], &[], |_| None), "ping", None, None)
         .await.expect("ok");
     let log = log.lock().unwrap();
     let tok = log.iter().find(|(n, _)| n == EVENT_COMPARE_TOKEN).expect("token");
