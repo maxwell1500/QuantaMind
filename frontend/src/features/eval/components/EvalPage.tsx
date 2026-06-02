@@ -7,6 +7,7 @@ import { useEvalRun } from "../hooks/useEvalRun";
 import { EvalRow } from "./EvalRow";
 import { ToolCallPanel } from "./ToolCallPanel";
 import { DatasetBar } from "./DatasetBar";
+import { TemplatePanel } from "../../models/components/card/TemplatePanel";
 import { servesModelsByName, SINGLE_MODEL_NOTE } from "../../../shared/models/backendSupport";
 
 /// The Eval tab: run the bundled deterministic eval suite against an installed
@@ -73,6 +74,11 @@ export function EvalPage() {
       )}
       {error && (
         <p className="text-xs text-red-600" data-testid="eval-error">{error}</p>
+      )}
+      {selected && (
+        <div className="border rounded p-2" data-testid="eval-inspect">
+          <TemplatePanel model={selected.name} backend={selected.backend} />
+        </div>
       )}
       <div>
         {tasks.map((t) => (
