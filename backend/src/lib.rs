@@ -48,6 +48,7 @@ pub fn run() {
             commands::settings::model_settings::get_model_settings,
             commands::settings::model_settings::set_model_temperature,
             commands::models::models::list_models,
+            commands::models::model_inspect::inspect_model,
             commands::models::models_pull::pull_model,
             commands::models::models_pull::cancel_pull,
             commands::ollama::ollama_start::start_ollama,
