@@ -23,6 +23,19 @@ function qualityText(score: QuantScore | undefined, running: boolean): string {
   return `${score.passed}/${score.total}`;
 }
 
+/// The headline differentiator: the per-quant tool-call composite as a single
+/// line, e.g. "Q4_K_M 71% · Q8_0 88%". Skips quants with no score (null/absent)
+/// so a backend error never shows a fabricated number.
+export function toolcallSpread(
+  variants: { name: string; quantization: string }[],
+  scores: Record<string, number | null>,
+): string | null {
+  const parts = variants
+    .filter((v) => typeof scores[v.name] === "number")
+    .map((v) => `${v.quantization} ${Math.round((scores[v.name] as number) * 100)}%`);
+  return parts.length ? parts.join(" · ") : null;
+}
+
 /// The Quant tab: pick a model that has several installed quantizations, and
 /// compare them — recommendation, per-quant size/fit, eval quality (pass-rate),
 /// and a hand-off to the Bench for speed/VRAM.
@@ -119,6 +132,13 @@ export function QuantPage() {
       )}
       {rec && !rec.pick && (
         <p data-testid="quant-no-rec" className="text-sm text-gray-600">{rec.why}</p>
+      )}
+
+      {group && toolcallSpread(group.variants, toolcall.scores) && (
+        <p data-testid="quant-toolcall-spread" className="text-xs text-gray-700">
+          <span className="text-gray-500">Tool-call spread: </span>
+          {toolcallSpread(group.variants, toolcall.scores)}
+        </p>
       )}
 
       {group && (
