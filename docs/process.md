@@ -402,7 +402,7 @@ green + `cargo clippy` error-free; 560 frontend (vitest) + `tsc`; `pnpm build`
 succeeds. Shipped on branch `phase-4/per-token-timing`. Live GUI verification
 pending (same gate as earlier phases).
 
-### Phase 5 — v0.5 Quantization & Backends (in progress)
+### Phase 5 — v0.5 Quantization & Backends (complete)
 
 Broaden *which* models and backends users can run, and help them pick the right
 one. Built one step at a time.
@@ -443,9 +443,13 @@ one. Built one step at a time.
   state-derived (`mlx_endpoint()`), so health/discovery/dispatch follow it (no
   hardcoded `:8082`). Set `QUANTAMIND_MLX_SERVER` to override the executable
   path. (AWQ variants + resumable multi-file pulls deferred.)
-- **5.3 Quantization comparison view.** Run one model across quants
-  (Q4_K_M/Q5_K_M/Q8_0) side-by-side via the compare runner; show quality (mini
-  eval), speed, size, VRAM.
+- **5.3 Quantization comparison (done).** On the **Quant** tab, a chosen model's
+  installed quants compare side-by-side: **size** + hardware **fit** (static),
+  and **quality** = the 5.4 eval suite run per variant → a per-quant pass-rate
+  (a variant whose backend errors is marked "error", never a misleading 0). A
+  **"Compare speed in Bench →"** button loads the variants into the compare
+  store and jumps to the Bench for **speed/TTFT/VRAM** (reusing the existing
+  backend-aware compare runner from 5.6 rather than rebuilding metrics).
 - **5.4 Built-in mini-eval suite (done).** Bundled `docs/evals/*.yaml` tasks
   (classification, reasoning, extraction, schema) run against any installed
   model from the **Eval** tab → a pass-rate + per-task pass/fail. **Scoring is
