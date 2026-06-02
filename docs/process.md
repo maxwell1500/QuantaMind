@@ -499,7 +499,27 @@ one. Built one step at a time.
   mean of available. The greedy extractor handles arrays AND bare sequential
   objects; parallel scoring is length-guarded 1:1. Surfaced on the **Eval** tab
   (`ToolCallPanel`) and as a per-quant spread in the **Quant** view.
-  `inference/eval/toolcall/` (Tauri-free); custom task files deferred.
+  `inference/eval/toolcall/` (Tauri-free). The per-quant spread is a one-line
+  headline in the **Quant** view (e.g. `Q4_K_M 71% · Q8_0 88%`).
+
+- **5.9 Custom-eval manager (done).** The suite is dynamic: run the curated
+  built-in set **or** your own authored collections. The runner is
+  **storage-decoupled** — `run_toolcall_eval(model, backend, tasks)` is always
+  handed a `Vec<ToolTask>` (built-in via `get_builtin_tasks`, or a loaded
+  collection) and never touches files. Collections are one **`.json` per file**
+  under `app_config_dir/evals/` (portable, VCS-friendly), with Rust-owned CRUD +
+  a **path-only import** (`import_custom_collection(source_path)` reads, size-caps
+  at 1 MiB, and validates — the frontend never reads file bytes across IPC).
+  **`validate_tasks` is the single backend-side trust boundary** for *any* task
+  source (built-in, saved, imported, hand-edited): non-empty tools, known
+  category, a JSON-Schema `parameters` block (validated via a strict serde
+  struct), category⇔`expected` coherence, and calls only to offered tools — bad
+  input → `AppError::InvalidTaskSchema` naming the field. Authoring is a plain
+  textarea + **Insert Example** (one task per shape) + **Check JSON** (Zod, UX
+  only). `tools[].parameters` adopts the nested **JSON-Schema** shape developers
+  paste from real tool defs. `commands/eval/eval_registry.rs` +
+  `persistence/evals.rs`; UI in `features/eval/` (`DatasetBar`, `EvalEditor`,
+  `useEvalRegistryStore`).
 
 ### Phase 6+
 

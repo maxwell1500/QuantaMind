@@ -220,8 +220,54 @@ an agent — entirely offline and deterministic. Read the scores with these cave
   100% args but 50% parse" reads correctly as *"reasoning is fine, formatting is
   brittle"* — the #1 local-agent failure. A metric shows **n/a** (not 0) when no
   task exercises it. An unreachable backend → **"Not available"**, never a score.
-- **Custom tasks** (your own tool fixtures) are a planned extension; today the
-  bundled set is fixed.
+- **Custom tasks** — author your own collections in the **Eval** tab (see the
+  contract below). The runner treats built-in and custom tasks identically.
+
+## Custom-eval collections {#custom-evals}
+
+Run the curated built-in suite or your own task collections. Each collection is a
+JSON **array of `ToolTask`** objects, saved as one `.json` file under
+`app_config_dir/evals/` (portable — commit or send the file to share). Author in
+the **Eval** tab (Insert Example → edit → Check JSON → Save) or **Import** an
+existing file (the app reads it by path, caps it at 1 MiB, and validates it).
+
+A `ToolTask`:
+
+```json
+{
+  "id": "weather-paris",
+  "category": "single | parallel | select | abstain",
+  "prompt": "What's the weather in Paris?",
+  "tools": [
+    {
+      "name": "get_weather",
+      "description": "Get the current weather for a city",
+      "parameters": {
+        "type": "object",
+        "properties": { "city": { "type": "string", "description": "City name" } },
+        "required": ["city"]
+      }
+    }
+  ],
+  "expected": { "type": "call", "name": "get_weather", "args": { "city": "Paris" } }
+}
+```
+
+`tools[].parameters` is a **JSON-Schema object** — the shape you already paste
+from real tool definitions. `expected` has three shapes (internally tagged):
+
+- **`{ "type": "call", "name": …, "args": {…} }`** — exactly one tool call.
+- **`{ "type": "parallel", "calls": [ {…}, … ] }`** — several at once (scored as
+  an order-independent set).
+- **`{ "type": "no_call" }`** — abstention: the model should *not* call a tool
+  (e.g. a general-knowledge question with only an unrelated tool offered).
+
+Every collection is validated **server-side** regardless of source — a
+hand-edited or imported file with an unknown category, a malformed `parameters`
+block, a category that disagrees with `expected`, or a call to a tool the task
+doesn't offer is rejected as `invalid_task_schema`, naming the offending field.
+The in-app "Check JSON" button mirrors this for fast feedback but is not the
+trust boundary.
 
 ## Comparing across models/quants needs Ollama {#multi-model-ollama-only}
 

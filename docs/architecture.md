@@ -64,10 +64,12 @@ HTTP to a local Ollama server.
   **Tauri-free and must not import `crate::commands`** — when it must report
   progress it takes a sink trait (see [Layering](#layering)), not an `AppHandle`.
 - `metrics/` — measurements: TTFT, tokens/sec, VRAM.
-- `persistence/` — YAML/JSON read+write of prompts and history. The shared GGUF
-  weights folder resolves via `UserSettings.models_folder` →
-  `storage_disk::gguf_dir_resolved` (`UserSettingsState::weights_dir`); HF + local
-  installs land there for llama.cpp and import into Ollama when reachable.
+- `persistence/` — YAML/JSON read+write of prompts and history, plus `evals.rs`
+  (custom tool-call eval collections: one `.json` per collection, name-sanitised,
+  size-capped, validated on every read/write). The shared GGUF weights folder
+  resolves via `UserSettings.models_folder` → `storage_disk::gguf_dir_resolved`
+  (`UserSettingsState::weights_dir`); HF + local installs land there for
+  llama.cpp and import into Ollama when reachable.
 - `validation/` — schemas. Shared by commands and persistence.
 - `errors.rs` — single `AppError` enum. No `unwrap()` outside tests.
 
@@ -249,7 +251,12 @@ one folder per commit, behavior unchanged).
   `status/` (status bar, ollama control, errors)
 - **frontend `shared/ipc/`** (was 26 files), grouped by domain: `core/` (client,
   error, errorInfo, timeout, types) · `events/` (event names + payload zod
-  schemas) · `compare/` · `models/` · `workspace/` · `settings/` · `system/`
+  schemas) · `compare/` · `models/` · `workspace/` · `settings/` · `system/` ·
+  `eval/` (`evals`, `toolcall`, `registry` — the custom-eval CRUD + ToolTask zod)
+- **custom-eval registry** spans the layers by responsibility: the storage-free
+  runner takes a `Vec<ToolTask>`; `persistence/evals.rs` owns file I/O;
+  `commands/eval/eval_registry.rs` is the thin CRUD + path-only import; UI lives
+  in `features/eval/` (`DatasetBar`, `EvalEditor`, `useEvalRegistryStore`).
 
 ### Rules for a split
 
