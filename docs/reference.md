@@ -189,8 +189,11 @@ so "Downloading weights…" can last a few minutes), and the model appears in th
 dropdown once it's up.
 
 **Finding MLX repos:** the **Models → HuggingFace** tab has a **GGUF / MLX**
-toggle. GGUF (the default) searches repos tagged `gguf` and downloads a file;
-MLX searches repos tagged `mlx` (mostly `mlx-community`) and, on selecting one,
+toggle. GGUF (the default) keeps any repo that actually contains a `.gguf` file
+(via the search API's `full=true` file list — not the `gguf` tag, which valid
+mirrors often omit) and downloads a file; MLX searches repos tagged `mlx`
+(mostly `mlx-community` — safetensors have no `.gguf`-style extension to match
+on) and, on selecting one,
 fills the repo into **Start MLX** and switches you to the workspace — there's no
 separate download step, since `mlx_lm.server` fetches the repo on Start. MLX
 models are never downloaded through the GGUF file flow.

@@ -9,14 +9,15 @@ async fn search_returns_parsed_hits_with_query_params_set() {
         .mock("GET", "/api/models")
         .match_query(Matcher::AllOf(vec![
             Matcher::UrlEncoded("search".into(), "llama".into()),
+            Matcher::UrlEncoded("full".into(), "true".into()),
             Matcher::UrlEncoded("sort".into(), "downloads".into()),
             Matcher::UrlEncoded("direction".into(), "-1".into()),
             Matcher::UrlEncoded("limit".into(), "30".into()),
         ]))
         .with_status(200)
         .with_body(r#"[
-            {"id":"bartowski/Llama-GGUF","downloads":1000,"likes":50,"tags":["gguf","llama"],"lastModified":"2024-09-25T00:00:00.000Z"},
-            {"id":"other/Model-GGUF","downloads":42,"likes":3,"tags":["gguf"]}
+            {"id":"bartowski/Llama-GGUF","downloads":1000,"likes":50,"tags":["gguf","llama"],"lastModified":"2024-09-25T00:00:00.000Z","siblings":[{"rfilename":"model.Q4_K_M.gguf"}]},
+            {"id":"other/Model-GGUF","downloads":42,"likes":3,"tags":["gguf"],"siblings":[{"rfilename":"x.gguf"}]}
         ]"#)
         .create_async()
         .await;
@@ -32,20 +33,22 @@ async fn search_returns_parsed_hits_with_query_params_set() {
 }
 
 #[tokio::test]
-async fn drops_results_that_do_not_carry_the_gguf_tag() {
+async fn gguf_kind_keeps_repos_by_gguf_file_not_by_tag() {
+    // The filter is file-based: a repo WITHOUT the gguf tag but WITH a .gguf
+    // file is kept; a repo with no .gguf file is dropped regardless of tags.
     let mut s = Server::new_async().await;
     let _m = s.mock("GET", "/api/models")
         .match_query(Matcher::Any)
         .with_status(200)
         .with_body(r#"[
-            {"id":"a/GGUF","downloads":1,"likes":0,"tags":["gguf"]},
-            {"id":"b/no-gguf","downloads":1,"likes":0,"tags":["transformers"]},
-            {"id":"c/GGUF","downloads":1,"likes":0,"tags":["GGUF"]}
+            {"id":"a/tagged","downloads":1,"likes":0,"tags":["gguf"],"siblings":[{"rfilename":"a.gguf"}]},
+            {"id":"b/untagged-has-gguf","downloads":1,"likes":0,"tags":["transformers"],"siblings":[{"rfilename":"README.md"},{"rfilename":"weights.GGUF"}]},
+            {"id":"c/no-gguf-file","downloads":1,"likes":0,"tags":["gguf"],"siblings":[{"rfilename":"config.json"}]}
         ]"#)
         .create_async().await;
     let hits = search_models(&s.url(), "x", 30, RepoKind::Gguf).await.expect("ok");
     let ids: Vec<&str> = hits.iter().map(|h| h.id.as_str()).collect();
-    assert_eq!(ids, vec!["a/GGUF", "c/GGUF"], "non-gguf hit must be filtered");
+    assert_eq!(ids, vec!["a/tagged", "b/untagged-has-gguf"], "keep by .gguf file, drop the file-less repo");
 }
 
 #[tokio::test]

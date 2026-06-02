@@ -57,7 +57,7 @@ export function HuggingFaceTab() {
         <input
           type="search"
           aria-label="Search Hugging Face"
-          placeholder={kind === "mlx" ? "Search Hugging Face models tagged MLX…" : "Search Hugging Face models tagged GGUF…"}
+          placeholder={kind === "mlx" ? "Search Hugging Face models tagged MLX…" : "Search Hugging Face models with GGUF files…"}
           value={query}
           onChange={(e) => setQuery(e.target.value)}
           className="flex-1 border rounded px-2 py-1 text-sm"
