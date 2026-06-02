@@ -467,8 +467,13 @@ one. Built one step at a time.
   rows wrongly went to Ollama). When the required backend isn't healthy, Run is
   **blocked with a hint** ("Start the MLX backend to run this model") rather than
   rerouting (`features/workspace/state/runHint.ts`).
-- **5.7 Model card viewer.** Inline HF model-card render (description, license,
-  recommended use) in the model browser.
+- **5.7 Model card viewer (done).** A collapsible "Model card" section in the HF
+  repo detail fetches the repo's `README.md` (`hf_model_card` → strips YAML
+  frontmatter; 404 → "no model card", not an error) and renders it with a flat,
+  line-by-line transformer (`ModelCardReader`). **Crash-safe:** every line is
+  React string children (auto-escaped) — never `dangerouslySetInnerHTML`; raw
+  HTML / `<script>` lines render as inert `<pre>` text, so heavy READMEs degrade
+  without breaking the DOM.
 
 ### Phase 6+
 

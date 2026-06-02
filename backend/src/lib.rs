@@ -36,6 +36,7 @@ pub fn run() {
             commands::gguf::gguf_cmd::install_local_gguf,
             commands::hf::hf_browse::hf_search,
             commands::hf::hf_browse::hf_repo_files,
+            commands::hf::hf_card::hf_model_card,
             commands::hf::hf_install::install_hf_gguf,
             commands::hf::hf_install::cancel_hf_install,
             commands::system::health::check_ollama_health,

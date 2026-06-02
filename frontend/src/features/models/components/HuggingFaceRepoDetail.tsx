@@ -6,6 +6,7 @@ import { useHardwareSnapshot } from "../hooks/useHardwareSnapshot";
 import { hfVariantModelName } from "../format";
 import { HfVariantTable } from "./HfVariantTable";
 import { HfInstallStatus } from "./HfInstallStatus";
+import { ModelCardSection } from "./card/ModelCardSection";
 
 type Props = { repo: string; onBack: () => void };
 
@@ -40,6 +41,7 @@ export function HuggingFaceRepoDetail({ repo, onBack }: Props) {
         ← Back to search
       </button>
       <div className="text-sm font-medium break-all">{repo}</div>
+      <ModelCardSection repo={repo} />
       {loadStatus === "loading" && (
         <div data-testid="hf-detail-loading" className="text-xs text-gray-500">
           Loading variants…

@@ -25,3 +25,10 @@ export async function hfRepoFiles(repo: string): Promise<HfRepoFile[]> {
   const raw = await invoke("hf_repo_files", { repo });
   return z.array(HfRepoFileSchema).parse(raw);
 }
+
+/// A repo's model card (README.md body, frontmatter stripped), or null when the
+/// repo has none.
+export async function hfModelCard(repo: string): Promise<string | null> {
+  const raw = await invoke("hf_model_card", { repo });
+  return z.string().nullable().parse(raw);
+}
