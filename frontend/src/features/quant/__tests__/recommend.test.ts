@@ -23,6 +23,16 @@ describe("groupQuantVariants", () => {
     expect(groups[0].key).toBe("Llama 7B");
     expect(groups[0].variants.map((v) => v.quantization)).toEqual(["Q4_K_M", "Q8_0"]); // size-sorted
   });
+
+  it("dedupes the same quant installed under two backends (no double rows)", () => {
+    const groups = groupQuantVariants([
+      model("Q2_K", 1), // e.g. llama.cpp GGUF
+      { ...model("Q2_K", 1), name: "llama-7b:q2_k", backend: "ollama" }, // same quant via Ollama
+      model("Q3_K_L", 1.4),
+      { ...model("Q3_K_L", 1.4), name: "llama-7b:q3_k_l", backend: "ollama" },
+    ]);
+    expect(groups[0].variants.map((v) => v.quantization)).toEqual(["Q2_K", "Q3_K_L"]); // 2, not 4
+  });
 });
 
 describe("recommendQuant", () => {

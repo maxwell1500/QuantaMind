@@ -14,13 +14,16 @@ export interface QuantGroup {
 
 /// Group installed models into "same base model, different quant" sets, keyed by
 /// family + parameter size. Models missing that metadata (or a quant label) are
-/// skipped. Variants are sorted smallest-first. Pure.
+/// skipped. **One row per quantization** — the same quant installed under two
+/// backends (e.g. imported into Ollama *and* a llama.cpp GGUF on disk) is
+/// deduped, first occurrence wins. Variants are sorted smallest-first. Pure.
 export function groupQuantVariants(models: InstalledModelInfo[]): QuantGroup[] {
   const by = new Map<string, QuantVariant[]>();
   for (const m of models) {
     if (!m.family || !m.parameter_size || !m.quantization) continue;
     const key = `${m.family} ${m.parameter_size}`;
     const arr = by.get(key) ?? [];
+    if (arr.some((v) => v.quantization === m.quantization)) continue;
     arr.push({ name: m.name, quantization: m.quantization, sizeBytes: m.size_bytes, backend: m.backend });
     by.set(key, arr);
   }
