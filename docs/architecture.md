@@ -245,9 +245,13 @@ one folder per commit, behavior unchanged).
   `create/` · `compare/` · `eval/` (deterministic mini-eval task + scoring, plus
   `eval/toolcall/` — prompt-based, single-turn, structural tool-call eval) ·
   `http/` (http + ndjson) · `backend/` (trait + kind) · `generate/` (spec +
-  options) · `chat/` (templates). `ollama/` also has `ollama_show.rs` — the
-  Tauri-free `/api/show` client (template, capabilities, raw `model_info`) behind
-  `commands/models/model_inspect.rs`; frontend IPC in `shared/ipc/system/inspect.ts`.
+  options) · `chat/` (templates) · `vram_math.rs` (canonical f16 KV-cache formula,
+  unit-tested). `ollama/` also has `ollama_show.rs` — the Tauri-free `/api/show` client
+  (template, capabilities, raw `model_info`) behind `commands/models/model_inspect.rs`
+  (which also parses `ModelInspect.dims` + exposes `estimate_kv_cache_bytes`); frontend IPC
+  in `shared/ipc/system/inspect.ts`. The Quant tab's KV-aware VRAM fit / OOM gate lives in
+  `features/quant` (`useVramFit`, `QuantPage`, `fit.ts::fitOfNeed`); the curated memory-bandwidth
+  lookup is in `commands/system/hardware_mem.rs`.
 - **frontend `features/workspace/components/`** (was 17 files): `model-select/` ·
   `prompt/` (editor + params) · `run/` (single/multi + controls + output) ·
   `status/` (status bar, ollama control, errors)

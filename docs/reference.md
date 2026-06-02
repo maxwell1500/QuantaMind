@@ -287,6 +287,27 @@ The **Eval** tab inspects the selected installed model via Ollama's `/api/show`:
 **Ollama-only.** The template/capabilities come from `/api/show`; on llama.cpp /
 MLX the panel shows "Not available — Ollama only" rather than guessing.
 
+## VRAM & context fit {#vram-fit}
+
+The Quant tab predicts whether a model **plus its context window** fits in memory — the failure
+that silently OOMs or spills to CPU. Pick a context length (4K/8K/32K/128K, capped at the model's
+max) and each quant's fit becomes:
+
+```
+required = base_weights + KV_cache
+KV_cache = 2 (K+V) × layers × kv_heads × head_dim × 2 (f16 bytes) × context_length
+```
+
+(`head_dim = embedding_length / head_count`.) The KV cache grows **linearly with context** and is
+independent of the weight quantization — so a model that fits at 4K can OOM at 128K. When `required`
+exceeds available memory the quant shows an **"OOM Risk"** badge and can't be run at that context;
+the recommendation honours the same gate.
+
+- **Dims come from Ollama `/api/show`.** On llama.cpp / MLX the predictor falls back to a
+  file-size × 1.3 heuristic, **flagged approximate** (`~`).
+- **Speed is memory-bandwidth-bound, not FLOPS-bound.** Token throughput tracks GB/s, so the tab
+  shows the chip's nominal bandwidth (curated table) or "Not available" — never a guessed number.
+
 ## Comparing across models/quants needs Ollama {#multi-model-ollama-only}
 
 Anything that runs *several models* in one go — the **Quant** tab's quality and

@@ -532,6 +532,18 @@ one. Built one step at a time.
   `commands/models/model_inspect.rs`; UI `features/models/.../TemplatePanel.tsx` on
   the Eval tab. First of the **5.10+ diagnostics** band (metadata + local math).
 
+- **5.11 KV-cache VRAM predictor + bandwidth (done).** Predicts VRAM as **base weights + KV
+  cache(context)** so users stop guessing whether a model+context fits. The canonical f16 KV
+  formula lives in `inference/vram_math.rs` (`2·layers·kv_heads·head_dim·2·ctx`, unit-tested:
+  Llama-3-8B @ 8k = 1 GiB) and is exposed via `estimate_kv_cache_bytes`; the Quant tab's
+  **context-length selector** (4K/8K/32K/128K, capped at the model max) drives it. Dims come from
+  Ollama `/api/show` `model_info` (on `ModelInspect.dims`); non-Ollama falls back to the file-size
+  ×1.3 heuristic, flagged **approximate**. A quant whose `base + KV` exceeds available memory gets an
+  **"OOM Risk"** badge and is **blocked from running** (only when hardware is known); the
+  recommendation respects the same gate. A note states local-LLM speed is **memory-bandwidth-bound**,
+  showing the curated GB/s or "Not available". `vram_math.rs` + `hardware_mem.rs` (bandwidth) +
+  `features/quant` (`useVramFit`, `QuantPage`, `fit.ts::fitOfNeed`).
+
 ### Phase 6+
 
 Owners flesh out the next phase's section here when the current lands.
