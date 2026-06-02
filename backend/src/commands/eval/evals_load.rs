@@ -44,12 +44,18 @@ fn evals_dir(app: &tauri::AppHandle) -> Option<PathBuf> {
     None
 }
 
-#[tauri::command]
-pub fn list_evals(app: tauri::AppHandle) -> Result<Vec<EvalTask>, AppError> {
-    match evals_dir(&app) {
+/// All bundled eval tasks (empty when the dir can't be located). Shared by the
+/// `list_evals` command and the eval runner.
+pub fn load_all(app: &tauri::AppHandle) -> AppResult<Vec<EvalTask>> {
+    match evals_dir(app) {
         Some(dir) => read_evals(&dir),
         None => Ok(Vec::new()),
     }
+}
+
+#[tauri::command]
+pub fn list_evals(app: tauri::AppHandle) -> Result<Vec<EvalTask>, AppError> {
+    load_all(&app)
 }
 
 #[cfg(test)]

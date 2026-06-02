@@ -72,6 +72,7 @@ pub fn run() {
             commands::bench::bench_config::list_bench_configs,
             commands::prompt_templates::templates::list_prompt_templates,
             commands::eval::evals_load::list_evals,
+            commands::eval::eval_run::run_eval_task,
             commands::workspace::workspace_prompts::load_prompt,
             commands::workspace::workspace_prompts::save_prompt,
             commands::workspace::workspace_prompts::create_prompt,
