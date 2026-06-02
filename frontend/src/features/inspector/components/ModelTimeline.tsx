@@ -8,6 +8,7 @@ import { TokenTimeline } from "./TokenTimeline";
 import { LatencyHistogram } from "./LatencyHistogram";
 import { TtftBreakdown } from "./TtftBreakdown";
 import { VramBar } from "./VramBar";
+import { ContextBudgetBar } from "./ContextBudgetBar";
 import { ColdWarmPanel } from "./ColdWarmPanel";
 import { RegressionAlert } from "./RegressionAlert";
 
@@ -37,6 +38,7 @@ export function ModelTimeline({ row, width, vram, history = [], deviceTotalBytes
       </div>
       <TtftBreakdown ttftMs={m?.ttft_ms ?? null} stats={m?.stats} />
       <VramBar entry={vram} deviceTotalBytes={deviceTotalBytes} unified={unified} />
+      <ContextBudgetBar promptTokens={m?.stats?.prompt_eval_count ?? null} contextLength={vram?.context_length ?? null} />
       <ColdWarmPanel model={row.model} history={history} />
       <RegressionAlert model={row.model} history={history} />
       <div className="text-xs text-gray-500 h-4" data-testid={`readout-${row.model}`}>
