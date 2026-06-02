@@ -2,6 +2,7 @@ use crate::errors::AppError;
 use crate::inference::backend::backend_kind::BackendKind;
 use crate::inference::backend::endpoint;
 use crate::inference::ollama::ollama_show::show_model;
+use crate::inference::vram_math::calculate_kv_cache_bytes;
 use serde::Serialize;
 
 /// Model metadata for the inspector / template guard. `available` is false for
@@ -72,6 +73,20 @@ pub async fn inspect_model(
         is_base_guess,
         base_reason,
     })
+}
+
+/// Estimate the f16 KV-cache size (bytes) for a model's dimensions at a given
+/// context length. Thin wrapper over the canonical formula so the frontend has
+/// one source of truth (the dims come from `inspect_model`).
+#[tauri::command]
+pub fn estimate_kv_cache_bytes(
+    layers: u64,
+    head_count: u64,
+    head_count_kv: u64,
+    embedding_length: u64,
+    context_length: u64,
+) -> u64 {
+    calculate_kv_cache_bytes(layers, head_count, head_count_kv, embedding_length, context_length)
 }
 
 #[cfg(test)]
