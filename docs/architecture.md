@@ -245,7 +245,9 @@ one folder per commit, behavior unchanged).
   `create/` · `compare/` · `eval/` (deterministic mini-eval task + scoring, plus
   `eval/toolcall/` — prompt-based, single-turn, structural tool-call eval) ·
   `http/` (http + ndjson) · `backend/` (trait + kind) · `generate/` (spec +
-  options) · `chat/` (templates)
+  options) · `chat/` (templates). `ollama/` also has `ollama_show.rs` — the
+  Tauri-free `/api/show` client (template, capabilities, raw `model_info`) behind
+  `commands/models/model_inspect.rs`; frontend IPC in `shared/ipc/system/inspect.ts`.
 - **frontend `features/workspace/components/`** (was 17 files): `model-select/` ·
   `prompt/` (editor + params) · `run/` (single/multi + controls + output) ·
   `status/` (status bar, ollama control, errors)

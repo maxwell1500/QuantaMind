@@ -521,6 +521,17 @@ one. Built one step at a time.
   `persistence/evals.rs`; UI in `features/eval/` (`DatasetBar`, `EvalEditor`,
   `useEvalRegistryStore`).
 
+- **5.10 Model inspector + template/base-model guard (done).** Local diagnostics
+  from Ollama's `/api/show`: the chat **template** (rendered as inert text, never
+  injected HTML), the reported **capabilities**, and an **advisory base-model
+  guess** — flagged when the template has no chat-role markers AND `tools` isn't a
+  capability, with the **evidence** surfaced (`base_reason`) so it reads "likely
+  base — …", not an absolute claim. **Ollama-only** (the data lives in `/api/show`);
+  other backends show "Not available — Ollama only". `inference/ollama/ollama_show.rs`
+  (Tauri-free client; raw `model_info` kept for the 5.11 KV predictor) +
+  `commands/models/model_inspect.rs`; UI `features/models/.../TemplatePanel.tsx` on
+  the Eval tab. First of the **5.10+ diagnostics** band (metadata + local math).
+
 ### Phase 6+
 
 Owners flesh out the next phase's section here when the current lands.

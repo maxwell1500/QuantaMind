@@ -269,6 +269,24 @@ doesn't offer is rejected as `invalid_task_schema`, naming the offending field.
 The in-app "Check JSON" button mirrors this for fast feedback but is not the
 trust boundary.
 
+## Model inspector & template guard {#model-inspector}
+
+The **Eval** tab inspects the selected installed model via Ollama's `/api/show`:
+
+- **Chat template** — the model's Go chat template, shown verbatim as inert text
+  (never executed/injected). Use it to debug *why* prompts misbehave: a template
+  with no system/assistant roles can't honour a system prompt.
+- **Capabilities** — the features Ollama reports (`completion`, `tools`, `insert`,
+  `vision`, …). `tools` is the strongest "instruct/agent-ready" signal.
+- **Base-model advisory** — a soft flag (with its reasoning) when the metadata
+  looks like a base/text-completion model: no chat-role markers in the template
+  **and** no `tools` capability. It's a heuristic, not a verdict — the panel says
+  *why* ("no 'tools' capability; no chat-role markers"), so you can judge. A base
+  model will ignore system prompts and tool-call unreliably.
+
+**Ollama-only.** The template/capabilities come from `/api/show`; on llama.cpp /
+MLX the panel shows "Not available — Ollama only" rather than guessing.
+
 ## Comparing across models/quants needs Ollama {#multi-model-ollama-only}
 
 Anything that runs *several models* in one go — the **Quant** tab's quality and
