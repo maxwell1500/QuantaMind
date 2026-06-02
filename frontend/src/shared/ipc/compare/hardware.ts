@@ -23,6 +23,8 @@ export const HardwareSnapshotSchema = z.object({
   os_version: z.string().nullable().optional(),
   arch: z.string().optional(),
   gpu: GpuInfoSchema.optional(),
+  // Nominal Apple-Silicon memory bandwidth (GB/s); null/absent → "Not available".
+  estimated_bandwidth_gbps: z.number().int().positive().nullable().optional(),
 });
 export type HardwareSnapshot = z.infer<typeof HardwareSnapshotSchema>;
 
