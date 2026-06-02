@@ -7,6 +7,9 @@ pub enum AppError {
     #[error("validation: {0}")]
     Validation(String),
 
+    #[error("invalid task schema: {0}")]
+    InvalidTaskSchema(String),
+
     #[error("not found: {0}")]
     NotFound(String),
 
@@ -27,6 +30,18 @@ pub enum AppError {
 }
 
 pub type AppResult<T> = Result<T, AppError>;
+
+impl From<std::io::Error> for AppError {
+    fn from(e: std::io::Error) -> Self {
+        AppError::Io(e.to_string())
+    }
+}
+
+impl From<serde_json::Error> for AppError {
+    fn from(e: serde_json::Error) -> Self {
+        AppError::InvalidTaskSchema(e.to_string())
+    }
+}
 
 impl AppError {
     /// Translate well-known connection failures into actionable copy.

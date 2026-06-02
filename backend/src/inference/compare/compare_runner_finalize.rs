@@ -34,6 +34,7 @@ pub(crate) fn finalize_row(
 fn app_error_split(e: &AppError) -> (String, String) {
     let (kind, m) = match e {
         AppError::Validation(m) => ("validation", m),
+        AppError::InvalidTaskSchema(m) => ("invalid_task_schema", m),
         AppError::NotFound(m) => ("not_found", m),
         AppError::Inference(m) => ("inference", m),
         AppError::Io(m) => ("io", m),
