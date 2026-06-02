@@ -195,3 +195,30 @@ dropdown once it's up.
 
 Use the in-app **Feedback** button (bottom-right). Tick "Include diagnostic info"
 so we get your app version, OS, and current model.
+
+## Tool-calling eval {#toolcall-eval}
+
+The **Eval** tab's tool-calling test measures whether a model can reliably drive
+an agent — entirely offline and deterministic. Read the scores with these caveats:
+
+- **Prompt-based, not native function-calling.** The tool schemas are injected
+  into the system prompt and the JSON call is parsed from the completion text.
+  This is backend-agnostic (identical on Ollama / llama.cpp / MLX) and mirrors
+  how many local-agent builders work — but the numbers are **not comparable to
+  BFCL / native-FC leaderboards** (which use a `tools` field + native
+  `tool_calls`). Treat them as a within-app, like-for-like comparison.
+- **Structural scoring, not execution.** A call is judged by matching the tool
+  **name + arguments structurally** (BFCL's validated proxy), never by running
+  the function. So scores reflect *format + selection correctness*, not runtime
+  success.
+- **Single-turn, greedy (temp 0), ~13-task fixture.** No multi-turn / agent
+  loops; greedy decoding makes scores reproducible and comparable across quants
+  (and sidesteps MLX's missing seed). The fixture is small and curated —
+  **indicative, not leaderboard-grade.**
+- **The four metrics are independent.** `parse_rate` (did it emit a parseable
+  call when one was needed) is separate from tool/args accuracy, so "100% tool ·
+  100% args but 50% parse" reads correctly as *"reasoning is fine, formatting is
+  brittle"* — the #1 local-agent failure. A metric shows **n/a** (not 0) when no
+  task exercises it. An unreachable backend → **"Not available"**, never a score.
+- **Custom tasks** (your own tool fixtures) are a planned extension; today the
+  bundled set is fixed.

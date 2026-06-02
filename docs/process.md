@@ -486,6 +486,20 @@ one. Built one step at a time.
   the description, and an **"Open full card on Hugging Face →"** button (shell).
   Crash-proof by construction (controlled values, never injected HTML); 404 →
   "no model card", not an error.
+- **5.8 Tool-calling reliability eval (done).** The agentic sibling of 5.4: which
+  model/quant/backend can drive an agent, measured **offline, deterministically,
+  judge-free**. **Prompt-based** (tool schemas in the system message, parse the
+  JSON call from the completion — backend-agnostic), **single-turn**, **greedy
+  (temp 0)**. Scoring is **BFCL-style structural** (name + structural args, not
+  execution) over a curated ~13-task fixture (single / select / parallel /
+  abstain), labelled *indicative, prompt-based, structural*. Two metrics kept
+  separate via **cascaded conditional denominators** so a format error doesn't
+  bleed into reasoning: `parse_rate` (over call-expected tasks), `tool_selection`,
+  `args`, `abstain` — each `Option` (n/a, not 0, on a 0 denominator); composite =
+  mean of available. The greedy extractor handles arrays AND bare sequential
+  objects; parallel scoring is length-guarded 1:1. Surfaced on the **Eval** tab
+  (`ToolCallPanel`) and as a per-quant spread in the **Quant** view.
+  `inference/eval/toolcall/` (Tauri-free); custom task files deferred.
 
 ### Phase 6+
 
