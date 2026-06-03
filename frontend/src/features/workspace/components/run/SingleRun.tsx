@@ -50,7 +50,7 @@ export function SingleRun({ model }: { model: string | null }) {
   const canRun = !!model && prompt.trim().length > 0 && !blockedHint;
   const runNow = () => {
     if (!model) return;
-    useNavStore.getState().setTopView("analysis");
+    useNavStore.getState().setTopView("compare");
     void start(model, prompt, system, current?.params, currentPath, current?.name);
   };
   useWorkspaceHotkeys({

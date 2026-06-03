@@ -20,7 +20,7 @@ export function MultiRun() {
       setSystemPrompt(current.system);
       setBaseParams(current.params);
     }
-    useNavStore.getState().setTopView("analysis");
+    useNavStore.getState().setTopView("compare");
     void start();
   };
 

@@ -80,7 +80,7 @@ describe("Phase 1 E2E smoke — edit → run → re-run", () => {
     fireEvent.click(await screen.findByTestId("model-dropdown"));
     fireEvent.click(await screen.findByTestId("model-option-llama3.2:1b"));
 
-    // 2. RUN — navigates to Analysis; the response streams into the M1 column
+    // 2. RUN — navigates to Compare; the response streams into the M1 column
     fireEvent.click(screen.getByRole("button", { name: /^run$/i }));
     await waitFor(() =>
       expect(invoke).toHaveBeenCalledWith("run_prompt", {
@@ -89,7 +89,7 @@ describe("Phase 1 E2E smoke — edit → run → re-run", () => {
         backend: "ollama",
       }),
     );
-    expect(useNavStore.getState().topView).toBe("analysis");
+    expect(useNavStore.getState().topView).toBe("compare");
     act(() => {
       fire("prompt-token", { text: "The " });
       fire("prompt-token", { text: "sky " });
@@ -128,7 +128,7 @@ describe("Phase 1 E2E smoke — edit → run → re-run", () => {
     fireEvent.click(await screen.findByTestId("model-dropdown"));
     fireEvent.click(await screen.findByTestId("model-option-llama3.2:1b"));
     fireEvent.click(screen.getByRole("button", { name: /^run$/i }));
-    expect(useNavStore.getState().topView).toBe("analysis");
+    expect(useNavStore.getState().topView).toBe("compare");
     act(() => fire("prompt-token", { text: "partial" }));
     // Cancel from the Workspace (where the run trigger lives).
     fireEvent.click(screen.getByTestId("view-tab-workspace"));
