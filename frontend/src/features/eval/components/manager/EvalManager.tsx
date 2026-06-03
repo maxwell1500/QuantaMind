@@ -31,7 +31,7 @@ export function EvalManager({
   onNewCollection = () => {},
   onEditCollection = () => {},
 }: Partial<EvalManagerProps> = {}) {
-  const { presets, collections, selected, tasks, init, select, isPreset, importFile, remove } =
+  const { presets, collections, selected, tasks, init, select, isPreset, importFile, remove, hidePreset } =
     useEvalRegistryStore();
   const list = useInstalledModelsStore((s) => s.list);
   const running = useBatchStore((s) => s.running);
@@ -92,11 +92,14 @@ export function EvalManager({
 
   const confirmDeleteCollection = async () => {
     if (!deleteTarget) return;
-    const name = deleteTarget;
+    const target = deleteTarget;
     setDeleteTarget(null);
     setError(null);
     try {
-      await remove(name);
+      // Presets live in the bundle and can't be deleted from disk — hide them
+      // from the list instead; custom collections are removed for real.
+      if (isPreset(target)) hidePreset(target);
+      else await remove(target);
     } catch (e) {
       setError(formatIpcError(e));
     }
@@ -222,16 +225,25 @@ export function EvalManager({
                   presets.map((p) => (
                     <div
                       key={p.id}
-                      onClick={() => void select(p.id)}
                       style={{
                         ...collectionItemStyle,
+                        justifyContent: "space-between",
                         color: selected === p.id ? "#3b82f6" : "#94a3b8",
                         fontWeight: selected === p.id ? 600 : 400,
                       }}
-                      data-testid={`eval-collection-item-${p.id}`}
                     >
-                      <span style={{ marginRight: 6 }}>{selected === p.id ? "•" : "-"}</span>
-                      <span>{p.label}</span>
+                      <span
+                        onClick={() => void select(p.id)}
+                        style={{ display: "flex", alignItems: "center", cursor: "pointer", flex: 1, minWidth: 0 }}
+                        data-testid={`eval-collection-item-${p.id}`}
+                      >
+                        <span style={{ marginRight: 6 }}>{selected === p.id ? "•" : "-"}</span>
+                        <span style={{ overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{p.label}</span>
+                      </span>
+                      <KebabMenu
+                        testid={`eval-collection-menu-${p.id}`}
+                        items={[{ label: "Remove from list", danger: true, onClick: () => setDeleteTarget(p.id), testid: `eval-collection-delete-${p.id}` }]}
+                      />
                     </div>
                   ))
                 )}
@@ -351,8 +363,13 @@ export function EvalManager({
 
       {deleteTarget && (
         <ConfirmDialog
-          title="Delete collection"
-          message={`Delete the collection “${deleteTarget}”? This cannot be undone.`}
+          title={isPreset(deleteTarget) ? "Remove preset" : "Delete collection"}
+          message={
+            isPreset(deleteTarget)
+              ? `Remove the built-in preset “${deleteTarget}” from the list? (It’s bundled, so you can get it back later.)`
+              : `Delete the collection “${deleteTarget}”? This cannot be undone.`
+          }
+          confirmLabel={isPreset(deleteTarget) ? "Remove" : "Delete"}
           onConfirm={() => void confirmDeleteCollection()}
           onClose={() => setDeleteTarget(null)}
         />

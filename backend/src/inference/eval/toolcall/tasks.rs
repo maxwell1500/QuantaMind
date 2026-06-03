@@ -177,6 +177,9 @@ fn validate_agentic(id: &str, tools: &[ToolSchema], spec: &AgenticSpec) -> AppRe
 const FIXTURE: &str = include_str!("tasks.json");
 const FINANCE_FIXTURE: &str = include_str!("tasks_finance.json");
 const AGENTIC_FIXTURE: &str = include_str!("tasks_agentic.json");
+const AGENTIC3_FIXTURE: &str = include_str!("tasks_agentic_3.json");
+const AGENTIC5_FIXTURE: &str = include_str!("tasks_agentic_5.json");
+const AGENTIC8_FIXTURE: &str = include_str!("tasks_agentic_8.json");
 
 /// The bundled, curated tool-call task set (single / parallel / select /
 /// abstain). Embedded at compile time — indicative, prompt-based, not a
@@ -197,10 +200,28 @@ pub fn agentic_tasks() -> Vec<ToolTask> {
     serde_json::from_str(AGENTIC_FIXTURE).expect("bundled tasks_agentic.json is valid")
 }
 
+/// Larger multi-step agentic presets (3 / 5 / 8 ordered-sequence tasks across
+/// finance / ops / devops) so you can run a real Pass^k batch without importing.
+pub fn agentic_3_tasks() -> Vec<ToolTask> {
+    serde_json::from_str(AGENTIC3_FIXTURE).expect("bundled tasks_agentic_3.json is valid")
+}
+pub fn agentic_5_tasks() -> Vec<ToolTask> {
+    serde_json::from_str(AGENTIC5_FIXTURE).expect("bundled tasks_agentic_5.json is valid")
+}
+pub fn agentic_8_tasks() -> Vec<ToolTask> {
+    serde_json::from_str(AGENTIC8_FIXTURE).expect("bundled tasks_agentic_8.json is valid")
+}
+
 /// Read-only built-in presets: `(id, label)`. The runner is still handed a
 /// `Vec<ToolTask>` — these just enumerate the bundled sets.
-pub const BUILTIN_COLLECTIONS: &[(&str, &str)] =
-    &[("curated", "Curated Suite"), ("finance", "Finance (preset)"), ("agentic", "Agentic (preset)")];
+pub const BUILTIN_COLLECTIONS: &[(&str, &str)] = &[
+    ("curated", "Curated Suite"),
+    ("finance", "Finance (preset)"),
+    ("agentic", "Agentic (preset)"),
+    ("agentic_3", "Agentic · 3 Multi-Step"),
+    ("agentic_5", "Agentic · 5 Multi-Step"),
+    ("agentic_8", "Agentic · 8 Multi-Step"),
+];
 
 /// Tasks for a built-in preset id, or `None` if unknown.
 pub fn builtin_collection(id: &str) -> Option<Vec<ToolTask>> {
@@ -208,6 +229,9 @@ pub fn builtin_collection(id: &str) -> Option<Vec<ToolTask>> {
         "curated" => Some(tasks()),
         "finance" => Some(finance_tasks()),
         "agentic" => Some(agentic_tasks()),
+        "agentic_3" => Some(agentic_3_tasks()),
+        "agentic_5" => Some(agentic_5_tasks()),
+        "agentic_8" => Some(agentic_8_tasks()),
         _ => None,
     }
 }

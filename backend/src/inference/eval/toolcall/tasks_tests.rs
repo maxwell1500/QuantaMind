@@ -58,6 +58,16 @@ fn agentic_preset_is_valid_and_all_agentic() {
 }
 
 #[test]
+fn multi_step_agentic_presets_validate_with_expected_counts() {
+    for (id, n) in [("agentic_3", 3usize), ("agentic_5", 5), ("agentic_8", 8)] {
+        let tasks = builtin_collection(id).unwrap_or_else(|| panic!("preset {id} missing"));
+        validate_tasks(&tasks).unwrap_or_else(|e| panic!("preset {id} invalid: {e}"));
+        assert_eq!(tasks.len(), n, "preset {id} task count");
+        assert!(tasks.iter().all(|t| t.category == "agentic"), "preset {id} all agentic");
+    }
+}
+
+#[test]
 fn rejects_empty_collection() {
     assert!(matches!(validate_tasks(&[]), Err(AppError::InvalidTaskSchema(_))));
 }

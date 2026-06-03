@@ -19,16 +19,36 @@ export const DEFAULT_PRESET = "curated";
 /// it only ever lives in `selected` until the user saves under a real name.
 export const NEW_COLLECTION = "__new__";
 
+/// Built-in presets can't be deleted from disk, so "removing" one just hides it
+/// from the list (persisted locally). Cleared if the user wants them all back.
+const HIDDEN_KEY = "qm-eval-hidden-presets";
+function loadHidden(): string[] {
+  try {
+    return JSON.parse(localStorage.getItem(HIDDEN_KEY) ?? "[]") as string[];
+  } catch {
+    return [];
+  }
+}
+function saveHidden(ids: string[]) {
+  try {
+    localStorage.setItem(HIDDEN_KEY, JSON.stringify(ids));
+  } catch {
+    /* no localStorage (non-browser) — hide is then session-only */
+  }
+}
+
 interface EvalRegistryStore {
-  presets: BuiltinCollectionInfo[]; // read-only built-in collections (id + label)
+  presets: BuiltinCollectionInfo[]; // read-only built-in collections (id + label), minus hidden
   collections: string[]; // user custom collection names
   selected: string; // a preset id OR a custom collection name
   tasks: ToolTask[]; // the active task set for the current selection
+  hiddenPresets: string[]; // preset ids the user removed from the list
   init: () => Promise<void>;
   startNew: () => void; // enter an editable, unsaved new-collection selection
   select: (idOrName: string) => Promise<void>;
   save: (name: string, tasks: ToolTask[]) => Promise<void>;
   remove: (name: string) => Promise<void>;
+  hidePreset: (id: string) => void; // "delete" a built-in preset (hide from list)
   importFile: (path: string) => Promise<void>;
   isPreset: (idOrName: string) => boolean;
 }
@@ -40,10 +60,19 @@ export const useEvalRegistryStore = create<EvalRegistryStore>((set, get) => ({
   collections: [],
   selected: DEFAULT_PRESET,
   tasks: [],
+  hiddenPresets: [],
   isPreset: (v) => get().presets.some((p) => p.id === v),
   init: async () => {
-    const [presets, collections] = await Promise.all([listBuiltinCollections(), listCustomCollections()]);
-    set({ presets, collections, tasks: await getBuiltinCollection(DEFAULT_PRESET), selected: DEFAULT_PRESET });
+    const hidden = loadHidden();
+    const [allPresets, collections] = await Promise.all([listBuiltinCollections(), listCustomCollections()]);
+    const presets = allPresets.filter((p) => !hidden.includes(p.id));
+    set({ presets, collections, hiddenPresets: hidden, tasks: await getBuiltinCollection(DEFAULT_PRESET), selected: DEFAULT_PRESET });
+  },
+  hidePreset: (id) => {
+    const hidden = [...get().hiddenPresets, id];
+    saveHidden(hidden);
+    set({ hiddenPresets: hidden, presets: get().presets.filter((p) => p.id !== id) });
+    if (get().selected === id) void get().select(DEFAULT_PRESET);
   },
   startNew: () => set({ selected: NEW_COLLECTION, tasks: [] }),
   select: async (v) => {

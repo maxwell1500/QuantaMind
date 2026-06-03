@@ -96,6 +96,26 @@ describe("EvalManager Sidebar Controls", () => {
     await waitFor(() => expect(remove).toHaveBeenCalledWith("my-evals"));
   });
 
+  it("removes a built-in preset from the list via its ⋯ menu", async () => {
+    const hidePreset = vi.fn();
+    useEvalRegistryStore.setState({
+      presets: [{ id: "agentic_3", label: "Agentic · 3 Multi-Step" }],
+      collections: [],
+      selected: "agentic_3",
+      tasks: sampleTasks,
+      init,
+      select,
+      importFile,
+      hidePreset,
+    });
+    render(<EvalManager targets={["llama3.2:1b"]} setTargets={() => {}} k={1} setK={() => {}} maxSteps={8} setMaxSteps={() => {}} />);
+
+    fireEvent.click(screen.getByTestId("eval-collection-menu-agentic_3"));
+    fireEvent.click(screen.getByTestId("eval-collection-delete-agentic_3"));
+    fireEvent.click(screen.getByTestId("confirm-ok"));
+    await waitFor(() => expect(hidePreset).toHaveBeenCalledWith("agentic_3"));
+  });
+
   it("triggers runBatchEval when ▶ RUN BATCH is clicked", async () => {
     vi.mocked(runBatchEval).mockResolvedValue({
       collection_id: "curated",
