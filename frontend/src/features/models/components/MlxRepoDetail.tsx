@@ -1,25 +1,25 @@
 import { useEffect, useState } from "react";
-import { useWorkspaceStore } from "../../workspace/state/workspaceStore";
-import { useNavStore } from "../../../shared/state/navStore";
 import { useHfModelCard } from "../hooks/useHfModelCard";
+import { useMlxInstall } from "../hooks/useMlxInstall";
+import { useInstalledModelsStore } from "../state/installedModelsStore";
 import { ModelCardSection } from "./card/ModelCardSection";
+import { HfInstallStatus } from "./HfInstallStatus";
 
 type Props = { repo: string; onBack: () => void };
 
 // mlx_lm.server only serves text-generation LLMs. Anything else (TTS, embeddings,
-// vision…) starts the HTTP server but can never answer a chat request.
+// vision…) downloads gigabytes and then can't answer a chat request.
 const MLX_TASK = "text-generation";
 
-/// MLX repos aren't downloaded file-by-file like GGUF — the repo *is* the
-/// model, and `mlx_lm.server` fetches it on first start. So instead of a
-/// variant table this routes the repo into the workspace's "Start MLX" control
-/// (switching the active backend). A guardrail blocks repos whose task isn't
-/// text-generation, since mlx_lm can't serve them.
+/// MLX repos download as a full local snapshot (into ~/.quantamind/mlx); the
+/// model then appears in the Workspace dropdown to select and Start. A guardrail
+/// blocks repos whose task isn't text-generation, since mlx_lm can't serve them.
 export function MlxRepoDetail({ repo, onBack }: Props) {
-  const setMlxRepo = useWorkspaceStore((s) => s.setMlxRepo);
-  const setActiveBackend = useWorkspaceStore((s) => s.setActiveBackend);
-  const goTo = useNavStore((s) => s.setTopView);
   const { card, status } = useHfModelCard(repo);
+  const { state, install, cancel, reset } = useMlxInstall();
+  const alreadyInstalled = useInstalledModelsStore((s) =>
+    s.list.some((m) => m.backend === "mlx" && m.display_name === repo),
+  );
   const [confirmOpen, setConfirmOpen] = useState(false);
 
   useEffect(() => setConfirmOpen(false), [repo]);
@@ -28,15 +28,13 @@ export function MlxRepoDetail({ repo, onBack }: Props) {
   // Only block when the task is known AND not text-generation — an absent tag
   // is treated as "maybe", so we don't false-block untagged LLM repos.
   const incompatible = status === "ready" && task != null && task !== MLX_TASK;
+  const busy = state.status === "downloading";
 
   const proceed = () => {
     setConfirmOpen(false);
-    setMlxRepo(repo);
-    setActiveBackend("mlx");
-    goTo("workspace");
+    void install(repo);
   };
-
-  const onUse = () => (incompatible ? setConfirmOpen(true) : proceed());
+  const onDownload = () => (incompatible ? setConfirmOpen(true) : proceed());
 
   return (
     <div data-testid="mlx-repo-detail" className="flex flex-col gap-3 h-full">
@@ -59,18 +57,27 @@ export function MlxRepoDetail({ repo, onBack }: Props) {
       )}
 
       <p className="text-xs text-gray-500">
-        MLX downloads the full repo on first launch — this can be several GB and
-        take a few minutes. Needs <code>mlx-lm</code> installed
+        Downloads the full repo to your machine (several GB) — then select it in
+        the Workspace and Start MLX. Running needs <code>mlx-lm</code> installed
         (<code>pip install mlx-lm</code>).
       </p>
-      <button
-        type="button"
-        onClick={onUse}
-        data-testid="mlx-use-button"
-        className="self-start rounded bg-blue-600 px-3 py-1.5 text-sm text-white hover:bg-blue-700"
-      >
-        Use in MLX
-      </button>
+
+      {alreadyInstalled && state.status === "idle" ? (
+        <div data-testid="mlx-already-installed" className="text-green-700 text-xs">
+          Downloaded ✓ — select it in the Workspace dropdown and Start MLX.
+        </div>
+      ) : (
+        <button
+          type="button"
+          onClick={onDownload}
+          disabled={busy}
+          data-testid="mlx-download-button"
+          className="self-start rounded bg-blue-600 px-3 py-1.5 text-sm text-white hover:bg-blue-700 disabled:opacity-40"
+        >
+          Download for MLX
+        </button>
+      )}
+      <HfInstallStatus state={state} onCancel={cancel} onReset={reset} />
 
       {confirmOpen && (
         <div
@@ -106,7 +113,7 @@ export function MlxRepoDetail({ repo, onBack }: Props) {
                 data-testid="mlx-incompatible-proceed"
                 className="rounded border border-amber-400 px-3 py-1.5 text-sm text-amber-800 hover:bg-amber-50"
               >
-                Use anyway
+                Download anyway
               </button>
             </div>
           </div>

@@ -1,17 +1,22 @@
 import { describe, it, expect, vi, beforeEach } from "vitest";
-import { render, screen, fireEvent, waitFor } from "@testing-library/react";
+import { render, screen, fireEvent, waitFor, act } from "@testing-library/react";
 
 vi.mock("@tauri-apps/api/core", () => ({ invoke: vi.fn() }));
+vi.mock("@tauri-apps/api/event", () => ({ listen: vi.fn().mockResolvedValue(() => {}) }));
+vi.mock("../../../../shared/ipc/models/mlx_install", () => ({ installMlxModel: vi.fn() }));
+vi.mock("../../../../shared/ipc/models/hf_install", () => ({
+  cancelHfInstall: vi.fn(),
+  EVENT_HF_PROGRESS: "hf-progress",
+}));
 
 import { invoke } from "@tauri-apps/api/core";
+import { installMlxModel } from "../../../../shared/ipc/models/mlx_install";
 import { MlxRepoDetail } from "../MlxRepoDetail";
-import { useWorkspaceStore } from "../../../workspace/state/workspaceStore";
-import { useNavStore } from "../../../../shared/state/navStore";
+import { useModelStore } from "../../state/modelStore";
 
 const card = (pipeline_tag: string | null) => ({
   description: "", license: null, base_model: null, pipeline_tag, tags: [],
 });
-
 const mockCard = (c: unknown) =>
   vi.mocked(invoke).mockImplementation((cmd: string) =>
     cmd === "hf_model_card" ? Promise.resolve(c) : Promise.resolve([]),
@@ -19,62 +24,54 @@ const mockCard = (c: unknown) =>
 
 beforeEach(() => {
   vi.mocked(invoke).mockReset();
-  useWorkspaceStore.setState({ mlxRepo: null, activeBackend: "ollama" });
-  useNavStore.setState({ topView: "models", history: [] });
+  vi.mocked(installMlxModel).mockReset().mockResolvedValue(undefined);
+  useModelStore.setState({ downloads: {}, activeHfName: null });
 });
 
-describe("MlxRepoDetail guardrail", () => {
-  it("routes a text-generation model straight to Start MLX", async () => {
+describe("MlxRepoDetail download + guardrail", () => {
+  it("downloads a text-generation model immediately (no dialog)", async () => {
     mockCard(card("text-generation"));
     render(<MlxRepoDetail repo="mlx-community/Llama-Instruct-4bit" onBack={() => {}} />);
     await waitFor(() => expect(invoke).toHaveBeenCalledWith("hf_model_card", { repo: expect.any(String) }));
-    fireEvent.click(screen.getByTestId("mlx-use-button"));
-    // No dialog — proceeds immediately.
+    await act(async () => { fireEvent.click(screen.getByTestId("mlx-download-button")); });
     expect(screen.queryByTestId("mlx-incompatible-dialog")).toBeNull();
-    expect(useWorkspaceStore.getState().mlxRepo).toBe("mlx-community/Llama-Instruct-4bit");
-    expect(useWorkspaceStore.getState().activeBackend).toBe("mlx");
-    expect(useNavStore.getState().topView).toBe("workspace");
+    expect(installMlxModel).toHaveBeenCalledWith("mlx-community/Llama-Instruct-4bit");
   });
 
-  it("blocks a non-text-generation model with a warning dialog", async () => {
+  it("blocks a non-text-generation model with a dialog (no download yet)", async () => {
     mockCard(card("text-to-speech"));
     render(<MlxRepoDetail repo="mlx-community/Kokoro-82M-bf16" onBack={() => {}} />);
     await screen.findByTestId("mlx-incompatible-banner");
-    fireEvent.click(screen.getByTestId("mlx-use-button"));
-    // Guardrail: dialog opens, nothing navigates yet.
+    fireEvent.click(screen.getByTestId("mlx-download-button"));
     expect(screen.getByTestId("mlx-incompatible-dialog")).toBeInTheDocument();
-    expect(useWorkspaceStore.getState().mlxRepo).toBeNull();
-    expect(useNavStore.getState().topView).toBe("models");
+    expect(installMlxModel).not.toHaveBeenCalled();
   });
 
-  it("'Pick another' dismisses without loading the model", async () => {
+  it("'Pick another' dismisses without downloading", async () => {
     mockCard(card("text-to-speech"));
     render(<MlxRepoDetail repo="mlx-community/Kokoro-82M-bf16" onBack={() => {}} />);
     await screen.findByTestId("mlx-incompatible-banner");
-    fireEvent.click(screen.getByTestId("mlx-use-button"));
+    fireEvent.click(screen.getByTestId("mlx-download-button"));
     fireEvent.click(screen.getByTestId("mlx-incompatible-cancel"));
     expect(screen.queryByTestId("mlx-incompatible-dialog")).toBeNull();
-    expect(useWorkspaceStore.getState().mlxRepo).toBeNull();
-    expect(useNavStore.getState().topView).toBe("models");
+    expect(installMlxModel).not.toHaveBeenCalled();
   });
 
-  it("'Use anyway' overrides the guardrail and proceeds", async () => {
+  it("'Download anyway' overrides the guardrail", async () => {
     mockCard(card("text-to-speech"));
     render(<MlxRepoDetail repo="mlx-community/Kokoro-82M-bf16" onBack={() => {}} />);
     await screen.findByTestId("mlx-incompatible-banner");
-    fireEvent.click(screen.getByTestId("mlx-use-button"));
-    fireEvent.click(screen.getByTestId("mlx-incompatible-proceed"));
-    expect(useWorkspaceStore.getState().mlxRepo).toBe("mlx-community/Kokoro-82M-bf16");
-    expect(useWorkspaceStore.getState().activeBackend).toBe("mlx");
-    expect(useNavStore.getState().topView).toBe("workspace");
+    fireEvent.click(screen.getByTestId("mlx-download-button"));
+    await act(async () => { fireEvent.click(screen.getByTestId("mlx-incompatible-proceed")); });
+    expect(installMlxModel).toHaveBeenCalledWith("mlx-community/Kokoro-82M-bf16");
   });
 
-  it("an unknown task (no card) does not block", async () => {
+  it("an unknown task (no card) does not block the download", async () => {
     mockCard(null);
     render(<MlxRepoDetail repo="someone/mystery-mlx" onBack={() => {}} />);
     await waitFor(() => expect(invoke).toHaveBeenCalledWith("hf_model_card", { repo: expect.any(String) }));
     expect(screen.queryByTestId("mlx-incompatible-banner")).toBeNull();
-    fireEvent.click(screen.getByTestId("mlx-use-button"));
-    expect(useWorkspaceStore.getState().mlxRepo).toBe("someone/mystery-mlx");
+    await act(async () => { fireEvent.click(screen.getByTestId("mlx-download-button")); });
+    expect(installMlxModel).toHaveBeenCalledWith("someone/mystery-mlx");
   });
 });

@@ -7,8 +7,6 @@ vi.mock("@tauri-apps/api/event", () => ({ listen: vi.fn().mockResolvedValue(() =
 import { invoke } from "@tauri-apps/api/core";
 import { HuggingFaceTab } from "../HuggingFaceTab";
 import { useModelStore } from "../../../state/modelStore";
-import { useWorkspaceStore } from "../../../../workspace/state/workspaceStore";
-import { useNavStore } from "../../../../../shared/state/navStore";
 
 const HIT = (id: string, downloads = 100) => ({
   id, downloads, likes: 1, tags: ["gguf"], last_modified: null,
@@ -81,9 +79,9 @@ describe("HuggingFaceTab (live search)", () => {
     );
   });
 
-  it("an mlx-tagged repo opens the MLX action even under GGUF search", async () => {
+  it("an mlx-tagged repo opens the MLX download detail even under GGUF search", async () => {
     // Routing is by the repo's tags, not the toggle: a user in (unfiltered)
-    // GGUF search who clicks an MLX repo still gets "Use in MLX".
+    // GGUF search who clicks an MLX repo gets the MLX download detail.
     vi.mocked(invoke).mockImplementation((cmd: string) => {
       if (cmd === "hf_search")
         return Promise.resolve([
@@ -92,18 +90,13 @@ describe("HuggingFaceTab (live search)", () => {
       if (cmd === "hf_model_card") return Promise.resolve(null);
       return Promise.resolve([]);
     });
-    useWorkspaceStore.setState({ mlxRepo: null, activeBackend: "ollama" });
-    useNavStore.setState({ topView: "models", history: [] });
     render(<HuggingFaceTab />);
     // Stay on the default GGUF toggle on purpose.
     fireEvent.change(screen.getByLabelText("Search Hugging Face"), { target: { value: "deepseek" } });
     const card = await screen.findByTestId("hf-card-mlx-community/DeepSeek-MLX-4bit", undefined, { timeout: 1000 });
     fireEvent.click(card);
-    const useBtn = await screen.findByTestId("mlx-use-button");
-    fireEvent.click(useBtn);
-    expect(useWorkspaceStore.getState().mlxRepo).toBe("mlx-community/DeepSeek-MLX-4bit");
-    expect(useWorkspaceStore.getState().activeBackend).toBe("mlx");
-    expect(useNavStore.getState().topView).toBe("workspace");
+    expect(await screen.findByTestId("mlx-repo-detail")).toBeInTheDocument();
+    expect(screen.getByTestId("mlx-download-button")).toBeInTheDocument();
   });
 
   it("the search query survives a select-then-back round-trip", async () => {
