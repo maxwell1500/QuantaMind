@@ -24,6 +24,15 @@ pub struct HfInstallState {
     current: Mutex<Option<CancellationToken>>,
 }
 
+impl HfInstallState {
+    /// The shared single-in-flight token slot. Exposed so the MLX install path
+    /// (`mlx_install.rs`) shares one cancel channel + one-at-a-time guard with
+    /// the GGUF path and `cancel_hf_install` covers both.
+    pub fn current(&self) -> &Mutex<Option<CancellationToken>> {
+        &self.current
+    }
+}
+
 /// A failed Ollama import is fatal only on the Ollama backend.
 pub fn ollama_import_required(backend: BackendKind) -> bool {
     matches!(backend, BackendKind::Ollama)

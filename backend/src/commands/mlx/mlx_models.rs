@@ -1,16 +1,13 @@
 use crate::commands::storage::storage_types::InstalledModelInfo;
 use crate::errors::AppError;
 use crate::inference::backend::backend_kind::BackendKind;
+use crate::inference::mlx::mlx_supported;
 use crate::inference::mlx::server::mlx_endpoint::mlx_endpoint;
 use reqwest::Client;
 use serde::Deserialize;
 use std::time::Duration;
 
 const PROBE_TIMEOUT: Duration = Duration::from_millis(2500);
-
-fn mlx_supported() -> bool {
-    cfg!(all(target_os = "macos", target_arch = "aarch64"))
-}
 
 #[derive(Deserialize)]
 struct ModelsResponse {
