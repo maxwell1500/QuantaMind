@@ -160,3 +160,26 @@ async fn effort_counts_output_tokens_only_never_prompt_tokens() {
     assert_eq!(report.passes, 1);
     assert_eq!(report.avg_output_tokens_success, Some(12.0)); // the 12, never the 9999
 }
+
+#[tokio::test]
+async fn lazy_agent_claiming_done_is_a_failure_not_a_pass() {
+    // The benchmark must not be gameable. A model that instantly outputs
+    // {"status":"task_complete"} on turn one, bypassing every tool, must be
+    // flagged as a hallucinated completion — never counted as a success. If this
+    // ever fails, the sandbox is compromised: fix the verification, not the test.
+    let model = ScriptedModel::new(vec![(r#"{"status":"task_complete"}"#, 9)]);
+    let (tx, mut rx) = unbounded_channel();
+    let report = run_agentic(&model, &sandbox(), AgenticConfig { k: 1, max_steps: 8 }, &tx).await.unwrap();
+    drop(tx);
+
+    assert_eq!(report.passes, 0);
+    assert_eq!(report.total_runs, 1);
+    assert_eq!(report.failures.hallucinated_completions, 1);
+    assert_eq!(report.failures.malformed_json_calls, 0);
+    assert_eq!(report.top_error, TopError::Hallucinated);
+    assert_eq!(report.avg_output_tokens_success, None);
+
+    let steps = drain(&mut rx);
+    assert_eq!(steps.len(), 1); // bailed on turn one, no tools touched
+    assert_eq!(steps[0].kind, StepKind::HallucinatedCompletion);
+}

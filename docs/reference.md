@@ -255,6 +255,42 @@ an agent — entirely offline and deterministic. Read the scores with these cave
 - **Custom tasks** — author your own collections in the **Eval** tab (see the
   contract below). The runner treats built-in and custom tasks identically.
 
+## Agentic reliability eval {#agentic-eval}
+
+Where the tool-calling eval is single-turn, the **agentic** engine runs a model
+through a stateful, multi-step loop inside a deterministic sandbox — measuring
+not just whether the model claims success, but whether it *did the work*, and how
+much compute it burned getting there. (Backend engine landed; the Playground UI
+is a follow-up.)
+
+- **Prompt-based sandbox, same as the tool-call eval.** The `DeterministicSandbox`
+  holds the initial prompt, the tool schemas (injected into the system prompt via
+  the shared `build_system_for`), the mock tool results, and an `EndStateRule`.
+  No native function-calling — identical across Ollama / llama.cpp / MLX.
+- **The loop.** Each turn: render the running transcript → model emits a JSON tool
+  call (parsed with the same lenient `extract_calls`) → the sandbox returns the
+  mocked result, injected back as a `"Tool result: …"` text message. A call the
+  sandbox doesn't recognize gets an error injection and the loop continues. Mock
+  lookup is on a **canonical key** (tool name + recursively key-sorted args), so a
+  model that reorders its arg keys still hits the right mock.
+- **The anti-cheat.** A run counts as a success **only** when it produces a call
+  satisfying the `EndStateRule` (same structural arg-equality the tool-call scorer
+  uses). A model that yields with `{"status":"task_complete"}` without ever hitting
+  the rule is logged as a **hallucinated completion**, never a pass — the benchmark
+  cannot be gamed by claiming done.
+- **Pass^k consistency.** The loop runs `k` times (default 5) with absolute
+  isolation between runs. The `AgenticReport` carries `passes/total_runs`, a
+  `FailureTracker` with **distinct** tallies (`infinite_loop_hits` = hit the step
+  cap, `hallucinated_completions` = fake done, `malformed_json_calls` = broken
+  JSON), and a `top_error` headline.
+- **Relative effort, not absolute joules.** `avg_output_tokens_success` is the mean
+  output-token count (`eval_count`) over the **successful** runs only — **n/a**
+  when there are zero successes, never a divide-by-zero. Prompt tokens are
+  deliberately never summed (re-sent history would inflate it and ignore KV-cache
+  reuse). A Q4 model that wanders 1,500 tokens to a result a Q8 finishes in 300 is
+  the signal this exposes — the "faster" quant burning more compute for the same
+  outcome.
+
 ## Custom-eval collections {#custom-evals}
 
 Run the curated built-in suite or your own task collections. Each collection is a

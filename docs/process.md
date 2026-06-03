@@ -564,7 +564,31 @@ one. Built one step at a time.
   the Eval tab). **Frontend-only**, padding is approximate (≈tokens via chars/4) and **labelled
   indicative** — no tokenizer; a failed rung records null, never a fabricated score.
 
-### Phase 6+
+### Phase 6 — Agentic reliability & effort diagnostics (in progress)
+
+Turns the single-turn checker into a stateful agentic diagnostic engine: a
+prompt-based `DeterministicSandbox`, an iterative Tauri-free runner with an
+`EndStateRule` anti-cheat, a Pass^k consistency loop, and a relative
+output-token effort metric. See [Agentic reliability eval](reference.md#agentic-eval)
+for the contract.
+
+| # | Step | Status |
+| --- | --- | --- |
+| 6.1 | `DeterministicSandbox` data contract | done |
+| 6.2 | Tauri-free stateful execution loop (`run_once`, `ModelTurn` seam) | done |
+| 6.3 | Pass^k consistency engine + `FailureTracker` | done |
+| 6.4 | Relative computational effort metric | done |
+| 6.6 | Lazy-agent anti-cheat verification test | done |
+| 6.5 | Agentic Playground UI (top-level tab + new matrix) | deferred (follow-up) |
+
+Backend lands first and fully unit-tested (21 agentic tests) before the UI is
+wired. Locked decisions: streaming is an `mpsc::UnboundedSender<TrajectoryStep>`
+the command layer pumps to `app.emit()` (inference/ stays Tauri-free); the runner
+is generic over a `ModelTurn` seam so it's testable with a scripted model and no
+HTTP backend; the UI will be a **new top-level tab** with a **new** models×metrics
+matrix (not an extension of the Phase 5 tool-call grid).
+
+### Phase 7+
 
 Owners flesh out the next phase's section here when the current lands.
 
