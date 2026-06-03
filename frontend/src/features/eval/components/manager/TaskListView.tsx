@@ -1,6 +1,7 @@
 import type { TaskDraft } from "../../evalDraft";
 import type { ToolTaskResult } from "../../../../shared/ipc/eval/toolcall";
 import { isPassed, passedBadge, failedBadge } from "../../verdict";
+import { KebabMenu } from "./KebabMenu";
 
 /// The default editor view for a selected collection: a compact, clickable list
 /// of its tasks plus collection-level actions (Add Task, Save, Run all). Clicking
@@ -119,15 +120,10 @@ export function TaskListView({
                   <span style={{ fontSize: 14, color: "#475569", flexShrink: 0 }}>›</span>
                 </button>
                 {onDeleteTask && (
-                  <button
-                    type="button"
-                    onClick={() => onDeleteTask(draft.key)}
-                    title="Delete task"
-                    data-testid={`eval-delete-task-${draft.id || i}`}
-                    style={{ background: "transparent", border: "none", color: "#64748b", cursor: "pointer", fontSize: 13, padding: "0 6px", flexShrink: 0 }}
-                  >
-                    ✕
-                  </button>
+                  <KebabMenu
+                    testid={`eval-task-menu-${draft.id || i}`}
+                    items={[{ label: "Delete task", danger: true, onClick: () => onDeleteTask(draft.key), testid: `eval-delete-task-${draft.id || i}` }]}
+                  />
                 )}
               </div>
             );

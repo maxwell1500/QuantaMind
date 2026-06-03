@@ -8,6 +8,7 @@ import { formatIpcError } from "../../../../shared/ipc/core/error";
 import { batchToCsv, download } from "../../exportBatch";
 import { ModelDropdown } from "../matrix/ModelDropdown";
 import { ConfirmDialog } from "./ConfirmDialog";
+import { KebabMenu } from "./KebabMenu";
 
 interface EvalManagerProps {
   targets: string[];
@@ -184,16 +185,8 @@ export function EvalManager({
           </div>
           {collectionsExpanded && (
             <div style={{ paddingLeft: 12, marginTop: 8, display: "flex", flexDirection: "column", gap: 6 }}>
-              {/* Directory Node */}
-              <div style={{ display: "flex", alignItems: "center", gap: 6, color: "#64748b", fontSize: 13 }}>
-                <span>►</span>
-                <span style={{ fontFamily: "'JetBrains Mono', monospace", fontSize: 12, letterSpacing: "-0.02em" }}>
-                  {dataSource === "custom" ? "/local_agents/" : "/builtin_presets/"}
-                </span>
-              </div>
-              
-              {/* Children Nodes */}
-              <div style={{ paddingLeft: 16, display: "flex", flexDirection: "column", gap: 6 }}>
+              {/* Collection list */}
+              <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
                 {dataSource === "custom" ? (
                   collections.length === 0 ? (
                     <div style={{ color: "#475569", fontSize: 12, fontStyle: "italic", paddingLeft: 8 }}>
@@ -218,15 +211,10 @@ export function EvalManager({
                           <span style={{ marginRight: 6 }}>{selected === c ? "•" : "-"}</span>
                           <span style={{ overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{c}</span>
                         </span>
-                        <button
-                          type="button"
-                          onClick={() => setDeleteTarget(c)}
-                          title="Delete this collection"
-                          data-testid={`eval-delete-collection-${c}`}
-                          style={{ background: "transparent", border: "none", color: "#64748b", cursor: "pointer", fontSize: 12, padding: "0 4px", flexShrink: 0 }}
-                        >
-                          ✕
-                        </button>
+                        <KebabMenu
+                          testid={`eval-collection-menu-${c}`}
+                          items={[{ label: "Delete collection", danger: true, onClick: () => setDeleteTarget(c), testid: `eval-collection-delete-${c}` }]}
+                        />
                       </div>
                     ))
                   )

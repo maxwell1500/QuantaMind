@@ -57,7 +57,6 @@ describe("EvalManager Sidebar Controls", () => {
 
   it("renders presets under collections when Built-in is selected", () => {
     render(<EvalManager targets={["llama3.2:1b"]} setTargets={() => {}} k={1} setK={() => {}} maxSteps={8} setMaxSteps={() => {}} />);
-    expect(screen.getByText("/builtin_presets/")).toBeInTheDocument();
     expect(screen.getByTestId("eval-collection-item-curated")).toBeInTheDocument();
   });
 
@@ -87,8 +86,9 @@ describe("EvalManager Sidebar Controls", () => {
     });
     render(<EvalManager targets={["llama3.2:1b"]} setTargets={() => {}} k={1} setK={() => {}} maxSteps={8} setMaxSteps={() => {}} />);
 
-    fireEvent.click(screen.getByTestId("eval-delete-collection-my-evals"));
-    // The confirm popup appears; nothing deleted until confirmed.
+    // Open the ⋯ menu, then choose Delete → a confirm popup appears.
+    fireEvent.click(screen.getByTestId("eval-collection-menu-my-evals"));
+    fireEvent.click(screen.getByTestId("eval-collection-delete-my-evals"));
     expect(screen.getByTestId("confirm-dialog")).toBeInTheDocument();
     expect(remove).not.toHaveBeenCalled();
 
