@@ -118,6 +118,20 @@ async fn mixed_collection_streams_agentic_turns_and_aggregates_both() {
 }
 
 #[tokio::test]
+async fn batch_summaries_map_per_model_toolcall_and_agentic_metrics() {
+    let targets = vec![target("m1")];
+    let tasks = vec![single_task("s1"), agentic_task("a1", 4)];
+    let sink = Arc::new(CountingSink::default());
+    let report = run_batch("c", &targets, &tasks, CancellationToken::new(), sink, make_turn).await.unwrap();
+
+    let sums = batch_summaries(&report, "2026-06-03T00:00:00Z");
+    assert_eq!(sums.len(), 1);
+    assert_eq!(sums[0].model, "m1");
+    assert_eq!(sums[0].pass_k, Some(1.0)); // agentic a1 passed all 4 runs
+    assert!(sums[0].composite.is_some()); // single-turn s1 contributes a composite
+}
+
+#[tokio::test]
 async fn cancellation_stops_the_queue_early() {
     let targets = vec![target("m1")];
     let tasks: Vec<ToolTask> = (0..5).map(|i| single_task(&format!("t{i}"))).collect();

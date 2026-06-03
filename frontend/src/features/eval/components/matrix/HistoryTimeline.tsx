@@ -26,12 +26,15 @@ function seriesByModel(history: RunSummary[]): Array<{ model: string; points: Ar
   const order: string[] = [];
   const byModel = new Map<string, Array<{ v: number; ts: string }>>();
   for (const h of history) {
-    if (h.composite == null) continue;
+    // Single-turn runs plot their composite; agentic-only runs (no composite)
+    // plot their Pass^k rate so batch runs still show on the timeline.
+    const v = h.composite ?? h.pass_k ?? null;
+    if (v == null) continue;
     if (!byModel.has(h.model)) {
       byModel.set(h.model, []);
       order.push(h.model);
     }
-    byModel.get(h.model)!.push({ v: h.composite, ts: h.ts });
+    byModel.get(h.model)!.push({ v, ts: h.ts });
   }
   return order.map((model) => ({ model, points: byModel.get(model)! }));
 }

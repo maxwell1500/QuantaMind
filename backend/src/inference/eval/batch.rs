@@ -9,6 +9,7 @@ use crate::inference::eval::toolcall::eval::{aggregate, trace_one_with, TaskResu
 use crate::inference::eval::toolcall::matrix::ModelTarget;
 use crate::inference::eval::toolcall::score::verdict_passed;
 use crate::inference::eval::toolcall::tasks::ToolTask;
+use crate::persistence::eval_history::RunSummary;
 use serde::Serialize;
 use std::sync::Arc;
 use tokio::sync::mpsc::unbounded_channel;
@@ -63,6 +64,34 @@ pub struct BatchReport {
 
 fn mean_f64(xs: &[f64]) -> Option<f64> {
     (!xs.is_empty()).then(|| xs.iter().sum::<f64>() / xs.len() as f64)
+}
+
+/// Per-model history rows for the Audit timeline: the single-turn composite plus
+/// the agentic Pass^k / steps / effort, for every model whose column didn't error.
+pub fn batch_summaries(report: &BatchReport, ts: &str) -> Vec<RunSummary> {
+    report
+        .columns
+        .iter()
+        .filter(|c| c.error.is_none())
+        .map(|c| {
+            let tc = c.toolcall.as_ref();
+            let ag = c.agentic.as_ref();
+            RunSummary {
+                ts: ts.to_string(),
+                model: c.model.clone(),
+                backend: c.backend,
+                parse_rate: tc.and_then(|r| r.parse_rate),
+                tool_selection_acc: tc.and_then(|r| r.tool_selection_acc),
+                arg_acc: tc.and_then(|r| r.arg_acc),
+                abstain_acc: tc.and_then(|r| r.abstain_acc),
+                composite: tc.and_then(|r| r.composite),
+                n: tc.map(|r| r.n).unwrap_or(0),
+                pass_k: ag.map(|a| if a.total_runs > 0 { a.passes as f64 / a.total_runs as f64 } else { 0.0 }),
+                agentic_avg_steps: ag.and_then(|a| a.avg_steps),
+                effort: ag.and_then(|a| a.avg_output_tokens_success),
+            }
+        })
+        .collect()
 }
 
 fn agg_agentic(reports: &[AgenticReport]) -> AggAgentic {

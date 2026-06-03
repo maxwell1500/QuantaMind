@@ -7,13 +7,21 @@ use crate::commands::eval::toolcall_cmd::endpoint_for;
 use crate::errors::AppError;
 use crate::inference::eval::agentic::model_turn::BackendTurn;
 use crate::inference::eval::agentic::step::TrajectoryStep;
-use crate::inference::eval::batch::{run_batch, BatchReport, BatchSink, TaskOutcome};
+use crate::inference::eval::batch::{batch_summaries, run_batch, BatchReport, BatchSink, TaskOutcome};
 use crate::inference::eval::toolcall::matrix::ModelTarget;
 use crate::inference::eval::toolcall::tasks::{validate_tasks, ToolTask};
+use crate::persistence::eval_history;
 use crate::sync::MutexExt;
+use std::path::PathBuf;
 use std::sync::{Arc, Mutex};
-use tauri::AppHandle;
+use tauri::{AppHandle, Manager};
 use tokio_util::sync::CancellationToken;
+
+/// Per-collection regression log dir (shared with the matrix command).
+fn history_dir(app: &AppHandle) -> Result<PathBuf, AppError> {
+    let dir = app.path().app_config_dir().map_err(|e| AppError::Io(e.to_string()))?;
+    Ok(dir.join("history"))
+}
 
 /// Run-level cancellation for the batch dispatcher (mirrors `CompareRunState`).
 #[derive(Default)]
@@ -94,6 +102,16 @@ pub async fn run_batch_eval(
     })
     .await?;
     log_emit(&app, EVENT_BATCH_COMPLETE, BatchCompletePayload { report: report.clone() });
+
+    // Append per-model summaries to the collection's regression history (best
+    // effort — a history write must not fail an otherwise-successful run).
+    if let Ok(dir) = history_dir(&app) {
+        let entries = batch_summaries(&report, &crate::time_iso::now_utc());
+        if !entries.is_empty() {
+            let _ = eval_history::append(&dir, &collection_id, &entries);
+        }
+    }
+
     Ok(report)
 }
 

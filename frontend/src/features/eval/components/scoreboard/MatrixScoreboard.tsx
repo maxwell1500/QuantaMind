@@ -234,6 +234,10 @@ export function MatrixScoreboard({
             </table>
           </div>
         )}
+        <div style={{ fontSize: 11, color: "#475569", fontFamily: "Inter, sans-serif", marginTop: 10 }}>
+          Steps: single-turn tasks are 1 turn; Multi-Step (agentic) tasks show avg steps across the
+          K runs. Set the Task Type to “Multi-Step Agent” in the configurator to test a sandbox loop.
+        </div>
       </div>
     </div>
   );
