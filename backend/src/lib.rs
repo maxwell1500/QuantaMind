@@ -43,6 +43,7 @@ pub fn run() {
             commands::system::health::check_ollama_health,
             commands::mlx::health_mlx::check_mlx_health,
             commands::mlx::mlx_models::list_mlx_models,
+            commands::mlx::mlx_models::delete_mlx_model,
             commands::mlx::mlx_install::install_mlx_model,
             commands::mlx::mlx_start::start_mlx_server,
             commands::mlx::mlx_start::stop_mlx_server,

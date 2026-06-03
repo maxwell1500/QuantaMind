@@ -11,10 +11,15 @@ vi.mock("../../../../../shared/ipc/models/llama_start", () => ({
   deleteLlamaModel: vi.fn(),
 }));
 vi.mock("../../../../../shared/ipc/models/gguf", () => ({ installLocalGguf: vi.fn() }));
+vi.mock("../../../../../shared/ipc/models/mlx", () => ({
+  deleteMlxModel: vi.fn(),
+  listMlxModels: vi.fn().mockResolvedValue([]),
+}));
 vi.mock("../../../../../shared/ui/Toast", () => ({ useToast: () => vi.fn() }));
 
 import { removeModel } from "../../../../../shared/ipc/models/storage";
 import { deleteLlamaModel } from "../../../../../shared/ipc/models/llama_start";
+import { deleteMlxModel } from "../../../../../shared/ipc/models/mlx";
 import { DownloadsInstalled } from "../DownloadsInstalled";
 import { useInstalledModelsStore } from "../../../state/installedModelsStore";
 
@@ -23,9 +28,15 @@ const ollama = { ...meta, name: "phi3.5:latest", backend: "ollama" as const };
 const llama = { ...meta, name: "phi-4-mini", backend: "llama_cpp" as const, path: "/g/phi-4-mini.gguf" };
 const set = (list: unknown[]) => useInstalledModelsStore.setState({ list: list as never, status: "ready" });
 
+const mlx = {
+  ...meta, name: "/m/mlx-community_X-4bit", backend: "mlx" as const,
+  path: "/m/mlx-community_X-4bit", display_name: "mlx-community/X-4bit",
+};
+
 beforeEach(() => {
   vi.mocked(removeModel).mockReset().mockResolvedValue(undefined);
   vi.mocked(deleteLlamaModel).mockReset().mockResolvedValue(undefined);
+  vi.mocked(deleteMlxModel).mockReset().mockResolvedValue(undefined);
   useInstalledModelsStore.setState({ list: [], status: "ready", error: null, lastRefreshedAt: null });
 });
 
@@ -57,6 +68,17 @@ describe("DownloadsInstalled delete", () => {
     expect(screen.getByTestId("confirm-also-llama")).toBeInTheDocument();
     fireEvent.click(screen.getByRole("button", { name: /^remove$/i }));
     await waitFor(() => expect(removeModel).toHaveBeenCalledWith("dup:latest"));
+    expect(deleteLlamaModel).not.toHaveBeenCalled();
+  });
+
+  it("MLX-only: Delete removes the model directory by its path", async () => {
+    set([mlx]);
+    render(<DownloadsInstalled />);
+    // Shown by its friendly name, with an MLX tag.
+    fireEvent.click(screen.getByRole("button", { name: /delete mlx-community\/X-4bit/i }));
+    fireEvent.click(screen.getByRole("button", { name: /^remove$/i }));
+    await waitFor(() => expect(deleteMlxModel).toHaveBeenCalledWith("/m/mlx-community_X-4bit"));
+    expect(removeModel).not.toHaveBeenCalled();
     expect(deleteLlamaModel).not.toHaveBeenCalled();
   });
 

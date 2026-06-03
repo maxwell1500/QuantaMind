@@ -17,3 +17,9 @@ export async function listMlxModels(): Promise<InstalledModelInfo[]> {
 export async function installMlxModel(repo: string): Promise<void> {
   await invoke("install_mlx_model", { repo });
 }
+
+/// Delete a downloaded MLX model's directory (its absolute path == the model's
+/// `name`/`path` from discovery).
+export async function deleteMlxModel(path: string): Promise<void> {
+  await invoke("delete_mlx_model", { path });
+}
