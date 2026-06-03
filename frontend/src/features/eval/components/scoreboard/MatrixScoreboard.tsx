@@ -1,128 +1,315 @@
-import { useState } from "react";
 import { useEvalRegistryStore } from "../../state/evalRegistryStore";
 import { useInstalledModelsStore } from "../../../models/state/installedModelsStore";
-import { useBatchStore } from "../../state/batchStore";
-import { useBatchRun } from "../../hooks/useBatchRun";
+import { useBatchStore, cellKey } from "../../state/batchStore";
 import { modelLabel } from "../../../../shared/models/modelLabel";
-import { toScoreRows } from "./scoreRows";
 
-const panel: React.CSSProperties = {
-  background: "linear-gradient(145deg, #1a1f2e 0%, #161b27 100%)",
-  border: "1px solid rgba(255,255,255,0.1)",
-  borderRadius: 12,
-  overflow: "hidden",
-};
-const th: React.CSSProperties = { textAlign: "left", fontSize: 11, fontWeight: 600, color: "#64748b", padding: "8px 14px", fontFamily: "Inter,sans-serif" };
-const td: React.CSSProperties = { fontSize: 13, color: "#e2e8f0", padding: "9px 14px", fontFamily: "Inter,sans-serif", borderTop: "1px solid rgba(255,255,255,0.05)" };
-const ctl: React.CSSProperties = { background: "rgba(255,255,255,0.05)", border: "1px solid rgba(255,255,255,0.12)", borderRadius: 7, color: "#e2e8f0", fontSize: 12, padding: "5px 9px", fontFamily: "Inter,sans-serif" };
+interface MatrixScoreboardProps {
+  model: string;
+  k: number;
+  maxSteps: number;
+  focusedTaskId: string | null;
+  setFocusedTaskId: (taskId: string | null) => void;
+}
 
-/// The Simulator: a per-MODEL results matrix (Pass^k · Avg Steps · Effort · Top
-/// Error). Picks the collection + target models, drives one streaming batch via
-/// `useBatchRun`, shows a live progress bar, and renders the matrix once the run
-/// completes. Clicking a model row focuses it for the Trace Debugger below.
-export function MatrixScoreboard({ onFocus }: { onFocus: (model: string) => void }) {
-  const { presets, collections, selected, tasks, select } = useEvalRegistryStore();
+export function MatrixScoreboard({
+  model,
+  focusedTaskId,
+  setFocusedTaskId,
+}: MatrixScoreboardProps) {
+  const { tasks } = useEvalRegistryStore();
   const list = useInstalledModelsStore((s) => s.list);
   const running = useBatchStore((s) => s.running);
   const progress = useBatchStore((s) => s.progress);
-  const report = useBatchStore((s) => s.report);
+  const outcomeByKey = useBatchStore((s) => s.outcomeByKey);
   const error = useBatchStore((s) => s.error);
-  const { run, stop } = useBatchRun();
 
-  const [picked, setPicked] = useState<Set<string>>(new Set());
-  const [k, setK] = useState(5);
-  const [maxSteps, setMaxSteps] = useState(10);
+  const mInfo = list.find((x) => x.name === model);
+  const modelTargetLabel = mInfo
+    ? `${modelLabel(mInfo)}${mInfo.quantization ? ` (${mInfo.quantization})` : ""}`
+    : model || "None";
 
-  const rows = toScoreRows(report, list);
-  const targets = list.filter((m) => picked.has(m.name)).map((m) => ({ model: m.name, backend: m.backend }));
-  const canRun = targets.length > 0 && tasks.length > 0 && !running;
+  // Calculate dynamic aggregate statistics across tasks for the selected model
+  let totalPasses = 0;
+  let totalRuns = 0;
+  let totalSteps = 0;
+  let stepsCount = 0;
+  let totalTokens = 0;
+  let tokensCount = 0;
 
-  const toggle = (name: string) =>
-    setPicked((prev) => {
-      const next = new Set(prev);
-      next.has(name) ? next.delete(name) : next.add(name);
-      return next;
-    });
+  for (const t of tasks) {
+    const key = cellKey(model, t.id);
+    const outcome = outcomeByKey[key];
+    if (!outcome) continue;
+    if (outcome.kind === "single") {
+      totalPasses += outcome.passed ? 1 : 0;
+      totalRuns += 1;
+      totalSteps += 1;
+      stepsCount += 1;
+      if (outcome.trace.prompt_tokens != null) {
+        totalTokens += outcome.trace.prompt_tokens;
+        tokensCount += 1;
+      }
+    } else if (outcome.kind === "agentic") {
+      totalPasses += outcome.report.passes;
+      totalRuns += outcome.report.total_runs;
+      if (outcome.report.avg_steps != null) {
+        totalSteps += outcome.report.avg_steps * outcome.report.total_runs;
+        stepsCount += outcome.report.total_runs;
+      }
+      if (outcome.report.avg_output_tokens_success != null) {
+        totalTokens += outcome.report.avg_output_tokens_success * outcome.report.passes;
+        tokensCount += outcome.report.passes;
+      }
+    }
+  }
+
+  const passRate = totalRuns > 0 ? Math.round((totalPasses / totalRuns) * 100) : 0;
+  const avgStepsVal = stepsCount > 0 ? (totalSteps / stepsCount).toFixed(1) : "—";
+  const effortVal = tokensCount > 0 ? Math.round(totalTokens / tokensCount).toLocaleString() : "—";
 
   const pct = progress.total > 0 ? Math.round((progress.done / progress.total) * 100) : 0;
 
   return (
-    <div style={panel} data-testid="matrix-scoreboard">
-      <div style={{ display: "flex", alignItems: "center", gap: 10, flexWrap: "wrap", padding: "12px 16px", borderBottom: "1px solid rgba(255,255,255,0.07)" }}>
-        <span style={{ fontSize: 13, fontWeight: 600, color: "#e2e8f0", fontFamily: "Inter,sans-serif", marginRight: 4 }}>Matrix Scoreboard</span>
-        <select value={selected} onChange={(e) => void select(e.target.value)} style={ctl} data-testid="scoreboard-collection">
-          {presets.map((p) => <option key={p.id} value={p.id}>{p.label}</option>)}
-          {collections.map((c) => <option key={c} value={c}>{c}</option>)}
-        </select>
-        <select
-          multiple
-          value={[...picked]}
-          onChange={(e) => toggle(e.target.value)}
-          title="Target models (cmd/ctrl-click to multi-select)"
-          style={{ ...ctl, minWidth: 150, height: 30 }}
-          data-testid="scoreboard-models"
-        >
-          {list.map((m) => <option key={m.name} value={m.name}>{modelLabel(m)}</option>)}
-        </select>
-        <label style={{ fontSize: 11, color: "#94a3b8", fontFamily: "Inter,sans-serif" }}>
-          K <input type="number" min={1} value={k} onChange={(e) => setK(Math.max(1, +e.target.value))} style={{ ...ctl, width: 52 }} data-testid="scoreboard-k" />
-        </label>
-        <label style={{ fontSize: 11, color: "#94a3b8", fontFamily: "Inter,sans-serif" }}>
-          Max Steps <input type="number" min={1} value={maxSteps} onChange={(e) => setMaxSteps(Math.max(1, +e.target.value))} style={{ ...ctl, width: 52 }} data-testid="scoreboard-max-steps" />
-        </label>
-        {running ? (
-          <button type="button" onClick={() => void stop()} style={{ ...ctl, color: "#fca5a5", cursor: "pointer" }} data-testid="scoreboard-stop">Stop</button>
-        ) : (
-          <button
-            type="button"
-            onClick={() => canRun && void run(selected, targets, tasks, k, maxSteps)}
-            disabled={!canRun}
-            style={{ ...ctl, background: canRun ? "rgba(59,130,246,0.25)" : "rgba(255,255,255,0.03)", color: canRun ? "#93c5fd" : "#64748b", cursor: canRun ? "pointer" : "not-allowed" }}
-            data-testid="scoreboard-run"
-          >
-            ▶ Run Batch
-          </button>
-        )}
+    <div
+      className="rounded-xl overflow-hidden border border-white/10"
+      style={panelStyle}
+      data-testid="matrix-scoreboard"
+    >
+      {/* Header */}
+      <div style={headerStyle}>
+        <span style={{ fontSize: 15, fontWeight: 700, color: "#f8fafc", fontFamily: "Inter, sans-serif" }}>
+          2. THE SIMULATOR (Batch Scoreboard)
+        </span>
+        <span style={{ fontSize: 13, color: "#93c5fd", fontFamily: "'JetBrains Mono', monospace", fontWeight: 500 }}>
+          &nbsp;- [ Target: {modelTargetLabel} ]
+        </span>
       </div>
 
+      {error && (
+        <div style={{ padding: "10px 16px", color: "#fca5a5", fontSize: 12, fontFamily: "Inter, sans-serif" }} data-testid="scoreboard-error">
+          {error}
+        </div>
+      )}
+
+      {/* Progress Bar (Visible during batch evaluation) */}
       {running && (
-        <div style={{ padding: "8px 16px", borderBottom: "1px solid rgba(255,255,255,0.05)" }} data-testid="scoreboard-progress">
-          <div style={{ fontSize: 11, color: "#94a3b8", fontFamily: "Inter,sans-serif", marginBottom: 4 }}>
-            Running… {progress.done}/{progress.total || "?"}
+        <div style={{ padding: "10px 16px", borderBottom: "1px solid rgba(255,255,255,0.05)" }} data-testid="scoreboard-progress">
+          <div style={{ fontSize: 11, color: "#94a3b8", fontFamily: "Inter,sans-serif", marginBottom: 6 }}>
+            Running batch evaluation… {progress.done}/{progress.total || "?"}
           </div>
-          <div style={{ height: 4, background: "rgba(255,255,255,0.08)", borderRadius: 2 }}>
+          <div style={{ height: 4, background: "rgba(255,255,255,0.06)", borderRadius: 2 }}>
             <div style={{ height: 4, width: `${pct}%`, background: "#3b82f6", borderRadius: 2, transition: "width 120ms" }} />
           </div>
         </div>
       )}
 
-      {error && <div style={{ padding: "10px 16px", color: "#fca5a5", fontSize: 12, fontFamily: "Inter,sans-serif" }} data-testid="scoreboard-error">{error}</div>}
-
-      {rows.length === 0 ? (
-        <div style={{ padding: "22px 16px", color: "#64748b", fontSize: 13, fontFamily: "Inter,sans-serif" }}>
-          Pick target models and run the batch to populate the matrix.
+      {/* Inner Box Content */}
+      <div style={{ padding: 16 }}>
+        {/* Aggregate Stats */}
+        <div style={aggregateBoxStyle}>
+          {totalRuns > 0 ? (
+            <span>
+              AGGREGATE: <strong style={{ color: "#4ade80" }}>{passRate}% Pass Rate</strong> ({totalPasses}/{totalRuns}) | Avg Steps: <strong>{avgStepsVal}</strong> | Effort: <strong>{effortVal}</strong> tokens
+            </span>
+          ) : (
+            <span style={{ color: "#64748b" }}>
+              AGGREGATE: — Pass Rate | Avg Steps: — | Effort: —
+            </span>
+          )}
         </div>
-      ) : (
-        <table style={{ width: "100%", borderCollapse: "collapse" }} data-testid="scoreboard-table">
-          <thead>
-            <tr>
-              {["Model", "Quant", "Pass^k", "Avg Steps", "Effort", "Top Error"].map((h) => <th key={h} style={th}>{h}</th>)}
-            </tr>
-          </thead>
-          <tbody>
-            {rows.map((r) => (
-              <tr key={r.model} onClick={() => onFocus(r.model)} style={{ cursor: "pointer" }} data-testid={`scoreboard-row-${r.model}`}>
-                <td style={td}>{r.label}</td>
-                <td style={td}>{r.quant}</td>
-                <td style={{ ...td, fontWeight: 600 }}>{r.passK}</td>
-                <td style={td}>{r.avgSteps}</td>
-                <td style={td}>{r.effort}</td>
-                <td style={{ ...td, color: r.topError === "None" ? "#4ade80" : r.topError === "—" ? "#64748b" : "#fca5a5" }}>{r.topError}</td>
-              </tr>
-            ))}
-          </tbody>
-        </table>
-      )}
+
+        {/* Tasks Table */}
+        {tasks.length === 0 ? (
+          <div style={{ padding: "20px 0", color: "#64748b", fontSize: 13, fontFamily: "Inter, sans-serif", textAlign: "center" }}>
+            No tasks in this collection.
+          </div>
+        ) : (
+          <div style={{ overflowX: "auto" }}>
+            <table style={{ width: "100%", borderCollapse: "collapse", minWidth: 600 }} data-testid="scoreboard-table">
+              <thead>
+                <tr style={{ borderBottom: "1px solid rgba(255,255,255,0.08)" }}>
+                  <th style={thStyle}>Task ID</th>
+                  <th style={thStyle}>Category</th>
+                  <th style={thStyle}>Target Tool</th>
+                  <th style={thStyle}>Steps</th>
+                  <th style={thStyle}>Result</th>
+                  <th style={{ ...thStyle, textAlign: "right" }}>Action</th>
+                </tr>
+              </thead>
+              <tbody>
+                {tasks.map((t) => {
+                  const key = cellKey(model, t.id);
+                  const outcome = outcomeByKey[key];
+                  
+                  // Map category to display text
+                  let categoryLabel: string = t.category;
+                  if (t.category === "single") categoryLabel = "Single-Turn";
+                  else if (t.category === "agentic") categoryLabel = "Multi-Step";
+                  else if (t.category === "parallel") categoryLabel = "Parallel";
+                  else if (t.category === "select") categoryLabel = "Select";
+                  else if (t.category === "abstain") categoryLabel = "Abstain";
+
+                  // Extract expected target tool(s)
+                  let targetTool = "—";
+                  if (t.expected.type === "call") {
+                    targetTool = t.expected.name;
+                  } else if (t.expected.type === "parallel") {
+                    targetTool = t.expected.calls.map((c) => c.name).join(", ");
+                  }
+
+                  // Determine steps taken
+                  let stepsStr = "—";
+                  if (outcome) {
+                    if (outcome.kind === "single") {
+                      stepsStr = "1";
+                    } else if (outcome.kind === "agentic") {
+                      stepsStr = outcome.report.avg_steps != null ? (Math.round(outcome.report.avg_steps * 10) / 10).toString() : "—";
+                    }
+                  }
+
+                  // Determine result badge/styling
+                  let resultEl = <span style={{ color: "#64748b" }}>—</span>;
+                  if (outcome) {
+                    if (outcome.kind === "single") {
+                      resultEl = outcome.passed ? (
+                        <span style={passBadgeStyle}>🟢 PASS</span>
+                      ) : (
+                        <span style={failBadgeStyle}>🔴 FAIL</span>
+                      );
+                    } else if (outcome.kind === "agentic") {
+                      const allPassed = outcome.report.passes === outcome.report.total_runs;
+                      resultEl = allPassed ? (
+                        <span style={passBadgeStyle}>🟢 PASS</span>
+                      ) : (
+                        <span style={failBadgeStyle}>🔴 FAIL</span>
+                      );
+                    } else if (outcome.kind === "error") {
+                      resultEl = <span style={failBadgeStyle}>🔴 ERROR</span>;
+                    }
+                  }
+
+                  const isActive = focusedTaskId === t.id;
+
+                  return (
+                    <tr
+                      key={t.id}
+                      onClick={() => setFocusedTaskId(t.id)}
+                      style={{
+                        ...trStyle,
+                        cursor: "pointer",
+                        background: isActive ? "rgba(59, 130, 246, 0.04)" : "transparent",
+                      }}
+                      data-testid={`scoreboard-row-${t.id}`}
+                      title="Click to inspect this task in the Evaluator below"
+                    >
+                      <td style={{ ...tdStyle, fontFamily: "'JetBrains Mono', monospace", color: isActive ? "#93c5fd" : "#cbd5e1" }}>
+                        {t.id}
+                      </td>
+                      <td style={tdStyle}>{categoryLabel}</td>
+                      <td style={{ ...tdStyle, fontFamily: "'JetBrains Mono', monospace", color: "#94a3b8", fontSize: 12 }}>
+                        {targetTool}
+                      </td>
+                      <td style={tdStyle}>{stepsStr}</td>
+                      <td style={tdStyle}>{resultEl}</td>
+                      <td style={{ ...tdStyle, textAlign: "right" }}>
+                        <div style={{ display: "inline-flex", alignItems: "center", gap: 6 }}>
+                          <button
+                            type="button"
+                            onClick={() => setFocusedTaskId(t.id)}
+                            style={{
+                              ...actionBtnStyle,
+                              color: isActive ? "#93c5fd" : "#3b82f6",
+                              fontWeight: isActive ? 600 : 400,
+                            }}
+                          >
+                            [ View Trace ]
+                          </button>
+                          {isActive && <span style={{ color: "#3b82f6", fontSize: 14 }}>◄</span>}
+                        </div>
+                      </td>
+                    </tr>
+                  );
+                })}
+              </tbody>
+            </table>
+          </div>
+        )}
+      </div>
     </div>
   );
 }
+
+// ── Styles ──────────────────────────────────────────────────────────────────
+
+const panelStyle: React.CSSProperties = {
+  background: "linear-gradient(145deg, #121620 0%, #0d0f15 100%)",
+  boxShadow: "0 8px 32px rgba(0,0,0,0.5), inset 0 1px 0 rgba(255,255,255,0.03)",
+};
+
+const headerStyle: React.CSSProperties = {
+  padding: "12px 16px",
+  borderBottom: "1px solid rgba(255,255,255,0.06)",
+  display: "flex",
+  alignItems: "center",
+  flexWrap: "wrap",
+};
+
+const aggregateBoxStyle: React.CSSProperties = {
+  background: "rgba(255,255,255,0.02)",
+  border: "1px solid rgba(255,255,255,0.05)",
+  borderRadius: 8,
+  padding: "10px 16px",
+  fontSize: 13,
+  color: "#cbd5e1",
+  fontFamily: "Inter, sans-serif",
+  marginBottom: 16,
+  letterSpacing: "-0.01em",
+};
+
+const thStyle: React.CSSProperties = {
+  textAlign: "left",
+  fontSize: 11,
+  fontWeight: 700,
+  color: "#475569",
+  textTransform: "uppercase",
+  letterSpacing: "0.05em",
+  padding: "8px 12px",
+  fontFamily: "Inter, sans-serif",
+};
+
+const tdStyle: React.CSSProperties = {
+  fontSize: 13,
+  color: "#e2e8f0",
+  padding: "10px 12px",
+  fontFamily: "Inter, sans-serif",
+};
+
+const trStyle: React.CSSProperties = {
+  borderBottom: "1px solid rgba(255,255,255,0.04)",
+  transition: "background 0.15s ease",
+};
+
+const passBadgeStyle: React.CSSProperties = {
+  color: "#4ade80",
+  fontWeight: 600,
+  fontSize: 12,
+  fontFamily: "Inter, sans-serif",
+};
+
+const failBadgeStyle: React.CSSProperties = {
+  color: "#f87171",
+  fontWeight: 600,
+  fontSize: 12,
+  fontFamily: "Inter, sans-serif",
+};
+
+const actionBtnStyle: React.CSSProperties = {
+  background: "transparent",
+  border: "none",
+  fontSize: 12,
+  fontFamily: "Inter, sans-serif",
+  cursor: "pointer",
+  padding: "4px 8px",
+  borderRadius: 4,
+  transition: "all 0.15s ease",
+};

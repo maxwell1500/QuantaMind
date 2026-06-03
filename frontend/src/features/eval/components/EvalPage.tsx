@@ -1,64 +1,67 @@
 import { useEffect, useState } from "react";
 import { useEvalRegistryStore } from "../state/evalRegistryStore";
-import { useBatchStore } from "../state/batchStore";
 import { useInstalledModelsStore } from "../../models/state/installedModelsStore";
 import { EvalManager } from "./manager/EvalManager";
+import { CollectionEditor } from "./manager/CollectionEditor";
 import { MatrixScoreboard } from "./scoreboard/MatrixScoreboard";
 import { TraceDebugger } from "./TraceDebugger";
-import { batchToCsv, download } from "../exportBatch";
 
-const exportBtn: React.CSSProperties = {
-  padding: "4px 12px",
-  borderRadius: 7,
-  border: "1px solid rgba(255,255,255,0.1)",
-  background: "rgba(255,255,255,0.04)",
-  color: "#94a3b8",
-  fontSize: 12,
-  fontFamily: "Inter,sans-serif",
-  cursor: "pointer",
-};
-
-/// The Automated-Pipeline Eval workspace: three panes — the Eval Manager (left,
-/// authoring), the live Matrix Scoreboard (top-right, the central per-model
-/// artifact), and the Trace Debugger (bottom-right). Clicking a model row in the
-/// scoreboard reveals that model's run trace inline below — the always-visible
-/// debug loop. An audit-trail export sits above the matrix.
+/// The Automated-Pipeline Eval workspace. Left: the Eval Manager (collections +
+/// run controls + authoring entry). Right: in run mode, the live Matrix Scoreboard
+/// over the Trace Debugger; in edit mode, the Collection Editor (task list + Task &
+/// Sandbox Configurator).
 export function EvalPage() {
   const initRegistry = useEvalRegistryStore((s) => s.init);
-  const report = useBatchStore((s) => s.report);
+  const startNew = useEvalRegistryStore((s) => s.startNew);
   const models = useInstalledModelsStore((s) => s.list);
-  const [focusModel, setFocusModel] = useState<string | null>(null);
+
+  const [selectedModel, setSelectedModel] = useState<string>("");
+  const [focusedTaskId, setFocusedTaskId] = useState<string | null>(null);
+  const [iterationsK, setIterationsK] = useState<number>(1);
+  const [maxSteps, setMaxSteps] = useState<number>(8);
+  const [editing, setEditing] = useState(false);
 
   useEffect(() => {
     void initRegistry().catch(() => {});
   }, [initRegistry]);
 
+  // Default the target model once the list loads.
+  useEffect(() => {
+    if (models.length > 0 && !selectedModel) {
+      setSelectedModel(models[0].name);
+    }
+  }, [models, selectedModel]);
+
   return (
-    <div className="grid gap-4" style={{ gridTemplateColumns: "minmax(360px, 420px) 1fr" }} data-testid="eval-page">
-      <EvalManager />
+    <div className="grid gap-4" style={{ gridTemplateColumns: "360px 1fr" }} data-testid="eval-page">
+      <EvalManager
+        model={selectedModel}
+        setModel={setSelectedModel}
+        k={iterationsK}
+        setK={setIterationsK}
+        maxSteps={maxSteps}
+        setMaxSteps={setMaxSteps}
+        onNewCollection={() => {
+          startNew();
+          setEditing(true);
+        }}
+        onEditCollection={() => setEditing(true)}
+      />
       <div className="flex flex-col gap-4 min-w-0">
-        <div style={{ display: "flex", justifyContent: "flex-end", gap: 8 }}>
-          <button
-            type="button"
-            disabled={!report}
-            onClick={() => report && download("audit-trail.csv", batchToCsv(report, models), "text/csv")}
-            style={{ ...exportBtn, opacity: report ? 1 : 0.5, cursor: report ? "pointer" : "not-allowed" }}
-            data-testid="export-csv"
-          >
-            ⭳ Export Audit Trail (CSV)
-          </button>
-          <button
-            type="button"
-            disabled={!report}
-            onClick={() => report && download("audit-trail.json", JSON.stringify(report, null, 2), "application/json")}
-            style={{ ...exportBtn, opacity: report ? 1 : 0.5, cursor: report ? "pointer" : "not-allowed" }}
-            data-testid="export-json"
-          >
-            ⭳ JSON
-          </button>
-        </div>
-        <MatrixScoreboard onFocus={setFocusModel} />
-        <TraceDebugger model={focusModel} />
+        {editing ? (
+          <CollectionEditor onClose={() => setEditing(false)} />
+        ) : (
+          <>
+            <MatrixScoreboard
+              model={selectedModel}
+              k={iterationsK}
+              maxSteps={maxSteps}
+              focusedTaskId={focusedTaskId}
+              setFocusedTaskId={setFocusedTaskId}
+            />
+            <TraceDebugger model={selectedModel} taskId={focusedTaskId} setTaskId={setFocusedTaskId} />
+          </>
+        )}
       </div>
     </div>
   );

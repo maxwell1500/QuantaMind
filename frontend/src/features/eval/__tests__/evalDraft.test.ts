@@ -47,24 +47,21 @@ describe("validateDrafts", () => {
     if (!r.ok) expect(r.drafts[0].error).toContain("Tools");
   });
 
-  it("assembles an agentic task from its agentic spec JSON", () => {
-    const agenticJson = JSON.stringify({
-      mocks: [{ call: { name: "get_weather", args: { city: "Paris" } }, response: "{}" }],
-      end_state: { require_sequence: [{ tool: "get_weather", args: { city: "Paris" } }] },
-      k: 5,
-      max_steps: 8,
-    });
-    const r = validateDrafts([draft({ category: "agentic", agenticJson })]);
+  it("assembles an agentic task from its sandbox + end-state boxes", () => {
+    const mocksJson = JSON.stringify([{ call: { name: "get_weather", args: { city: "Paris" } }, response: "{}" }]);
+    const endStateJson = JSON.stringify({ require_sequence: [{ tool: "get_weather", args: { city: "Paris" } }] });
+    const r = validateDrafts([draft({ category: "agentic", mocksJson, endStateJson })]);
     expect(r.ok).toBe(true);
     if (r.ok) {
       expect(r.tasks[0].category).toBe("agentic");
-      expect(r.tasks[0].agentic?.k).toBe(5);
+      expect(r.tasks[0].agentic?.mocks).toHaveLength(1);
+      expect(r.tasks[0].agentic?.end_state).toMatchObject({ require_sequence: [{ tool: "get_weather" }] });
     }
   });
 
   it("rejects an agentic task whose end-state JSON is malformed", () => {
-    const r = validateDrafts([draft({ category: "agentic", agenticJson: "{ not json" })]);
+    const r = validateDrafts([draft({ category: "agentic", mocksJson: "[]", endStateJson: "{ not json" })]);
     expect(r.ok).toBe(false);
-    if (!r.ok) expect(r.drafts[0].error).toContain("Agentic");
+    if (!r.ok) expect(r.drafts[0].error).toContain("End-State");
   });
 });

@@ -20,10 +20,11 @@ export interface TaskDraft {
   prompt: string;
   toolsJson: string;
   expectedJson: string;
-  /// JSON for the agentic spec (mocks + end_state + k/max_steps), used only for
-  /// `category === "agentic"`. Empty for single-turn tasks. Carried through the
-  /// editor so an agentic task survives an edit/save round-trip.
-  agenticJson: string;
+  /// The Deterministic Sandbox (mock answers) JSON, used only for `category ===
+  /// "agentic"`. Empty for single-turn tasks.
+  mocksJson: string;
+  /// The End-State Checklist (success criteria) JSON, used only for agentic tasks.
+  endStateJson: string;
   error: string | null;
 }
 
@@ -39,7 +40,8 @@ export function draftFromTask(task: ToolTask): TaskDraft {
     prompt: task.prompt,
     toolsJson: JSON.stringify(task.tools, null, 2),
     expectedJson: JSON.stringify(task.expected, null, 2),
-    agenticJson: task.agentic ? JSON.stringify(task.agentic, null, 2) : "",
+    mocksJson: task.agentic ? JSON.stringify(task.agentic.mocks, null, 2) : "",
+    endStateJson: task.agentic ? JSON.stringify(task.agentic.end_state, null, 2) : "",
     error: null,
   };
 }
@@ -55,7 +57,19 @@ export function newDraft(): TaskDraft {
       null, 2,
     ),
     expectedJson: JSON.stringify({ type: "call", name: "get_weather", args: { city: "Paris" } }, null, 2),
-    agenticJson: "",
+    // Templates so switching a draft to "Multi-Step Agent" starts from a working
+    // sandbox + ordered end-state checklist rather than a blank box.
+    mocksJson: JSON.stringify(
+      [{ call: { name: "check_balance", args: { account_id: "ACC-123" } }, response: '{"status":200,"balance":450.00}' }],
+      null, 2,
+    ),
+    endStateJson: JSON.stringify(
+      { require_sequence: [
+        { tool: "check_balance", args: { account_id: "ACC-123" } },
+        { tool: "transfer", args: { amount: 450.0 } },
+      ] },
+      null, 2,
+    ),
     error: null,
   };
 }
@@ -67,7 +81,8 @@ function validateTask(
   prompt: string,
   toolsJson: string,
   expectedJson: string,
-  agenticJson: string,
+  mocksJson: string,
+  endStateJson: string,
 ): { ok: true; task: Omit<ToolTask, "id" | "category"> } | { ok: false; err: string } {
   if (!prompt.trim()) return { ok: false, err: "Prompt: required" };
 
@@ -90,15 +105,22 @@ function validateTask(
   if (!er.success) return { ok: false, err: `Expected: ${er.error.issues[0]?.message ?? "schema error"}` };
 
   // Agentic tasks score via their end_state, not `expected`, so the single-turn
-  // abstain/expected gate is skipped (mirrors the backend's validate_tasks).
+  // abstain/expected gate is skipped (mirrors the backend's validate_tasks). The
+  // mocks + end-state come from two configurator boxes, assembled into one spec.
   if (category === "agentic") {
-    let agentic: unknown;
+    let mocks: unknown;
     try {
-      agentic = JSON.parse(agenticJson || "null");
+      mocks = JSON.parse(mocksJson || "[]");
     } catch {
-      return { ok: false, err: "Agentic spec: invalid JSON" };
+      return { ok: false, err: "Sandbox (Mock Answers): invalid JSON" };
     }
-    const ar = AgenticSpecSchema.safeParse(agentic);
+    let endState: unknown;
+    try {
+      endState = JSON.parse(endStateJson || "null");
+    } catch {
+      return { ok: false, err: "End-State Checklist: invalid JSON" };
+    }
+    const ar = AgenticSpecSchema.safeParse({ mocks, end_state: endState });
     if (!ar.success) return { ok: false, err: `Agentic: ${ar.error.issues[0]?.message ?? "schema error"}` };
     return { ok: true, task: { prompt: prompt.trim(), tools: tr.data, expected: er.data, agentic: ar.data } };
   }
@@ -128,7 +150,7 @@ export function validateDrafts(
       hasError = true;
       return { ...d, error: "Task ID: required" };
     }
-    const r = validateTask(d.category, d.prompt, d.toolsJson, d.expectedJson, d.agenticJson);
+    const r = validateTask(d.category, d.prompt, d.toolsJson, d.expectedJson, d.mocksJson, d.endStateJson);
     if (!r.ok) {
       hasError = true;
       return { ...d, error: r.err };

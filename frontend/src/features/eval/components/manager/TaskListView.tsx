@@ -24,7 +24,9 @@ export function TaskListView({
   onOpen: (key: string) => void;
   onAddTask: () => void;
   onSave: () => void;
-  onRunAll: () => void;
+  /// Optional — omitted in the authoring editor, where running is driven from the
+  /// Eval Manager's Run Batch instead.
+  onRunAll?: () => void;
 }) {
   const runAllDisabled = dirty || !modelSelected || drafts.length === 0 || running;
   const runAllTitle = dirty
@@ -57,9 +59,11 @@ export function TaskListView({
         <button type="button" onClick={onSave} disabled={drafts.length === 0} data-testid="eval-save" style={toolbarBtn(false, drafts.length === 0)}>
           Save
         </button>
-        <button type="button" onClick={onRunAll} disabled={runAllDisabled} data-testid="eval-run-all" title={runAllTitle} style={toolbarBtn(true, runAllDisabled)}>
-          {running ? "Running…" : "▶ Run all"}
-        </button>
+        {onRunAll && (
+          <button type="button" onClick={onRunAll} disabled={runAllDisabled} data-testid="eval-run-all" title={runAllTitle} style={toolbarBtn(true, runAllDisabled)}>
+            {running ? "Running…" : "▶ Run all"}
+          </button>
+        )}
       </div>
 
       {/* Rows */}
