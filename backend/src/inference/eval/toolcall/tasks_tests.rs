@@ -1,4 +1,7 @@
 use super::*;
+use crate::inference::eval::agentic::sandbox::{EndStateRule, MockResponse, TaskCheckpoint};
+use crate::inference::eval::agentic::spec::AgenticSpec;
+use crate::inference::eval::toolcall::tasks::Call;
 use serde_json::json;
 
 fn valid_task() -> ToolTask {
@@ -12,6 +15,7 @@ fn valid_task() -> ToolTask {
             parameters: json!({ "type": "object", "properties": { "city": { "type": "string" } }, "required": ["city"] }),
         }],
         expected: Expected::Call(Call { name: "get_weather".into(), args: json!({ "city": "Paris" }) }),
+        agentic: None,
     }
 }
 
@@ -41,7 +45,16 @@ fn finance_preset_is_valid_and_covers_categories() {
 fn builtin_collection_routes_known_ids() {
     assert!(builtin_collection("curated").is_some());
     assert!(builtin_collection("finance").is_some());
+    assert!(builtin_collection("agentic").is_some());
     assert!(builtin_collection("nope").is_none());
+}
+
+#[test]
+fn agentic_preset_is_valid_and_all_agentic() {
+    let a = agentic_tasks();
+    validate_tasks(&a).expect("agentic preset is valid");
+    assert!(a.iter().all(|t| t.category == "agentic"), "agentic preset must be all agentic");
+    assert!(a.len() >= 2, "expected a require-sequence + an abstention task");
 }
 
 #[test]
@@ -117,4 +130,97 @@ fn every_task_has_tools_and_a_coherent_expected() {
             None => assert_eq!(task.category, "abstain"),
         }
     }
+}
+
+// --- Agentic data-model (Phase 1) -----------------------------------------
+
+fn agentic_valid() -> ToolTask {
+    let tool = |n: &str| ToolSchema {
+        name: n.into(),
+        description: "d".into(),
+        parameters: json!({ "type": "object", "properties": {} }),
+    };
+    ToolTask {
+        id: "fin".into(),
+        category: "agentic".into(),
+        prompt: "Check the balance then transfer it.".into(),
+        tools: vec![tool("get_balance"), tool("transfer")],
+        expected: Default::default(), // unused by the agentic path
+        agentic: Some(AgenticSpec {
+            mocks: vec![MockResponse {
+                call: Call { name: "get_balance".into(), args: json!({ "id": "A" }) },
+                response: "{}".into(),
+            }],
+            end_state: EndStateRule::RequireSequence(vec![TaskCheckpoint {
+                tool: "transfer".into(),
+                args: json!({ "amount": 1.0 }),
+            }]),
+            k: None,
+            max_steps: None,
+        }),
+    }
+}
+
+#[test]
+fn agentic_task_validates() {
+    validate_tasks(&[agentic_valid()]).expect("valid agentic task");
+}
+
+#[test]
+fn rejects_agentic_without_spec() {
+    let mut t = agentic_valid();
+    t.agentic = None;
+    assert!(matches!(validate_tasks(&[t]), Err(AppError::InvalidTaskSchema(_))));
+}
+
+#[test]
+fn rejects_spec_on_non_agentic_task() {
+    let mut t = agentic_valid();
+    t.category = "single".into();
+    assert!(matches!(validate_tasks(&[t]), Err(AppError::InvalidTaskSchema(_))));
+}
+
+#[test]
+fn rejects_end_state_checkpoint_naming_unknown_tool() {
+    let mut t = agentic_valid();
+    if let Some(s) = t.agentic.as_mut() {
+        s.end_state = EndStateRule::RequireSequence(vec![TaskCheckpoint { tool: "ghost".into(), args: json!({}) }]);
+    }
+    assert!(matches!(validate_tasks(&[t]), Err(AppError::InvalidTaskSchema(_))));
+}
+
+#[test]
+fn rejects_mock_referencing_unknown_tool() {
+    let mut t = agentic_valid();
+    if let Some(s) = t.agentic.as_mut() {
+        s.mocks = vec![MockResponse { call: Call { name: "ghost".into(), args: json!({}) }, response: "{}".into() }];
+    }
+    assert!(matches!(validate_tasks(&[t]), Err(AppError::InvalidTaskSchema(_))));
+}
+
+#[test]
+fn abstaining_agentic_task_needs_no_checkpoints() {
+    let mut t = agentic_valid();
+    if let Some(s) = t.agentic.as_mut() {
+        s.end_state = EndStateRule::ExpectAbstainingText;
+        s.mocks.clear();
+    }
+    validate_tasks(&[t]).expect("expect_abstaining_text is valid with no checkpoints");
+}
+
+#[test]
+fn single_turn_serialization_omits_the_agentic_key() {
+    // The skip_serializing_if guard is load-bearing: existing single-turn
+    // collections must round-trip with no `"agentic"` key appearing.
+    let json = serde_json::to_string(&tasks()).unwrap();
+    assert!(!json.contains("\"agentic\""), "single-turn tasks must not serialize an agentic key");
+}
+
+#[test]
+fn agentic_task_round_trips_through_serde() {
+    let original = agentic_valid();
+    let json = serde_json::to_string(&original).unwrap();
+    assert!(json.contains("\"agentic\""));
+    let back: ToolTask = serde_json::from_str(&json).unwrap();
+    assert_eq!(original, back);
 }

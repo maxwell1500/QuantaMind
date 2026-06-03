@@ -14,6 +14,7 @@ fn sample() -> Vec<ToolTask> {
             parameters: json!({ "type": "object", "properties": { "city": { "type": "string" } }, "required": ["city"] }),
         }],
         expected: Expected::Call(Call { name: "get_weather".into(), args: json!({ "city": "Paris" }) }),
+        agentic: None,
     }]
 }
 

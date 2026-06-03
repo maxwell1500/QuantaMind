@@ -46,4 +46,25 @@ describe("validateDrafts", () => {
     expect(r.ok).toBe(false);
     if (!r.ok) expect(r.drafts[0].error).toContain("Tools");
   });
+
+  it("assembles an agentic task from its agentic spec JSON", () => {
+    const agenticJson = JSON.stringify({
+      mocks: [{ call: { name: "get_weather", args: { city: "Paris" } }, response: "{}" }],
+      end_state: { require_sequence: [{ tool: "get_weather", args: { city: "Paris" } }] },
+      k: 5,
+      max_steps: 8,
+    });
+    const r = validateDrafts([draft({ category: "agentic", agenticJson })]);
+    expect(r.ok).toBe(true);
+    if (r.ok) {
+      expect(r.tasks[0].category).toBe("agentic");
+      expect(r.tasks[0].agentic?.k).toBe(5);
+    }
+  });
+
+  it("rejects an agentic task whose end-state JSON is malformed", () => {
+    const r = validateDrafts([draft({ category: "agentic", agenticJson: "{ not json" })]);
+    expect(r.ok).toBe(false);
+    if (!r.ok) expect(r.drafts[0].error).toContain("Agentic");
+  });
 });

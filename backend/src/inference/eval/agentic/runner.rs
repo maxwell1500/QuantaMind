@@ -3,7 +3,7 @@ use crate::inference::eval::agentic::context::{tool_result_line, Conversation};
 use crate::inference::eval::agentic::endstate;
 use crate::inference::eval::agentic::model_turn::ModelTurn;
 use crate::inference::eval::agentic::report::{AgenticReport, FailureKind, RunOutcome};
-use crate::inference::eval::agentic::sandbox::DeterministicSandbox;
+use crate::inference::eval::agentic::sandbox::{DeterministicSandbox, EndStateRule};
 use crate::inference::eval::agentic::step::{StepKind, TrajectoryStep};
 use crate::inference::eval::toolcall::parse::{extract_calls, looks_like_broken_json};
 use crate::inference::eval::toolcall::prompt::build_system_for;
@@ -60,6 +60,7 @@ pub async fn run_once<M: ModelTurn>(
     let system = build_system_for(&sandbox.tools);
     let mut convo = Conversation::new(sandbox.initial_prompt.clone());
     let mut output_tokens = 0u32;
+    let mut next_cp = 0usize; // progress through a RequireSequence end-state
 
     for step_index in 0..max_steps {
         let spec = GenerateSpec {
@@ -80,29 +81,48 @@ pub async fn run_once<M: ModelTurn>(
         };
 
         match extract_calls(&raw).and_then(|c| c.into_iter().next()) {
-            Some(call) => {
-                if endstate::satisfied(&sandbox.end_state, &call) {
+            Some(call) => match &sandbox.end_state {
+                // Acted (called a tool) when the task wanted a plain-text
+                // abstention — declining was correct, so this is a failure.
+                EndStateRule::ExpectAbstainingText => {
+                    send(StepKind::HallucinatedCompletion, None);
+                    return Ok(RunOutcome::failure(step_index + 1, output_tokens, FailureKind::Hallucinated));
+                }
+                EndStateRule::RequireSequence(checkpoints) => {
+                    let advances = endstate::checkpoint_matches(&checkpoints[next_cp], &call);
+                    if advances && next_cp + 1 == checkpoints.len() {
+                        send(StepKind::EndStateReached, None); // final checkpoint hit
+                        return Ok(RunOutcome::success(step_index + 1, output_tokens));
+                    }
+                    if advances {
+                        next_cp += 1; // intermediate checkpoint reached, keep going
+                    }
+                    let (kind, result) = match sandbox.respond(&call) {
+                        Some(r) => (StepKind::ToolCall, r.to_string()),
+                        None => (StepKind::UnknownTool, UNKNOWN_TOOL.to_string()),
+                    };
+                    let line = tool_result_line(&result);
+                    convo.push_model(&raw);
+                    convo.push_tool_result(&result);
+                    send(kind, Some(line));
+                }
+            },
+            None => match &sandbox.end_state {
+                // Declined to call any tool, exactly as the task demanded.
+                EndStateRule::ExpectAbstainingText => {
                     send(StepKind::EndStateReached, None);
                     return Ok(RunOutcome::success(step_index + 1, output_tokens));
                 }
-                let (kind, result) = match sandbox.respond(&call) {
-                    Some(r) => (StepKind::ToolCall, r.to_string()),
-                    None => (StepKind::UnknownTool, UNKNOWN_TOOL.to_string()),
-                };
-                let line = tool_result_line(&result);
-                convo.push_model(&raw);
-                convo.push_tool_result(&result);
-                send(kind, Some(line));
-            }
-            None => {
-                let (kind, failure) = if looks_like_broken_json(&raw) {
-                    (StepKind::MalformedJson, FailureKind::Malformed)
-                } else {
-                    (StepKind::HallucinatedCompletion, FailureKind::Hallucinated)
-                };
-                send(kind, None);
-                return Ok(RunOutcome::failure(step_index + 1, output_tokens, failure));
-            }
+                EndStateRule::RequireSequence(_) => {
+                    let (kind, failure) = if looks_like_broken_json(&raw) {
+                        (StepKind::MalformedJson, FailureKind::Malformed)
+                    } else {
+                        (StepKind::HallucinatedCompletion, FailureKind::Hallucinated)
+                    };
+                    send(kind, None);
+                    return Ok(RunOutcome::failure(step_index + 1, output_tokens, failure));
+                }
+            },
         }
     }
 

@@ -2,6 +2,7 @@ import { z } from "zod";
 import {
   ToolSchemaSchema,
   ExpectedSchema,
+  AgenticSpecSchema,
   ToolTaskSchema,
   type ToolTask,
 } from "../../shared/ipc/eval/registry";
@@ -19,6 +20,10 @@ export interface TaskDraft {
   prompt: string;
   toolsJson: string;
   expectedJson: string;
+  /// JSON for the agentic spec (mocks + end_state + k/max_steps), used only for
+  /// `category === "agentic"`. Empty for single-turn tasks. Carried through the
+  /// editor so an agentic task survives an edit/save round-trip.
+  agenticJson: string;
   error: string | null;
 }
 
@@ -34,6 +39,7 @@ export function draftFromTask(task: ToolTask): TaskDraft {
     prompt: task.prompt,
     toolsJson: JSON.stringify(task.tools, null, 2),
     expectedJson: JSON.stringify(task.expected, null, 2),
+    agenticJson: task.agentic ? JSON.stringify(task.agentic, null, 2) : "",
     error: null,
   };
 }
@@ -49,6 +55,7 @@ export function newDraft(): TaskDraft {
       null, 2,
     ),
     expectedJson: JSON.stringify({ type: "call", name: "get_weather", args: { city: "Paris" } }, null, 2),
+    agenticJson: "",
     error: null,
   };
 }
@@ -60,6 +67,7 @@ function validateTask(
   prompt: string,
   toolsJson: string,
   expectedJson: string,
+  agenticJson: string,
 ): { ok: true; task: Omit<ToolTask, "id" | "category"> } | { ok: false; err: string } {
   if (!prompt.trim()) return { ok: false, err: "Prompt: required" };
 
@@ -80,6 +88,20 @@ function validateTask(
   }
   const er = ExpectedSchema.safeParse(expected);
   if (!er.success) return { ok: false, err: `Expected: ${er.error.issues[0]?.message ?? "schema error"}` };
+
+  // Agentic tasks score via their end_state, not `expected`, so the single-turn
+  // abstain/expected gate is skipped (mirrors the backend's validate_tasks).
+  if (category === "agentic") {
+    let agentic: unknown;
+    try {
+      agentic = JSON.parse(agenticJson || "null");
+    } catch {
+      return { ok: false, err: "Agentic spec: invalid JSON" };
+    }
+    const ar = AgenticSpecSchema.safeParse(agentic);
+    if (!ar.success) return { ok: false, err: `Agentic: ${ar.error.issues[0]?.message ?? "schema error"}` };
+    return { ok: true, task: { prompt: prompt.trim(), tools: tr.data, expected: er.data, agentic: ar.data } };
+  }
 
   if ((category === "abstain") !== (er.data.type === "no_call")) {
     return { ok: false, err: 'Expected: "abstain" category requires {"type":"no_call"} (and vice-versa)' };
@@ -106,7 +128,7 @@ export function validateDrafts(
       hasError = true;
       return { ...d, error: "Task ID: required" };
     }
-    const r = validateTask(d.category, d.prompt, d.toolsJson, d.expectedJson);
+    const r = validateTask(d.category, d.prompt, d.toolsJson, d.expectedJson, d.agenticJson);
     if (!r.ok) {
       hasError = true;
       return { ...d, error: r.err };

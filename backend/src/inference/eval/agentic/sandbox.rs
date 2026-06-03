@@ -1,5 +1,5 @@
 use crate::inference::eval::toolcall::tasks::{Call, ToolSchema};
-use serde::Deserialize;
+use serde::{Deserialize, Serialize};
 use serde_json::Value;
 use std::collections::HashMap;
 
@@ -7,19 +7,30 @@ use std::collections::HashMap;
 /// string the sandbox hands back for it. The Builder pane sends these as
 /// structured pairs (not raw map keys) so the frontend never has to know our
 /// canonical-key format.
-#[derive(Deserialize, Clone, Debug, PartialEq)]
+#[derive(Serialize, Deserialize, Clone, Debug, PartialEq)]
 pub struct MockResponse {
     pub call: Call,
     pub response: String,
 }
 
-/// The exact tool call that MUST be intercepted for the task to count as a
-/// success — the anti-cheat criterion. A run that yields without ever producing a
-/// call matching this rule is a hallucinated completion, never a pass.
-#[derive(Deserialize, Clone, Debug, PartialEq)]
-pub struct EndStateRule {
+/// One required step in an agentic task's success sequence: a tool name + the
+/// exact args that step must be called with.
+#[derive(Serialize, Deserialize, Clone, Debug, PartialEq)]
+pub struct TaskCheckpoint {
     pub tool: String,
     pub args: Value,
+}
+
+/// The success criterion (anti-cheat). `RequireSequence` demands the model call
+/// each checkpoint in order before it may finish — a run that yields early is a
+/// hallucinated/lazy failure. `ExpectAbstainingText` is the inverse: the correct
+/// behavior is to make NO tool call and answer in plain text, so a robust planner
+/// that correctly declines an unsafe/unnecessary action isn't scored as lazy.
+#[derive(Serialize, Deserialize, Clone, Debug, PartialEq)]
+#[serde(rename_all = "snake_case")]
+pub enum EndStateRule {
+    RequireSequence(Vec<TaskCheckpoint>),
+    ExpectAbstainingText,
 }
 
 /// A strictly prompt-based simulated environment: the opening user prompt, the
@@ -99,7 +110,10 @@ mod tests {
                 call: call("get_balance", json!({ "account_id": "ACC-123" })),
                 response: r#"{"status":200,"balance":450.0}"#.into(),
             }],
-            EndStateRule { tool: "execute_transfer".into(), args: json!({ "amount": 450.0 }) },
+            EndStateRule::RequireSequence(vec![TaskCheckpoint {
+                tool: "execute_transfer".into(),
+                args: json!({ "amount": 450.0 }),
+            }]),
         )
     }
 
@@ -132,7 +146,7 @@ mod tests {
             "p".into(),
             vec![],
             vec![MockResponse { call: call("f", json!({ "x": 1, "y": 2 })), response: "ok".into() }],
-            EndStateRule { tool: "done".into(), args: json!({}) },
+            EndStateRule::RequireSequence(vec![TaskCheckpoint { tool: "done".into(), args: json!({}) }]),
         );
         assert_eq!(sb.respond(&call("f", json!({ "y": 2, "x": 1 }))), Some("ok"));
     }
