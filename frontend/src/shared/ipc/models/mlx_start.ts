@@ -17,15 +17,16 @@ export type MlxStartResult = z.infer<typeof MlxStartResultSchema>;
 export const MlxPhaseSchema = z.enum(["downloading", "starting", "ready", "exited"]);
 export const MlxServerStatusSchema = z.discriminatedUnion("state", [
   z.object({ state: z.literal("stopped") }),
-  z.object({ state: z.literal("running"), phase: MlxPhaseSchema, repo: z.string() }),
+  z.object({ state: z.literal("running"), phase: MlxPhaseSchema, model: z.string() }),
   z.object({ state: z.literal("exited"), code: z.number().int().nullable(), stderr_tail: z.string() }),
 ]);
 export type MlxServerStatus = z.infer<typeof MlxServerStatusSchema>;
 
-/// Launch the app-managed mlx_lm.server on an HF repo (it downloads on first
-/// run). Returns immediately — readiness is polled via mlxServerStatus + health.
-export async function startMlxServer(repo: string): Promise<MlxStartResult> {
-  return MlxStartResultSchema.parse(await invoke("start_mlx_server", { repo }));
+/// Launch the app-managed mlx_lm.server on a local model directory (downloaded
+/// via install_mlx_model). Returns immediately — readiness is polled via
+/// mlxServerStatus + health.
+export async function startMlxServer(modelPath: string): Promise<MlxStartResult> {
+  return MlxStartResultSchema.parse(await invoke("start_mlx_server", { modelPath }));
 }
 
 export async function stopMlxServer(): Promise<void> {

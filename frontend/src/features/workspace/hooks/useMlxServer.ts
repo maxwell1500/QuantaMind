@@ -45,12 +45,12 @@ export function useMlxServer() {
     }
   }, [settle]);
 
-  const start = useCallback(async (repo: string) => {
+  const start = useCallback(async (modelPath: string) => {
     setError(null);
     setStarting(true);
     setPhase("starting");
     try {
-      const r = await startMlxServer(repo);
+      const r = await startMlxServer(modelPath);
       if (r.status === "not_found") return settle(false, NOT_FOUND);
       if (r.status === "no_free_port") return settle(false, NO_PORT);
       if (r.status === "start_failed") return settle(false, r.error);
