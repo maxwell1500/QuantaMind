@@ -4,6 +4,7 @@ import { useInstalledModelsStore } from "../../models/state/installedModelsStore
 import { EvalManager } from "./manager/EvalManager";
 import { CollectionEditor } from "./manager/CollectionEditor";
 import { MatrixScoreboard } from "./scoreboard/MatrixScoreboard";
+import { PerformanceMatrix } from "./scoreboard/PerformanceMatrix";
 import { TraceDebugger } from "./TraceDebugger";
 
 /// The Automated-Pipeline Eval workspace. Left: the Eval Manager (collections +
@@ -15,7 +16,8 @@ export function EvalPage() {
   const startNew = useEvalRegistryStore((s) => s.startNew);
   const models = useInstalledModelsStore((s) => s.list);
 
-  const [selectedModel, setSelectedModel] = useState<string>("");
+  const [targets, setTargets] = useState<string[]>([]);
+  const [focusedModel, setFocusedModel] = useState<string>("");
   const [focusedTaskId, setFocusedTaskId] = useState<string | null>(null);
   const [iterationsK, setIterationsK] = useState<number>(1);
   const [maxSteps, setMaxSteps] = useState<number>(8);
@@ -25,18 +27,25 @@ export function EvalPage() {
     void initRegistry().catch(() => {});
   }, [initRegistry]);
 
-  // Default the target model once the list loads.
+  // Default one target once the model list loads.
   useEffect(() => {
-    if (models.length > 0 && !selectedModel) {
-      setSelectedModel(models[0].name);
+    if (models.length > 0 && targets.length === 0) {
+      setTargets([models[0].name]);
     }
-  }, [models, selectedModel]);
+  }, [models, targets.length]);
+
+  // Keep the focused model (shown in the Simulator/Evaluator) inside the targets.
+  useEffect(() => {
+    if (targets.length > 0 && !targets.includes(focusedModel)) {
+      setFocusedModel(targets[0]);
+    }
+  }, [targets, focusedModel]);
 
   return (
     <div className="grid gap-4" style={{ gridTemplateColumns: "360px 1fr" }} data-testid="eval-page">
       <EvalManager
-        model={selectedModel}
-        setModel={setSelectedModel}
+        targets={targets}
+        setTargets={setTargets}
         k={iterationsK}
         setK={setIterationsK}
         maxSteps={maxSteps}
@@ -53,13 +62,14 @@ export function EvalPage() {
         ) : (
           <>
             <MatrixScoreboard
-              model={selectedModel}
+              model={focusedModel}
               k={iterationsK}
               maxSteps={maxSteps}
               focusedTaskId={focusedTaskId}
               setFocusedTaskId={setFocusedTaskId}
             />
-            <TraceDebugger model={selectedModel} taskId={focusedTaskId} setTaskId={setFocusedTaskId} />
+            <TraceDebugger model={focusedModel} taskId={focusedTaskId} setTaskId={setFocusedTaskId} />
+            <PerformanceMatrix focusedModel={focusedModel} onFocusModel={setFocusedModel} />
           </>
         )}
       </div>

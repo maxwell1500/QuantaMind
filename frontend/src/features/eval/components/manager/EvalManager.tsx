@@ -4,13 +4,13 @@ import { useEvalRegistryStore } from "../../state/evalRegistryStore";
 import { useInstalledModelsStore } from "../../../models/state/installedModelsStore";
 import { useBatchStore } from "../../state/batchStore";
 import { useBatchRun } from "../../hooks/useBatchRun";
-import { modelLabel } from "../../../../shared/models/modelLabel";
 import { formatIpcError } from "../../../../shared/ipc/core/error";
 import { batchToCsv, download } from "../../exportBatch";
+import { ModelDropdown } from "../matrix/ModelDropdown";
 
 interface EvalManagerProps {
-  model: string;
-  setModel: (m: string) => void;
+  targets: string[];
+  setTargets: (t: string[]) => void;
   k: number;
   setK: (k: number) => void;
   maxSteps: number;
@@ -20,8 +20,8 @@ interface EvalManagerProps {
 }
 
 export function EvalManager({
-  model = "",
-  setModel = () => {},
+  targets = [],
+  setTargets = () => {},
   k = 1,
   setK = () => {},
   maxSteps = 8,
@@ -91,15 +91,17 @@ export function EvalManager({
     setError(null);
     if (running) {
       await stop();
-    } else {
-      const m = list.find((x) => x.name === model);
-      if (!m || tasks.length === 0) return;
-      void run(selected, [{ model: m.name, backend: m.backend }], tasks, k, maxSteps);
+      return;
     }
+    const ts = list.filter((m) => targets.includes(m.name)).map((m) => ({ model: m.name, backend: m.backend }));
+    if (ts.length === 0 || tasks.length === 0) return;
+    void run(selected, ts, tasks, k, maxSteps);
   };
 
-  const selectedModelInfo = list.find((m) => m.name === model);
-  const runDisabled = !selectedModelInfo || tasks.length === 0;
+  const toggleTarget = (name: string) =>
+    setTargets(targets.includes(name) ? targets.filter((t) => t !== name) : [...targets, name]);
+
+  const runDisabled = targets.length === 0 || tasks.length === 0;
 
   return (
     <div
@@ -236,27 +238,17 @@ export function EvalManager({
           <div style={sectionHeaderStyle}>▾ RUN CONTROLS</div>
           <div style={{ display: "flex", flexDirection: "column", gap: 14, paddingLeft: 12, marginTop: 10 }}>
             
-            {/* Target Model Selector */}
-            <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
-              <span style={controlLabelStyle}>Target Model:</span>
-              <select
-                value={model}
-                onChange={(e) => setModel(e.target.value)}
-                style={selectDropdownStyle}
-                data-testid="eval-manager-model-select"
-              >
-                <option value="">Select model…</option>
-                {list.map((m) => (
-                  <option key={m.name} value={m.name}>
-                    {modelLabel(m)}
-                  </option>
-                ))}
-              </select>
+            {/* Target Models (multi-select) */}
+            <div style={{ display: "flex", flexDirection: "column", gap: 6 }} data-testid="eval-manager-model-select">
+              <span style={controlLabelStyle}>Target Models:</span>
+              <ModelDropdown models={list} selected={new Set(targets)} onToggle={toggleTarget} />
             </div>
 
-            {/* Iterations Selector */}
+            {/* Iterations Selector — Pass^k repeats; only affects Multi-Step tasks */}
             <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between" }}>
-              <span style={controlLabelStyle}>Iterations (k):</span>
+              <span style={controlLabelStyle} title="Repeat each Multi-Step (agentic) task k times — Pass^k consistency. No effect on single-turn tasks.">
+                Iterations (k):
+              </span>
               <input
                 type="number"
                 min={1}
@@ -267,9 +259,11 @@ export function EvalManager({
               />
             </div>
 
-            {/* Max Steps Selector */}
+            {/* Max Steps — agentic loop cap; only affects Multi-Step tasks */}
             <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between" }}>
-              <span style={controlLabelStyle}>Max Steps:</span>
+              <span style={controlLabelStyle} title="Max turns an agentic task may take before it's marked a loop-cap failure. No effect on single-turn tasks.">
+                Max Steps:
+              </span>
               <input
                 type="number"
                 min={1}
@@ -394,18 +388,6 @@ const controlLabelStyle: React.CSSProperties = {
   fontFamily: "Inter, sans-serif",
 };
 
-const selectDropdownStyle: React.CSSProperties = {
-  background: "rgba(255,255,255,0.04)",
-  border: "1px solid rgba(255,255,255,0.08)",
-  borderRadius: 6,
-  color: "#e2e8f0",
-  fontSize: 12,
-  fontFamily: "Inter, sans-serif",
-  padding: "6px 10px",
-  outline: "none",
-  cursor: "pointer",
-  width: "100%",
-};
 
 const numberInputStyle: React.CSSProperties = {
   background: "rgba(255,255,255,0.04)",
