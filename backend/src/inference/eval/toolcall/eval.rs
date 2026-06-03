@@ -1,16 +1,12 @@
 use crate::errors::AppResult;
-use crate::inference::backend::backend::InferenceBackend;
 use crate::inference::backend::backend_kind::BackendKind;
+use crate::inference::eval::agentic::model_turn::{BackendTurn, ModelTurn};
 use crate::inference::eval::toolcall::parse::extract_calls;
 use crate::inference::eval::toolcall::prompt::build_system;
 use crate::inference::eval::toolcall::score::{score, Verdict};
 use crate::inference::eval::toolcall::tasks::ToolTask;
 use crate::inference::generate::generate_options::GenerateOptions;
 use crate::inference::generate::generate_spec::GenerateSpec;
-use crate::inference::generate::generate_stats::GenerateStats;
-use crate::inference::llama::llama_backend::LlamaCppBackend;
-use crate::inference::mlx::mlx_backend::MlxBackend;
-use crate::inference::ollama::ollama_backend::OllamaBackend;
 use serde::{Deserialize, Serialize};
 use tokio_util::sync::CancellationToken;
 
@@ -75,7 +71,7 @@ fn rate(num: usize, den: usize) -> Option<f64> {
     (den > 0).then(|| num as f64 / den as f64)
 }
 
-fn aggregate(tasks: &[ToolTask], results: Vec<TaskResult>) -> ToolCallReport {
+pub(crate) fn aggregate(tasks: &[ToolTask], results: Vec<TaskResult>) -> ToolCallReport {
     let call = |t: &ToolTask| t.expected.calls().is_some();
     let z = || tasks.iter().zip(&results);
 
@@ -100,31 +96,12 @@ fn aggregate(tasks: &[ToolTask], results: Vec<TaskResult>) -> ToolCallReport {
     ToolCallReport { n: results.len(), parse_rate, tool_selection_acc, arg_acc, abstain_acc, composite, prompt_tokens, per_task: results }
 }
 
-/// Run one task: greedy decode (temp 0), accumulate the full completion, no
-/// events. Dispatches by `BackendKind` (the trait isn't object-safe). Returns the
-/// text AND the backend's real generation stats (for the measured prompt-token
-/// depth) — never discarded.
-async fn generate_text(backend: BackendKind, endpoint: &str, model: &str, spec: &GenerateSpec) -> AppResult<(String, GenerateStats)> {
-    let mut out = String::new();
-    let cancel = CancellationToken::new();
-    let push = |t: &str| out.push_str(t);
-    let stats = match backend {
-        BackendKind::Ollama => OllamaBackend::new(endpoint.into()).generate(spec, cancel, push).await?,
-        BackendKind::LlamaCpp => LlamaCppBackend::new(endpoint.into()).generate(spec, cancel, push).await?,
-        BackendKind::Mlx => MlxBackend::new(endpoint.into(), model.into()).generate(spec, cancel, push).await?,
-    };
-    Ok((out, stats))
-}
-
-/// Run ONE task end-to-end and return its full trace (system message + raw
-/// output + verdict). The single source of per-task execution: `run_eval` loops
-/// over it, and the pipeline visualizer calls it directly.
-pub async fn trace_one(
-    backend: BackendKind,
-    endpoint: &str,
-    model: &str,
-    task: &ToolTask,
-) -> AppResult<TraceResult> {
+/// Run ONE task end-to-end behind a `ModelTurn` seam and return its full trace
+/// (system message + raw output + verdict). The batch dispatcher and the unit
+/// tests drive this with a scripted model; `trace_one` wraps it with a live
+/// backend. Greedy decode (temp 0); the backend's real prompt-token count is
+/// kept, never an estimate.
+pub(crate) async fn trace_one_with<M: ModelTurn>(turn: &M, model: &str, task: &ToolTask) -> AppResult<TraceResult> {
     let system_message = build_system(task);
     let spec = GenerateSpec {
         model: model.to_string(),
@@ -133,9 +110,17 @@ pub async fn trace_one(
         options: Some(GenerateOptions { temperature: Some(0.0), num_predict: Some(MAX_TOKENS), ..Default::default() }),
         keep_alive: None,
     };
-    let (raw_output, stats) = generate_text(backend, endpoint, model, &spec).await?;
+    let (raw_output, stats) = turn.run(&spec).await?;
     let verdict = score(&task.expected, extract_calls(&raw_output).as_deref());
     Ok(TraceResult { system_message, user_prompt: task.prompt.clone(), raw_output, verdict, prompt_tokens: stats.prompt_eval_count })
+}
+
+/// Run ONE task end-to-end against a live backend. The single source of per-task
+/// execution: `run_eval` loops over it and the pipeline visualizer calls it
+/// directly. Dispatches by `BackendKind` via `BackendTurn`.
+pub async fn trace_one(backend: BackendKind, endpoint: &str, model: &str, task: &ToolTask) -> AppResult<TraceResult> {
+    let turn = BackendTurn { backend, endpoint: endpoint.to_string(), model: model.to_string(), cancel: CancellationToken::new() };
+    trace_one_with(&turn, model, task).await
 }
 
 /// Run the tool-call eval over `tasks`, keeping each task's FULL trace alongside

@@ -58,6 +58,16 @@ fn set_match(expected: &[Call], parsed: &[Call]) -> (bool, bool) {
     (tool, args)
 }
 
+/// Did a task pass overall? For a call-task: parsed + right tool + right args;
+/// for an abstention: the model correctly made no call. The single per-task
+/// pass/fail the batch scoreboard renders.
+pub(crate) fn verdict_passed(v: &Verdict) -> bool {
+    match v.abstain_correct {
+        Some(ok) => ok,
+        None => v.parsed && v.tool_match && v.args_match,
+    }
+}
+
 /// Score one task. Pure.
 pub fn score(expected: &Expected, parsed: Option<&[Call]>) -> Verdict {
     match expected.calls() {

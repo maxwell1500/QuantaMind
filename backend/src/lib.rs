@@ -24,6 +24,7 @@ pub fn run() {
         .manage(commands::mlx::mlx_server_types::MlxServerState::default())
         .manage(commands::workspace::workspaces::WorkspaceState::default())
         .manage(commands::settings::user_settings::UserSettingsState::default())
+        .manage(commands::eval::batch_cmd::BatchRunState::default())
         .invoke_handler(tauri::generate_handler![
             commands::system::feasibility::check_install_feasibility,
             commands::gguf::gguf_cmd::inspect_gguf,
@@ -92,6 +93,8 @@ pub fn run() {
             commands::eval::eval_registry::import_custom_collection,
             commands::eval::matrix_cmd::run_collection_matrix,
             commands::eval::matrix_cmd::load_collection_history,
+            commands::eval::batch_cmd::run_batch_eval,
+            commands::eval::batch_cmd::stop_batch_eval,
             commands::workspace::workspace_prompts::load_prompt,
             commands::workspace::workspace_prompts::save_prompt,
             commands::workspace::workspace_prompts::create_prompt,
