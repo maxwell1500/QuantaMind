@@ -32,10 +32,13 @@ describe("MlxServerControl", () => {
     );
   });
 
-  it("shows Stop when MLX is healthy", () => {
+  it("when healthy, keeps the repo field and offers Switch + Stop", () => {
     useWorkspaceStore.setState({ mlxHealthy: true });
     render(<MlxServerControl />);
     expect(screen.getByTestId("mlx-stop")).toHaveTextContent("Stop MLX");
-    expect(screen.queryByTestId("mlx-start")).toBeNull();
+    // The field + action stay so a different repo can be loaded without first
+    // stopping (start_mlx_server swaps the running model).
+    expect(screen.getByTestId("mlx-repo-input")).toBeInTheDocument();
+    expect(screen.getByTestId("mlx-start")).toHaveTextContent("Switch model");
   });
 });

@@ -19,23 +19,17 @@ export function MlxServerControl() {
     if (prefill) setRepo(prefill);
   }, [prefill]);
 
-  if (healthy) {
-    return (
-      <button
-        type="button"
-        onClick={() => void stop()}
-        data-testid="mlx-stop"
-        className="text-xs text-gray-600 hover:text-ink px-2 py-1"
-      >
-        Stop MLX
-      </button>
-    );
-  }
+  const trimmed = repo.trim();
+  // Even while a server is running, keep the repo field + a "Switch model"
+  // action: start_mlx_server stops the current model and loads the new one.
+  // (Without this a prefilled repo had nowhere to go once one was running.)
   const label = starting
     ? phase === "downloading"
       ? "Downloading weights…"
       : "Starting…"
-    : "Start MLX";
+    : healthy
+      ? "Switch model"
+      : "Start MLX";
   return (
     <div className="space-y-0.5">
       <div className="flex items-center gap-1">
@@ -49,13 +43,23 @@ export function MlxServerControl() {
         />
         <button
           type="button"
-          onClick={() => repo.trim() && void start(repo.trim())}
-          disabled={starting || !repo.trim()}
+          onClick={() => trimmed && void start(trimmed)}
+          disabled={starting || !trimmed}
           data-testid="mlx-start"
           className="text-xs text-blue-600 hover:text-blue-800 px-2 py-1 disabled:opacity-40"
         >
           {label}
         </button>
+        {healthy && !starting && (
+          <button
+            type="button"
+            onClick={() => void stop()}
+            data-testid="mlx-stop"
+            className="text-xs text-gray-600 hover:text-ink px-2 py-1"
+          >
+            Stop MLX
+          </button>
+        )}
       </div>
       {error && (
         <p data-testid="mlx-start-error" className="px-2 text-[10px] text-red-600">

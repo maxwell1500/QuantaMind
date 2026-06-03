@@ -199,6 +199,15 @@ switches you to the workspace — there's no separate download step, since
 `mlx_lm.server` fetches the repo on Start. MLX models are never downloaded
 through the GGUF file flow.
 
+**Guardrail — text-generation only.** `mlx_lm.server` serves text-generation
+LLMs; a text-to-speech / embedding / vision repo would start the HTTP server but
+never answer a chat request. So **Use in MLX** checks the repo's task and, if it
+isn't `text-generation`, shows a blocking dialog ("This model won't run on MLX")
+with a *Pick another* / *Use anyway* choice rather than wasting a multi-GB
+download. **Switching models:** the **Start MLX** control keeps its repo field
+even while a server is running — typing a new repo and pressing **Switch model**
+stops the current one and loads the new one (no need to Stop first).
+
 - **"mlx_lm.server not found"** — QuantaMind searches `PATH` and common venvs
   (`~/mlx-env/bin`, `~/.venv/bin`, Homebrew, conda). If yours is elsewhere, set
   `QUANTAMIND_MLX_SERVER` to its full path and restart.
