@@ -260,8 +260,11 @@ an agent — entirely offline and deterministic. Read the scores with these cave
 Where the tool-calling eval is single-turn, the **agentic** engine runs a model
 through a stateful, multi-step loop inside a deterministic sandbox — measuring
 not just whether the model claims success, but whether it *did the work*, and how
-much compute it burned getting there. (Backend engine landed; the Playground UI
-is a follow-up.)
+much compute it burned getting there. Agentic tasks live **alongside** single-turn
+tasks in the same collection (an agentic `ToolTask` carries an optional `agentic`
+spec); the **Eval** workspace runs a mixed collection across several models in one
+streaming batch and renders a per-model Matrix (Pass^k · Avg Steps · Effort · Top
+Error), with a click-through Trace Debugger. See [the workspace](#eval-runner).
 
 - **Prompt-based sandbox, same as the tool-call eval.** The `DeterministicSandbox`
   holds the initial prompt, the tool schemas (injected into the system prompt via
@@ -273,11 +276,14 @@ is a follow-up.)
   sandbox doesn't recognize gets an error injection and the loop continues. Mock
   lookup is on a **canonical key** (tool name + recursively key-sorted args), so a
   model that reorders its arg keys still hits the right mock.
-- **The anti-cheat.** A run counts as a success **only** when it produces a call
-  satisfying the `EndStateRule` (same structural arg-equality the tool-call scorer
-  uses). A model that yields with `{"status":"task_complete"}` without ever hitting
-  the rule is logged as a **hallucinated completion**, never a pass — the benchmark
-  cannot be gamed by claiming done.
+- **The anti-cheat (`EndStateRule`).** Two variants. `RequireSequence` is an
+  ordered checklist of `(tool, args)` checkpoints — the run succeeds **only** after
+  the model calls each in order (same structural arg-equality the tool-call scorer
+  uses). A model that yields with `{"status":"task_complete"}` without finishing the
+  sequence is logged as a **hallucinated completion**, never a pass — it can't be
+  gamed by claiming done. `ExpectAbstainingText` is the inverse: success is a correct
+  plain-text refusal with **no** tool call (so a robust planner that declines an
+  unsafe/unnecessary action isn't mis-scored as lazy); acting anyway fails.
 - **Pass^k consistency.** The loop runs `k` times (default 5) with absolute
   isolation between runs. The `AgenticReport` carries `passes/total_runs`, a
   `FailureTracker` with **distinct** tallies (`infinite_loop_hits` = hit the step

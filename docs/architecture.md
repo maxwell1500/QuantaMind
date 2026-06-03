@@ -137,6 +137,16 @@ commands/compare.rs         impl CompareSink for TauriCompareSink { … app.emit
 ```
 
 This is why `commands/` can know about `inference/` types but not the reverse.
+The eval **batch dispatcher** follows the same shape: `inference/eval/batch.rs`'s
+`run_batch` runs a strict sequential model×task queue (never fans out local
+inference → OOM-safe) and emits through a `BatchSink`; `commands/eval/batch_cmd.rs`
+implements it as `TauriBatchSink`, streaming `batch-progress`/`agentic-step`/
+`batch-complete` over one channel so the IPC boundary is crossed once. The runner
+is generic over a `ModelTurn` seam (real `BackendTurn` vs a scripted model), so the
+whole queue is unit-tested without HTTP. On the frontend, the matching consumer
+(`batchStore`) buffers events and flushes to reactive state at ≤60Hz via
+`requestAnimationFrame`, so a model's token firehose never triggers a per-event
+render.
 
 ### Pattern 2 — Thin command, pure core
 
