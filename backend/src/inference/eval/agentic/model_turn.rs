@@ -32,10 +32,14 @@ impl ModelTurn for BackendTurn {
         let mut out = String::new();
         let push = |t: &str| out.push_str(t);
         let cancel = self.cancel.clone();
+        // The agentic loop builds its spec without a model name (it only knows the
+        // `ModelTurn` seam). Inject our own so Ollama — which sends `spec.model` in
+        // the request — targets the right model instead of an empty name.
+        let spec = GenerateSpec { model: self.model.clone(), ..spec.clone() };
         let stats = match self.backend {
-            BackendKind::Ollama => OllamaBackend::new(self.endpoint.clone()).generate(spec, cancel, push).await?,
-            BackendKind::LlamaCpp => LlamaCppBackend::new(self.endpoint.clone()).generate(spec, cancel, push).await?,
-            BackendKind::Mlx => MlxBackend::new(self.endpoint.clone(), self.model.clone()).generate(spec, cancel, push).await?,
+            BackendKind::Ollama => OllamaBackend::new(self.endpoint.clone()).generate(&spec, cancel, push).await?,
+            BackendKind::LlamaCpp => LlamaCppBackend::new(self.endpoint.clone()).generate(&spec, cancel, push).await?,
+            BackendKind::Mlx => MlxBackend::new(self.endpoint.clone(), self.model.clone()).generate(&spec, cancel, push).await?,
         };
         Ok((out, stats))
     }

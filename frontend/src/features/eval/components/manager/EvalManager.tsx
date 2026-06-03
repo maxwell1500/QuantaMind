@@ -7,6 +7,7 @@ import { useBatchRun } from "../../hooks/useBatchRun";
 import { formatIpcError } from "../../../../shared/ipc/core/error";
 import { batchToCsv, download } from "../../exportBatch";
 import { ModelDropdown } from "../matrix/ModelDropdown";
+import { ConfirmDialog } from "./ConfirmDialog";
 
 interface EvalManagerProps {
   targets: string[];
@@ -29,7 +30,7 @@ export function EvalManager({
   onNewCollection = () => {},
   onEditCollection = () => {},
 }: Partial<EvalManagerProps> = {}) {
-  const { presets, collections, selected, tasks, init, select, isPreset, importFile } =
+  const { presets, collections, selected, tasks, init, select, isPreset, importFile, remove } =
     useEvalRegistryStore();
   const list = useInstalledModelsStore((s) => s.list);
   const running = useBatchStore((s) => s.running);
@@ -38,6 +39,7 @@ export function EvalManager({
 
   const [collectionsExpanded, setCollectionsExpanded] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  const [deleteTarget, setDeleteTarget] = useState<string | null>(null);
 
   // Determine dataSource based on the active selection
   const dataSource = isPreset(selected) ? "builtin" : "custom";
@@ -84,6 +86,18 @@ export function EvalManager({
   const handleExport = () => {
     if (report) {
       download("audit-trail.csv", batchToCsv(report, list), "text/csv");
+    }
+  };
+
+  const confirmDeleteCollection = async () => {
+    if (!deleteTarget) return;
+    const name = deleteTarget;
+    setDeleteTarget(null);
+    setError(null);
+    try {
+      await remove(name);
+    } catch (e) {
+      setError(formatIpcError(e));
     }
   };
 
@@ -189,16 +203,30 @@ export function EvalManager({
                     collections.map((c) => (
                       <div
                         key={c}
-                        onClick={() => void select(c)}
                         style={{
                           ...collectionItemStyle,
+                          justifyContent: "space-between",
                           color: selected === c ? "#3b82f6" : "#94a3b8",
                           fontWeight: selected === c ? 600 : 400,
                         }}
-                        data-testid={`eval-collection-item-${c}`}
                       >
-                        <span style={{ marginRight: 6 }}>{selected === c ? "•" : "-"}</span>
-                        <span>{c}</span>
+                        <span
+                          onClick={() => void select(c)}
+                          style={{ display: "flex", alignItems: "center", cursor: "pointer", flex: 1, minWidth: 0 }}
+                          data-testid={`eval-collection-item-${c}`}
+                        >
+                          <span style={{ marginRight: 6 }}>{selected === c ? "•" : "-"}</span>
+                          <span style={{ overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{c}</span>
+                        </span>
+                        <button
+                          type="button"
+                          onClick={() => setDeleteTarget(c)}
+                          title="Delete this collection"
+                          data-testid={`eval-delete-collection-${c}`}
+                          style={{ background: "transparent", border: "none", color: "#64748b", cursor: "pointer", fontSize: 12, padding: "0 4px", flexShrink: 0 }}
+                        >
+                          ✕
+                        </button>
                       </div>
                     ))
                   )
@@ -332,6 +360,15 @@ export function EvalManager({
         </div>
 
       </div>
+
+      {deleteTarget && (
+        <ConfirmDialog
+          title="Delete collection"
+          message={`Delete the collection “${deleteTarget}”? This cannot be undone.`}
+          onConfirm={() => void confirmDeleteCollection()}
+          onClose={() => setDeleteTarget(null)}
+        />
+      )}
     </div>
   );
 }

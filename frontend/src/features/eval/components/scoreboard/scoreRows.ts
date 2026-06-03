@@ -32,11 +32,19 @@ export function toScoreRows(report: BatchReport | null, models: InstalledModelIn
   return report.columns.map((c) => {
     const info = models.find((m) => m.name === c.model);
     const ag = c.agentic;
+    // The Pass column is unified: agentic → Pass^k (passes/total); single-turn →
+    // the composite score as a percent; an errored column → "Error". So the matrix
+    // is meaningful for any collection, not just agentic ones.
+    const pass = c.error
+      ? "Error"
+      : ag
+        ? `${ag.passes}/${ag.total_runs}`
+        : fmtPct(c.toolcall?.composite);
     return {
       model: c.model,
       label: modelLabel(info ?? { name: c.model }),
       quant: info?.quantization || "—",
-      passK: ag ? `${ag.passes}/${ag.total_runs}` : "—",
+      passK: pass,
       avgSteps: ag ? fmtNum(ag.avg_steps) : "—",
       effort: ag ? fmtTokens(ag.avg_output_tokens_success) : "—",
       topError: c.error ? "Error" : ag ? TOP_ERROR_LABEL[ag.top_error] : "—",

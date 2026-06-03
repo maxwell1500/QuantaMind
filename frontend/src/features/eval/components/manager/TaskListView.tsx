@@ -15,6 +15,7 @@ export function TaskListView({
   onAddTask,
   onSave,
   onRunAll,
+  onDeleteTask,
 }: {
   drafts: TaskDraft[];
   results: Record<string, ToolTaskResult>;
@@ -27,6 +28,8 @@ export function TaskListView({
   /// Optional — omitted in the authoring editor, where running is driven from the
   /// Eval Manager's Run Batch instead.
   onRunAll?: () => void;
+  /// Optional per-row delete (the editor wires this to a confirm dialog).
+  onDeleteTask?: (key: string) => void;
 }) {
   const runAllDisabled = dirty || !modelSelected || drafts.length === 0 || running;
   const runAllTitle = dirty
@@ -81,40 +84,52 @@ export function TaskListView({
             const result = draft.id.trim() ? results[draft.id.trim()] : undefined;
             const passed = result ? isPassed(result) : null;
             return (
-              <button
-                key={draft.key}
-                type="button"
-                onClick={() => onOpen(draft.key)}
-                data-testid={`eval-task-row-${draft.id || i}`}
-                style={{
-                  width: "100%",
-                  display: "flex",
-                  alignItems: "center",
-                  gap: 12,
-                  textAlign: "left",
-                  background: "rgba(255,255,255,0.03)",
-                  border: `1px solid ${draft.error ? "rgba(239,68,68,0.4)" : "rgba(255,255,255,0.08)"}`,
-                  borderRadius: 9,
-                  padding: "10px 14px",
-                  marginBottom: 8,
-                  cursor: "pointer",
-                }}
-              >
-                <span style={{ fontSize: 11, color: "#475569", fontFamily: "Inter,sans-serif", width: 24, flexShrink: 0 }}>
-                  {i + 1}
-                </span>
-                <span style={{ fontSize: 13, color: "#e2e8f0", fontFamily: "'JetBrains Mono', monospace", width: 150, flexShrink: 0, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
-                  {draft.id || "(unnamed)"}
-                </span>
-                <span style={categoryBadge}>{draft.category}</span>
-                <span style={{ fontSize: 12, color: "#94a3b8", fontFamily: "Inter,sans-serif", flex: 1, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
-                  {draft.prompt || "—"}
-                </span>
-                {passed != null && (
-                  <span style={passed ? passedBadge : failedBadge}>{passed ? "Pass" : "Fail"}</span>
+              <div key={draft.key} style={{ display: "flex", alignItems: "center", gap: 6, marginBottom: 8 }}>
+                <button
+                  type="button"
+                  onClick={() => onOpen(draft.key)}
+                  data-testid={`eval-task-row-${draft.id || i}`}
+                  style={{
+                    flex: 1,
+                    minWidth: 0,
+                    display: "flex",
+                    alignItems: "center",
+                    gap: 12,
+                    textAlign: "left",
+                    background: "rgba(255,255,255,0.03)",
+                    border: `1px solid ${draft.error ? "rgba(239,68,68,0.4)" : "rgba(255,255,255,0.08)"}`,
+                    borderRadius: 9,
+                    padding: "10px 14px",
+                    cursor: "pointer",
+                  }}
+                >
+                  <span style={{ fontSize: 11, color: "#475569", fontFamily: "Inter,sans-serif", width: 24, flexShrink: 0 }}>
+                    {i + 1}
+                  </span>
+                  <span style={{ fontSize: 13, color: "#e2e8f0", fontFamily: "'JetBrains Mono', monospace", width: 150, flexShrink: 0, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
+                    {draft.id || "(unnamed)"}
+                  </span>
+                  <span style={categoryBadge}>{draft.category}</span>
+                  <span style={{ fontSize: 12, color: "#94a3b8", fontFamily: "Inter,sans-serif", flex: 1, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
+                    {draft.prompt || "—"}
+                  </span>
+                  {passed != null && (
+                    <span style={passed ? passedBadge : failedBadge}>{passed ? "Pass" : "Fail"}</span>
+                  )}
+                  <span style={{ fontSize: 14, color: "#475569", flexShrink: 0 }}>›</span>
+                </button>
+                {onDeleteTask && (
+                  <button
+                    type="button"
+                    onClick={() => onDeleteTask(draft.key)}
+                    title="Delete task"
+                    data-testid={`eval-delete-task-${draft.id || i}`}
+                    style={{ background: "transparent", border: "none", color: "#64748b", cursor: "pointer", fontSize: 13, padding: "0 6px", flexShrink: 0 }}
+                  >
+                    ✕
+                  </button>
                 )}
-                <span style={{ fontSize: 14, color: "#475569", flexShrink: 0 }}>›</span>
-              </button>
+              </div>
             );
           })
         )}

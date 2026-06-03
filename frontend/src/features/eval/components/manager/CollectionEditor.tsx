@@ -5,6 +5,7 @@ import { formatIpcError } from "../../../../shared/ipc/core/error";
 import { TaskListView } from "./TaskListView";
 import { TaskSandboxConfigurator } from "./TaskSandboxConfigurator";
 import { NameDialog } from "./NameDialog";
+import { ConfirmDialog } from "./ConfirmDialog";
 
 /// The authoring surface (center column in edit mode): the collection's task list
 /// and, when a task is opened, the Task & Sandbox Configurator. Holds the editable
@@ -17,6 +18,7 @@ export function CollectionEditor({ onClose }: { onClose: () => void }) {
   const [dirty, setDirty] = useState(false);
   const [nameOpen, setNameOpen] = useState(false);
   const [status, setStatus] = useState<string | null>(null);
+  const [confirmKey, setConfirmKey] = useState<string | null>(null);
 
   // Re-seed when the active collection changes.
   useEffect(() => {
@@ -38,10 +40,12 @@ export function CollectionEditor({ onClose }: { onClose: () => void }) {
     setDrafts((p) => p.map((d) => (d.key === nd.key ? nd : d)));
     setDirty(true);
   };
-  const removeOpen = () => {
-    if (!open) return;
-    setDrafts((p) => p.filter((d) => d.key !== open.key));
-    setOpenKey(null);
+  const performRemove = () => {
+    if (!confirmKey) return;
+    const key = confirmKey;
+    setConfirmKey(null);
+    setDrafts((p) => p.filter((d) => d.key !== key));
+    setOpenKey((k) => (k === key ? null : k));
     setDirty(true);
   };
 
@@ -82,7 +86,7 @@ export function CollectionEditor({ onClose }: { onClose: () => void }) {
       </div>
 
       {open ? (
-        <TaskSandboxConfigurator draft={open} onChange={changeDraft} onRemove={removeOpen} onBack={() => setOpenKey(null)} />
+        <TaskSandboxConfigurator draft={open} onChange={changeDraft} onRemove={() => setConfirmKey(open.key)} onBack={() => setOpenKey(null)} />
       ) : (
         <div className="rounded-xl overflow-hidden border border-white/10" style={listPanel}>
           <TaskListView
@@ -94,6 +98,7 @@ export function CollectionEditor({ onClose }: { onClose: () => void }) {
             onOpen={setOpenKey}
             onAddTask={addTask}
             onSave={onSave}
+            onDeleteTask={setConfirmKey}
           />
         </div>
       )}
@@ -114,6 +119,15 @@ export function CollectionEditor({ onClose }: { onClose: () => void }) {
             void persist(name);
           }}
           onClose={() => setNameOpen(false)}
+        />
+      )}
+
+      {confirmKey && (
+        <ConfirmDialog
+          title="Delete task"
+          message="Remove this task from the collection? Click Save afterwards to persist the change."
+          onConfirm={performRemove}
+          onClose={() => setConfirmKey(null)}
         />
       )}
     </div>

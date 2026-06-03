@@ -52,6 +52,8 @@ describe("toScoreRows", () => {
       ],
     };
     const rows = toScoreRows(report, []);
-    expect(rows[0]).toMatchObject({ passK: "—", avgSteps: "—", effort: "—", topError: "—", composite: "92%" });
+    // Single-turn columns now surface the composite as the Pass cell (not "—"),
+    // so the matrix is meaningful for non-agentic collections too.
+    expect(rows[0]).toMatchObject({ passK: "92%", avgSteps: "—", effort: "—", topError: "—", composite: "92%" });
   });
 });

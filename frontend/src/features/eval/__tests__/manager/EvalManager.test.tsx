@@ -73,6 +73,29 @@ describe("EvalManager Sidebar Controls", () => {
     });
   });
 
+  it("confirms before deleting a custom collection", async () => {
+    const remove = vi.fn().mockResolvedValue(undefined);
+    useEvalRegistryStore.setState({
+      presets: [{ id: "curated", label: "Curated Suite" }],
+      collections: ["my-evals"],
+      selected: "my-evals", // custom selection → the custom list (with ✕) renders
+      tasks: sampleTasks,
+      init,
+      select,
+      importFile,
+      remove,
+    });
+    render(<EvalManager targets={["llama3.2:1b"]} setTargets={() => {}} k={1} setK={() => {}} maxSteps={8} setMaxSteps={() => {}} />);
+
+    fireEvent.click(screen.getByTestId("eval-delete-collection-my-evals"));
+    // The confirm popup appears; nothing deleted until confirmed.
+    expect(screen.getByTestId("confirm-dialog")).toBeInTheDocument();
+    expect(remove).not.toHaveBeenCalled();
+
+    fireEvent.click(screen.getByTestId("confirm-ok"));
+    await waitFor(() => expect(remove).toHaveBeenCalledWith("my-evals"));
+  });
+
   it("triggers runBatchEval when ▶ RUN BATCH is clicked", async () => {
     vi.mocked(runBatchEval).mockResolvedValue({
       collection_id: "curated",
