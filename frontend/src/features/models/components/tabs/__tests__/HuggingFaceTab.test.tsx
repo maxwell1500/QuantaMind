@@ -81,18 +81,27 @@ describe("HuggingFaceTab (live search)", () => {
     );
   });
 
-  it("selecting an MLX repo routes it into Start MLX and the workspace", async () => {
+  it("an mlx-tagged repo opens the MLX action even under GGUF search", async () => {
+    // Routing is by the repo's tags, not the toggle: a user in (unfiltered)
+    // GGUF search who clicks an MLX repo still gets "Use in MLX".
+    vi.mocked(invoke).mockImplementation((cmd: string) => {
+      if (cmd === "hf_search")
+        return Promise.resolve([
+          { id: "mlx-community/DeepSeek-MLX-4bit", downloads: 9, likes: 1, tags: ["mlx", "safetensors"], last_modified: null },
+        ]);
+      if (cmd === "hf_model_card") return Promise.resolve(null);
+      return Promise.resolve([]);
+    });
     useWorkspaceStore.setState({ mlxRepo: null, activeBackend: "ollama" });
     useNavStore.setState({ topView: "models", history: [] });
     render(<HuggingFaceTab />);
-    fireEvent.click(screen.getByTestId("hf-kind-mlx"));
-    fireEvent.change(screen.getByLabelText("Search Hugging Face"), { target: { value: "llama" } });
-    const card = await screen.findByTestId("hf-card-bartowski/Llama-GGUF", undefined, { timeout: 1000 });
+    // Stay on the default GGUF toggle on purpose.
+    fireEvent.change(screen.getByLabelText("Search Hugging Face"), { target: { value: "deepseek" } });
+    const card = await screen.findByTestId("hf-card-mlx-community/DeepSeek-MLX-4bit", undefined, { timeout: 1000 });
     fireEvent.click(card);
-    // MLX repos get the MLX detail (no GGUF variant table).
     const useBtn = await screen.findByTestId("mlx-use-button");
     fireEvent.click(useBtn);
-    expect(useWorkspaceStore.getState().mlxRepo).toBe("bartowski/Llama-GGUF");
+    expect(useWorkspaceStore.getState().mlxRepo).toBe("mlx-community/DeepSeek-MLX-4bit");
     expect(useWorkspaceStore.getState().activeBackend).toBe("mlx");
     expect(useNavStore.getState().topView).toBe("workspace");
   });

@@ -192,10 +192,12 @@ dropdown once it's up.
 toggle. GGUF (the default) is unfiltered — every HuggingFace hit for your query
 is shown, and you pick a repo's `.gguf` files on its detail page; MLX searches
 repos tagged `mlx` (mostly `mlx-community` — safetensors have no `.gguf`-style
-extension to match on) and, on selecting one,
-fills the repo into **Start MLX** and switches you to the workspace — there's no
-separate download step, since `mlx_lm.server` fetches the repo on Start. MLX
-models are never downloaded through the GGUF file flow.
+extension to match on). The **detail view follows the repo's tags, not the
+toggle**: clicking an `mlx`-tagged repo (even one surfaced under the unfiltered
+GGUF search) opens the MLX action, which fills the repo into **Start MLX** and
+switches you to the workspace — there's no separate download step, since
+`mlx_lm.server` fetches the repo on Start. MLX models are never downloaded
+through the GGUF file flow.
 
 - **"mlx_lm.server not found"** — QuantaMind searches `PATH` and common venvs
   (`~/mlx-env/bin`, `~/.venv/bin`, Homebrew, conda). If yours is elsewhere, set

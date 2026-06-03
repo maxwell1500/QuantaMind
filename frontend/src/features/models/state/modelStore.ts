@@ -38,6 +38,9 @@ export interface ModelStore {
   pullNames: Record<string, string>;
   hfSearchQuery: string;
   hfSelectedRepo: string | null;
+  // Tags of the selected hit — used to route the detail by the repo's actual
+  // format (mlx-tagged → MLX action) rather than the search toggle.
+  hfSelectedTags: string[];
   hfRepoKind: RepoKind;
   setActiveTab: (t: TabId) => void;
   setPendingLocalPath: (p: string | null) => void;
@@ -48,7 +51,7 @@ export interface ModelStore {
   recordPullName: (pullId: string, name: string) => void;
   removePullName: (pullId: string) => void;
   setHfSearchQuery: (q: string) => void;
-  setHfSelectedRepo: (repo: string | null) => void;
+  setHfSelectedRepo: (repo: string | null, tags?: string[]) => void;
   setHfRepoKind: (k: RepoKind) => void;
 }
 
@@ -61,6 +64,7 @@ export const useModelStore = create<ModelStore>((set) => ({
   pullNames: {},
   hfSearchQuery: "",
   hfSelectedRepo: null,
+  hfSelectedTags: [],
   hfRepoKind: "gguf",
   setActiveTab: (t) => set({ activeTab: t }),
   setPendingLocalPath: (p) => set({ pendingLocalPath: p }),
@@ -83,10 +87,11 @@ export const useModelStore = create<ModelStore>((set) => ({
       return { pullNames: next };
     }),
   setHfSearchQuery: (q) => set({ hfSearchQuery: q }),
-  setHfSelectedRepo: (repo) => set({ hfSelectedRepo: repo }),
+  setHfSelectedRepo: (repo, tags = []) =>
+    set({ hfSelectedRepo: repo, hfSelectedTags: repo ? tags : [] }),
   // Switching kind drops any open repo detail — a GGUF repo's detail makes no
   // sense under MLX and vice versa.
-  setHfRepoKind: (k) => set({ hfRepoKind: k, hfSelectedRepo: null }),
+  setHfRepoKind: (k) => set({ hfRepoKind: k, hfSelectedRepo: null, hfSelectedTags: [] }),
 }));
 
 /// Pick the first download entry that's actively in flight, if any.

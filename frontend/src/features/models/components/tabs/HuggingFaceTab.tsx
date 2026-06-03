@@ -17,6 +17,7 @@ export function HuggingFaceTab() {
   const query = useModelStore((s) => s.hfSearchQuery);
   const setQuery = useModelStore((s) => s.setHfSearchQuery);
   const selected = useModelStore((s) => s.hfSelectedRepo);
+  const selectedTags = useModelStore((s) => s.hfSelectedTags);
   const setSelected = useModelStore((s) => s.setHfSelectedRepo);
   const kind = useModelStore((s) => s.hfRepoKind);
   const setKind = useModelStore((s) => s.setHfRepoKind);
@@ -45,7 +46,10 @@ export function HuggingFaceTab() {
   }, [query, kind]);
 
   if (selected) {
-    return kind === "mlx" ? (
+    // Route by the repo's own format, not the search toggle: an mlx-tagged
+    // repo opens the MLX action even when found under GGUF (unfiltered) search.
+    const isMlx = selectedTags.some((t) => t.toLowerCase() === "mlx");
+    return isMlx ? (
       <MlxRepoDetail repo={selected} onBack={() => setSelected(null)} />
     ) : (
       <HuggingFaceRepoDetail repo={selected} onBack={() => setSelected(null)} />
@@ -103,7 +107,7 @@ export function HuggingFaceTab() {
           <button
             key={h.id}
             type="button"
-            onClick={() => setSelected(h.id)}
+            onClick={() => setSelected(h.id, h.tags)}
             data-testid={`hf-card-${h.id}`}
             className="border rounded p-3 text-left hover:bg-gray-50"
           >

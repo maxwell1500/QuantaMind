@@ -42,12 +42,15 @@ describe("modelStore (M.3)", () => {
     expect(useModelStore.getState().hfSearchQuery).toBe("llama");
   });
 
-  it("hfSelectedRepo defaults to null and round-trips via setHfSelectedRepo", () => {
+  it("hfSelectedRepo round-trips with its tags; clearing drops the tags too", () => {
     expect(useModelStore.getState().hfSelectedRepo).toBeNull();
-    useModelStore.getState().setHfSelectedRepo("bartowski/Test-GGUF");
-    expect(useModelStore.getState().hfSelectedRepo).toBe("bartowski/Test-GGUF");
+    expect(useModelStore.getState().hfSelectedTags).toEqual([]);
+    useModelStore.getState().setHfSelectedRepo("mlx-community/X-4bit", ["mlx", "safetensors"]);
+    expect(useModelStore.getState().hfSelectedRepo).toBe("mlx-community/X-4bit");
+    expect(useModelStore.getState().hfSelectedTags).toEqual(["mlx", "safetensors"]);
     useModelStore.getState().setHfSelectedRepo(null);
     expect(useModelStore.getState().hfSelectedRepo).toBeNull();
+    expect(useModelStore.getState().hfSelectedTags).toEqual([]);
   });
 
   it("hfRepoKind defaults to gguf; switching kind clears the open repo detail", () => {
