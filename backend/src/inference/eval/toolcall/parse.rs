@@ -58,15 +58,22 @@ fn to_call(v: Value) -> Option<Call> {
 /// look like a tool call (`{name, args|arguments}`) to `Call`. Handles a single
 /// object, a JSON array (the brackets aren't braces, so inner objects are
 /// found), AND bare `{..}\n{..}` sequences that small quants emit. Non-parsing
-/// brace text is discarded. `None` when no call is found — so abstention is
-/// scoreable.
+/// brace text is discarded. Identical (name+args) calls are collapsed so a
+/// chatty model that prints its call inline AND echoes it in a trailing fence
+/// isn't wrongly failed by the cardinality guard; distinct parallel calls stay.
+/// `None` when no call is found — so abstention is scoreable.
 pub fn extract_calls(completion: &str) -> Option<Vec<Call>> {
     let cleaned = strip_fences(completion);
-    let calls: Vec<Call> = objects(&cleaned)
+    let mut calls: Vec<Call> = Vec::new();
+    for call in objects(&cleaned)
         .into_iter()
         .filter_map(|slice| serde_json::from_str::<Value>(slice).ok())
         .filter_map(to_call)
-        .collect();
+    {
+        if !calls.contains(&call) {
+            calls.push(call);
+        }
+    }
     (!calls.is_empty()).then_some(calls)
 }
 
@@ -107,6 +114,28 @@ mod tests {
     fn nested_args_object_captured_whole() {
         let calls = extract_calls("call: {\"name\":\"x\",\"args\":{\"a\":{\"b\":1}}} done").unwrap();
         assert_eq!(calls[0].args, json!({"a":{"b":1}}));
+    }
+
+    #[test]
+    fn collapses_inline_call_echoed_in_a_fence() {
+        // Chatty model: the call inline, then prose, then the SAME call re-stated
+        // in a ```json block. After de-fencing both copies survive as objects —
+        // dedup keeps exactly one so the cardinality guard doesn't false-fail.
+        let calls = extract_calls(
+            "[{\"name\":\"get_weather\",\"args\":{\"city\":\"Paris\"}}]\nHere's why:\n```json\n{\"name\":\"get_weather\",\"args\":{\"city\":\"Paris\"}}\n```",
+        )
+        .unwrap();
+        assert_eq!(calls.len(), 1);
+        assert_eq!(calls[0].name, "get_weather");
+        assert_eq!(calls[0].args, json!({"city":"Paris"}));
+    }
+
+    #[test]
+    fn distinct_parallel_calls_are_not_collapsed() {
+        // Same tool, different args → genuine parallel calls, both kept.
+        let calls =
+            extract_calls("[{\"name\":\"a\",\"args\":{\"x\":1}},{\"name\":\"a\",\"args\":{\"x\":2}}]").unwrap();
+        assert_eq!(calls.len(), 2);
     }
 
     #[test]

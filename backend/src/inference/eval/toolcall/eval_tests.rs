@@ -12,7 +12,7 @@ fn nocall_task(id: &str) -> ToolTask {
     ToolTask { id: id.into(), category: "abstain".into(), prompt: "p".into(), tools: vec![], expected: Expected::NoCall }
 }
 fn res(id: &str, v: Verdict) -> TaskResult {
-    TaskResult { id: id.into(), category: "x".into(), verdict: v }
+    TaskResult { id: id.into(), category: "x".into(), verdict: v, prompt_tokens: None }
 }
 fn perfect() -> Verdict {
     Verdict { parsed: true, tool_match: true, args_match: true, abstain_correct: None }

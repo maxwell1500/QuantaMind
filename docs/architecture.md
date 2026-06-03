@@ -268,7 +268,35 @@ one folder per commit, behavior unchanged).
 - **custom-eval registry** spans the layers by responsibility: the storage-free
   runner takes a `Vec<ToolTask>`; `persistence/evals.rs` owns file I/O;
   `commands/eval/eval_registry.rs` is the thin CRUD + path-only import; UI lives
-  in `features/eval/` (`DatasetBar`, `EvalEditor`, `useEvalRegistryStore`).
+  in `features/eval/` (`useEvalRegistryStore`, whose `NEW_COLLECTION` sentinel /
+  `startNew` model the unsaved-new selection). The manager UI is a master-detail
+  split under `components/manager/` (`EvalManager` orchestrator + `NameDialog`,
+  `TaskListView`, `TaskDetailView`, `StatsBar`) — kept in a subfolder so
+  `components/` stays ≤10 files — over feature-root modules `evalDraft.ts` (draft
+  shape + Save/Run validation) and `verdict.ts` (pass/fail + score helpers, shared
+  with `ToolCallPanel`).
+- **collection matrix & history** follows the same layering: pure aggregation in
+  `inference/eval/toolcall/matrix.rs` (`build_matrix`/`summaries`, no async/I/O);
+  the append-only, 100-entry-capped log in `persistence/eval_history.rs`; the thin
+  sequential runner + history write in `commands/eval/matrix_cmd.rs`
+  (`run_collection_matrix`/`load_collection_history`). UI is a separate
+  `components/matrix/` subfolder (`MatrixPanel` + `MatrixGrid`, `HistoryTimeline`,
+  `ModelToggles`) mounted in `EvalPage`, over `shared/ipc/eval/matrix.ts`.
+- **pipeline visualizer** reuses the runner's single-task path: `eval.rs` exposes
+  `trace_one` (+ `TraceResult` = system message + raw output + verdict), which
+  `run_eval` loops over and the `trace_toolcall_task` command calls directly — so
+  the trace matches a real run. UI is a `components/pipeline/` subfolder
+  (`PipelinePanel` + `ConfigPhase`, `SystemMessagePhase`, `StreamPhase`,
+  `VerifyPhase`) over `traceToolcallTask` in `shared/ipc/eval/toolcall.ts`.
+- **trace cache** keeps a run's per-task traces so a drill-down never re-runs
+  inference: `run_eval_traced` (in `eval.rs`) returns the full `TaskTrace`s
+  alongside the report, and both runners (`run_toolcall_eval` Simulator,
+  `run_collection_matrix`) cache them best-effort into the `traces/` managed dir
+  via `persistence/eval_trace_store.rs` (one JSON file per collection, models
+  keyed within, upsert by task id, 1 MB read guard). `load_toolcall_trace`
+  serves a cached `(collection, model, task)` trace; `PipelinePanel` loads it on
+  a `View Trace` / Matrix-cell handoff (▶ still re-runs live). A cache miss/write
+  failure degrades gracefully to a live run — never blocks the eval.
 
 ### Rules for a split
 

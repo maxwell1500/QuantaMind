@@ -238,7 +238,11 @@ an agent — entirely offline and deterministic. Read the scores with these cave
 - **Structural scoring, not execution.** A call is judged by matching the tool
   **name + arguments structurally** (BFCL's validated proxy), never by running
   the function. So scores reflect *format + selection correctness*, not runtime
-  success.
+  success. Extraction is lenient about wrappers (a bare object, a JSON array, or
+  bare `{..}\n{..}` sequences all parse) and **collapses identical (name+args)
+  calls**, so a chatty model that prints its call inline *and* echoes it in a
+  trailing ```` ```json ```` block isn't wrongly failed by the cardinality guard;
+  genuinely distinct parallel calls are kept.
 - **Single-turn, greedy (temp 0), ~13-task fixture.** No multi-turn / agent
   loops; greedy decoding makes scores reproducible and comparable across quants
   (and sidesteps MLX's missing seed). The fixture is small and curated —
@@ -255,9 +259,25 @@ an agent — entirely offline and deterministic. Read the scores with these cave
 
 Run the curated built-in suite or your own task collections. Each collection is a
 JSON **array of `ToolTask`** objects, saved as one `.json` file under
-`app_config_dir/evals/` (portable — commit or send the file to share). Author in
-the **Eval** tab (Insert Example → edit → Check JSON → Save) or **Import** an
-existing file (the app reads it by path, caps it at 1 MiB, and validates it).
+`app_config_dir/evals/` (portable — commit or send the file to share).
+
+**Authoring (master-detail).** In the **Eval** tab, **+ New Collection** opens a
+small name dialog, then an empty task list. **+ Add Task** opens a task in its
+**detail** editor (id, prompt, tools JSON, expected JSON); **← Back** returns to
+the list. Click any task row to reopen its detail. Validation is friendly and
+inline — an empty prompt or id shows "Prompt: required" / "Task ID: required",
+never a raw error. **Save** persists the collection (it then appears, selected, in
+the sidebar). You can also **Import** an existing file (read by path, capped at
+1 MiB, validated). CRUD = create / edit / delete (✕ on a custom collection).
+
+Any selection is editable — including a built-in preset; editing a preset and
+saving writes a new custom copy (the bundled preset is read-only and stays a seed).
+
+**Running.** Pick a model, then: **▶ Run this task** in a task's detail runs that
+one task live (your current, even unsaved, edit) and shows its verdict checklist +
+the four sub-scores; **▶ Run all** on the list runs the whole **saved** collection
+(Save first — it's disabled while there are unsaved edits) and tags each row
+pass/fail plus the aggregate Parse / Tool / Arg / Abstain bar.
 
 A `ToolTask`:
 
@@ -352,17 +372,90 @@ tokens are silently dropped). Exact counts only; "Not available" when either num
 
 ## Built-in presets & the finance set {#builtin-presets}
 
-The tool-call eval ships read-only built-in presets — **Curated Suite** and **Finance (preset)** —
-selectable alongside your own collections. The finance set exercises balance / sum / transaction-search
-tools (+ abstention). It measures **structural tool-call reliability** (does the model emit the right
-call?), **not** data/PDF parsing — the "expected" is the *command*, never the underlying data.
+The tool-call eval ships built-in presets — **Curated Suite** and **Finance (preset)** — selectable
+alongside your own collections. The bundled files are read-only, but selecting a preset loads its
+tasks into the editor, so you can tweak them and Save an editable copy under your own name. The
+finance set exercises balance / sum /
+transaction-search tools (+ abstention). It measures **structural tool-call reliability** (does the
+model emit the right call?), **not** data/PDF parsing — the "expected" is the *command*, never the
+underlying data.
+
+## Collection matrix & regression history {#matrix}
+
+The **LLM Performance Matrix** (in the Eval tab) batch-runs a whole collection across several
+installed models at once and tracks how scores move over time. Pick an **Active Collection**, choose
+models from the **Models** dropdown, and press ▶ Run. Models run **sequentially** (local backends dislike
+concurrent load); one model's backend being down is captured as that **column's error** and never
+aborts the rest of the batch.
+
+- **Matrix view** — rows = tasks, columns = models. Each cell shows **P T A** (parse / tool-match /
+  arg-match, green pass / red fail) or **Abs ✓/✗** for abstention tasks, so failure patterns jump out.
+  The footer shows **Avg. Score** (mean composite across the models that ran).
+- **Timeline view** — a composite-score trend line per model across consecutive runs, so an engine
+  update or prompt change that regresses tool-calling shows as a visible drop. The axes are labelled
+  (**y** = composite score %, **x** = run order, oldest → newest); hover a point for its exact value.
+  **Runs** = recorded history entries for the collection.
+
+Each successful model run is appended to an append-only JSON log at
+`app_config_dir/history/<collection>.json`, **capped at 100 entries** (oldest dropped). Like
+collections, these are plain, human-readable files — no database.
+
+## Tool-call pipeline visualizer {#pipeline}
+
+The **LLM Tool-Calling Evaluator** makes a single task's run transparent — no black box. Pick a
+collection + task + model and press ▶; step through four phases with the ◀ ▶ stepper:
+
+1. **Input Config** — the user prompt + the tool definitions (JSON schema) the task carries.
+2. **System Pkg** — the **Constructed System Message** *actually sent* to the model (tools injected).
+3. **Stream** — the **real** `> INFERENCE STREAM`: the model's actual raw completion (not a mock built
+   from the expected answer).
+4. **Verify** — the Evaluation Engine Report mapping the structural verdict to named checks
+   (**JSON Regex Extraction** = parsed, **Tool Name Key Match** = tool match, **Parameter Type
+   Validation** = args match; abstain tasks show **Correct Abstention**) with an *N% SUCCESS* badge.
+
+The **Execution State** and **Validation** (Pending / PASSED / FAILED) rows track the run. This is
+powered by a dedicated `trace_toolcall_task` command that runs one task and returns the exact system
+message, raw output, and verdict — the same single-task path `run_eval` uses, so the trace matches a
+real run. A stopped backend surfaces as a clear error rather than a hang.
+
+**Cached traces (no re-run).** Running the Simulator or the Matrix saves each task's full trace to
+`app_config_dir/traces/<collection>.json`. Clicking a Simulator row's **View Trace** or a **Matrix
+cell** opens the Debugger on the saved data instantly — **Execution State: Cached**, no inference —
+so you can inspect what the model received and returned without re-running. Press ▶ to re-run live.
+The cache is best-effort: if it's missing (e.g. an older run) or a write failed, the Debugger falls
+back to a live trace.
+
+## Eval Runner: Scoreboard ↔ Debugger {#eval-runner}
+
+The Simulator and the Pipeline visualizer are paired under an **Eval Runner** toggle in the Eval tab:
+
+- **Batch Scoreboard** — the *Tool-Calling Evaluation Simulator*. It has its own **Active Collection**
+  picker, so it batch-runs **any** collection — your own custom collections as well as the built-in
+  presets — against one model, showing the per-task pass/fail table, the category bar chart, and the
+  aggregate sub-scores + composite.
+- **Trace Debugger** — the single-task Pipeline visualizer above.
+
+Each Scoreboard row has a **View Trace** button: clicking it flips the toggle to the Debugger and loads
+that exact collection + task + model, ready to ▶ — connecting the macro "which tasks failed?" view to
+the micro "why did this one fail?" trace.
 
 ## Context-cliff probe {#context-cliff}
 
-Runs the selected dataset at increasing prompt lengths and graphs where tool-call accuracy collapses
-— the "context cliff" many local models hit well before their advertised window. Read it as
-**indicative**: padding is approximate (≈tokens via chars/4, no tokenizer), single-turn, and the
-x-axis is approximate context size. A failed rung is recorded as a gap, never a fabricated score.
+Runs a dataset at increasing prompt lengths and graphs where tool-call accuracy collapses
+— the "context cliff" many local models hit well before their advertised window. The x-axis is the
+model's **real measured prompt-token depth** (`prompt_eval_count` reported by the backend, averaged
+over the rung's tasks) — **not** a chars/4 estimate. The padding amount is a knob (benign filler
+sized in chars); the plotted depth is always measured. A rung the backend reports no token count for
+shows **"Not available"** and is dropped from the chart rather than placed at a made-up x.
+
+The probe owns its own **Active Collection** picker (independent of the EvalManager editor), so it
+always has a real dataset to run. The **Max Tokens** control sets the padding target (how much filler
+to add) and is capped at the model's reported **context window** when known (Ollama `/api/show` dims),
+falling back to a fixed ceiling otherwise.
+A run that errors surfaces a **"Not available — …"** banner rather than a silent blank chart. The
+cliff is the first rung whose composite drops **≥ 20pp** below the unpadded baseline, reported at that
+rung's measured token depth; if it never collapses the read-out shows **"Accuracy maintained up to
+≈N tokens"**. ↺ clears the results. Single-turn, greedy — a failed rung is a gap, never a fabricated score.
 
 ## Comparing across models/quants needs Ollama {#multi-model-ollama-only}
 

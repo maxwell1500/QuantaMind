@@ -21,15 +21,22 @@ describe("cliff helpers", () => {
     expect(padTask(task, 0)).toBe(task); // no padding → unchanged
   });
 
-  it("cliffPoint finds the first step dropping ≥ margin below baseline", () => {
+  it("cliffPoint reports the cliff rung's REAL measured token depth (baseline = rung 0)", () => {
     const points = [
-      { approxTokens: 0, composite: 1.0 },
-      { approxTokens: 4000, composite: 0.95 },
-      { approxTokens: 8000, composite: 0.5 },
-      { approxTokens: 12000, composite: 0.4 },
+      { promptTokens: 120, composite: 1.0 },
+      { promptTokens: 4200, composite: 0.95 },
+      { promptTokens: 8300, composite: 0.5 },
+      { promptTokens: 12400, composite: 0.4 },
     ];
-    expect(cliffPoint(points)).toBe(8000);
-    expect(cliffPoint([{ approxTokens: 0, composite: 0.9 }, { approxTokens: 8000, composite: 0.88 }])).toBeNull();
-    expect(cliffPoint([{ approxTokens: 8000, composite: 0.1 }])).toBeNull(); // no baseline
+    expect(cliffPoint(points)).toBe(8300); // measured depth of the first collapsing rung
+    expect(cliffPoint([{ promptTokens: 120, composite: 0.9 }, { promptTokens: 8300, composite: 0.88 }])).toBeNull();
+    // No baseline accuracy (rung 0 errored) → null, never a guessed cliff.
+    expect(cliffPoint([{ promptTokens: null, composite: null }, { promptTokens: 8300, composite: 0.1 }])).toBeNull();
+  });
+
+  it("uses a 20pp threshold: an 18pp drop is not a cliff, a 22pp drop is", () => {
+    const base = { promptTokens: 100, composite: 1.0 };
+    expect(cliffPoint([base, { promptTokens: 8300, composite: 0.82 }])).toBeNull(); // 18pp < 20pp
+    expect(cliffPoint([base, { promptTokens: 8300, composite: 0.78 }])).toBe(8300); // 22pp ≥ 20pp
   });
 });

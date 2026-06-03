@@ -2,34 +2,51 @@ import { useCallback, useState } from "react";
 import { runToolcallEval } from "../../../shared/ipc/eval/toolcall";
 import type { ToolTask } from "../../../shared/ipc/eval/registry";
 import type { BackendKind } from "../../../shared/ipc/models/storage";
+import { formatIpcError } from "../../../shared/ipc/core/error";
 import { buildLadder, padTask, type CliffPoint } from "../cliff";
 
-const LADDER_MAX = 16000; // approx tokens of padding at the top of the ladder
-const LADDER_STEPS = 5; // [0, 4k, 8k, 12k, 16k]
+const DEFAULT_LADDER_MAX = 16384; // top of the padding ladder (units, ×4 chars)
+const DEFAULT_LADDER_STEPS = 5;
 
 /// Run the selected dataset at increasing prompt lengths and collect composite
-/// tool-call accuracy at each step. Sequential (one run per rung); a failed
-/// rung records a null composite rather than a fabricated score.
-export function useContextCliff(model: string, backend: BackendKind, tasks: ToolTask[]) {
+/// tool-call accuracy at each step. Sequential (one run per rung); a failed rung
+/// records a null composite (the chart drops it) AND surfaces the first error so
+/// a backend failure is never a silent blank chart.
+export function useContextCliff(
+  model: string,
+  backend: BackendKind,
+  tasks: ToolTask[],
+  maxApproxTokens = DEFAULT_LADDER_MAX,
+  steps = DEFAULT_LADDER_STEPS,
+) {
   const [points, setPoints] = useState<CliffPoint[]>([]);
   const [running, setRunning] = useState(false);
+  const [error, setError] = useState<string | null>(null);
 
   const run = useCallback(async () => {
     setRunning(true);
     setPoints([]);
+    setError(null);
     try {
-      for (const approxTokens of buildLadder(LADDER_MAX, LADDER_STEPS)) {
+      for (const padUnits of buildLadder(maxApproxTokens, steps)) {
         try {
-          const r = await runToolcallEval(model, backend, tasks.map((t) => padTask(t, approxTokens)));
-          setPoints((p) => [...p, { approxTokens, composite: r.composite }]);
-        } catch {
-          setPoints((p) => [...p, { approxTokens, composite: null }]);
+          const r = await runToolcallEval(model, backend, tasks.map((t) => padTask(t, padUnits)));
+          // Plot the model's REAL reported prompt-token depth, never the knob.
+          setPoints((p) => [...p, { promptTokens: r.prompt_tokens, composite: r.composite }]);
+        } catch (e) {
+          setPoints((p) => [...p, { promptTokens: null, composite: null }]);
+          setError((prev) => prev ?? formatIpcError(e));
         }
       }
     } finally {
       setRunning(false);
     }
-  }, [model, backend, tasks]);
+  }, [model, backend, tasks, maxApproxTokens, steps]);
 
-  return { points, running, run };
+  const reset = useCallback(() => {
+    setPoints([]);
+    setError(null);
+  }, []);
+
+  return { points, running, error, run, reset };
 }

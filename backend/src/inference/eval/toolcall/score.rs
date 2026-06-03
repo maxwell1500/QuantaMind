@@ -1,8 +1,8 @@
 use crate::inference::eval::toolcall::tasks::{Call, Expected};
-use serde::Serialize;
+use serde::{Deserialize, Serialize};
 use serde_json::Value;
 
-#[derive(Serialize, Clone, Debug, PartialEq, Default)]
+#[derive(Serialize, Deserialize, Clone, Debug, PartialEq, Default)]
 pub struct Verdict {
     pub parsed: bool,
     pub tool_match: bool,

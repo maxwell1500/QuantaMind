@@ -1,99 +1,75 @@
 import { useEffect, useState } from "react";
-import { listEvals } from "../../../shared/ipc/eval/evals";
-import { useInstalledModelsStore } from "../../models/state/installedModelsStore";
-import { modelLabel } from "../../../shared/models/modelLabel";
-import { useEvalStore, passRate } from "../state/evalStore";
 import { useEvalRegistryStore } from "../state/evalRegistryStore";
-import { useEvalRun } from "../hooks/useEvalRun";
-import { EvalRow } from "./EvalRow";
+import { EvalManager } from "./manager/EvalManager";
+import { MatrixPanel } from "./matrix/MatrixPanel";
+import { PipelinePanel } from "./pipeline/PipelinePanel";
 import { ToolCallPanel } from "./ToolCallPanel";
-import { DatasetBar } from "./DatasetBar";
-import { TemplatePanel } from "../../models/components/card/TemplatePanel";
-import { CpuFallbackBanner } from "./CpuFallbackBanner";
 import { ContextCliffPanel } from "./ContextCliffPanel";
-import { servesModelsByName, SINGLE_MODEL_NOTE } from "../../../shared/models/backendSupport";
 
-/// The Eval tab: run the bundled deterministic eval suite against an installed
-/// model and see a pass-rate + per-task pass/fail. A quality *smoke test*, not a
-/// rigorous benchmark.
+type RunnerView = "scoreboard" | "debugger";
+type Focus = { collection: string; taskId: string; model: string };
+
+/// The Eval tab: the Eval Manager (author/run collections), the LLM Performance
+/// Matrix (batch across models + regression history), the Eval Runner — a toggle
+/// between the Batch Scoreboard (Simulator) and the single-task Trace Debugger
+/// (Pipeline), wired so a row's "View Trace" hands that task to the debugger —
+/// and the Context-Cliff probe.
 export function EvalPage() {
-  const tasks = useEvalStore((s) => s.tasks);
-  const results = useEvalStore((s) => s.results);
-  const running = useEvalStore((s) => s.running);
-  const currentId = useEvalStore((s) => s.currentId);
-  const error = useEvalStore((s) => s.error);
-  const setTasks = useEvalStore((s) => s.setTasks);
-  const list = useInstalledModelsStore((s) => s.list);
-  const status = useInstalledModelsStore((s) => s.status);
-  const refresh = useInstalledModelsStore((s) => s.refresh);
-  const [model, setModel] = useState("");
-  const { run } = useEvalRun();
   const initRegistry = useEvalRegistryStore((s) => s.init);
+  const [view, setView] = useState<RunnerView>("scoreboard");
+  const [focus, setFocus] = useState<Focus | null>(null);
 
-  useEffect(() => {
-    listEvals().then(setTasks).catch(() => {});
-  }, [setTasks]);
   useEffect(() => {
     void initRegistry().catch(() => {});
   }, [initRegistry]);
-  useEffect(() => {
-    if (status === "idle") void refresh();
-  }, [status, refresh]);
 
-  const selected = list.find((m) => m.name === model);
-  const { passed, total } = passRate(results);
+  const onViewTrace = (f: Focus) => {
+    setFocus(f);
+    setView("debugger");
+  };
 
   return (
-    <div className="space-y-3" data-testid="eval-page">
-      <div className="flex items-center gap-2">
-        <select
-          value={model}
-          onChange={(e) => setModel(e.target.value)}
-          data-testid="eval-model-select"
-          className="border rounded px-2 py-1 text-sm"
-        >
-          <option value="">Select a model…</option>
-          {list.map((m) => (
-            <option key={m.name} value={m.name}>{modelLabel(m)}</option>
-          ))}
-        </select>
-        <button
-          type="button"
-          disabled={!selected || running}
-          onClick={() => selected && void run(selected.name, selected.backend)}
-          data-testid="eval-run"
-          className="px-3 py-1 rounded bg-blue-600 text-white text-sm disabled:opacity-50"
-        >
-          {running ? "Running…" : "Run evals"}
-        </button>
-        {total > 0 && (
-          <span data-testid="eval-passrate" className="text-sm font-medium">
-            {passed}/{total} · {Math.round((passed / total) * 100)}%
-          </span>
-        )}
-      </div>
-      {selected && !servesModelsByName(selected.backend) && (
-        <p className="text-[11px] text-amber-700" data-testid="eval-single-model-note">{SINGLE_MODEL_NOTE}</p>
-      )}
-      {error && (
-        <p className="text-xs text-red-600" data-testid="eval-error">{error}</p>
-      )}
-      {selected && (
-        <div className="border rounded p-2 space-y-2" data-testid="eval-inspect">
-          <CpuFallbackBanner model={selected.name} backend={selected.backend} />
-          <TemplatePanel model={selected.name} backend={selected.backend} />
-        </div>
-      )}
+    <div className="space-y-4" data-testid="eval-page">
+      <EvalManager />
+      <MatrixPanel onViewTrace={onViewTrace} />
+
+      {/* Eval Runner: Batch Scoreboard ↔ single-task Trace Debugger */}
       <div>
-        {tasks.map((t) => (
-          <EvalRow key={t.id} task={t} result={results[t.id] ?? null} running={running && currentId === t.id} />
-        ))}
+        <div style={{ display: "flex", alignItems: "center", gap: 6, marginBottom: 8 }}>
+          <span style={{ fontSize: 12, color: "#64748b", fontFamily: "Inter,sans-serif", marginRight: 4 }}>Eval Runner</span>
+          {([["scoreboard", "Batch Scoreboard"], ["debugger", "Trace Debugger"]] as const).map(([v, label]) => (
+            <button
+              key={v}
+              type="button"
+              onClick={() => setView(v)}
+              aria-pressed={view === v}
+              data-testid={`runner-tab-${v}`}
+              style={{
+                padding: "5px 14px",
+                borderRadius: 7,
+                border: "1px solid rgba(255,255,255,0.1)",
+                background: view === v ? "rgba(59,130,246,0.18)" : "rgba(255,255,255,0.04)",
+                color: view === v ? "#93c5fd" : "#94a3b8",
+                fontSize: 12,
+                fontWeight: 500,
+                fontFamily: "Inter,sans-serif",
+                cursor: "pointer",
+              }}
+            >
+              {label}
+            </button>
+          ))}
+        </div>
+        {/* Both stay mounted (state survives the toggle); only the active one shows. */}
+        <div style={{ display: view === "scoreboard" ? "block" : "none" }}>
+          <ToolCallPanel onViewTrace={onViewTrace} />
+        </div>
+        <div style={{ display: view === "debugger" ? "block" : "none" }}>
+          <PipelinePanel focus={focus} />
+        </div>
       </div>
-      <div className="border-t pt-3 space-y-2">
-        <DatasetBar />
-        <ToolCallPanel />
-        <ContextCliffPanel />
-      </div>
+
+      <ContextCliffPanel />
     </div>
   );
 }
