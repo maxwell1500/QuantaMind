@@ -2,7 +2,7 @@ use crate::errors::AppResult;
 use crate::inference::eval::agentic::context::{tool_result_line, Conversation};
 use crate::inference::eval::agentic::endstate;
 use crate::inference::eval::agentic::model_turn::ModelTurn;
-use crate::inference::eval::agentic::report::{FailureKind, RunOutcome};
+use crate::inference::eval::agentic::report::{AgenticReport, FailureKind, RunOutcome};
 use crate::inference::eval::agentic::sandbox::DeterministicSandbox;
 use crate::inference::eval::agentic::step::{StepKind, TrajectoryStep};
 use crate::inference::eval::toolcall::parse::{extract_calls, looks_like_broken_json};
@@ -14,6 +14,35 @@ use tokio::sync::mpsc::UnboundedSender;
 const MAX_TOKENS: u32 = 256;
 const UNKNOWN_TOOL: &str =
     "Tool not found or arguments unrecognized. Choose a tool from the provided schema.";
+
+/// Pass^k inputs: how many independent runs (default 5) and the per-run step cap.
+pub struct AgenticConfig {
+    pub k: u32,
+    pub max_steps: u32,
+}
+
+impl Default for AgenticConfig {
+    fn default() -> Self {
+        Self { k: 5, max_steps: 10 }
+    }
+}
+
+/// The Pass^k consistency engine: run the agentic loop `k` times and fold the
+/// outcomes into an `AgenticReport`. Each `run_once` builds a fresh transcript and
+/// token counter over the shared (immutable) sandbox — absolute isolation, no
+/// state bleed between iterations.
+pub async fn run_agentic<M: ModelTurn>(
+    turn: &M,
+    sandbox: &DeterministicSandbox,
+    config: AgenticConfig,
+    tx: &UnboundedSender<TrajectoryStep>,
+) -> AppResult<AgenticReport> {
+    let mut outcomes = Vec::with_capacity(config.k as usize);
+    for run_index in 0..config.k {
+        outcomes.push(run_once(turn, sandbox, config.max_steps, run_index, tx).await?);
+    }
+    Ok(AgenticReport::from_outcomes(&outcomes))
+}
 
 /// Run ONE agentic attempt: the stateful `while step < max_steps` loop (iterative,
 /// no async recursion). Each turn it sends the running transcript to the model,

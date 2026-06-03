@@ -1,6 +1,7 @@
 use crate::errors::AppResult;
 use crate::inference::eval::agentic::model_turn::ModelTurn;
-use crate::inference::eval::agentic::runner::run_once;
+use crate::inference::eval::agentic::report::TopError;
+use crate::inference::eval::agentic::runner::{run_agentic, run_once, AgenticConfig};
 use crate::inference::eval::agentic::sandbox::{DeterministicSandbox, EndStateRule, MockResponse};
 use crate::inference::eval::agentic::step::{StepKind, TrajectoryStep};
 use crate::inference::eval::toolcall::tasks::Call;
@@ -93,4 +94,50 @@ async fn unknown_tool_injects_an_error_and_the_loop_continues() {
     assert_eq!(steps[0].kind, StepKind::UnknownTool);
     assert!(steps[0].injection.as_deref().unwrap().contains("Tool not found"));
     assert_eq!(steps[1].kind, StepKind::EndStateReached);
+}
+
+const END_CALL: &str = r#"{"name":"execute_transfer","args":{"amount":450.0}}"#;
+
+#[tokio::test]
+async fn pass_k_counts_successes_and_failures_with_isolation() {
+    // Each run terminates in exactly one turn (immediate success or immediate
+    // prose-yield), so the shared reply cursor advances once per run. That each
+    // run resolves independently is itself the proof of isolation — no bleed.
+    let model = ScriptedModel::new(vec![
+        (END_CALL, 10),
+        (END_CALL, 10),
+        (END_CALL, 10),
+        ("I believe the task is already complete.", 5),
+        ("All done, nothing more to do.", 5),
+    ]);
+    let (tx, mut rx) = unbounded_channel();
+    let report = run_agentic(&model, &sandbox(), AgenticConfig { k: 5, max_steps: 4 }, &tx).await.unwrap();
+    drop(tx);
+
+    assert_eq!(report.passes, 3);
+    assert_eq!(report.total_runs, 5);
+    assert_eq!(report.failures.hallucinated_completions, 2);
+    assert_eq!(report.failures.infinite_loop_hits, 0);
+    assert_eq!(report.top_error, TopError::Hallucinated);
+    assert_eq!(report.avg_steps, Some(1.0)); // every run is one turn
+    assert_eq!(report.avg_output_tokens_success, Some(10.0)); // the 3 successes only
+
+    // One TrajectoryStep per run (each is single-turn).
+    assert_eq!(drain(&mut rx).len(), 5);
+}
+
+#[tokio::test]
+async fn endless_valid_calls_are_tallied_as_infinite_loops() {
+    // The model forever makes a valid, recognized call that never satisfies the
+    // end-state → every run exhausts max_steps.
+    let model = ScriptedModel::new(vec![(r#"{"name":"get_balance","args":{"account_id":"ACC-123"}}"#, 7)]);
+    let (tx, _rx) = unbounded_channel();
+    let report = run_agentic(&model, &sandbox(), AgenticConfig { k: 2, max_steps: 3 }, &tx).await.unwrap();
+    drop(tx);
+
+    assert_eq!(report.passes, 0);
+    assert_eq!(report.failures.infinite_loop_hits, 2);
+    assert_eq!(report.top_error, TopError::InfiniteLoop);
+    assert_eq!(report.avg_steps, Some(3.0)); // both runs hit the cap
+    assert_eq!(report.avg_output_tokens_success, None); // no successes → N/A
 }
