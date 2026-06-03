@@ -20,8 +20,9 @@ fn value_equal(a: &Value, b: &Value) -> bool {
 }
 
 /// Structural arg equality: same key set (no spurious or missing keys), each
-/// value equal (numbers numerically, strings trimmed).
-fn args_match(expected: &Value, got: &Value) -> bool {
+/// value equal (numbers numerically, strings trimmed). `pub(crate)` so the
+/// agentic end-state matcher reuses the exact same equality the scorer uses.
+pub(crate) fn args_match(expected: &Value, got: &Value) -> bool {
     match (expected.as_object(), got.as_object()) {
         (Some(e), Some(g)) => {
             e.len() == g.len() && e.iter().all(|(k, ev)| g.get(k).is_some_and(|gv| value_equal(ev, gv)))

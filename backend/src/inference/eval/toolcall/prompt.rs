@@ -1,4 +1,4 @@
-use crate::inference::eval::toolcall::tasks::ToolTask;
+use crate::inference::eval::toolcall::tasks::{ToolSchema, ToolTask};
 use serde_json::json;
 
 /// Build the system prompt for a tool-call task: the available tools as a JSON
@@ -6,8 +6,13 @@ use serde_json::json;
 /// tool is needed, else answer normally. The explicitness is deliberate — a
 /// weak model's format failures then surface as a low `parse_rate` (the signal).
 pub fn build_system(task: &ToolTask) -> String {
-    let tools: Vec<_> = task
-        .tools
+    build_system_for(&task.tools)
+}
+
+/// The tool-schema-injection core, given just the tools. Shared so the agentic
+/// runner (which has a sandbox, not a `ToolTask`) builds the identical prompt.
+pub fn build_system_for(tools: &[ToolSchema]) -> String {
+    let tools: Vec<_> = tools
         .iter()
         .map(|t| json!({ "name": t.name, "description": t.description, "parameters": t.parameters }))
         .collect();

@@ -77,6 +77,21 @@ pub fn extract_calls(completion: &str) -> Option<Vec<Call>> {
     (!calls.is_empty()).then_some(calls)
 }
 
+/// Does the text contain at least one balanced `{…}` slice that parses as JSON?
+/// The agentic runner uses this to tell a structured fake-completion (valid JSON
+/// object, just no `name` → a `task_complete` claim) from broken-JSON noise.
+pub(crate) fn has_json_object(text: &str) -> bool {
+    let cleaned = strip_fences(text);
+    objects(&cleaned).into_iter().any(|s| serde_json::from_str::<Value>(s).is_ok())
+}
+
+/// A yield turn whose text has a `{` but no parseable JSON object — the model
+/// tried to emit a call and produced broken JSON. Pure prose, or valid-but-not-a
+/// -call JSON, is NOT broken (that's a hallucinated completion).
+pub(crate) fn looks_like_broken_json(text: &str) -> bool {
+    text.contains('{') && !has_json_object(text)
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
