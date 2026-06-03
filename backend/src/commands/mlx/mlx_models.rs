@@ -33,6 +33,7 @@ fn to_info(id: String) -> InstalledModelInfo {
         quantization: String::new(),
         backend: BackendKind::Mlx,
         digest: String::new(),
+        display_name: None,
         path: None,
     }
 }

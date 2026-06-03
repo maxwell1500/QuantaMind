@@ -44,6 +44,7 @@ pub async fn fetch_installed_with_stats(endpoint: &str) -> AppResult<Vec<Install
                 quantization: d.quantization_level,
                 backend: BackendKind::Ollama,
                 digest: m.digest,
+                display_name: None,
                 path: None,
             }
         })
