@@ -1,5 +1,5 @@
 import { describe, it, expect, vi, beforeEach } from "vitest";
-import { render, screen } from "@testing-library/react";
+import { render, screen, fireEvent, waitFor } from "@testing-library/react";
 
 vi.mock("../../../../shared/ipc/models/mlx_start", () => ({
   startMlxServer: vi.fn(),
@@ -8,37 +8,54 @@ vi.mock("../../../../shared/ipc/models/mlx_start", () => ({
 }));
 vi.mock("../../../../shared/ipc/core/client", () => ({ checkMlxHealth: vi.fn() }));
 
+import { startMlxServer } from "../../../../shared/ipc/models/mlx_start";
 import { MlxServerControl } from "../status/MlxServerControl";
 import { useWorkspaceStore } from "../../state/workspaceStore";
+import { useInstalledModelsStore } from "../../../models/state/installedModelsStore";
+import { useCompareStore } from "../../../compare/state/compareStore";
+
+const mlxModel = {
+  name: "/m/mlx-community_X-4bit",
+  size_bytes: 0,
+  modified_at: "",
+  family: "MLX",
+  parameter_size: "",
+  quantization: "4bit",
+  backend: "mlx" as const,
+  display_name: "mlx-community/X-4bit",
+  path: "/m/mlx-community_X-4bit",
+};
 
 beforeEach(() => {
   vi.clearAllMocks();
-  useWorkspaceStore.setState({ mlxHealthy: null, mlxRepo: null });
+  useWorkspaceStore.setState({ mlxHealthy: null });
+  useInstalledModelsStore.setState({ list: [], status: "ready", error: null });
+  useCompareStore.getState().reset();
 });
 
 describe("MlxServerControl", () => {
-  it("offers a repo field + Start when MLX isn't running", () => {
+  it("disables Start with no model selected (no repo input)", () => {
     render(<MlxServerControl />);
-    expect((screen.getByTestId("mlx-repo-input") as HTMLInputElement).value).toContain("mlx-community/");
-    expect(screen.getByTestId("mlx-start")).toHaveTextContent("Start MLX");
+    expect(screen.getByTestId("mlx-start")).toBeDisabled();
+    expect(screen.queryByTestId("mlx-repo-input")).toBeNull();
     expect(screen.queryByTestId("mlx-stop")).toBeNull();
   });
 
-  it("prefills the repo picked from HuggingFace search", () => {
-    useWorkspaceStore.setState({ mlxRepo: "mlx-community/Qwen2.5-3B-Instruct-4bit" });
+  it("starts the selected MLX model by its local path", async () => {
+    vi.mocked(startMlxServer).mockResolvedValue({ status: "started", pid: 1, port: 8083 });
+    useInstalledModelsStore.setState({ list: [mlxModel], status: "ready", error: null });
+    useCompareStore.getState().setSelectedModels([{ name: mlxModel.name, size_bytes: 0 }]);
     render(<MlxServerControl />);
-    expect((screen.getByTestId("mlx-repo-input") as HTMLInputElement).value).toBe(
-      "mlx-community/Qwen2.5-3B-Instruct-4bit",
-    );
+    const start = screen.getByTestId("mlx-start");
+    expect(start).toBeEnabled();
+    fireEvent.click(start);
+    await waitFor(() => expect(startMlxServer).toHaveBeenCalledWith("/m/mlx-community_X-4bit"));
   });
 
-  it("when healthy, keeps the repo field and offers Switch + Stop", () => {
+  it("shows Stop when MLX is healthy", () => {
     useWorkspaceStore.setState({ mlxHealthy: true });
     render(<MlxServerControl />);
     expect(screen.getByTestId("mlx-stop")).toHaveTextContent("Stop MLX");
-    // The field + action stay so a different repo can be loaded without first
-    // stopping (start_mlx_server swaps the running model).
-    expect(screen.getByTestId("mlx-repo-input")).toBeInTheDocument();
-    expect(screen.getByTestId("mlx-start")).toHaveTextContent("Switch model");
+    expect(screen.queryByTestId("mlx-start")).toBeNull();
   });
 });

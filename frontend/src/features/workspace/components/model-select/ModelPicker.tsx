@@ -2,6 +2,7 @@ import { useEffect } from "react";
 import { useInstalledModelsStore } from "../../../models/state/installedModelsStore";
 import { isEmbeddingModel } from "../../../../shared/models/classify";
 import { dedupeByDigest } from "../../../../shared/models/dedupeDigest";
+import { modelLabel } from "../../../../shared/models/modelLabel";
 import { useWorkspaceStore } from "../../state/workspaceStore";
 import { useNavStore } from "../../../../shared/state/navStore";
 import { ModelTemperaturePopover } from "./ModelTemperaturePopover";
@@ -56,7 +57,7 @@ export function ModelPicker({ value, onChange }: Props) {
             </option>
             {generative.map((m) => (
               <option key={m.name} value={m.name}>
-                {m.name}
+                {modelLabel(m)}
               </option>
             ))}
           </select>
