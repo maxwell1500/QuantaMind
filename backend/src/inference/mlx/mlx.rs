@@ -29,18 +29,25 @@ pub async fn stream_generate(
         system,
         options.filter(|o| !o.is_empty()),
     );
-    let resp = client
+    // Race the request against cancel: a wedged server (e.g. a non-chat model
+    // loaded) can accept the connection but never send response headers, which
+    // would block `.send()` indefinitely — so Cancel must interrupt here too,
+    // not only inside the streaming loop below.
+    let send = client
         .post(format!("{endpoint}/v1/chat/completions"))
         .json(&body)
-        .send()
-        .await
-        .map_err(|e| {
+        .send();
+    let resp = tokio::select! {
+        biased;
+        _ = cancel.cancelled() => return Ok(GenerateStats::default()),
+        r = send => r.map_err(|e| {
             if e.is_timeout() || e.is_connect() {
                 AppError::Timeout(format!("connect to mlx_lm.server: {e}"))
             } else {
                 AppError::Inference(e.to_string())
             }
-        })?;
+        })?,
+    };
 
     let status = resp.status();
     if !status.is_success() {

@@ -41,6 +41,21 @@ async fn cancellation_midstream_stops_and_returns_default_stats() {
 }
 
 #[tokio::test]
+async fn cancel_before_send_returns_without_hitting_the_server() {
+    // A wedged server can accept the connection but never reply; cancel must
+    // short-circuit the request itself, not just the streaming loop.
+    let mut server = Server::new_async().await;
+    let mock = server.mock("POST", CHAT).expect(0).create_async().await;
+    let cancel = CancellationToken::new();
+    cancel.cancel(); // already cancelled before the call
+    let stats = stream_generate(&server.url(), "phi", "p", None, None, cancel, |_| {})
+        .await
+        .unwrap();
+    assert!(stats.eval_count.is_none(), "cancelled before send → default stats");
+    mock.assert_async().await; // never sent the request
+}
+
+#[tokio::test]
 async fn sends_model_and_user_message_in_body() {
     let mut server = Server::new_async().await;
     let mock = server.mock("POST", CHAT)
