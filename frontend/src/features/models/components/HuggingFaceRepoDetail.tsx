@@ -2,9 +2,11 @@ import { useEffect, useMemo } from "react";
 import { useHfInstall } from "../hooks/useHfInstall";
 import { useHfRepoVariants, type HfVariantView } from "../hooks/useHfRepoVariants";
 import { useInstalledModelsStore } from "../state/installedModelsStore";
+import { useHardwareSnapshot } from "../hooks/useHardwareSnapshot";
 import { hfVariantModelName } from "../format";
 import { HfVariantTable } from "./HfVariantTable";
 import { HfInstallStatus } from "./HfInstallStatus";
+import { ModelCardSection } from "./card/ModelCardSection";
 
 type Props = { repo: string; onBack: () => void };
 
@@ -20,6 +22,7 @@ export function HuggingFaceRepoDetail({ repo, onBack }: Props) {
   const installStatus = useInstalledModelsStore((s) => s.status);
   const refreshInstalled = useInstalledModelsStore((s) => s.refresh);
   const installed = useMemo(() => new Set(list.map((m) => m.name)), [list]);
+  const { snapshot } = useHardwareSnapshot();
 
   useEffect(() => {
     if (installStatus === "idle") void refreshInstalled();
@@ -38,6 +41,7 @@ export function HuggingFaceRepoDetail({ repo, onBack }: Props) {
         ← Back to search
       </button>
       <div className="text-sm font-medium break-all">{repo}</div>
+      <ModelCardSection repo={repo} />
       {loadStatus === "loading" && (
         <div data-testid="hf-detail-loading" className="text-xs text-gray-500">
           Loading variants…
@@ -61,6 +65,7 @@ export function HuggingFaceRepoDetail({ repo, onBack }: Props) {
           variants={variants}
           installed={installed}
           busy={busy}
+          snapshot={snapshot}
           nameOf={variantName}
           onInstall={handleInstall}
         />

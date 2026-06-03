@@ -1,7 +1,7 @@
 import { invoke } from "@tauri-apps/api/core";
 import { z } from "zod";
 
-export const BackendKindSchema = z.enum(["ollama", "llama_cpp"]);
+export const BackendKindSchema = z.enum(["ollama", "llama_cpp", "mlx"]);
 export type BackendKind = z.infer<typeof BackendKindSchema>;
 
 export const InstalledModelInfoSchema = z.object({
@@ -12,6 +12,12 @@ export const InstalledModelInfoSchema = z.object({
   parameter_size: z.string(),
   quantization: z.string(),
   backend: BackendKindSchema,
+  // Content hash of the model blob. Ollama sends one per tag (shared across
+  // tags of the same model); absent for llama.cpp/MLX. The picker dedupes on it.
+  digest: z.string().optional(),
+  // Friendly picker label when `name` isn't presentable (MLX stores its on-disk
+  // path as `name` for wire-id matching and carries the HF repo here).
+  display_name: z.string().optional(),
   // Absolute GGUF path — present for llama.cpp models, absent for Ollama.
   path: z.string().optional(),
 });

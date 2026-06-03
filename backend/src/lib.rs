@@ -21,6 +21,7 @@ pub fn run() {
         .manage(commands::settings::model_settings::ModelSettingsState::default())
         .manage(commands::ollama::ollama_start::OllamaStartState::default())
         .manage(commands::llama::llama_server_types::LlamaServerState::default())
+        .manage(commands::mlx::mlx_server_types::MlxServerState::default())
         .manage(commands::workspace::workspaces::WorkspaceState::default())
         .manage(commands::settings::user_settings::UserSettingsState::default())
         .invoke_handler(tauri::generate_handler![
@@ -35,12 +36,23 @@ pub fn run() {
             commands::gguf::gguf_cmd::install_local_gguf,
             commands::hf::hf_browse::hf_search,
             commands::hf::hf_browse::hf_repo_files,
+            commands::hf::hf_browse::hf_repo_all_files,
+            commands::hf::hf_card::hf_model_card,
             commands::hf::hf_install::install_hf_gguf,
             commands::hf::hf_install::cancel_hf_install,
             commands::system::health::check_ollama_health,
+            commands::mlx::health_mlx::check_mlx_health,
+            commands::mlx::mlx_models::list_mlx_models,
+            commands::mlx::mlx_models::delete_mlx_model,
+            commands::mlx::mlx_install::install_mlx_model,
+            commands::mlx::mlx_start::start_mlx_server,
+            commands::mlx::mlx_start::stop_mlx_server,
+            commands::mlx::mlx_start::mlx_server_status,
             commands::settings::model_settings::get_model_settings,
             commands::settings::model_settings::set_model_temperature,
             commands::models::models::list_models,
+            commands::models::model_inspect::inspect_model,
+            commands::models::model_inspect::estimate_kv_cache_bytes,
             commands::models::models_pull::pull_model,
             commands::models::models_pull::cancel_pull,
             commands::ollama::ollama_start::start_ollama,
@@ -65,6 +77,21 @@ pub fn run() {
             commands::bench::bench_config::load_bench_config,
             commands::bench::bench_config::list_bench_configs,
             commands::prompt_templates::templates::list_prompt_templates,
+            commands::eval::evals_load::list_evals,
+            commands::eval::eval_run::run_eval_task,
+            commands::eval::toolcall_cmd::run_toolcall_eval,
+            commands::eval::toolcall_cmd::trace_toolcall_task,
+            commands::eval::toolcall_cmd::load_toolcall_trace,
+            commands::eval::toolcall_cmd::get_builtin_tasks,
+            commands::eval::toolcall_cmd::list_builtin_collections,
+            commands::eval::toolcall_cmd::get_builtin_collection,
+            commands::eval::eval_registry::list_custom_collections,
+            commands::eval::eval_registry::load_custom_collection,
+            commands::eval::eval_registry::save_custom_collection,
+            commands::eval::eval_registry::delete_custom_collection,
+            commands::eval::eval_registry::import_custom_collection,
+            commands::eval::matrix_cmd::run_collection_matrix,
+            commands::eval::matrix_cmd::load_collection_history,
             commands::workspace::workspace_prompts::load_prompt,
             commands::workspace::workspace_prompts::save_prompt,
             commands::workspace::workspace_prompts::create_prompt,
@@ -80,6 +107,7 @@ pub fn run() {
             commands::settings::user_settings::resolve_models_folder,
             commands::system::onboarding::scaffold_onboarding_workspace,
         ])
-        .run(tauri::generate_context!())
-        .expect("error while running tauri application");
+        .build(tauri::generate_context!())
+        .expect("error while building tauri application")
+        .run(commands::app_lifecycle::reap_on_exit);
 }

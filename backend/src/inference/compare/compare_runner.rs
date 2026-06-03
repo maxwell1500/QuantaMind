@@ -18,13 +18,22 @@ pub struct RowSpec {
     pub backend: BackendKind,
 }
 
-pub fn rows_for(models: &[String], options_for: impl Fn(&str) -> Option<GenerateOptions>) -> Vec<RowSpec> {
-    models.iter()
-        .map(|m| RowSpec {
+/// Build one row per model, each carrying its own backend (a backend is coupled
+/// to the model's weight format — see docs). `backends` is parallel to `models`;
+/// a missing entry falls back to Ollama.
+pub fn rows_for(
+    models: &[String],
+    backends: &[BackendKind],
+    options_for: impl Fn(&str) -> Option<GenerateOptions>,
+) -> Vec<RowSpec> {
+    models
+        .iter()
+        .enumerate()
+        .map(|(i, m)| RowSpec {
             model_id: Uuid::new_v4(),
             model: m.clone(),
             options: options_for(m),
-            backend: BackendKind::Ollama,
+            backend: backends.get(i).copied().unwrap_or_default(),
         })
         .collect()
 }
@@ -82,4 +91,20 @@ pub async fn run_parallel(
     state.rows.lock_recover().clear();
     sink.run_done();
     Ok(())
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn rows_for_assigns_each_models_backend_defaulting_to_ollama() {
+        let models = vec!["a".to_string(), "b".to_string(), "c".to_string()];
+        // Shorter than `models` → the missing entry falls back to Ollama.
+        let backends = vec![BackendKind::LlamaCpp, BackendKind::Mlx];
+        let rows = rows_for(&models, &backends, |_| None);
+        assert_eq!(rows[0].backend, BackendKind::LlamaCpp);
+        assert_eq!(rows[1].backend, BackendKind::Mlx);
+        assert_eq!(rows[2].backend, BackendKind::Ollama);
+    }
 }

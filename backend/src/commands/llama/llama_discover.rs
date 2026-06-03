@@ -50,6 +50,8 @@ fn model_from_path(path: &Path) -> Option<InstalledModelInfo> {
         parameter_size: format_params(meta.parameter_count),
         quantization: meta.quantization.unwrap_or_default(),
         backend: BackendKind::LlamaCpp,
+        digest: String::new(),
+        display_name: None,
         path: Some(path.to_string_lossy().into_owned()),
     })
 }

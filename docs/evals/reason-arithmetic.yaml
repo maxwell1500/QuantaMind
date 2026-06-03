@@ -1,0 +1,8 @@
+id: reason-arithmetic
+category: reasoning
+prompt: |
+  A shelf holds 3 boxes. Each box has 4 packs. Each pack has 6 pens.
+  How many pens in total? Reply with just the number.
+scoring:
+  method: exact
+  expected: "72"

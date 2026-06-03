@@ -4,6 +4,7 @@ import {
   type InstalledModelInfo,
 } from "../../../shared/ipc/models/storage";
 import { listLlamaModels } from "../../../shared/ipc/models/llama_start";
+import { listMlxModels } from "../../../shared/ipc/models/mlx";
 import { formatIpcError } from "../../../shared/ipc/core/error";
 
 export type InstalledStatus = "idle" | "loading" | "ready" | "error";
@@ -31,19 +32,22 @@ export const useInstalledModelsStore = create<InstalledModelsState>(
     lastRefreshedAt: null,
     setList: (list) =>
       set({ list, status: "ready", error: null, lastRefreshedAt: Date.now() }),
-    // Fetch both backends independently so llama.cpp models still list when
-    // Ollama is down (and vice-versa); error only when both fail.
+    // Fetch each backend independently so one still lists when another is
+    // down; error only when every source fails. MLX yields [] off Apple
+    // Silicon or with no server running, so it never trips the error path.
     refresh: async () => {
       if (get().status === "loading") return;
       set({ status: "loading", error: null });
-      const [ollama, llama] = await Promise.allSettled([
+      const [ollama, llama, mlx] = await Promise.allSettled([
         getInstalledModelsWithStats(),
         listLlamaModels(),
+        listMlxModels(),
       ]);
       const list: InstalledModelInfo[] = [];
       if (ollama.status === "fulfilled") list.push(...ollama.value);
       if (llama.status === "fulfilled") list.push(...llama.value);
-      if (ollama.status === "rejected" && llama.status === "rejected") {
+      if (mlx.status === "fulfilled") list.push(...mlx.value);
+      if (ollama.status === "rejected" && llama.status === "rejected" && mlx.status === "rejected") {
         set({ status: "error", error: formatIpcError(ollama.reason) });
         return;
       }

@@ -6,6 +6,7 @@ use crate::inference::backend::backend_kind::BackendKind;
 use crate::inference::generate::generate_spec::GenerateSpec;
 use crate::inference::generate::generate_stats::GenerateStats;
 use crate::inference::llama::llama_backend::LlamaCppBackend;
+use crate::inference::mlx::mlx_backend::MlxBackend;
 use crate::inference::ollama::ollama::GenerateOptions;
 use crate::inference::ollama::ollama_backend::OllamaBackend;
 use tokio_util::sync::CancellationToken;
@@ -45,6 +46,11 @@ pub async fn run_prompt_inner(
         }
         BackendKind::LlamaCpp => {
             LlamaCppBackend::new(endpoint.to_string()).generate(&spec, cancel, on_token).await
+        }
+        BackendKind::Mlx => {
+            MlxBackend::new(endpoint.to_string(), model.to_string())
+                .generate(&spec, cancel, on_token)
+                .await
         }
     }
 }

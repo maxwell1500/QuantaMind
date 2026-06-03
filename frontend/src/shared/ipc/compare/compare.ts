@@ -1,5 +1,6 @@
 import { invoke } from "@tauri-apps/api/core";
 import type { InferenceParams } from "../workspace/prompts";
+import type { BackendKind } from "../models/storage";
 
 export type CompareStrategy = "sequential" | "parallel" | "sequential_skippable";
 
@@ -10,6 +11,8 @@ export interface RunCompareArgs {
   system?: string;
   params?: InferenceParams;
   perModelParams?: Record<string, InferenceParams>;
+  // One backend per model (parallel to `models`); each model runs on its own.
+  backends?: BackendKind[];
 }
 
 export async function runCompare(args: RunCompareArgs): Promise<void> {

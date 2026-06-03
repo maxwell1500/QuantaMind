@@ -10,16 +10,13 @@ Project guide for Claude Code sessions. Read this top-to-bottom before any work.
 2. **Test pass ≠ data quality pass.** A green test only proves the code ran the
    path you told it to. You must also inspect the *output* and confirm it
    matches the expected shape/values. See `docs/process.md#data-quality`.
-3. **Every file < 100 lines.** Hard limit. Split modules before they grow.
-   Includes source, tests, configs. Headers/blank lines count.
-   Sole exception: the consolidated docs (`docs/architecture.md`,
-   `docs/process.md`, `docs/reference.md`), each ≤ 1000 lines.
-4. **Separation of concerns + single-module architecture.** Each file does
+3. **Separation of concerns + single-module architecture.** Each file does
    exactly one thing. Each module owns one responsibility. No "utils.ts"
-   junk drawers. See `docs/architecture.md#architecture`.
-5. **Documentation is part of the change.** When you change behavior, update
+   junk drawers. Split files by *responsibility*, not by line count. See
+   `docs/architecture.md#architecture`.
+4. **Documentation is part of the change.** When you change behavior, update
    the relevant section under `docs/` in the same commit.
-6. **Locked tech stack.** Do not substitute libraries. See `docs/process.md#tech-stack`.
+5. **Locked tech stack.** Do not substitute libraries. See `docs/process.md#tech-stack`.
    Alternatives go to `docs/process.md#future-considerations`, never into code.
 
 ## Workflow per step (mandatory loop)
@@ -60,11 +57,11 @@ If step 5 fails, do not "fix" by loosening the assertion. Fix the code.
 - Do not skip a test because "it's obvious." Obvious code still fails.
 - Do not refactor opportunistically during a feature commit. Refactor in a
   separate commit with its own tests.
-- Do not exceed 100 lines per file. If you're at 95, split now.
+- Do not let a file take on a second responsibility. Split by concern.
 
 ## When in doubt
 
-- File too long → split by concern, not by line count.
+- File doing two things → split by concern (not by line count).
 - Test passing but output looks wrong → trust the output, fix the test or
   the code.
 - Doc out of date → update the doc before the next commit.
@@ -86,4 +83,4 @@ Engineering docs live in three files under `docs/` (link with anchors, e.g.
 
 `docs/prompts/` is a runtime app asset (bundled prompt templates), not docs.
 
-Keep this file under 100 lines. If it grows, move detail into `docs/`.
+Keep this file lean. If it grows, move detail into `docs/`.

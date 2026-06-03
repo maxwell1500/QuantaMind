@@ -8,3 +8,7 @@ export async function listModels(): Promise<string[]> {
 export async function checkOllamaHealth(): Promise<HealthStatus> {
   return invoke<HealthStatus>("check_ollama_health");
 }
+
+export async function checkMlxHealth(): Promise<HealthStatus> {
+  return invoke<HealthStatus>("check_mlx_health");
+}

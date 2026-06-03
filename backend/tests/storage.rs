@@ -35,6 +35,28 @@ async fn fetch_installed_parses_details_and_sorts_by_size_desc() {
 }
 
 #[tokio::test]
+async fn fetch_installed_surfaces_digest_for_duplicate_tags() {
+    // The same blob imported under two Ollama tags shares one digest. The
+    // backend returns both (the storage/delete view needs every tag); the
+    // picker collapses them on `digest` client-side.
+    let mut s = Server::new_async().await;
+    let body = r#"{"models":[
+        {"name":"gemma_q3:latest","modified_at":"2024-12-02","size":1465591466,"digest":"3d3d",
+         "details":{"family":"gemma","parameter_size":"2.5B","quantization_level":"Q3_K_L"}},
+        {"name":"gemma:q3_k_l","modified_at":"2024-12-01","size":1465591466,"digest":"3d3d",
+         "details":{"family":"gemma","parameter_size":"2.5B","quantization_level":"Q3_K_L"}}
+    ]}"#;
+    let _m = s.mock("GET", "/api/tags").with_status(200).with_body(body).create_async().await;
+
+    let out = fetch_installed_with_stats(&s.url()).await.expect("should parse");
+    assert_eq!(out.len(), 2, "backend keeps both tags");
+    assert_eq!(out[0].digest, "3d3d");
+    assert_eq!(out[1].digest, "3d3d");
+    let json = serde_json::to_string(&out[0]).expect("serialize");
+    assert!(json.contains(r#""digest":"3d3d""#), "digest serialized: {json}");
+}
+
+#[tokio::test]
 async fn remove_model_404_maps_to_not_found_error() {
     let mut s = Server::new_async().await;
     let _m = s.mock("DELETE", "/api/delete").with_status(404).create_async().await;

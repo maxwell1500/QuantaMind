@@ -54,16 +54,22 @@ HTTP to a local Ollama server.
   `run_prompt` is backend-aware (dispatches to Ollama or the `llama-server`
   sidecar per the request's `backend`); the workspace sidebar's backend list picks it.
 - `inference/` — backend adapters behind the `InferenceBackend` trait
-  (`backend.rs`). `OllamaBackend` and `LlamaCppBackend` (a `llama-server`
-  sidecar) today; callers build one by matching `BackendKind` (a closed
-  enum — no `dyn`/`async-trait`). Cloud adds another variant.
+  (`backend.rs`). `OllamaBackend`, `LlamaCppBackend` (a `llama-server` sidecar),
+  and `MlxBackend` (`mlx_lm.server`, Apple Silicon) today; callers build one by
+  matching `BackendKind` (a closed enum — no `dyn`/`async-trait`). Cloud adds
+  another variant. Both sidecar backends have an **app-managed lifecycle**: the
+  app spawns/kills the server (`commands/{llama,mlx}/…start`), reaps children on
+  exit (`commands/app_lifecycle.rs`), and the MLX server runs on a dynamic port
+  resolved via `inference/mlx/server/mlx_endpoint.rs` — not a hardcoded `:8082`.
   **Tauri-free and must not import `crate::commands`** — when it must report
   progress it takes a sink trait (see [Layering](#layering)), not an `AppHandle`.
 - `metrics/` — measurements: TTFT, tokens/sec, VRAM.
-- `persistence/` — YAML/JSON read+write of prompts and history. The shared GGUF
-  weights folder resolves via `UserSettings.models_folder` →
-  `storage_disk::gguf_dir_resolved` (`UserSettingsState::weights_dir`); HF + local
-  installs land there for llama.cpp and import into Ollama when reachable.
+- `persistence/` — YAML/JSON read+write of prompts and history, plus `evals.rs`
+  (custom tool-call eval collections: one `.json` per collection, name-sanitised,
+  size-capped, validated on every read/write). The shared GGUF weights folder
+  resolves via `UserSettings.models_folder` → `storage_disk::gguf_dir_resolved`
+  (`UserSettingsState::weights_dir`); HF + local installs land there for
+  llama.cpp and import into Ollama when reachable.
 - `validation/` — schemas. Shared by commands and persistence.
 - `errors.rs` — single `AppError` enum. No `unwrap()` outside tests.
 
@@ -233,15 +239,64 @@ one folder per commit, behavior unchanged).
 - **backend `commands/`** (was 36 files): `prompt/` · `compare/` · `models/` ·
   `hf/` · `gguf/` · `ollama/` · `workspace/` · `storage/` · `settings/` ·
   `system/` (health, feasibility, hardware, onboarding)
-- **backend `inference/`** (was 33 files): `ollama/` · `gguf/` · `hf/` · `pull/` ·
-  `create/` · `compare/` · `http/` (http + ndjson) · `backend/` (trait + kind) ·
-  `generate/` (spec + options) · `chat/` (templates)
+- **backend `inference/`** (was 33 files): `ollama/` · `llama/` · `mlx/`
+  (wire + chunk + stats + stream + backend, plus `mlx/server/` =
+  runtime/locate/stderr/endpoint for the launcher) · `gguf/` · `hf/` · `pull/` ·
+  `create/` · `compare/` · `eval/` (deterministic mini-eval task + scoring, plus
+  `eval/toolcall/` — prompt-based, single-turn, structural tool-call eval) ·
+  `http/` (http + ndjson) · `backend/` (trait + kind) · `generate/` (spec +
+  options) · `chat/` (templates) · `vram_math.rs` (canonical f16 KV-cache formula,
+  unit-tested). `ollama/` also has `ollama_show.rs` — the Tauri-free `/api/show` client
+  (template, capabilities, raw `model_info`) behind `commands/models/model_inspect.rs`
+  (which also parses `ModelInspect.dims` + exposes `estimate_kv_cache_bytes`); frontend IPC
+  in `shared/ipc/system/inspect.ts`. The Quant tab's KV-aware VRAM fit / OOM gate lives in
+  `features/quant` (`useVramFit`, `QuantPage`, `fit.ts::fitOfNeed`); the curated memory-bandwidth
+  lookup is in `commands/system/hardware_mem.rs`. The 5.12–5.15 diagnostics are mostly frontend over
+  data already fetched: `features/eval/CpuFallbackBanner` (silent CPU fallback, from `/api/ps`),
+  `QuantPage::toolcallDelta` (quant parse-rate delta), `features/inspector/ContextBudgetBar`
+  (prompt_eval_count / context_length), and the context-cliff probe (`features/eval/cliff.ts` +
+  `useContextCliff` + `ContextCliffChart`, visx). Built-in eval presets (curated + `tasks_finance.json`)
+  are enumerated by `toolcall/tasks.rs::BUILTIN_COLLECTIONS` behind `list_builtin_collections` /
+  `get_builtin_collection`.
 - **frontend `features/workspace/components/`** (was 17 files): `model-select/` ·
   `prompt/` (editor + params) · `run/` (single/multi + controls + output) ·
   `status/` (status bar, ollama control, errors)
 - **frontend `shared/ipc/`** (was 26 files), grouped by domain: `core/` (client,
   error, errorInfo, timeout, types) · `events/` (event names + payload zod
-  schemas) · `compare/` · `models/` · `workspace/` · `settings/` · `system/`
+  schemas) · `compare/` · `models/` · `workspace/` · `settings/` · `system/` ·
+  `eval/` (`evals`, `toolcall`, `registry` — the custom-eval CRUD + ToolTask zod)
+- **custom-eval registry** spans the layers by responsibility: the storage-free
+  runner takes a `Vec<ToolTask>`; `persistence/evals.rs` owns file I/O;
+  `commands/eval/eval_registry.rs` is the thin CRUD + path-only import; UI lives
+  in `features/eval/` (`useEvalRegistryStore`, whose `NEW_COLLECTION` sentinel /
+  `startNew` model the unsaved-new selection). The manager UI is a master-detail
+  split under `components/manager/` (`EvalManager` orchestrator + `NameDialog`,
+  `TaskListView`, `TaskDetailView`, `StatsBar`) — kept in a subfolder so
+  `components/` stays ≤10 files — over feature-root modules `evalDraft.ts` (draft
+  shape + Save/Run validation) and `verdict.ts` (pass/fail + score helpers, shared
+  with `ToolCallPanel`).
+- **collection matrix & history** follows the same layering: pure aggregation in
+  `inference/eval/toolcall/matrix.rs` (`build_matrix`/`summaries`, no async/I/O);
+  the append-only, 100-entry-capped log in `persistence/eval_history.rs`; the thin
+  sequential runner + history write in `commands/eval/matrix_cmd.rs`
+  (`run_collection_matrix`/`load_collection_history`). UI is a separate
+  `components/matrix/` subfolder (`MatrixPanel` + `MatrixGrid`, `HistoryTimeline`,
+  `ModelToggles`) mounted in `EvalPage`, over `shared/ipc/eval/matrix.ts`.
+- **pipeline visualizer** reuses the runner's single-task path: `eval.rs` exposes
+  `trace_one` (+ `TraceResult` = system message + raw output + verdict), which
+  `run_eval` loops over and the `trace_toolcall_task` command calls directly — so
+  the trace matches a real run. UI is a `components/pipeline/` subfolder
+  (`PipelinePanel` + `ConfigPhase`, `SystemMessagePhase`, `StreamPhase`,
+  `VerifyPhase`) over `traceToolcallTask` in `shared/ipc/eval/toolcall.ts`.
+- **trace cache** keeps a run's per-task traces so a drill-down never re-runs
+  inference: `run_eval_traced` (in `eval.rs`) returns the full `TaskTrace`s
+  alongside the report, and both runners (`run_toolcall_eval` Simulator,
+  `run_collection_matrix`) cache them best-effort into the `traces/` managed dir
+  via `persistence/eval_trace_store.rs` (one JSON file per collection, models
+  keyed within, upsert by task id, 1 MB read guard). `load_toolcall_trace`
+  serves a cached `(collection, model, task)` trace; `PipelinePanel` loads it on
+  a `View Trace` / Matrix-cell handoff (▶ still re-runs live). A cache miss/write
+  failure degrades gracefully to a live run — never blocks the eval.
 
 ### Rules for a split
 

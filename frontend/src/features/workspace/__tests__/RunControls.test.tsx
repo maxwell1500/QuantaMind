@@ -62,32 +62,33 @@ describe("RunControls", () => {
     expect(screen.getByTestId("run-status")).toHaveTextContent("done");
   });
 
-  it("Run is disabled when ollamaHealthy=false, with the 'Start Ollama first' title", () => {
+  it("Run is disabled with a blockedHint shown as the title + inline text", () => {
     const onRun = vi.fn();
     render(
       <RunControls
         status="idle"
         canRun={true}
-        ollamaHealthy={false}
+        blockedHint="Start the MLX backend to run this model"
         onRun={onRun}
         onCancel={() => {}}
       />,
     );
     const run = screen.getByRole("button", { name: /run/i });
     expect(run).toBeDisabled();
-    expect(run).toHaveAttribute("title", "Start Ollama first");
+    expect(run).toHaveAttribute("title", "Start the MLX backend to run this model");
+    expect(screen.getByTestId("run-blocked-hint")).toHaveTextContent("Start the MLX backend");
     fireEvent.click(run);
     expect(onRun).not.toHaveBeenCalled();
   });
 
-  it("Run re-enables when ollamaHealthy flips back to true", () => {
+  it("Run re-enables when blockedHint clears", () => {
     const { rerender } = render(
-      <RunControls status="idle" canRun={true} ollamaHealthy={false}
+      <RunControls status="idle" canRun={true} blockedHint="Start Ollama first"
         onRun={() => {}} onCancel={() => {}} />,
     );
     expect(screen.getByRole("button", { name: /run/i })).toBeDisabled();
     rerender(
-      <RunControls status="idle" canRun={true} ollamaHealthy={true}
+      <RunControls status="idle" canRun={true} blockedHint={null}
         onRun={() => {}} onCancel={() => {}} />,
     );
     expect(screen.getByRole("button", { name: /run/i })).not.toBeDisabled();

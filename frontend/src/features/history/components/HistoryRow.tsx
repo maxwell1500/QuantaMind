@@ -1,4 +1,5 @@
 import type { HistoryEntry } from "../../../shared/ipc/workspace/history";
+import { useModelLabel } from "../../models/hooks/useModelLabel";
 
 type Props = { entry: HistoryEntry; onRestore: (e: HistoryEntry) => void };
 
@@ -8,6 +9,7 @@ const when = (iso: string) => {
 };
 
 export function HistoryRow({ entry, onRestore }: Props) {
+  const label = useModelLabel();
   const title = entry.name || entry.user.slice(0, 80) || "(untitled)";
   return (
     <button
@@ -21,7 +23,7 @@ export function HistoryRow({ entry, onRestore }: Props) {
         <span className="text-[10px] text-gray-400 shrink-0">{when(entry.ran_at)}</span>
       </div>
       <p className="text-[10px] text-gray-500 truncate">
-        {entry.model} · {entry.output_len} chars · {entry.token_count} tokens
+        {label(entry.model)} · {entry.output_len} chars · {entry.token_count} tokens
       </p>
     </button>
   );

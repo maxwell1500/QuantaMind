@@ -1,6 +1,6 @@
 #![deny(clippy::unwrap_used)]
 use crate::commands::system::gpu::{probe_gpu, GpuInfo};
-use crate::commands::system::hardware_mem::compute_available;
+use crate::commands::system::hardware_mem::{compute_available, guess_memory_bandwidth_gbps};
 use crate::errors::AppError;
 use crate::sync::MutexExt;
 use serde::Serialize;
@@ -18,6 +18,9 @@ pub struct HardwareSnapshot {
     pub os_version: Option<String>,
     pub arch: String,
     pub gpu: GpuInfo,
+    /// Nominal unified-memory bandwidth (GB/s) for known Apple-Silicon chips;
+    /// `None` when unrecognised (shown as "Not available", never fabricated).
+    pub estimated_bandwidth_gbps: Option<u32>,
 }
 
 fn system() -> &'static Mutex<System> {
@@ -37,6 +40,7 @@ pub fn snapshot() -> HardwareSnapshot {
     let total = sys.total_memory();
     let available = compute_available(total, sys.available_memory(), sys.used_memory());
     let cpu = sys.cpus().first().map(|c| c.brand().trim().to_string()).unwrap_or_default();
+    let estimated_bandwidth_gbps = guess_memory_bandwidth_gbps(&cpu);
     HardwareSnapshot {
         total_memory_bytes: total,
         available_memory_bytes: available,
@@ -47,6 +51,7 @@ pub fn snapshot() -> HardwareSnapshot {
         os_version: System::os_version(),
         arch: std::env::consts::ARCH.to_string(),
         gpu: probe_gpu(),
+        estimated_bandwidth_gbps,
     }
 }
 

@@ -6,6 +6,7 @@ import { useWorkspaceStore } from "../../state/workspaceStore";
 import { useWorkspacesStore } from "../../../workspaces/state/workspaceStore";
 import { useNavStore } from "../../../../shared/state/navStore";
 import { useCompareStore } from "../../../compare/state/compareStore";
+import { backendRunHint } from "../../state/runHint";
 
 /// Single-model run trigger: run_prompt streaming with per-prompt params and
 /// history. The response is shown on the Analysis tab — this mirrors the live
@@ -17,6 +18,7 @@ export function SingleRun({ model }: { model: string | null }) {
   const saveDraftAuto = useWorkspacesStore((s) => s.saveDraftAuto);
   const ollamaHealthy = useWorkspaceStore((s) => s.ollamaHealthy);
   const llamaHealthy = useWorkspaceStore((s) => s.llamaHealthy);
+  const mlxHealthy = useWorkspaceStore((s) => s.mlxHealthy);
   const activeBackend = useWorkspaceStore((s) => s.activeBackend);
   const setSingleRun = useCompareStore((s) => s.setSingleRun);
   const active = useNavStore((s) => s.topView) === "workspace";
@@ -38,8 +40,14 @@ export function SingleRun({ model }: { model: string | null }) {
 
   const prompt = current?.user ?? "";
   const system = current?.system ?? "";
-  const backendReady = activeBackend === "ollama" || llamaHealthy === true;
-  const canRun = !!model && prompt.trim().length > 0 && backendReady;
+  // A backend is coupled to the model's weight format — no fallback. If the
+  // active backend isn't healthy, Run is blocked with a "start it" hint.
+  const blockedHint = backendRunHint(activeBackend, {
+    ollama: ollamaHealthy,
+    llama: llamaHealthy,
+    mlx: mlxHealthy,
+  });
+  const canRun = !!model && prompt.trim().length > 0 && !blockedHint;
   const runNow = () => {
     if (!model) return;
     useNavStore.getState().setTopView("analysis");
@@ -54,7 +62,7 @@ export function SingleRun({ model }: { model: string | null }) {
     <RunControls
       status={status}
       canRun={canRun}
-      ollamaHealthy={activeBackend === "ollama" ? ollamaHealthy : true}
+      blockedHint={blockedHint}
       onRun={runNow}
       onCancel={cancel}
     />

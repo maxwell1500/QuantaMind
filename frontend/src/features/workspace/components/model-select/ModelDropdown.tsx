@@ -1,6 +1,8 @@
 import { useEffect, useRef, useState } from "react";
 import { useInstalledModelsStore } from "../../../models/state/installedModelsStore";
 import { isEmbeddingModel } from "../../../../shared/models/classify";
+import { dedupeByDigest } from "../../../../shared/models/dedupeDigest";
+import { modelLabel } from "../../../../shared/models/modelLabel";
 import { formatBytes } from "../../../../shared/format/bytes";
 import { useWorkspaceStore } from "../../state/workspaceStore";
 import { useCompareStore } from "../../../compare/state/compareStore";
@@ -19,7 +21,9 @@ export function ModelDropdown() {
   const ref = useRef<HTMLDivElement>(null);
 
   const multi = activeBackend === "ollama";
-  const generative = list.filter((m) => !isEmbeddingModel(m) && m.backend === activeBackend);
+  const generative = dedupeByDigest(
+    list.filter((m) => !isEmbeddingModel(m) && m.backend === activeBackend),
+  );
   const has = (name: string) => selected.some((s) => s.name === name);
 
   useEffect(() => { if (status === "idle") void refresh(); }, [status, refresh]);
@@ -45,8 +49,12 @@ export function ModelDropdown() {
     setSelected(has(m.name) ? selected.filter((s) => s.name !== m.name) : [...selected, entry]);
   };
 
+  const labelFor = (name: string) => {
+    const m = list.find((x) => x.name === name);
+    return m ? modelLabel(m) : name;
+  };
   const label = selected.length === 0 ? "Select a model"
-    : selected.length === 1 ? selected[0].name : `${selected.length} models`;
+    : selected.length === 1 ? labelFor(selected[0].name) : `${selected.length} models`;
 
   return (
     <div className="relative" data-testid="compare-model-select" ref={ref}>
@@ -86,8 +94,10 @@ export function ModelDropdown() {
               >
                 {has(m.name) ? "✓" : ""}
               </span>
-              <span className="flex-1 truncate">{m.name}</span>
-              <span className="text-[10px] text-gray-400">{formatBytes(m.size_bytes)}</span>
+              <span className="flex-1 truncate">{modelLabel(m)}</span>
+              {m.size_bytes > 0 && (
+                <span className="text-[10px] text-gray-400">{formatBytes(m.size_bytes)}</span>
+              )}
             </button>
           ))}
         </div>

@@ -8,8 +8,10 @@ import { TokenTimeline } from "./TokenTimeline";
 import { LatencyHistogram } from "./LatencyHistogram";
 import { TtftBreakdown } from "./TtftBreakdown";
 import { VramBar } from "./VramBar";
+import { ContextBudgetBar } from "./ContextBudgetBar";
 import { ColdWarmPanel } from "./ColdWarmPanel";
 import { RegressionAlert } from "./RegressionAlert";
+import { useModelLabel } from "../../models/hooks/useModelLabel";
 
 const tag = (k: LatencyBar["kind"]) => (k === "ttft" ? " (TTFT)" : k === "outlier" ? " (outlier)" : "");
 
@@ -19,6 +21,7 @@ export function ModelTimeline({ row, width, vram, history = [], deviceTotalBytes
   deviceTotalBytes?: number | null; unified?: boolean;
 }) {
   const [hovered, setHovered] = useState<LatencyBar | null>(null);
+  const label = useModelLabel();
   const m = row.metrics;
   const { bars, stats } = buildLatencyBars(m?.timeline ?? [], m?.ttft_ms ?? null);
   const histogram = buildHistogram(bars);
@@ -28,7 +31,7 @@ export function ModelTimeline({ row, width, vram, history = [], deviceTotalBytes
   return (
     <div className="space-y-1" data-testid={`model-timeline-${row.model}`}>
       <div className="flex flex-wrap items-baseline gap-x-3 gap-y-0.5">
-        <span className="text-sm font-medium text-ink">{row.model}</span>
+        <span className="text-sm font-medium text-ink">{label(row.model)}</span>
         <span className="text-xs text-gray-500">
           {m?.token_count ?? 0} tokens · TTFT {m?.ttft_ms ?? "—"}ms ·{" "}
           {tps != null ? `${tps.toFixed(1)} tok/s` : "— tok/s"} ·{" "}
@@ -37,6 +40,7 @@ export function ModelTimeline({ row, width, vram, history = [], deviceTotalBytes
       </div>
       <TtftBreakdown ttftMs={m?.ttft_ms ?? null} stats={m?.stats} />
       <VramBar entry={vram} deviceTotalBytes={deviceTotalBytes} unified={unified} />
+      <ContextBudgetBar promptTokens={m?.stats?.prompt_eval_count ?? null} contextLength={vram?.context_length ?? null} />
       <ColdWarmPanel model={row.model} history={history} />
       <RegressionAlert model={row.model} history={history} />
       <div className="text-xs text-gray-500 h-4" data-testid={`readout-${row.model}`}>

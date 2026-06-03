@@ -1,0 +1,8 @@
+id: extract-capital
+category: extraction
+prompt: |
+  From the sentence, extract the capital city. Reply with the city name only.
+  Sentence: "We flew from Berlin to the capital of Japan, Tokyo, last spring."
+scoring:
+  method: exact
+  expected: "Tokyo"

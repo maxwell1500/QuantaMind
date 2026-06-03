@@ -1,0 +1,8 @@
+id: classify-sentiment
+category: classification
+prompt: |
+  Reply with exactly one word — POSITIVE or NEGATIVE — and nothing else.
+  Review: "Best purchase I've made all year, I love it."
+scoring:
+  method: exact
+  expected: "POSITIVE"

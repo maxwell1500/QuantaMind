@@ -8,6 +8,8 @@ export interface ModelGroup {
   sizeBytes: number;
   ollamaName?: string; // actual Ollama tag (for delete), present if in Ollama
   llamaPath?: string; // folder GGUF path (for add-to-ollama), present if local
+  mlxPath?: string; // MLX model dir (for delete), present if an MLX download
+  displayName?: string; // friendly label when `name` isn't presentable (MLX)
 }
 
 // Ollama tags imported models `:latest`; the llama.cpp folder name is the bare
@@ -30,6 +32,10 @@ export function groupInstalled(list: InstalledModelInfo[]): ModelGroup[] {
     };
     if (m.backend === "ollama") g.ollamaName = m.name;
     if (m.backend === "llama_cpp") g.llamaPath = m.path ?? g.llamaPath;
+    if (m.backend === "mlx") {
+      g.mlxPath = m.path ?? g.mlxPath;
+      g.displayName = m.display_name ?? g.displayName;
+    }
     map.set(key, g);
   }
   return [...map.values()].sort((a, b) => a.name.localeCompare(b.name));

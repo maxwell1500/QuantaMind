@@ -5,6 +5,8 @@ import { InspectorPage } from "./features/inspector/components/InspectorPage";
 import { SettingsPage } from "./features/settings/components/SettingsPage";
 import { ModelsPage } from "./features/models/components/ModelsPage";
 import { DownloadsPage } from "./features/models/components/DownloadsPage";
+import { EvalPage } from "./features/eval/components/EvalPage";
+import { QuantPage } from "./features/quant/components/QuantPage";
 import { startInstalledModelsBus } from "./features/models/state/installedModelsBus";
 import { useModelSettingsStore } from "./features/models/state/modelSettingsStore";
 import { FeedbackButton } from "./features/feedback/components/FeedbackButton";
@@ -26,6 +28,8 @@ const TABS: { id: TopView; label: string }[] = [
   { id: "inspector", label: "Inspector" },
   { id: "models", label: "Models" },
   { id: "downloads", label: "Downloads" },
+  { id: "eval", label: "Eval" },
+  { id: "quant", label: "Quant" },
   { id: "settings", label: "Settings" },
   { id: "help", label: "Help" },
 ];
@@ -75,6 +79,8 @@ export default function App() {
       <div hidden={view !== "inspector"} data-testid="view-inspector"><InspectorPage /></div>
       <div hidden={view !== "models"} data-testid="view-models"><ModelsPage /></div>
       <div hidden={view !== "downloads"} data-testid="view-downloads"><DownloadsPage /></div>
+      <div hidden={view !== "eval"} data-testid="view-eval"><EvalPage /></div>
+      <div hidden={view !== "quant"} data-testid="view-quant"><QuantPage /></div>
       <div hidden={view !== "settings"} data-testid="view-settings"><SettingsPage /></div>
       <div hidden={view !== "help"} data-testid="view-help"><HelpPage /></div>
       <FeedbackButton />

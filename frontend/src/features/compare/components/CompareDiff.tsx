@@ -1,11 +1,13 @@
 import { useState } from "react";
 import { useCompareStore } from "../state/compareStore";
 import { DiffView } from "./DiffView";
+import { useModelLabel } from "../../models/hooks/useModelLabel";
 
 /// Shows a word-level diff between the two finished model outputs. Only offered
 /// when exactly two rows are done (diff is pairwise).
 export function CompareDiff() {
   const rows = useCompareStore((s) => s.rows);
+  const label = useModelLabel();
   const [show, setShow] = useState(false);
 
   const done = rows.filter((r) => r.status === "done");
@@ -20,7 +22,7 @@ export function CompareDiff() {
         className="text-xs border rounded px-2 py-1 hover:bg-gray-50"
         data-testid="diff-toggle"
       >
-        {show ? "Hide diff" : `Diff: ${a.model} → ${b.model}`}
+        {show ? "Hide diff" : `Diff: ${label(a.model)} → ${label(b.model)}`}
       </button>
       {show && <DiffView a={a.output} b={b.output} />}
     </div>

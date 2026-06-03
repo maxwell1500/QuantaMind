@@ -29,6 +29,7 @@ fn parse_content_length(h: Option<&reqwest::header::HeaderValue>, repo: &str) ->
     s.parse().map_err(|e| AppError::Inference(format!("{repo}: unparseable Content-Length '{s}': {e}")))
 }
 
+/// Download a single `.gguf` file. Thin guard over [`download_file`].
 pub async fn download_gguf(
     endpoint: &str,
     repo: &str,
@@ -37,10 +38,24 @@ pub async fn download_gguf(
     on_progress: impl Fn(DownloadProgress),
     cancel: CancellationToken,
 ) -> AppResult<DownloadResult> {
-    validate_repo(repo)?;
     if !filename.to_lowercase().ends_with(".gguf") {
         return Err(AppError::Validation(format!("not a .gguf filename: {filename}")));
     }
+    download_file(endpoint, repo, filename, dest_path, on_progress, cancel).await
+}
+
+/// Stream one repo file to `dest_path` with `.partial` resume and cancellation.
+/// Format-agnostic — the GGUF guard lives in [`download_gguf`]; snapshots call
+/// this directly for each file.
+pub async fn download_file(
+    endpoint: &str,
+    repo: &str,
+    filename: &str,
+    dest_path: &Path,
+    on_progress: impl Fn(DownloadProgress),
+    cancel: CancellationToken,
+) -> AppResult<DownloadResult> {
+    validate_repo(repo)?;
     if dest_path.exists() {
         return Ok(DownloadResult { final_path: dest_path.to_path_buf(), sha256: None });
     }

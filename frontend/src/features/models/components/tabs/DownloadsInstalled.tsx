@@ -1,6 +1,7 @@
 import { useEffect, useState } from "react";
 import { removeModel } from "../../../../shared/ipc/models/storage";
 import { deleteLlamaModel } from "../../../../shared/ipc/models/llama_start";
+import { deleteMlxModel } from "../../../../shared/ipc/models/mlx";
 import { formatBytes } from "../../../../shared/format/bytes";
 import { formatIpcError } from "../../../../shared/ipc/core/error";
 import { useInstalledModelsStore } from "../../state/installedModelsStore";
@@ -31,6 +32,7 @@ export function DownloadsInstalled() {
     try {
       if (target.ollamaName) await removeModel(target.ollamaName);
       if (target.llamaPath && alsoLlama) await deleteLlamaModel(target.llamaPath);
+      if (target.mlxPath) await deleteMlxModel(target.mlxPath);
       await refresh();
       setPending(null);
     } catch (e) {
@@ -56,9 +58,10 @@ export function DownloadsInstalled() {
             className="px-3 py-2 flex items-center justify-between gap-2">
             <div className="min-w-0">
               <div className="text-sm truncate flex items-center gap-1">
-                {g.name}
+                {g.displayName ?? g.name}
                 {g.ollamaName && <span className={`${badge} bg-blue-50 text-blue-700`}>Ollama</span>}
                 {g.llamaPath && <span className={`${badge} bg-amber-50 text-amber-700`}>llama.cpp</span>}
+                {g.mlxPath && <span className={`${badge} bg-purple-50 text-purple-700`}>MLX</span>}
               </div>
               <div className="text-[11px] text-gray-500">
                 {g.family} · {g.parameterSize} · {g.quantization} · {formatBytes(g.sizeBytes)}
@@ -67,7 +70,7 @@ export function DownloadsInstalled() {
             <div className="flex items-center gap-1 shrink-0">
               {g.llamaPath && !g.ollamaName && <AddToOllamaButton path={g.llamaPath} name={g.name} />}
               <button type="button" onClick={() => setPending(g.name)}
-                className="text-xs border rounded px-2 py-1" aria-label={`Delete ${g.name}`}>
+                className="text-xs border rounded px-2 py-1" aria-label={`Delete ${g.displayName ?? g.name}`}>
                 Delete
               </button>
             </div>
@@ -76,7 +79,7 @@ export function DownloadsInstalled() {
       </ul>
       {target && (
         <ConfirmRemove
-          name={target.name}
+          name={target.displayName ?? target.name}
           sizeBytes={target.sizeBytes}
           inOllama={!!target.ollamaName}
           inLlama={!!target.llamaPath}

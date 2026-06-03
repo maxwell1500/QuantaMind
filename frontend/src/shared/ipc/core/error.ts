@@ -1,4 +1,11 @@
 export function rawMessage(e: unknown): string {
+  // A ZodError's `.message` is a raw JSON issues array — surface the first issue
+  // in plain language instead (checked before `Error`, which ZodError extends).
+  if (e && typeof e === "object" && "issues" in e && Array.isArray((e as { issues: unknown }).issues)) {
+    const first = (e as { issues: Array<{ path?: unknown[]; message?: string }> }).issues[0];
+    const field = Array.isArray(first?.path) && first.path.length ? `${first.path.join(".")}: ` : "";
+    return `Invalid data — ${field}${first?.message ?? "validation failed"}`;
+  }
   if (e instanceof Error) return e.message;
   if (typeof e === "string") return e;
   if (e && typeof e === "object" && "message" in e) {

@@ -145,9 +145,10 @@ matches the convention; PR body references "closes #N" when applicable.
 
 ### File size
 
-- **Hard limit: 100 lines** including blank lines and headers (this guide is the
-  sole exception — see CLAUDE.md rule #3).
-- At 95 lines, split now. Do not wait. Splits are by concern, not by halving.
+- **Keep each file single-concern.** There is no hard line-count limit; split a
+  file when it starts doing *two things*, not when it crosses a number. Splits
+  are by responsibility, never by halving. (The ≤10-files-per-folder taxonomy
+  rule still holds — see `architecture.md#folder-taxonomy`.)
 
 ### Comments
 
@@ -232,7 +233,7 @@ For every unit of work (one step, one ticket, one feature slice):
 ### Stop conditions
 
 Stop and ask the user if a step's spec is ambiguous, the data-quality gate fails
-and the fix would change the spec, a file is about to exceed 100 lines and the
+and the fix would change the spec, a file's concern boundary is unclear and the
 split is non-obvious, or a test requires hardware that may not be present.
 
 ---
@@ -319,8 +320,8 @@ Never add in Phase 2: browser-based inference, team features, cloud sync
 
 Step-level acceptance gate (each step "done" only when all true): code merged
 behind a `phase-2/<step>` PR; full Vitest + cargo suites green; output verified
-per [Data quality](#data-quality); relevant docs updated in the same commit; no
-file >100 lines; locked stack honored.
+per [Data quality](#data-quality); relevant docs updated in the same commit;
+files single-concern (≤10 per folder); locked stack honored.
 
 **Phase 2.4 complete** — backend 95 lib + 2 lifecycle integration; frontend 361
 (11 new for workspaces). Verified via `workspace_lifecycle.rs` (round-trip, tree
@@ -401,10 +402,171 @@ green + `cargo clippy` error-free; 560 frontend (vitest) + `tsc`; `pnpm build`
 succeeds. Shipped on branch `phase-4/per-token-timing`. Live GUI verification
 pending (same gate as earlier phases).
 
-### Phase 5+
+### Phase 5 — v0.5 Quantization & Backends (complete)
 
-Sketched in the v0.1 planning notes (MLX backend, etc.) but not yet broken into
-steps. Owners flesh out the next phase's section here when the current lands.
+Broaden *which* models and backends users can run, and help them pick the right
+one. Built one step at a time.
+
+- **5.1 MLX inference backend (done; live-verified).** A `MlxBackend` streams from
+  `mlx_lm.server`'s OpenAI-compatible `/v1/chat/completions` (SSE), reached over
+  HTTP — no FFI, consistent with the locked stack. **Apple Silicon only.**
+  mlx_lm is user-installed (`pip install mlx-lm`), not bundled; QuantaMind only
+  health-probes it read-only via `GET /v1/models` and shows MLX in the workspace
+  backend rail only on Apple Silicon. `BackendKind::Mlx` listens on `:8082`
+  (mlx_lm defaults to `:8080`, which collides with llama-server — launch with
+  `--port 8082`). Wire mapping: `num_predict→max_tokens`, `top_k→top_k`,
+  `repeat_penalty→repetition_penalty`; **`seed` is dropped** (mlx_lm has no seed
+  field, so MLX runs are **not seed-reproducible**). Stats are token counts only
+  (all `*_ms` stay `None` — mlx_lm reports no per-phase timing); TTFT and
+  tokens/sec come from the client-side `RunTiming`. Sub-steps: 5.1.1 enum +
+  endpoint + dispatch; 5.1.2 wire request; 5.1.3 stats; 5.1.4 stream + backend;
+  5.1.5 cancellation; 5.1.6 health command + Apple-Silicon gate; 5.1.7 frontend
+  rail + gating + not-detected hint; 5.1.8 docs; 5.1.9 model discovery — the
+  loaded model is listed via `GET /v1/models` (a third source alongside Ollama
+  and llama.cpp) so MLX is selectable and runnable; size/quant aren't reported
+  by that endpoint, so they show blank rather than a fabricated `0`.
+- **5.2 Model fit + MLX launcher (done).** Two parts. **5.2A:** hardware-fit
+  badges on the HF download table — green "Fits" / amber "Tight" / red "Won't
+  fit" per variant from `features/models/fit.ts` (the compare feature's
+  1.3×-safety, 70%-tight rule); the column is omitted, never guessed, when no
+  hardware snapshot. **5.2B:** QuantaMind now **starts `mlx_lm.server`** for a
+  user-chosen HF repo (the dropdown-driven flow), reversing 5.1's "no in-app
+  start" — `mlx_lm.server --model <repo>` downloads the repo on launch, so this
+  is download + run in one flow. It mirrors the llama-server lifecycle with
+  three hardenings: (1) **no false-fail** — start returns immediately, a stderr
+  reader thread reports `Downloading`/`Starting`, readiness is the health probe
+  (never a timeout during a multi-minute download), and `mlx_server_status`
+  surfaces a died process's stderr tail; (2) **exit-reap** —
+  `RunEvent::ExitRequested` kills the child (also llama-server) so no zombie
+  holds memory/port; (3) **dynamic port** — `find_available_port(8082..=8092)`
+  picks a free port stored in a process-global, and the MLX endpoint is
+  state-derived (`mlx_endpoint()`), so health/discovery/dispatch follow it (no
+  hardcoded `:8082`). Set `QUANTAMIND_MLX_SERVER` to override the executable
+  path. (AWQ variants + resumable multi-file pulls deferred.)
+- **5.3 Quantization comparison (done).** On the **Quant** tab, a chosen model's
+  installed quants compare side-by-side: **size** + hardware **fit** (static),
+  and **quality** = the 5.4 eval suite run per variant → a per-quant pass-rate
+  (a variant whose backend errors is marked "error", never a misleading 0). A
+  **"Compare speed in Bench →"** button loads the variants into the compare
+  store and jumps to the Bench for **speed/TTFT/VRAM** (reusing the existing
+  backend-aware compare runner from 5.6 rather than rebuilding metrics).
+- **5.4 Built-in mini-eval suite (done).** Bundled `docs/evals/*.yaml` tasks
+  (classification, reasoning, extraction, schema) run against any installed
+  model from the **Eval** tab → a pass-rate + per-task pass/fail. **Scoring is
+  deterministic** (locked stack has no sandbox/judge): exact-match,
+  multiple-choice (first whole-word choice token), and — for the "code"
+  category — **JSON schema-conformance** (BFCL-style): a balanced-brace
+  extractor finds the first object that parses, then a flat depth-1 check of
+  required keys + top-level types. Honest framing: a quality *smoke test*, not a
+  rigorous benchmark. `inference/eval` (pure scoring, Tauri-free) + `commands/eval`
+  (`list_evals`, `run_eval_task` — runs temp-0, accumulates output, scores).
+- **5.5 Smart quant recommender (done).** A **Quant** tab: pick a model that has
+  several installed quantizations (grouped by family + size in `quantPick.ts`)
+  and a use case (fast-chat / quality-writing / coding / reasoning) → a
+  recommended quant + plain-language why. Pure `recommendQuant` combines the
+  `HardwareSnapshot` fit (reusing `memoryFit`'s 1.3× rule) with a quant-quality
+  rank: fast-chat picks the smallest fitting quant, quality use-cases the
+  highest-quality one; honest when nothing fits or hardware is unknown.
+- **5.6 Backend auto-selection (done).** A backend is **coupled to the model's
+  weight format** — an MLX model runs only on MLX, a GGUF only on
+  llama.cpp/Ollama — so selection is the absolute `model.backend` mapping, never
+  a health-based fallback. Compare rows are now **backend-aware** (`rows_for`
+  takes a backend per model; `run_compare` forwards each model's backend, so a
+  mixed-backend compare dispatches each row to the right server — previously all
+  rows wrongly went to Ollama). When the required backend isn't healthy, Run is
+  **blocked with a hint** ("Start the MLX backend to run this model") rather than
+  rerouting (`features/workspace/state/runHint.ts`).
+- **5.7 Model card viewer (done).** Real READMEs are arbitrary HTML, so the card
+  is treated as a **data source, not a document**: `hf_model_card` fetches the
+  README and `to_card` reduces it to structured data — `license`, `base_model`,
+  `pipeline_tag`, `tags` (parsed from the YAML frontmatter via the existing
+  `serde_yaml`, handling string-or-list shapes) + a `description` (the first ~3
+  prose paragraphs, skipping HTML/tables/headings). The frontend
+  `ModelCardDetail` maps that JSON to **native components** — badges, a tag list,
+  the description, and an **"Open full card on Hugging Face →"** button (shell).
+  Crash-proof by construction (controlled values, never injected HTML); 404 →
+  "no model card", not an error.
+- **5.8 Tool-calling reliability eval (done).** The agentic sibling of 5.4: which
+  model/quant/backend can drive an agent, measured **offline, deterministically,
+  judge-free**. **Prompt-based** (tool schemas in the system message, parse the
+  JSON call from the completion — backend-agnostic), **single-turn**, **greedy
+  (temp 0)**. Scoring is **BFCL-style structural** (name + structural args, not
+  execution) over a curated ~13-task fixture (single / select / parallel /
+  abstain), labelled *indicative, prompt-based, structural*. Two metrics kept
+  separate via **cascaded conditional denominators** so a format error doesn't
+  bleed into reasoning: `parse_rate` (over call-expected tasks), `tool_selection`,
+  `args`, `abstain` — each `Option` (n/a, not 0, on a 0 denominator); composite =
+  mean of available. The greedy extractor handles arrays AND bare sequential
+  objects; parallel scoring is length-guarded 1:1. Surfaced on the **Eval** tab
+  (`ToolCallPanel`) and as a per-quant spread in the **Quant** view.
+  `inference/eval/toolcall/` (Tauri-free). The per-quant spread is a one-line
+  headline in the **Quant** view (e.g. `Q4_K_M 71% · Q8_0 88%`).
+
+- **5.9 Custom-eval manager (done).** The suite is dynamic: run the curated
+  built-in set **or** your own authored collections. The runner is
+  **storage-decoupled** — `run_toolcall_eval(model, backend, tasks)` is always
+  handed a `Vec<ToolTask>` (built-in via `get_builtin_tasks`, or a loaded
+  collection) and never touches files. Collections are one **`.json` per file**
+  under `app_config_dir/evals/` (portable, VCS-friendly), with Rust-owned CRUD +
+  a **path-only import** (`import_custom_collection(source_path)` reads, size-caps
+  at 1 MiB, and validates — the frontend never reads file bytes across IPC).
+  **`validate_tasks` is the single backend-side trust boundary** for *any* task
+  source (built-in, saved, imported, hand-edited): non-empty tools, known
+  category, a JSON-Schema `parameters` block (validated via a strict serde
+  struct), category⇔`expected` coherence, and calls only to offered tools — bad
+  input → `AppError::InvalidTaskSchema` naming the field. Authoring is a plain
+  textarea + **Insert Example** (one task per shape) + **Check JSON** (Zod, UX
+  only). `tools[].parameters` adopts the nested **JSON-Schema** shape developers
+  paste from real tool defs. `commands/eval/eval_registry.rs` +
+  `persistence/evals.rs`; UI in `features/eval/` (`DatasetBar`, `EvalEditor`,
+  `useEvalRegistryStore`).
+
+- **5.10 Model inspector + template/base-model guard (done).** Local diagnostics
+  from Ollama's `/api/show`: the chat **template** (rendered as inert text, never
+  injected HTML), the reported **capabilities**, and an **advisory base-model
+  guess** — flagged when the template has no chat-role markers AND `tools` isn't a
+  capability, with the **evidence** surfaced (`base_reason`) so it reads "likely
+  base — …", not an absolute claim. **Ollama-only** (the data lives in `/api/show`);
+  other backends show "Not available — Ollama only". `inference/ollama/ollama_show.rs`
+  (Tauri-free client; raw `model_info` kept for the 5.11 KV predictor) +
+  `commands/models/model_inspect.rs`; UI `features/models/.../TemplatePanel.tsx` on
+  the Eval tab. First of the **5.10+ diagnostics** band (metadata + local math).
+
+- **5.11 KV-cache VRAM predictor + bandwidth (done).** Predicts VRAM as **base weights + KV
+  cache(context)** so users stop guessing whether a model+context fits. The canonical f16 KV
+  formula lives in `inference/vram_math.rs` (`2·layers·kv_heads·head_dim·2·ctx`, unit-tested:
+  Llama-3-8B @ 8k = 1 GiB) and is exposed via `estimate_kv_cache_bytes`; the Quant tab's
+  **context-length selector** (4K/8K/32K/128K, capped at the model max) drives it. Dims come from
+  Ollama `/api/show` `model_info` (on `ModelInspect.dims`); non-Ollama falls back to the file-size
+  ×1.3 heuristic, flagged **approximate**. A quant whose `base + KV` exceeds available memory gets an
+  **"OOM Risk"** badge and is **blocked from running** (only when hardware is known); the
+  recommendation respects the same gate. A note states local-LLM speed is **memory-bandwidth-bound**,
+  showing the curated GB/s or "Not available". `vram_math.rs` + `hardware_mem.rs` (bandwidth) +
+  `features/quant` (`useVramFit`, `QuantPage`, `fit.ts::fitOfNeed`).
+
+- **5.12 Silent-CPU-fallback guard (done).** The Eval tab warns when the selected model is loaded
+  with weights off the accelerator (the silent fallback that tanks speed and ruins eval timings):
+  `cpuOffload(size, vram)` over `/api/ps` data, gated on an accelerator being present. Ollama-only;
+  renders nothing when fully resident / not loaded / other backend. `features/eval/CpuFallbackBanner`.
+
+- **5.13 Quant parse-rate delta (done).** The Quant table shows the quality lost to a smaller quant
+  in percentage points vs the highest-quality scored quant (e.g. Q4_K_M "−17pp") + a "Δ vs Q8_0"
+  note on the spread line. Pure `toolcallDelta`.
+
+- **5.14 Context-budget readout + finance preset (done).** (a) A `ContextBudgetBar` in the Inspector
+  shows the exact `prompt_eval_count / context_length`, red ≥95% (about to overflow and drop tokens);
+  "Not available" when unknown. (b) A second **read-only built-in preset**, "Finance (preset)"
+  (`tasks_finance.json`), via `list_builtin_collections` / `get_builtin_collection(id)`; the dataset
+  picker lists Curated + Finance as read-only. Structural tool-call reliability — **not** PDF parsing.
+
+- **5.15 Context-Cliff probe (done).** Runs the selected dataset at growing prompt lengths and graphs
+  where tool-call accuracy collapses (`cliff.ts` + `useContextCliff` + a visx `ContextCliffChart` on
+  the Eval tab). **Frontend-only**, padding is approximate (≈tokens via chars/4) and **labelled
+  indicative** — no tokenizer; a failed rung records null, never a fabricated score.
+
+### Phase 6+
+
+Owners flesh out the next phase's section here when the current lands.
 
 ---
 
@@ -440,13 +602,6 @@ hardened runtime, submits to Apple, waits, and staples the ticket. Verify with
 notarytool rejections: missing secure timestamp (add `--timestamp`), JIT not
 entitled (add `com.apple.security.cs.allow-jit` to `macos.entitlements`),
 hardened runtime not enabled (confirm `--options runtime`).
-
-### scripts/release.sh exceeds 100-line file limit
-
-`scripts/release.sh` is 138 lines — a pre-existing violation of CLAUDE.md rule 3.
-Split into `release.sh` (orchestrator), `bump-version.sh`, `build-bundle.sh`, and
-`write-manifest.sh` in a dedicated refactor commit. No behavior change; each
-split file <100 lines.
 
 ### Windows code-signing certificate
 

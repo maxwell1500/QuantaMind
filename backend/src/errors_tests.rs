@@ -36,6 +36,25 @@ fn auth_required_serializes_as_tagged_json() {
 }
 
 #[test]
+fn invalid_task_schema_serializes_as_tagged_json() {
+    let json = serde_json::to_string(&AppError::InvalidTaskSchema("task 'w': empty tools".into())).unwrap();
+    assert_eq!(json, r#"{"kind":"invalid_task_schema","message":"task 'w': empty tools"}"#);
+}
+
+#[test]
+fn from_io_error_maps_to_io() {
+    let e: AppError = std::io::Error::new(std::io::ErrorKind::NotFound, "missing").into();
+    assert!(matches!(e, AppError::Io(_)));
+}
+
+#[test]
+fn from_serde_error_maps_to_invalid_task_schema() {
+    let err = serde_json::from_str::<i32>("not json").unwrap_err();
+    let e: AppError = err.into();
+    assert!(matches!(e, AppError::InvalidTaskSchema(_)));
+}
+
+#[test]
 fn friendly_maps_connection_refused_to_ollama_down() {
     let e = AppError::Inference("error trying to connect: Connection refused".into());
     assert_eq!(e.friendly(), "Ollama is not running. Start Ollama and try again.");

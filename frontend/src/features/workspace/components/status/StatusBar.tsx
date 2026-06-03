@@ -3,6 +3,7 @@ import { checkOllamaHealth } from "../../../../shared/ipc/core/client";
 import type { HealthStatus } from "../../../../shared/ipc/core/types";
 import { useWorkspaceStore } from "../../state/workspaceStore";
 import { formatMetrics } from "../../format";
+import { backendStatus } from "./backendStatus";
 
 const POLL_MS = 5000;
 
@@ -16,6 +17,7 @@ export function StatusBar({ model, onModelClick }: Props) {
   const setOllamaHealthy = useWorkspaceStore((s) => s.setOllamaHealthy);
   const activeBackend = useWorkspaceStore((s) => s.activeBackend);
   const llamaHealthy = useWorkspaceStore((s) => s.llamaHealthy);
+  const mlxHealthy = useWorkspaceStore((s) => s.mlxHealthy);
   const [health, setHealth] = useState<HealthStatus | null>(null);
 
   useEffect(() => {
@@ -36,21 +38,15 @@ export function StatusBar({ model, onModelClick }: Props) {
     };
   }, [setOllamaHealthy]);
 
-  // The status reflects the active backend, not always Ollama. For llama.cpp it
-  // tracks the sidecar's run state and names the loaded model.
-  const onLlama = activeBackend === "llama_cpp";
-  const healthy = health?.available === true;
-  const running = onLlama ? llamaHealthy === true : healthy;
-  const healthLabel = onLlama
-    ? running
-      ? `llama.cpp · running${model ? ` (${model})` : ""}`
-      : "llama.cpp · not started"
-    : health === null
-      ? "checking…"
-      : healthy
-        ? `connected${health.version ? ` · ${health.version}` : ""}`
-        : "Ollama not running";
-  const healthAria = onLlama ? "llama.cpp health" : "Ollama health";
+  // The status reflects the active backend, not always Ollama. llama.cpp and
+  // MLX track their server's run state and name the loaded model.
+  const { running, label: healthLabel, aria: healthAria } = backendStatus(
+    activeBackend,
+    health,
+    llamaHealthy,
+    mlxHealthy,
+    model,
+  );
   const dotClass = running ? "bg-green-500" : "bg-red-500";
 
   return (

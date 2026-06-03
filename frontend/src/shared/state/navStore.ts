@@ -11,6 +11,8 @@ export type TopView =
   | "inspector"
   | "models"
   | "downloads"
+  | "eval"
+  | "quant"
   | "settings"
   | "help";
 

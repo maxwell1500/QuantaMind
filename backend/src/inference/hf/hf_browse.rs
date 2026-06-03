@@ -4,6 +4,29 @@ use crate::inference::hf::hf_request::{map_status, validate_repo};
 use crate::inference::http::http::probe_client;
 use serde::{Deserialize, Serialize};
 
+/// Which backend a HuggingFace repo is being browsed for. GGUF (Ollama /
+/// llama.cpp) is unfiltered — every search hit is shown, and the repo's
+/// `.gguf` files are picked on its detail page. MLX repos are safetensors with
+/// no distinguishing file extension, so they're matched by the `mlx` library
+/// tag to keep that mode useful.
+#[derive(Serialize, Deserialize, Clone, Copy, Debug, PartialEq, Eq)]
+#[serde(rename_all = "lowercase")]
+pub enum RepoKind {
+    Gguf,
+    Mlx,
+}
+
+impl RepoKind {
+    /// Whether this hit should appear in search. GGUF shows everything; MLX is
+    /// narrowed to `mlx`-tagged repos.
+    fn matches(self, hit: &RawHit) -> bool {
+        match self {
+            RepoKind::Gguf => true,
+            RepoKind::Mlx => hit.tags.iter().any(|t| t.eq_ignore_ascii_case("mlx")),
+        }
+    }
+}
+
 #[derive(Serialize, Deserialize, Clone, Debug)]
 pub struct HfSearchHit {
     pub id: String,
@@ -35,7 +58,12 @@ struct RawTreeEntry {
     #[serde(default)] size: u64,
 }
 
-pub async fn search_models(endpoint: &str, query: &str, limit: u32) -> AppResult<Vec<HfSearchHit>> {
+pub async fn search_models(
+    endpoint: &str,
+    query: &str,
+    limit: u32,
+    kind: RepoKind,
+) -> AppResult<Vec<HfSearchHit>> {
     if query.trim().is_empty() {
         return Err(AppError::Validation("search query is empty".into()));
     }
@@ -44,11 +72,6 @@ pub async fn search_models(endpoint: &str, query: &str, limit: u32) -> AppResult
         .get(format!("{endpoint}/api/models"))
         .query(&[
             ("search", query.to_string()),
-            // No server-side tag filter — HF's `filter=gguf` index lags
-            // real-world tag state and silently misses legitimate GGUF
-            // mirrors. The post-filter below (`tags.contains("gguf")`)
-            // is the single source of truth for the "must be GGUF"
-            // invariant.
             ("sort", "downloads".to_string()),
             ("direction", "-1".to_string()),
             ("limit", limit.to_string()),
@@ -58,11 +81,10 @@ pub async fn search_models(endpoint: &str, query: &str, limit: u32) -> AppResult
     if let Some(err) = map_status(resp.status(), "hf search") { return Err(err); }
     let raw: Vec<RawHit> = resp.json().await
         .map_err(|e| AppError::Inference(format!("bad HF search body: {e}")))?;
-    // Defense-in-depth: HF occasionally returns repos missing the gguf
-    // tag despite the filter (stale index). Drop any hit that doesn't
-    // carry the tag so the user only ever sees GGUF-ready repos.
+    // GGUF is unfiltered (every hit shown); MLX is narrowed to `mlx`-tagged
+    // repos. See RepoKind::matches.
     Ok(raw.into_iter()
-        .filter(|h| h.tags.iter().any(|t| t.eq_ignore_ascii_case("gguf")))
+        .filter(|h| kind.matches(h))
         .map(|h| HfSearchHit {
             id: h.id, downloads: h.downloads, likes: h.likes,
             tags: h.tags, last_modified: h.last_modified,
@@ -70,9 +92,8 @@ pub async fn search_models(endpoint: &str, query: &str, limit: u32) -> AppResult
         .collect())
 }
 
-/// Lists `.gguf` files in the repo at `main`, with file sizes from the
-/// HF tree endpoint. Non-file and non-`.gguf` entries are filtered out.
-pub async fn repo_gguf_files(endpoint: &str, repo: &str) -> AppResult<Vec<HfRepoFile>> {
+/// Fetch the repo's recursive file tree at `main`.
+async fn fetch_tree(endpoint: &str, repo: &str) -> AppResult<Vec<RawTreeEntry>> {
     validate_repo(repo)?;
     let resp = probe_client()?
         .get(format!("{endpoint}/api/models/{repo}/tree/main"))
@@ -80,10 +101,37 @@ pub async fn repo_gguf_files(endpoint: &str, repo: &str) -> AppResult<Vec<HfRepo
         .send().await
         .map_err(|e| AppError::Inference(e.to_string()))?;
     if let Some(err) = map_status(resp.status(), repo) { return Err(err); }
-    let raw: Vec<RawTreeEntry> = resp.json().await
-        .map_err(|e| AppError::Inference(format!("{repo}: bad HF tree body: {e}")))?;
-    Ok(raw.into_iter()
+    resp.json().await
+        .map_err(|e| AppError::Inference(format!("{repo}: bad HF tree body: {e}")))
+}
+
+/// Lists `.gguf` files in the repo at `main`, with file sizes from the
+/// HF tree endpoint. Non-file and non-`.gguf` entries are filtered out.
+pub async fn repo_gguf_files(endpoint: &str, repo: &str) -> AppResult<Vec<HfRepoFile>> {
+    Ok(fetch_tree(endpoint, repo).await?
+        .into_iter()
         .filter(|e| e.kind == "file" && e.path.to_lowercase().ends_with(".gguf"))
+        .map(|e| HfRepoFile { path: e.path, size_bytes: e.size })
+        .collect())
+}
+
+/// Files that contribute nothing to loading an MLX model — repo metadata, docs,
+/// and licenses. Everything else (config.json, *.safetensors, tokenizer*, etc.)
+/// is kept so `mlx_lm.server` can load the snapshot.
+fn is_snapshot_junk(path: &str) -> bool {
+    let lower = path.to_lowercase();
+    let name = lower.rsplit('/').next().unwrap_or(&lower);
+    name == ".gitattributes"
+        || name.ends_with(".md")
+        || name.starts_with("license")
+}
+
+/// Lists every downloadable file in the repo (for a full snapshot), minus
+/// repo/doc junk. Used to mirror an MLX repo to local disk.
+pub async fn repo_all_files(endpoint: &str, repo: &str) -> AppResult<Vec<HfRepoFile>> {
+    Ok(fetch_tree(endpoint, repo).await?
+        .into_iter()
+        .filter(|e| e.kind == "file" && !is_snapshot_junk(&e.path))
         .map(|e| HfRepoFile { path: e.path, size_bytes: e.size })
         .collect())
 }

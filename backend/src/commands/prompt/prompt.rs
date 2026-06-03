@@ -3,6 +3,7 @@
 use crate::commands::settings::model_settings::ModelSettingsState;
 use crate::inference::backend::backend_kind::BackendKind;
 use crate::inference::backend::endpoint;
+use crate::inference::mlx::server::mlx_endpoint::mlx_endpoint;
 use crate::inference::token_handler::make_token_handler;
 use crate::commands::prompt::prompt_options::{to_generate_options, validate_params};
 use crate::commands::prompt::prompt_payloads::{done_payload, CancelledPayload, TokenPayload};
@@ -63,8 +64,11 @@ pub async fn run_prompt(
         timing.clone(),
     );
     let system_trim = system.as_deref().map(str::trim).filter(|s| !s.is_empty());
+    // MLX uses the app-managed server's dynamic port; others use their default.
+    let mlx_ep = mlx_endpoint();
+    let ep = if backend == BackendKind::Mlx { mlx_ep.as_str() } else { endpoint::default_for(backend) };
     let result = run_prompt_inner(
-        backend, endpoint::default_for(backend), &model, &prompt, system_trim,
+        backend, ep, &model, &prompt, system_trim,
         Some(options), None, token.clone(), handler,
     ).await;
 
