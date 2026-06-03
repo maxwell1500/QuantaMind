@@ -25,13 +25,14 @@ pub enum MlxStartResult {
 #[serde(tag = "state", rename_all = "snake_case")]
 pub enum MlxServerStatus {
     Stopped,
-    Running { phase: Phase, repo: String },
+    Running { phase: Phase, model: String },
     Exited { code: Option<i32>, stderr_tail: String },
 }
 
 pub struct Running {
     pub child: Child,
-    pub repo: String,
+    /// Local model dir passed as `--model` (also the served `/v1/models` id).
+    pub model: String,
     pub phase: Arc<Mutex<Phase>>,
     pub tail: Arc<Mutex<VecDeque<String>>>,
 }
@@ -43,8 +44,8 @@ pub struct MlxServerState {
 }
 
 impl MlxServerState {
-    pub fn is_repo(&self, repo: &str) -> bool {
-        self.inner.lock_recover().as_ref().is_some_and(|r| r.repo == repo)
+    pub fn is_model(&self, model: &str) -> bool {
+        self.inner.lock_recover().as_ref().is_some_and(|r| r.model == model)
     }
 
     pub fn store(&self, running: Running, port: u16) {
@@ -74,7 +75,7 @@ impl MlxServerState {
             },
             _ => MlxServerStatus::Running {
                 phase: *r.phase.lock_recover(),
-                repo: r.repo.clone(),
+                model: r.model.clone(),
             },
         }
     }

@@ -9,12 +9,12 @@ pub fn find_available_port(start: u16) -> Option<u16> {
     (start..=start.saturating_add(10)).find(|&port| TcpListener::bind(("127.0.0.1", port)).is_ok())
 }
 
-/// Args to launch `mlx_lm.server` for one Hugging Face repo on a chosen port.
-/// Pure, so it can be asserted without spawning. mlx_lm downloads the repo on
-/// first launch, so no separate download step is needed.
-pub fn build_spawn_args(repo: &str, port: u16) -> Vec<String> {
+/// Args to launch `mlx_lm.server` for a local model directory on a chosen port.
+/// Pure, so it can be asserted without spawning. The model is pre-downloaded to
+/// disk (`install_mlx_model`), so this loads it locally — no download step.
+pub fn build_spawn_args(model: &str, port: u16) -> Vec<String> {
     vec![
-        "--model".into(), repo.into(),
+        "--model".into(), model.into(),
         "--host".into(), "127.0.0.1".into(),
         "--port".into(), port.to_string(),
     ]
@@ -50,11 +50,11 @@ mod tests {
     use super::*;
 
     #[test]
-    fn build_spawn_args_carries_repo_and_chosen_port() {
-        let args = build_spawn_args("mlx-community/X-4bit", 8083);
+    fn build_spawn_args_carries_local_model_path_and_chosen_port() {
+        let args = build_spawn_args("/Users/me/.quantamind/mlx/mlx-community_X-4bit", 8083);
         assert_eq!(
             args,
-            vec!["--model", "mlx-community/X-4bit", "--host", "127.0.0.1", "--port", "8083"]
+            vec!["--model", "/Users/me/.quantamind/mlx/mlx-community_X-4bit", "--host", "127.0.0.1", "--port", "8083"]
         );
     }
 

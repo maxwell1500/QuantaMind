@@ -2,6 +2,7 @@ use crate::commands::mlx::mlx_server_types::{
     MlxServerState, MlxServerStatus, MlxStartResult, Running,
 };
 use crate::errors::AppError;
+use crate::inference::mlx::mlx_supported;
 use crate::inference::mlx::server::mlx_locate::locate;
 use crate::inference::mlx::server::mlx_runtime::{build_spawn_args, find_available_port, spawn_server};
 use crate::inference::mlx::server::mlx_stderr::{spawn_stderr_reader, Phase};
@@ -10,17 +11,22 @@ use std::sync::{Arc, Mutex};
 
 const PORT_BASE: u16 = 8082;
 
-/// Launch `mlx_lm.server` for one HF repo. Does NOT block on readiness — a
-/// first launch downloads weights for minutes; the frontend polls health +
-/// `mlx_server_status` instead. Guards against a double-spawn (stops a
-/// different running repo first), picks a free port, and starts the stderr
-/// reader so phase/death are observable.
+/// Launch `mlx_lm.server` for a local model directory (downloaded via
+/// `install_mlx_model`). Does NOT block on readiness — loading weights takes a
+/// moment; the frontend polls health + `mlx_server_status` instead. Guards
+/// against a double-spawn (stops a different running model first), picks a free
+/// port, and starts the stderr reader so phase/death are observable.
 #[tauri::command]
 pub async fn start_mlx_server(
     state: tauri::State<'_, MlxServerState>,
-    repo: String,
+    model_path: String,
 ) -> Result<MlxStartResult, AppError> {
-    if state.is_repo(&repo) {
+    if !mlx_supported() {
+        return Ok(MlxStartResult::StartFailed {
+            error: "MLX needs Apple Silicon (macOS arm64).".into(),
+        });
+    }
+    if state.is_model(&model_path) {
         return Ok(MlxStartResult::AlreadyRunning);
     }
     state.kill_all_servers().map_err(AppError::Internal)?;
@@ -31,7 +37,7 @@ pub async fn start_mlx_server(
     let Some(port) = find_available_port(PORT_BASE) else {
         return Ok(MlxStartResult::NoFreePort);
     };
-    let mut child = match spawn_server(&exe, &build_spawn_args(&repo, port)) {
+    let mut child = match spawn_server(&exe, &build_spawn_args(&model_path, port)) {
         Ok(c) => c,
         Err(error) => return Ok(MlxStartResult::StartFailed { error }),
     };
@@ -41,7 +47,7 @@ pub async fn start_mlx_server(
     if let Some(err) = child.stderr.take() {
         spawn_stderr_reader(err, phase.clone(), tail.clone());
     }
-    state.store(Running { child, repo, phase, tail }, port);
+    state.store(Running { child, model: model_path, phase, tail }, port);
     Ok(MlxStartResult::Started { pid, port })
 }
 
