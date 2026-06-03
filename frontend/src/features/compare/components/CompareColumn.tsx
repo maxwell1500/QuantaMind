@@ -1,4 +1,5 @@
 import type { CompareRow, RowStatus } from "../state/compareStore";
+import { useModelLabel } from "../../models/hooks/useModelLabel";
 
 type Props = { row: CompareRow };
 
@@ -27,13 +28,14 @@ const formatMetrics = (m: NonNullable<CompareRow["metrics"]>): string => {
 };
 
 export function CompareColumn({ row }: Props) {
+  const label = useModelLabel();
   return (
     <div
       data-testid={`compare-column-${row.model}`}
       className="border rounded p-2 flex flex-col gap-1 min-w-[260px] max-w-[420px]"
     >
       <div className="flex items-center justify-between gap-2">
-        <span className="text-sm font-medium break-all">{row.model}</span>
+        <span className="text-sm font-medium break-all">{label(row.model)}</span>
         <span data-testid={`compare-status-${row.model}`} className={`text-xs px-2 py-0.5 rounded ${STATUS_CLASS[row.status]}`}>
           {STATUS_LABEL[row.status]}
         </span>

@@ -2,6 +2,7 @@ import { useState } from "react";
 import { runToolcallEval, type ToolCallReport } from "../../../shared/ipc/eval/toolcall";
 import { useEvalRegistryStore } from "../state/evalRegistryStore";
 import { useInstalledModelsStore } from "../../models/state/installedModelsStore";
+import { modelLabel } from "../../../shared/models/modelLabel";
 import { formatIpcError } from "../../../shared/ipc/core/error";
 import { servesModelsByName, SINGLE_MODEL_NOTE } from "../../../shared/models/backendSupport";
 
@@ -55,7 +56,7 @@ export function ToolCallPanel() {
         >
           <option value="">Select a model…</option>
           {list.map((m) => (
-            <option key={m.name} value={m.name}>{m.name}</option>
+            <option key={m.name} value={m.name}>{modelLabel(m)}</option>
           ))}
         </select>
         <button

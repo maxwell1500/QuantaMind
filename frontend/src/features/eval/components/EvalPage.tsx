@@ -1,6 +1,7 @@
 import { useEffect, useState } from "react";
 import { listEvals } from "../../../shared/ipc/eval/evals";
 import { useInstalledModelsStore } from "../../models/state/installedModelsStore";
+import { modelLabel } from "../../../shared/models/modelLabel";
 import { useEvalStore, passRate } from "../state/evalStore";
 import { useEvalRegistryStore } from "../state/evalRegistryStore";
 import { useEvalRun } from "../hooks/useEvalRun";
@@ -53,7 +54,7 @@ export function EvalPage() {
         >
           <option value="">Select a model…</option>
           {list.map((m) => (
-            <option key={m.name} value={m.name}>{m.name}</option>
+            <option key={m.name} value={m.name}>{modelLabel(m)}</option>
           ))}
         </select>
         <button

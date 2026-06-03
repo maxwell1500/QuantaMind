@@ -1,5 +1,6 @@
 import { useState } from "react";
 import { useInstalledModelsStore } from "../../models/state/installedModelsStore";
+import { modelLabel } from "../../../shared/models/modelLabel";
 import { useEvalRegistryStore } from "../state/evalRegistryStore";
 import { useContextCliff } from "../hooks/useContextCliff";
 import { cliffPoint } from "../cliff";
@@ -28,7 +29,7 @@ export function ContextCliffPanel() {
         >
           <option value="">Select a model…</option>
           {list.map((m) => (
-            <option key={m.name} value={m.name}>{m.name}</option>
+            <option key={m.name} value={m.name}>{modelLabel(m)}</option>
           ))}
         </select>
         <button

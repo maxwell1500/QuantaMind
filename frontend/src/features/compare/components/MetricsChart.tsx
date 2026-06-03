@@ -1,5 +1,6 @@
 import { useCompareStore } from "../state/compareStore";
 import { barRows, type Metric } from "../format/metricsBars";
+import { useModelLabel } from "../../models/hooks/useModelLabel";
 
 const METRICS: { metric: Metric; title: string; fmt: (v: number) => string }[] = [
   { metric: "tokens_per_sec", title: "Throughput", fmt: (v) => `${v.toFixed(1)} tok/s` },
@@ -10,6 +11,7 @@ const METRICS: { metric: Metric; title: string; fmt: (v: number) => string }[] =
 /// TTFT (bar width = value / max). No chart library — just normalized divs.
 export function MetricsChart() {
   const rows = useCompareStore((s) => s.rows);
+  const label = useModelLabel();
   const groups = METRICS
     .map((m) => ({ ...m, bars: barRows(rows, m.metric) }))
     .filter((g) => g.bars.length > 0);
@@ -22,7 +24,7 @@ export function MetricsChart() {
           <div className="text-xs font-medium text-gray-600">{g.title}</div>
           {g.bars.map((b) => (
             <div key={b.model} className="flex items-center gap-2 text-[11px]">
-              <span className="w-28 truncate" title={b.model}>{b.model}</span>
+              <span className="w-28 truncate" title={label(b.model)}>{label(b.model)}</span>
               <div className="flex-1 bg-gray-100 rounded h-3">
                 <div className="bg-blue-500 h-3 rounded" style={{ width: `${Math.round(b.fraction * 100)}%` }} />
               </div>

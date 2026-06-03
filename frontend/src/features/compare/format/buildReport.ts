@@ -36,7 +36,7 @@ export function buildReport(input: BuildReportInput): AnalysisDocument {
     const d = info(name);
     const sz = sizeOf(name);
     return {
-      id: modelId(name), name, display_name: name,
+      id: modelId(name), name, display_name: d?.display_name ?? name,
       ...(d?.family ? { family: d.family } : {}),
       ...(d?.quantization ? { quantization: d.quantization } : {}),
       ...(sz != null ? { size_bytes: sz } : {}),
