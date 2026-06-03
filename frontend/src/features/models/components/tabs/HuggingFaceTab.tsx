@@ -57,7 +57,7 @@ export function HuggingFaceTab() {
         <input
           type="search"
           aria-label="Search Hugging Face"
-          placeholder={kind === "mlx" ? "Search Hugging Face models tagged MLX…" : "Search Hugging Face models with GGUF files…"}
+          placeholder={kind === "mlx" ? "Search Hugging Face models tagged MLX…" : "Search Hugging Face models…"}
           value={query}
           onChange={(e) => setQuery(e.target.value)}
           className="flex-1 border rounded px-2 py-1 text-sm"
@@ -80,7 +80,7 @@ export function HuggingFaceTab() {
       <div className="flex-1 overflow-auto grid grid-cols-2 gap-2" data-testid="hf-grid">
         {status === "idle" && (
           <div className="col-span-2 text-xs text-gray-500 py-6 text-center" data-testid="hf-idle">
-            Start typing to search Hugging Face for {kind === "mlx" ? "MLX" : "GGUF"} models.
+            Start typing to search Hugging Face{kind === "mlx" ? " for MLX models" : ""}.
           </div>
         )}
         {status === "loading" && (

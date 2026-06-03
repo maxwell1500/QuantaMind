@@ -4,11 +4,11 @@ use crate::inference::hf::hf_request::{map_status, validate_repo};
 use crate::inference::http::http::probe_client;
 use serde::{Deserialize, Serialize};
 
-/// Which backend a HuggingFace repo must be usable by. Drives how search hits
-/// are filtered: GGUF repos (Ollama / llama.cpp) are kept when they actually
-/// contain a `.gguf` file — not by the `gguf` tag, which legitimate mirrors
-/// often omit. MLX repos are safetensors with no distinguishing file
-/// extension, so they're matched by the `mlx` library tag instead.
+/// Which backend a HuggingFace repo is being browsed for. GGUF (Ollama /
+/// llama.cpp) is unfiltered — every search hit is shown, and the repo's
+/// `.gguf` files are picked on its detail page. MLX repos are safetensors with
+/// no distinguishing file extension, so they're matched by the `mlx` library
+/// tag to keep that mode useful.
 #[derive(Serialize, Deserialize, Clone, Copy, Debug, PartialEq, Eq)]
 #[serde(rename_all = "lowercase")]
 pub enum RepoKind {
@@ -17,13 +17,11 @@ pub enum RepoKind {
 }
 
 impl RepoKind {
-    /// Whether this repo (its file list + tags) is usable by the backend.
+    /// Whether this hit should appear in search. GGUF shows everything; MLX is
+    /// narrowed to `mlx`-tagged repos.
     fn matches(self, hit: &RawHit) -> bool {
         match self {
-            RepoKind::Gguf => hit
-                .siblings
-                .iter()
-                .any(|s| s.rfilename.to_ascii_lowercase().ends_with(".gguf")),
+            RepoKind::Gguf => true,
             RepoKind::Mlx => hit.tags.iter().any(|t| t.eq_ignore_ascii_case("mlx")),
         }
     }
@@ -51,14 +49,6 @@ struct RawHit {
     #[serde(default)] likes: u64,
     #[serde(default)] tags: Vec<String>,
     #[serde(default, rename = "lastModified")] last_modified: Option<String>,
-    // Repo file list, returned only with `full=true`. Used to keep GGUF repos
-    // by actual `.gguf` presence rather than the unreliable `gguf` tag.
-    #[serde(default)] siblings: Vec<RawSibling>,
-}
-
-#[derive(Deserialize)]
-struct RawSibling {
-    #[serde(default)] rfilename: String,
 }
 
 #[derive(Deserialize)]
@@ -82,11 +72,6 @@ pub async fn search_models(
         .get(format!("{endpoint}/api/models"))
         .query(&[
             ("search", query.to_string()),
-            // No server-side tag filter — HF's `filter=<tag>` index lags
-            // real-world tag state and silently misses legitimate mirrors.
-            // `full=true` returns each repo's file list (`siblings`) so the
-            // post-filter below can match on actual contents, not tags.
-            ("full", "true".to_string()),
             ("sort", "downloads".to_string()),
             ("direction", "-1".to_string()),
             ("limit", limit.to_string()),
@@ -96,9 +81,8 @@ pub async fn search_models(
     if let Some(err) = map_status(resp.status(), "hf search") { return Err(err); }
     let raw: Vec<RawHit> = resp.json().await
         .map_err(|e| AppError::Inference(format!("bad HF search body: {e}")))?;
-    // Keep only repos usable by the active backend: for GGUF this is "contains
-    // a .gguf file" (so untagged mirrors still surface); for MLX it's the
-    // `mlx` tag. See RepoKind::matches.
+    // GGUF is unfiltered (every hit shown); MLX is narrowed to `mlx`-tagged
+    // repos. See RepoKind::matches.
     Ok(raw.into_iter()
         .filter(|h| kind.matches(h))
         .map(|h| HfSearchHit {
