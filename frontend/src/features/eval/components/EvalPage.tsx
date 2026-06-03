@@ -1,75 +1,65 @@
 import { useEffect, useState } from "react";
 import { useEvalRegistryStore } from "../state/evalRegistryStore";
+import { useBatchStore } from "../state/batchStore";
+import { useInstalledModelsStore } from "../../models/state/installedModelsStore";
 import { EvalManager } from "./manager/EvalManager";
-import { MatrixPanel } from "./matrix/MatrixPanel";
-import { PipelinePanel } from "./pipeline/PipelinePanel";
-import { ToolCallPanel } from "./ToolCallPanel";
-import { ContextCliffPanel } from "./ContextCliffPanel";
+import { MatrixScoreboard } from "./scoreboard/MatrixScoreboard";
+import { TraceDebugger } from "./TraceDebugger";
+import { batchToCsv, download } from "../exportBatch";
 
-type RunnerView = "scoreboard" | "debugger";
-type Focus = { collection: string; taskId: string; model: string };
+const exportBtn: React.CSSProperties = {
+  padding: "4px 12px",
+  borderRadius: 7,
+  border: "1px solid rgba(255,255,255,0.1)",
+  background: "rgba(255,255,255,0.04)",
+  color: "#94a3b8",
+  fontSize: 12,
+  fontFamily: "Inter,sans-serif",
+  cursor: "pointer",
+};
 
-/// The Eval tab: the Eval Manager (author/run collections), the LLM Performance
-/// Matrix (batch across models + regression history), the Eval Runner — a toggle
-/// between the Batch Scoreboard (Simulator) and the single-task Trace Debugger
-/// (Pipeline), wired so a row's "View Trace" hands that task to the debugger —
-/// and the Context-Cliff probe.
+/// The Automated-Pipeline Eval workspace: three panes — the Eval Manager (left,
+/// authoring), the live Matrix Scoreboard (top-right, the central per-model
+/// artifact), and the Trace Debugger (bottom-right). Clicking a model row in the
+/// scoreboard reveals that model's run trace inline below — the always-visible
+/// debug loop. An audit-trail export sits above the matrix.
 export function EvalPage() {
   const initRegistry = useEvalRegistryStore((s) => s.init);
-  const [view, setView] = useState<RunnerView>("scoreboard");
-  const [focus, setFocus] = useState<Focus | null>(null);
+  const report = useBatchStore((s) => s.report);
+  const models = useInstalledModelsStore((s) => s.list);
+  const [focusModel, setFocusModel] = useState<string | null>(null);
 
   useEffect(() => {
     void initRegistry().catch(() => {});
   }, [initRegistry]);
 
-  const onViewTrace = (f: Focus) => {
-    setFocus(f);
-    setView("debugger");
-  };
-
   return (
-    <div className="space-y-4" data-testid="eval-page">
+    <div className="grid gap-4" style={{ gridTemplateColumns: "minmax(360px, 420px) 1fr" }} data-testid="eval-page">
       <EvalManager />
-      <MatrixPanel onViewTrace={onViewTrace} />
-
-      {/* Eval Runner: Batch Scoreboard ↔ single-task Trace Debugger */}
-      <div>
-        <div style={{ display: "flex", alignItems: "center", gap: 6, marginBottom: 8 }}>
-          <span style={{ fontSize: 12, color: "#64748b", fontFamily: "Inter,sans-serif", marginRight: 4 }}>Eval Runner</span>
-          {([["scoreboard", "Batch Scoreboard"], ["debugger", "Trace Debugger"]] as const).map(([v, label]) => (
-            <button
-              key={v}
-              type="button"
-              onClick={() => setView(v)}
-              aria-pressed={view === v}
-              data-testid={`runner-tab-${v}`}
-              style={{
-                padding: "5px 14px",
-                borderRadius: 7,
-                border: "1px solid rgba(255,255,255,0.1)",
-                background: view === v ? "rgba(59,130,246,0.18)" : "rgba(255,255,255,0.04)",
-                color: view === v ? "#93c5fd" : "#94a3b8",
-                fontSize: 12,
-                fontWeight: 500,
-                fontFamily: "Inter,sans-serif",
-                cursor: "pointer",
-              }}
-            >
-              {label}
-            </button>
-          ))}
+      <div className="flex flex-col gap-4 min-w-0">
+        <div style={{ display: "flex", justifyContent: "flex-end", gap: 8 }}>
+          <button
+            type="button"
+            disabled={!report}
+            onClick={() => report && download("audit-trail.csv", batchToCsv(report, models), "text/csv")}
+            style={{ ...exportBtn, opacity: report ? 1 : 0.5, cursor: report ? "pointer" : "not-allowed" }}
+            data-testid="export-csv"
+          >
+            ⭳ Export Audit Trail (CSV)
+          </button>
+          <button
+            type="button"
+            disabled={!report}
+            onClick={() => report && download("audit-trail.json", JSON.stringify(report, null, 2), "application/json")}
+            style={{ ...exportBtn, opacity: report ? 1 : 0.5, cursor: report ? "pointer" : "not-allowed" }}
+            data-testid="export-json"
+          >
+            ⭳ JSON
+          </button>
         </div>
-        {/* Both stay mounted (state survives the toggle); only the active one shows. */}
-        <div style={{ display: view === "scoreboard" ? "block" : "none" }}>
-          <ToolCallPanel onViewTrace={onViewTrace} />
-        </div>
-        <div style={{ display: view === "debugger" ? "block" : "none" }}>
-          <PipelinePanel focus={focus} />
-        </div>
+        <MatrixScoreboard onFocus={setFocusModel} />
+        <TraceDebugger model={focusModel} />
       </div>
-
-      <ContextCliffPanel />
     </div>
   );
 }
