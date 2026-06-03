@@ -1,7 +1,7 @@
 #![deny(clippy::unwrap_used)]
 use crate::errors::AppError;
 use crate::inference::hf::hf_browse::{
-    repo_gguf_files, search_models, HfRepoFile, HfSearchHit, RepoKind,
+    repo_all_files, repo_gguf_files, search_models, HfRepoFile, HfSearchHit, RepoKind,
 };
 
 const HF_ENDPOINT: &str = "https://huggingface.co";
@@ -20,4 +20,11 @@ pub async fn hf_search(
 #[tauri::command]
 pub async fn hf_repo_files(repo: String) -> Result<Vec<HfRepoFile>, AppError> {
     repo_gguf_files(HF_ENDPOINT, &repo).await
+}
+
+/// All downloadable files in a repo (the MLX snapshot set), so the UI can show
+/// the total download size and a fit estimate before downloading.
+#[tauri::command]
+pub async fn hf_repo_all_files(repo: String) -> Result<Vec<HfRepoFile>, AppError> {
+    repo_all_files(HF_ENDPOINT, &repo).await
 }

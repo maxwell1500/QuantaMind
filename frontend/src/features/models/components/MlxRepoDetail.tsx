@@ -1,7 +1,11 @@
 import { useEffect, useState } from "react";
 import { useHfModelCard } from "../hooks/useHfModelCard";
 import { useMlxInstall } from "../hooks/useMlxInstall";
+import { useHardwareSnapshot } from "../hooks/useHardwareSnapshot";
 import { useInstalledModelsStore } from "../state/installedModelsStore";
+import { hfRepoAllFiles } from "../../../shared/ipc/models/hf_browse";
+import { formatBytes } from "../../../shared/format/bytes";
+import { memoryFit, fitBadge } from "../fit";
 import { ModelCardSection } from "./card/ModelCardSection";
 import { HfInstallStatus } from "./HfInstallStatus";
 
@@ -11,23 +15,45 @@ type Props = { repo: string; onBack: () => void };
 // vision…) downloads gigabytes and then can't answer a chat request.
 const MLX_TASK = "text-generation";
 
+// Base/pretrained checkpoints (e.g. `…-pt`, `…-base`) aren't instruction-tuned,
+// so they won't follow a chat prompt — they just continue text. Heuristic on the
+// repo id; we warn (not block) and point at the instruct variant.
+const looksLikeBaseModel = (repo: string) => /[-_/](pt|base)([-_].*)?$|[-_]pt[-_]/i.test(repo);
+
 /// MLX repos download as a full local snapshot (into ~/.quantamind/mlx); the
 /// model then appears in the Workspace dropdown to select and Start. A guardrail
 /// blocks repos whose task isn't text-generation, since mlx_lm can't serve them.
 export function MlxRepoDetail({ repo, onBack }: Props) {
   const { card, status } = useHfModelCard(repo);
   const { state, install, cancel, reset } = useMlxInstall();
+  const { snapshot } = useHardwareSnapshot();
   const alreadyInstalled = useInstalledModelsStore((s) =>
     s.list.some((m) => m.backend === "mlx" && m.display_name === repo),
   );
   const [confirmOpen, setConfirmOpen] = useState(false);
+  const [sizeBytes, setSizeBytes] = useState<number | null>(null);
 
   useEffect(() => setConfirmOpen(false), [repo]);
+
+  // Total download size (sum of the snapshot's files) so the user can judge fit
+  // before pulling gigabytes. Null while loading / on failure (we just omit it).
+  useEffect(() => {
+    let cancelled = false;
+    setSizeBytes(null);
+    hfRepoAllFiles(repo)
+      .then((files) => !cancelled && setSizeBytes(files.reduce((n, f) => n + f.size_bytes, 0)))
+      .catch(() => !cancelled && setSizeBytes(null));
+    return () => { cancelled = true; };
+  }, [repo]);
 
   const task = card?.pipeline_tag ?? null;
   // Only block when the task is known AND not text-generation — an absent tag
   // is treated as "maybe", so we don't false-block untagged LLM repos.
   const incompatible = status === "ready" && task != null && task !== MLX_TASK;
+  const isBase = looksLikeBaseModel(repo);
+  const fit = sizeBytes != null && snapshot
+    ? fitBadge(memoryFit(sizeBytes, snapshot.available_memory_bytes))
+    : null;
   const busy = state.status === "downloading";
 
   const proceed = () => {
@@ -56,10 +82,25 @@ export function MlxRepoDetail({ repo, onBack }: Props) {
         </div>
       )}
 
-      <p className="text-xs text-gray-500">
-        Downloads the full repo to your machine (several GB) — then select it in
-        the Workspace and Start MLX. Running needs <code>mlx-lm</code> installed
-        (<code>pip install mlx-lm</code>).
+      {isBase && !incompatible && (
+        <div
+          data-testid="mlx-base-banner"
+          className="rounded border border-amber-300 bg-amber-50 p-2 text-xs text-amber-800"
+        >
+          This looks like a <strong>base / pretrained</strong> model — it won't follow chat prompts
+          and may return nothing. Prefer an <strong>instruction-tuned</strong> variant (look for{" "}
+          <code>-it</code> or <code>Instruct</code> in the name).
+        </div>
+      )}
+
+      {/* Download size + does-it-fit estimate, so the user judges before pulling GBs. */}
+      <p className="text-xs text-gray-500" data-testid="mlx-size">
+        Download size:{" "}
+        {sizeBytes != null ? <strong>{formatBytes(sizeBytes)}</strong> : "…"}
+        {fit && <span className={`ml-2 ${fit.cls}`} data-testid="mlx-fit">{fit.text}</span>}
+        <br />
+        Full snapshot to your machine — then select it in the Workspace and Start MLX.
+        Running needs <code>mlx-lm</code> (<code>pip install mlx-lm</code>).
       </p>
 
       {alreadyInstalled && state.status === "idle" ? (

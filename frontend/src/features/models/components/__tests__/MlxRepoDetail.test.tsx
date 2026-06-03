@@ -69,6 +69,23 @@ describe("MlxRepoDetail download + guardrail", () => {
     expect(installMlxModel).toHaveBeenCalledWith("mlx-community/Kokoro-82M-bf16");
   });
 
+  it("warns (not blocks) on a base/pretrained model and shows download size", async () => {
+    vi.mocked(invoke).mockImplementation((cmd: string) => {
+      if (cmd === "hf_model_card") return Promise.resolve(card("text-generation"));
+      if (cmd === "hf_repo_all_files")
+        return Promise.resolve([{ path: "model.safetensors", size_bytes: 732577304 }]);
+      return Promise.resolve([]);
+    });
+    render(<MlxRepoDetail repo="mlx-community/gemma-3-1b-pt-4bit" onBack={() => {}} />);
+    expect(await screen.findByTestId("mlx-base-banner")).toBeInTheDocument();
+    // Base models are text-generation, so they are NOT hard-blocked.
+    expect(screen.queryByTestId("mlx-incompatible-banner")).toBeNull();
+    await waitFor(() => expect(screen.getByTestId("mlx-size")).toHaveTextContent(/699|700|732|0\.7|MB|GB/));
+    // Download still allowed.
+    await act(async () => { fireEvent.click(screen.getByTestId("mlx-download-button")); });
+    expect(installMlxModel).toHaveBeenCalledWith("mlx-community/gemma-3-1b-pt-4bit");
+  });
+
   it("an unknown task (no card) does not block the download", async () => {
     mockCard(null);
     render(<MlxRepoDetail repo="someone/mystery-mlx" onBack={() => {}} />);

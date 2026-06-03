@@ -34,6 +34,13 @@ export async function hfRepoFiles(repo: string): Promise<HfRepoFile[]> {
   return z.array(HfRepoFileSchema).parse(raw);
 }
 
+/// All downloadable files in a repo (the MLX snapshot set) — used to show the
+/// total download size + fit estimate before an MLX download.
+export async function hfRepoAllFiles(repo: string): Promise<HfRepoFile[]> {
+  const raw = await invoke("hf_repo_all_files", { repo });
+  return z.array(HfRepoFileSchema).parse(raw);
+}
+
 export const ModelCardSchema = z.object({
   description: z.string(),
   license: z.string().nullable(),
