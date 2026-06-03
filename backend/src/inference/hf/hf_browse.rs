@@ -92,9 +92,8 @@ pub async fn search_models(
         .collect())
 }
 
-/// Lists `.gguf` files in the repo at `main`, with file sizes from the
-/// HF tree endpoint. Non-file and non-`.gguf` entries are filtered out.
-pub async fn repo_gguf_files(endpoint: &str, repo: &str) -> AppResult<Vec<HfRepoFile>> {
+/// Fetch the repo's recursive file tree at `main`.
+async fn fetch_tree(endpoint: &str, repo: &str) -> AppResult<Vec<RawTreeEntry>> {
     validate_repo(repo)?;
     let resp = probe_client()?
         .get(format!("{endpoint}/api/models/{repo}/tree/main"))
@@ -102,10 +101,37 @@ pub async fn repo_gguf_files(endpoint: &str, repo: &str) -> AppResult<Vec<HfRepo
         .send().await
         .map_err(|e| AppError::Inference(e.to_string()))?;
     if let Some(err) = map_status(resp.status(), repo) { return Err(err); }
-    let raw: Vec<RawTreeEntry> = resp.json().await
-        .map_err(|e| AppError::Inference(format!("{repo}: bad HF tree body: {e}")))?;
-    Ok(raw.into_iter()
+    resp.json().await
+        .map_err(|e| AppError::Inference(format!("{repo}: bad HF tree body: {e}")))
+}
+
+/// Lists `.gguf` files in the repo at `main`, with file sizes from the
+/// HF tree endpoint. Non-file and non-`.gguf` entries are filtered out.
+pub async fn repo_gguf_files(endpoint: &str, repo: &str) -> AppResult<Vec<HfRepoFile>> {
+    Ok(fetch_tree(endpoint, repo).await?
+        .into_iter()
         .filter(|e| e.kind == "file" && e.path.to_lowercase().ends_with(".gguf"))
+        .map(|e| HfRepoFile { path: e.path, size_bytes: e.size })
+        .collect())
+}
+
+/// Files that contribute nothing to loading an MLX model — repo metadata, docs,
+/// and licenses. Everything else (config.json, *.safetensors, tokenizer*, etc.)
+/// is kept so `mlx_lm.server` can load the snapshot.
+fn is_snapshot_junk(path: &str) -> bool {
+    let lower = path.to_lowercase();
+    let name = lower.rsplit('/').next().unwrap_or(&lower);
+    name == ".gitattributes"
+        || name.ends_with(".md")
+        || name.starts_with("license")
+}
+
+/// Lists every downloadable file in the repo (for a full snapshot), minus
+/// repo/doc junk. Used to mirror an MLX repo to local disk.
+pub async fn repo_all_files(endpoint: &str, repo: &str) -> AppResult<Vec<HfRepoFile>> {
+    Ok(fetch_tree(endpoint, repo).await?
+        .into_iter()
+        .filter(|e| e.kind == "file" && !is_snapshot_junk(&e.path))
         .map(|e| HfRepoFile { path: e.path, size_bytes: e.size })
         .collect())
 }
