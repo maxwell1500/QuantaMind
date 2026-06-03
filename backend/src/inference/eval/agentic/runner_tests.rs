@@ -141,3 +141,22 @@ async fn endless_valid_calls_are_tallied_as_infinite_loops() {
     assert_eq!(report.avg_steps, Some(3.0)); // both runs hit the cap
     assert_eq!(report.avg_output_tokens_success, None); // no successes → N/A
 }
+
+/// Reports a huge prompt-token count and a tiny output count every turn. Proves
+/// the effort metric tracks output tokens (`eval_count`) only — re-sent history
+/// inflating `prompt_eval_count` must never leak in (KV-cache reuse, Step 6.4).
+struct PromptHeavyModel;
+
+impl ModelTurn for PromptHeavyModel {
+    async fn run(&self, _spec: &GenerateSpec) -> AppResult<(String, GenerateStats)> {
+        Ok((END_CALL.to_string(), GenerateStats { prompt_eval_count: Some(9999), eval_count: Some(12), ..Default::default() }))
+    }
+}
+
+#[tokio::test]
+async fn effort_counts_output_tokens_only_never_prompt_tokens() {
+    let (tx, _rx) = unbounded_channel();
+    let report = run_agentic(&PromptHeavyModel, &sandbox(), AgenticConfig { k: 1, max_steps: 4 }, &tx).await.unwrap();
+    assert_eq!(report.passes, 1);
+    assert_eq!(report.avg_output_tokens_success, Some(12.0)); // the 12, never the 9999
+}
