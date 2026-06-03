@@ -51,9 +51,12 @@ describe("App tab strip", () => {
     }
   });
 
-  it("has no Compare tab (unified into Workspace)", () => {
+  it("exposes the two-zone nav: a Compare tab and an Audit tab", () => {
     render(<App />);
-    expect(screen.queryByTestId("view-tab-compare")).toBeNull();
+    // Zone 1 (Manual Playground) renamed Analysis → Compare; Zone 2 (Automated
+    // Pipeline) gains a dedicated Audit tab alongside Eval.
+    expect(screen.getByTestId("view-tab-compare")).toBeInTheDocument();
+    expect(screen.getByTestId("view-tab-audit")).toBeInTheDocument();
   });
 
   it.each(ALL.filter((x) => x !== "workspace"))(
