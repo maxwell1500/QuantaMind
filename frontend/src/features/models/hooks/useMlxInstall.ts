@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useState } from "react";
 import { cancelHfInstall, type HfPhase } from "../../../shared/ipc/models/hf_install";
-import { installMlxModel } from "../../../shared/ipc/models/mlx_install";
+import { installMlxModel } from "../../../shared/ipc/models/mlx";
 import { friendlyInstallError } from "../../../shared/install_error";
 import { useModelStore } from "../state/modelStore";
 import { useInstalledModelsStore } from "../state/installedModelsStore";

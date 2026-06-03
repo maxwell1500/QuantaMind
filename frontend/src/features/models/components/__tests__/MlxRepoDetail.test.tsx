@@ -3,14 +3,17 @@ import { render, screen, fireEvent, waitFor, act } from "@testing-library/react"
 
 vi.mock("@tauri-apps/api/core", () => ({ invoke: vi.fn() }));
 vi.mock("@tauri-apps/api/event", () => ({ listen: vi.fn().mockResolvedValue(() => {}) }));
-vi.mock("../../../../shared/ipc/models/mlx_install", () => ({ installMlxModel: vi.fn() }));
+vi.mock("../../../../shared/ipc/models/mlx", () => ({
+  installMlxModel: vi.fn(),
+  listMlxModels: vi.fn().mockResolvedValue([]),
+}));
 vi.mock("../../../../shared/ipc/models/hf_install", () => ({
   cancelHfInstall: vi.fn(),
   EVENT_HF_PROGRESS: "hf-progress",
 }));
 
 import { invoke } from "@tauri-apps/api/core";
-import { installMlxModel } from "../../../../shared/ipc/models/mlx_install";
+import { installMlxModel } from "../../../../shared/ipc/models/mlx";
 import { MlxRepoDetail } from "../MlxRepoDetail";
 import { useModelStore } from "../../state/modelStore";
 

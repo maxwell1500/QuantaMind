@@ -182,31 +182,28 @@ on first use.
 ### MLX not detected {#mlx-not-detected}
 
 The **MLX** backend appears in the workspace rail only on Apple Silicon. Install
-mlx-lm once (`pip install mlx-lm`), then use the header **Start MLX** control:
-type an MLX repo (e.g. `mlx-community/Llama-3.2-3B-Instruct-4bit`) and Start —
-QuantaMind launches `mlx_lm.server` for you (it downloads the repo on first run,
-so "Downloading weights…" can last a few minutes), and the model appears in the
-dropdown once it's up.
+mlx-lm once (`pip install mlx-lm`). MLX models then work like every other
+backend: **download → select → Start → run/eval/quant.**
 
-**Finding MLX repos:** the **Models → HuggingFace** tab has a **GGUF / MLX**
-toggle. GGUF (the default) is unfiltered — every HuggingFace hit for your query
-is shown, and you pick a repo's `.gguf` files on its detail page; MLX searches
-repos tagged `mlx` (mostly `mlx-community` — safetensors have no `.gguf`-style
-extension to match on). The **detail view follows the repo's tags, not the
-toggle**: clicking an `mlx`-tagged repo (even one surfaced under the unfiltered
-GGUF search) opens the MLX action, which fills the repo into **Start MLX** and
-switches you to the workspace — there's no separate download step, since
-`mlx_lm.server` fetches the repo on Start. MLX models are never downloaded
-through the GGUF file flow.
+**Download:** in **Models → HuggingFace**, flip the **GGUF / MLX** toggle to MLX
+and search (GGUF, the default, is unfiltered; MLX is narrowed to `mlx`-tagged
+repos, mostly `mlx-community`). Open a repo and click **Download for MLX** — the
+full snapshot (config + safetensors + tokenizer) lands in `~/.quantamind/mlx/`
+(override with `QUANTAMIND_MLX_DIR`). The **detail view follows the repo's tags,
+not the toggle**, so an `mlx`-tagged repo opens the MLX download even when found
+under GGUF search.
+
+**Select + run:** the downloaded model appears in the Workspace dropdown
+(labelled by its HF repo) as soon as it's downloaded — no running server needed.
+Pick it, press **Start MLX** (the header launches `mlx_lm.server --model <local
+dir>`; "Starting…" while it loads), and once green run prompts / eval / quant
+like any backend. One model loads at a time; pick another and Start to switch.
 
 **Guardrail — text-generation only.** `mlx_lm.server` serves text-generation
-LLMs; a text-to-speech / embedding / vision repo would start the HTTP server but
-never answer a chat request. So **Use in MLX** checks the repo's task and, if it
-isn't `text-generation`, shows a blocking dialog ("This model won't run on MLX")
-with a *Pick another* / *Use anyway* choice rather than wasting a multi-GB
-download. **Switching models:** the **Start MLX** control keeps its repo field
-even while a server is running — typing a new repo and pressing **Switch model**
-stops the current one and loads the new one (no need to Stop first).
+LLMs; a text-to-speech / embedding / vision repo would download gigabytes and
+then never answer a chat request. So **Download for MLX** checks the repo's task
+and, if it isn't `text-generation`, shows a blocking dialog ("This model won't
+run on MLX") with a *Pick another* / *Download anyway* choice.
 
 - **"mlx_lm.server not found"** — QuantaMind searches `PATH` and common venvs
   (`~/mlx-env/bin`, `~/.venv/bin`, Homebrew, conda). If yours is elsewhere, set
@@ -215,8 +212,9 @@ stops the current one and loads the new one (no need to Stop first).
   8082–8092; only if all are taken does it fail. Free one and retry.
 - **It exited** — the error shows the server's stderr tail (e.g. a missing
   Python dep). Fix it in your venv and Start again.
-- **Manual fallback:** you can still run `mlx_lm.server --model … --port 8082`
-  yourself; QuantaMind discovers a manually-run server on the default `:8082`.
+- **Model not in the dropdown?** The picker lists what's been downloaded into
+  the MLX folder; download it from the HuggingFace tab first. (A model loaded by
+  a manually-run `mlx_lm.server` won't appear — discovery is disk-based now.)
 - **Reproducibility note:** mlx_lm.server has no seed parameter, so MLX runs are
   not seed-reproducible the way Ollama and llama.cpp runs are — a fixed seed in
   the params is ignored for MLX.

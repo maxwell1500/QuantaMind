@@ -2,7 +2,7 @@ import { describe, it, expect, vi, beforeEach } from "vitest";
 import { renderHook, act } from "@testing-library/react";
 
 vi.mock("@tauri-apps/api/event", () => ({ listen: vi.fn().mockResolvedValue(() => {}) }));
-vi.mock("../../../../shared/ipc/models/mlx_install", () => ({ installMlxModel: vi.fn() }));
+vi.mock("../../../../shared/ipc/models/mlx", () => ({ installMlxModel: vi.fn() }));
 vi.mock("../../../../shared/ipc/models/hf_install", () => ({
   cancelHfInstall: vi.fn(),
   EVENT_HF_PROGRESS: "hf-progress",
@@ -12,7 +12,7 @@ vi.mock("../../state/installedModelsStore", () => ({
   useInstalledModelsStore: { getState: () => ({ refresh }) },
 }));
 
-import { installMlxModel } from "../../../../shared/ipc/models/mlx_install";
+import { installMlxModel } from "../../../../shared/ipc/models/mlx";
 import { cancelHfInstall } from "../../../../shared/ipc/models/hf_install";
 import { useMlxInstall } from "../useMlxInstall";
 import { useModelStore } from "../../state/modelStore";
