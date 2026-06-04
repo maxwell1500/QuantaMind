@@ -23,7 +23,7 @@ fn prompt_file_round_trip_preserves_all_fields() {
         system: "You are concise.".into(),
         user: "Summarize this.".into(),
         model: Some("llama3".into()),
-        params: InferenceParams { temperature: Some(0.5), top_k: Some(40), ..Default::default() },
+        params: InferenceParams::default(),
         created_at: "2026-05-27T10:00:00Z".into(),
         updated_at: "2026-05-27T10:01:00Z".into(),
         auto_rerun: true,
@@ -31,6 +31,20 @@ fn prompt_file_round_trip_preserves_all_fields() {
     let yaml = serde_yaml::to_string(&pf).unwrap();
     let back: PromptFile = serde_yaml::from_str(&yaml).unwrap();
     assert_eq!(pf, back);
+}
+
+#[test]
+fn legacy_params_block_loads_and_is_stripped_on_write() {
+    // An old prompt file that still carries a `params` block must load without
+    // error (no silent failure) — params are read-tolerant.
+    let legacy = "name: old\ncreated_at: t1\nupdated_at: t2\nparams:\n  temperature: 0.9\n  seed: 42\n";
+    let pf: PromptFile = serde_yaml::from_str(legacy).expect("legacy file with params must load");
+    assert_eq!(pf.params.temperature, Some(0.9));
+    assert_eq!(pf.params.seed, Some(42));
+    // Re-serializing strips params entirely — the migration on next save.
+    let yaml = serde_yaml::to_string(&pf).unwrap();
+    assert!(!yaml.contains("params"), "params must not be written back: {yaml}");
+    assert!(!yaml.contains("temperature"), "temperature must not be written back: {yaml}");
 }
 
 #[test]

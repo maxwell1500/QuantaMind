@@ -1,8 +1,10 @@
 import { useEffect } from "react";
 import { useHistoryStore } from "../state/historyStore";
 import { useWorkspacesStore } from "../../workspaces/state/workspaceStore";
-import { useCompareStore } from "../../compare/state/compareStore";
 import { useInstalledModelsStore } from "../../models/state/installedModelsStore";
+import { useParamsStore } from "../../../shared/state/paramsStore";
+import { useSelectedModelStore } from "../../../shared/state/selectedModelStore";
+import { useBackendStore } from "../../../shared/state/backendStore";
 import type { HistoryEntry } from "../../../shared/ipc/workspace/history";
 import { HistoryRow } from "./HistoryRow";
 
@@ -13,7 +15,6 @@ export function HistoryPanel() {
   const clear = useHistoryStore((s) => s.clear);
   const setOpen = useHistoryStore((s) => s.setOpen);
   const restoreDraft = useWorkspacesStore((s) => s.restoreDraft);
-  const setSelectedModels = useCompareStore((s) => s.setSelectedModels);
 
   useEffect(() => {
     if (open) void load().catch((e) => console.error("history load failed:", e));
@@ -21,10 +22,18 @@ export function HistoryPanel() {
 
   if (!open) return null;
 
+  // Restore a past run into the global state: its inputs into a detached draft,
+  // its params into the header (globalParams), and its model into the global
+  // selection (switching backend when the model is installed).
   const restore = (e: HistoryEntry) => {
-    restoreDraft({ name: e.name, user: e.user, system: e.system, params: e.params, model: e.model });
-    const size = useInstalledModelsStore.getState().list.find((m) => m.name === e.model)?.size_bytes ?? 0;
-    setSelectedModels([{ name: e.model, size_bytes: size }]);
+    restoreDraft({ name: e.name, user: e.user, system: e.system, model: e.model });
+    useParamsStore.setState({ globalParams: e.params ?? {} });
+    const m = useInstalledModelsStore.getState().list.find((x) => x.name === e.model);
+    if (m) useBackendStore.getState().setSelectedBackend(m.backend);
+    const backend = m?.backend ?? useBackendStore.getState().selectedBackend;
+    useSelectedModelStore.getState().setSelectedModels([
+      { name: e.model, backend, size_bytes: m?.size_bytes ?? 0, path: m?.path },
+    ]);
     setOpen(false);
   };
 

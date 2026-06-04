@@ -25,6 +25,15 @@ pub struct RunSummary {
     pub abstain_acc: Option<f64>,
     pub composite: Option<f64>,
     pub n: usize,
+    /// Agentic Pass^k rate (passes / total_runs) for the run, when the collection
+    /// had agentic tasks. `#[serde(default)]` so single-turn matrix history written
+    /// before Phase 6 still loads.
+    #[serde(default)]
+    pub pass_k: Option<f64>,
+    #[serde(default)]
+    pub agentic_avg_steps: Option<f64>,
+    #[serde(default)]
+    pub effort: Option<f64>,
 }
 
 fn history_path(dir: &Path, collection_id: &str) -> AppResult<PathBuf> {

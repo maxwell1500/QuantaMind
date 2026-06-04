@@ -10,7 +10,7 @@ vi.mock("@tauri-apps/api/event", () => ({
 
 import { getInstalledModelsWithStats } from "../../../shared/ipc/models/storage";
 import { ModelPicker } from "../components/model-select/ModelPicker";
-import { useWorkspaceStore } from "../state/workspaceStore";
+import { useBackendStore } from "../../../shared/state/backendStore";
 import { useNavStore } from "../../../shared/state/navStore";
 import { useInstalledModelsStore } from "../../models/state/installedModelsStore";
 
@@ -25,7 +25,7 @@ describe("ModelPicker", () => {
     useInstalledModelsStore.setState({
       list: [], status: "idle", error: null, lastRefreshedAt: null,
     });
-    useWorkspaceStore.setState({ ollamaHealthy: null });
+    useBackendStore.setState({ ollamaHealthy: null });
   });
 
   it("renders each generative Ollama model name as an option", async () => {
@@ -77,20 +77,20 @@ describe("ModelPicker", () => {
     vi.mocked(getInstalledModelsWithStats).mockResolvedValue([M("llama3.2:1b")]);
     render(<ModelPicker value={null} onChange={() => {}} />);
     await screen.findByRole("option", { name: "llama3.2:1b" });
-    useWorkspaceStore.getState().setOllamaHealthy(false);
+    useBackendStore.getState().setOllamaHealthy(false);
     expect(await screen.findByRole("alert")).toHaveTextContent(/Ollama is not running/);
   });
 
   it("refreshes the model list once when health flips from false to true", async () => {
     vi.mocked(getInstalledModelsWithStats).mockResolvedValue([]);
-    useWorkspaceStore.setState({ ollamaHealthy: false });
+    useBackendStore.setState({ ollamaHealthy: false });
     render(<ModelPicker value={null} onChange={() => {}} />);
     // Let the initial-idle refresh resolve before clearing the mock —
     // refresh() coalesces concurrent calls so the health flip would
     // otherwise be a no-op while the first call is still in flight.
     await waitFor(() => expect(useInstalledModelsStore.getState().status).toBe("ready"));
     vi.mocked(getInstalledModelsWithStats).mockClear();
-    useWorkspaceStore.getState().setOllamaHealthy(true);
+    useBackendStore.getState().setOllamaHealthy(true);
     await waitFor(() => expect(getInstalledModelsWithStats).toHaveBeenCalledTimes(1));
   });
 

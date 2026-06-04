@@ -5,11 +5,11 @@ use serde_json::json;
 fn call_task(id: &str) -> ToolTask {
     ToolTask {
         id: id.into(), category: "single".into(), prompt: "p".into(), tools: vec![],
-        expected: Expected::Call(Call { name: "x".into(), args: json!({}) }),
+        expected: Expected::Call(Call { name: "x".into(), args: json!({}) }), agentic: None,
     }
 }
 fn nocall_task(id: &str) -> ToolTask {
-    ToolTask { id: id.into(), category: "abstain".into(), prompt: "p".into(), tools: vec![], expected: Expected::NoCall }
+    ToolTask { id: id.into(), category: "abstain".into(), prompt: "p".into(), tools: vec![], expected: Expected::NoCall, agentic: None }
 }
 fn res(id: &str, v: Verdict) -> TaskResult {
     TaskResult { id: id.into(), category: "x".into(), verdict: v, prompt_tokens: None }

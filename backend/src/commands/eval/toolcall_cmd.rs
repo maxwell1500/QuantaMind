@@ -1,6 +1,8 @@
+use crate::commands::prompt::prompt_options::{to_generate_options, validate_params};
 use crate::errors::AppError;
 use crate::inference::backend::backend_kind::BackendKind;
 use crate::inference::backend::endpoint;
+use crate::persistence::prompts::schema::InferenceParams;
 use crate::inference::eval::toolcall::eval::{run_eval_traced, trace_one, ToolCallReport, TraceResult};
 use crate::inference::eval::toolcall::tasks::{
     builtin_collection, tasks, validate_tasks, ToolTask, BUILTIN_COLLECTIONS,
@@ -67,10 +69,15 @@ pub async fn run_toolcall_eval(
     backend: Option<BackendKind>,
     collection_id: String,
     tasks: Vec<ToolTask>,
+    params: Option<InferenceParams>,
 ) -> Result<ToolCallReport, AppError> {
     validate_tasks(&tasks)?;
     let backend = backend.unwrap_or_default();
-    let (report, traces) = run_eval_traced(backend, &endpoint_for(backend), &model, &tasks).await?;
+    let options = match &params {
+        Some(p) => { validate_params(p)?; Some(to_generate_options(p)) }
+        None => None,
+    };
+    let (report, traces) = run_eval_traced(backend, &endpoint_for(backend), &model, &tasks, options).await?;
     // Empty id = a probe that doesn't need a drill-down (context-cliff, quant
     // sweep) — skip caching. Otherwise cache best-effort (a write hiccup never
     // fails the eval; the visualizer falls back to a live run).
@@ -106,5 +113,5 @@ pub async fn trace_toolcall_task(
 ) -> Result<TraceResult, AppError> {
     validate_tasks(std::slice::from_ref(&task))?;
     let backend = backend.unwrap_or_default();
-    trace_one(backend, &endpoint_for(backend), &model, &task).await
+    trace_one(backend, &endpoint_for(backend), &model, &task, None).await
 }

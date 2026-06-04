@@ -37,6 +37,10 @@ export const RunSummarySchema = z.object({
   abstain_acc: z.number().nullable(),
   composite: z.number().nullable(),
   n: z.number().int().nonnegative(),
+  // Agentic metrics (Phase 6) — absent in pre-Phase-6 history, so optional.
+  pass_k: z.number().nullable().optional(),
+  agentic_avg_steps: z.number().nullable().optional(),
+  effort: z.number().nullable().optional(),
 });
 export type RunSummary = z.infer<typeof RunSummarySchema>;
 

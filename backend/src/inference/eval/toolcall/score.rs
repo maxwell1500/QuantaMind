@@ -20,8 +20,9 @@ fn value_equal(a: &Value, b: &Value) -> bool {
 }
 
 /// Structural arg equality: same key set (no spurious or missing keys), each
-/// value equal (numbers numerically, strings trimmed).
-fn args_match(expected: &Value, got: &Value) -> bool {
+/// value equal (numbers numerically, strings trimmed). `pub(crate)` so the
+/// agentic end-state matcher reuses the exact same equality the scorer uses.
+pub(crate) fn args_match(expected: &Value, got: &Value) -> bool {
     match (expected.as_object(), got.as_object()) {
         (Some(e), Some(g)) => {
             e.len() == g.len() && e.iter().all(|(k, ev)| g.get(k).is_some_and(|gv| value_equal(ev, gv)))
@@ -55,6 +56,16 @@ fn set_match(expected: &[Call], parsed: &[Call]) -> (bool, bool) {
     let tool = bijection(expected, parsed, |e, p| e.name == p.name);
     let args = bijection(expected, parsed, |e, p| e.name == p.name && args_match(&e.args, &p.args));
     (tool, args)
+}
+
+/// Did a task pass overall? For a call-task: parsed + right tool + right args;
+/// for an abstention: the model correctly made no call. The single per-task
+/// pass/fail the batch scoreboard renders.
+pub(crate) fn verdict_passed(v: &Verdict) -> bool {
+    match v.abstain_correct {
+        Some(ok) => ok,
+        None => v.parsed && v.tool_match && v.args_match,
+    }
 }
 
 /// Score one task. Pure.

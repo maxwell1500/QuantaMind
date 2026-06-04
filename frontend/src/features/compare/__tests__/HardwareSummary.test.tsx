@@ -4,18 +4,21 @@ import { render, screen, fireEvent, waitFor } from "@testing-library/react";
 vi.mock("@tauri-apps/api/core", () => ({ invoke: vi.fn() }));
 
 import { invoke } from "@tauri-apps/api/core";
-import { HardwareSummary } from "../components/HardwareSummary";
+import { HardwareSummary } from "../components/controls/HardwareSummary";
 import { useCompareStore } from "../state/compareStore";
+import { useSelectedModelStore, type SelectedModel } from "../../../shared/state/selectedModelStore";
 
 const HW = (availableGB: number, totalGB = 32, apple = true) => ({
   total_memory_bytes: Math.round(totalGB * 1024 ** 3),
   available_memory_bytes: Math.round(availableGB * 1024 ** 3),
   is_apple_silicon: apple,
 });
+const sel = (name: string, gb: number): SelectedModel => ({ name, backend: "ollama", size_bytes: gb * 1024 ** 3 });
 
 beforeEach(() => {
   vi.mocked(invoke).mockReset();
   useCompareStore.getState().reset();
+  useSelectedModelStore.setState({ selectedModels: [] });
 });
 
 describe("HardwareSummary", () => {
@@ -36,12 +39,7 @@ describe("HardwareSummary", () => {
 
   it("renders per-strategy verdict pills only when 2+ models are selected", async () => {
     vi.mocked(invoke).mockResolvedValue(HW(16));
-    useCompareStore.setState({
-      selectedModels: [
-        { name: "x", size_bytes: 2 * 1024 ** 3 },
-        { name: "y", size_bytes: 2 * 1024 ** 3 },
-      ],
-    });
+    useSelectedModelStore.setState({ selectedModels: [sel("x", 2), sel("y", 2)] });
     render(<HardwareSummary />);
     await screen.findByTestId("verdict-sequential");
     expect(screen.getByTestId("verdict-sequential")).toHaveTextContent(/Sequential: OK/);
@@ -50,7 +48,7 @@ describe("HardwareSummary", () => {
 
   it("a single fitting model shows no strategy pills or warning", async () => {
     vi.mocked(invoke).mockResolvedValue(HW(16));
-    useCompareStore.setState({ selectedModels: [{ name: "x", size_bytes: 2 * 1024 ** 3 }] });
+    useSelectedModelStore.setState({ selectedModels: [sel("x", 2)] });
     render(<HardwareSummary />);
     await screen.findByTestId("hw-summary");
     expect(screen.queryByTestId("verdict-sequential")).toBeNull();
@@ -59,7 +57,7 @@ describe("HardwareSummary", () => {
 
   it("a single tight model shows one warning, not strategy pills", async () => {
     vi.mocked(invoke).mockResolvedValue(HW(3.4));
-    useCompareStore.setState({ selectedModels: [{ name: "big", size_bytes: 3 * 1024 ** 3 }] });
+    useSelectedModelStore.setState({ selectedModels: [sel("big", 3)] });
     render(<HardwareSummary />);
     expect(await screen.findByTestId("hw-single-warning")).toBeTruthy();
     expect(screen.queryByTestId("verdict-sequential")).toBeNull();
@@ -67,13 +65,7 @@ describe("HardwareSummary", () => {
 
   it("marks Parallel 'Won't fit' when summed required > available", async () => {
     vi.mocked(invoke).mockResolvedValue(HW(16));
-    useCompareStore.setState({
-      selectedModels: [
-        { name: "a", size_bytes: 7 * 1024 ** 3 },
-        { name: "b", size_bytes: 7 * 1024 ** 3 },
-        { name: "c", size_bytes: 7 * 1024 ** 3 },
-      ],
-    });
+    useSelectedModelStore.setState({ selectedModels: [sel("a", 7), sel("b", 7), sel("c", 7)] });
     render(<HardwareSummary />);
     expect(await screen.findByTestId("verdict-parallel")).toHaveTextContent(/Won't fit/);
   });

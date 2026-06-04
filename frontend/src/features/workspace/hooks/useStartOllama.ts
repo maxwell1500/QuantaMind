@@ -3,7 +3,7 @@ import { open as openExternal } from "@tauri-apps/plugin-shell";
 import { startOllama } from "../../../shared/ipc/models/ollama_start";
 import { formatIpcError } from "../../../shared/ipc/core/error";
 import { useInstalledModelsStore } from "../../models/state/installedModelsStore";
-import { useWorkspaceStore } from "../state/workspaceStore";
+import { useBackendStore } from "../../../shared/state/backendStore";
 
 export type StartOllamaStatus =
   | "idle" | "starting" | "success" | "error" | "not_installed";
@@ -18,7 +18,7 @@ export function useStartOllama() {
   const onSuccess = useCallback(() => {
     setStatus("success");
     setTimeout(() => {
-      useWorkspaceStore.getState().setOllamaHealthy(true);
+      useBackendStore.getState().setOllamaHealthy(true);
       void useInstalledModelsStore.getState().refresh();
       setStatus("idle");
     }, SUCCESS_LINGER_MS);

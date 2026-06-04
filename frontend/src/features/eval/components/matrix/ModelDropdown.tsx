@@ -1,6 +1,7 @@
-import { useEffect, useRef, useState } from "react";
+import { useRef, useState } from "react";
 import type { InstalledModelInfo } from "../../../../shared/ipc/models/storage";
 import { modelLabel } from "../../../../shared/models/modelLabel";
+import { usePopoverDismiss } from "../../../../shared/ui/usePopoverDismiss";
 
 /// Multi-select dropdown of installed models to include as matrix columns.
 /// Selecting an option toggles it and keeps the menu open (multi-select).
@@ -15,15 +16,7 @@ export function ModelDropdown({
 }) {
   const [open, setOpen] = useState(false);
   const ref = useRef<HTMLDivElement>(null);
-
-  useEffect(() => {
-    if (!open) return;
-    const onDown = (e: MouseEvent) => {
-      if (ref.current && !ref.current.contains(e.target as Node)) setOpen(false);
-    };
-    document.addEventListener("mousedown", onDown);
-    return () => document.removeEventListener("mousedown", onDown);
-  }, [open]);
+  usePopoverDismiss(open, ref, () => setOpen(false));
 
   const count = selected.size;
   const label = count === 0 ? "Select models…" : `${count} model${count > 1 ? "s" : ""}`;

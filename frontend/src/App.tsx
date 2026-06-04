@@ -6,6 +6,7 @@ import { SettingsPage } from "./features/settings/components/SettingsPage";
 import { ModelsPage } from "./features/models/components/ModelsPage";
 import { DownloadsPage } from "./features/models/components/DownloadsPage";
 import { EvalPage } from "./features/eval/components/EvalPage";
+import { AuditPage } from "./features/audit/components/AuditPage";
 import { QuantPage } from "./features/quant/components/QuantPage";
 import { startInstalledModelsBus } from "./features/models/state/installedModelsBus";
 import { useModelSettingsStore } from "./features/models/state/modelSettingsStore";
@@ -24,11 +25,12 @@ import { useNavStore, type TopView } from "./shared/state/navStore";
 
 const TABS: { id: TopView; label: string }[] = [
   { id: "workspace", label: "Workspace" },
-  { id: "analysis", label: "Analysis" },
+  { id: "compare", label: "Analysis" },
   { id: "inspector", label: "Inspector" },
   { id: "models", label: "Models" },
   { id: "downloads", label: "Downloads" },
   { id: "eval", label: "Eval" },
+  { id: "audit", label: "Audit" },
   { id: "quant", label: "Quant" },
   { id: "settings", label: "Settings" },
   { id: "help", label: "Help" },
@@ -75,11 +77,12 @@ export default function App() {
           <div className="flex-1 min-w-0"><Workspace /></div>
         </div>
       </div>
-      <div hidden={view !== "analysis"} data-testid="view-analysis"><AnalysisTab /></div>
+      <div hidden={view !== "compare"} data-testid="view-compare"><AnalysisTab /></div>
       <div hidden={view !== "inspector"} data-testid="view-inspector"><InspectorPage /></div>
       <div hidden={view !== "models"} data-testid="view-models"><ModelsPage /></div>
       <div hidden={view !== "downloads"} data-testid="view-downloads"><DownloadsPage /></div>
       <div hidden={view !== "eval"} data-testid="view-eval"><EvalPage /></div>
+      <div hidden={view !== "audit"} data-testid="view-audit"><AuditPage /></div>
       <div hidden={view !== "quant"} data-testid="view-quant"><QuantPage /></div>
       <div hidden={view !== "settings"} data-testid="view-settings"><SettingsPage /></div>
       <div hidden={view !== "help"} data-testid="view-help"><HelpPage /></div>

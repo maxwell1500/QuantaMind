@@ -9,12 +9,12 @@ vi.mock("../../../../shared/ipc/models/llama_start", () => ({
 import { startLlamaServer, stopLlamaServer } from "../../../../shared/ipc/models/llama_start";
 import { useStartLlamaServer } from "../useStartLlamaServer";
 import { useStopLlamaServer } from "../useStopLlamaServer";
-import { useWorkspaceStore } from "../../state/workspaceStore";
+import { useBackendStore } from "../../../../shared/state/backendStore";
 
 beforeEach(() => {
   vi.mocked(startLlamaServer).mockReset();
   vi.mocked(stopLlamaServer).mockReset();
-  useWorkspaceStore.setState({ llamaHealthy: null });
+  useBackendStore.setState({ llamaHealthy: null });
 });
 
 describe("useStartLlamaServer", () => {
@@ -23,7 +23,7 @@ describe("useStartLlamaServer", () => {
     const { result } = renderHook(() => useStartLlamaServer());
     await act(async () => { await result.current.start("/g/phi3.gguf"); });
     expect(startLlamaServer).toHaveBeenCalledWith("/g/phi3.gguf");
-    expect(useWorkspaceStore.getState().llamaHealthy).toBe(true);
+    expect(useBackendStore.getState().llamaHealthy).toBe(true);
     expect(result.current.status).toBe("idle");
   });
 
@@ -33,17 +33,17 @@ describe("useStartLlamaServer", () => {
     await act(async () => { await result.current.start("/g/x.gguf"); });
     expect(result.current.status).toBe("not_bundled");
     expect(result.current.error).toBe("no binary");
-    expect(useWorkspaceStore.getState().llamaHealthy).toBeNull();
+    expect(useBackendStore.getState().llamaHealthy).toBeNull();
   });
 });
 
 describe("useStopLlamaServer", () => {
   it("marks llama unhealthy after stop", async () => {
-    useWorkspaceStore.setState({ llamaHealthy: true });
+    useBackendStore.setState({ llamaHealthy: true });
     vi.mocked(stopLlamaServer).mockResolvedValue(undefined);
     const { result } = renderHook(() => useStopLlamaServer());
     await act(async () => { await result.current.stop(); });
     expect(stopLlamaServer).toHaveBeenCalled();
-    expect(useWorkspaceStore.getState().llamaHealthy).toBe(false);
+    expect(useBackendStore.getState().llamaHealthy).toBe(false);
   });
 });

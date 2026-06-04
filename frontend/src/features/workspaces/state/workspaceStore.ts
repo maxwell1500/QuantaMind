@@ -9,7 +9,7 @@ import {
 import { createPrompt, loadPrompt, savePrompt } from "../../../shared/ipc/workspace/prompts";
 
 const blankPrompt = (): PromptFile => ({
-  name: "restored", system: "", user: "", model: null, params: {},
+  name: "restored", system: "", user: "", model: null,
   created_at: "", updated_at: "", auto_rerun: false,
 });
 

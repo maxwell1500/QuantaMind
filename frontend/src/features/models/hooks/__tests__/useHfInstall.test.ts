@@ -14,11 +14,11 @@ vi.mock("../../../../shared/ipc/models/hf_install", () => ({
 import { installHfGguf } from "../../../../shared/ipc/models/hf_install";
 import { useHfInstall } from "../useHfInstall";
 import { useModelStore } from "../../state/modelStore";
-import { useWorkspaceStore } from "../../../workspace/state/workspaceStore";
+import { useBackendStore } from "../../../../shared/state/backendStore";
 
 beforeEach(() => {
   vi.mocked(installHfGguf).mockReset();
-  useWorkspaceStore.setState({ activeBackend: "ollama" });
+  useBackendStore.setState({ selectedBackend: "ollama" });
   useModelStore.setState({
     downloads: {}, activeHfName: null, pullNames: {}, pendingLocalPath: null,
     activeLocalName: null, activeTab: "huggingface",
@@ -36,7 +36,7 @@ describe("useHfInstall", () => {
 
   it("forwards the active backend to the install IPC", async () => {
     vi.mocked(installHfGguf).mockResolvedValue(undefined);
-    useWorkspaceStore.setState({ activeBackend: "llama_cpp" });
+    useBackendStore.setState({ selectedBackend: "llama_cpp" });
     const { result } = renderHook(() => useHfInstall());
     await act(async () => { await result.current.install("repo/x", "x.gguf", "x"); });
     expect(installHfGguf).toHaveBeenCalledWith("repo/x", "x.gguf", "x", "llama_cpp");

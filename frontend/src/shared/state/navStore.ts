@@ -7,11 +7,12 @@ import { create } from "zustand";
 
 export type TopView =
   | "workspace"
-  | "analysis"
+  | "compare"
   | "inspector"
   | "models"
   | "downloads"
   | "eval"
+  | "audit"
   | "quant"
   | "settings"
   | "help";

@@ -1,27 +1,18 @@
 import { create } from "zustand";
 import type { GenerateStats, TokenTiming } from "../../../shared/ipc/events/events";
 import type { HardwareSnapshot } from "../../../shared/ipc/compare/hardware";
-import type { InferenceParams } from "../../../shared/ipc/workspace/prompts";
 import type { StrategyId } from "./strategy";
 import { newRow, updateRow, type CompareModel, type CompareRow } from "./compareRow";
 
 export type { CompareModel, CompareRow, RowStatus } from "./compareRow";
 
 interface CompareStore {
-  selectedModels: CompareModel[];
   prompt: string;
   systemPrompt: string;
   hardwareSnapshot: HardwareSnapshot | null;
   strategy: StrategyId;
-  useSharedParams: boolean;
-  baseParams: InferenceParams;
-  perModelParams: Record<string, InferenceParams>;
   rows: CompareRow[];
   isRunning: boolean;
-  setSelectedModels: (m: CompareModel[]) => void;
-  setUseSharedParams: (v: boolean) => void;
-  setBaseParams: (p: InferenceParams) => void;
-  setModelParams: (model: string, p: InferenceParams) => void;
   setPrompt: (p: string) => void;
   setSystemPrompt: (p: string) => void;
   setHardwareSnapshot: (s: HardwareSnapshot | null) => void;
@@ -38,21 +29,12 @@ interface CompareStore {
 }
 
 export const useCompareStore = create<CompareStore>((set) => ({
-  selectedModels: [],
   prompt: "",
   systemPrompt: "",
   hardwareSnapshot: null,
   strategy: "sequential",
-  useSharedParams: true,
-  baseParams: {},
-  perModelParams: {},
   rows: [],
   isRunning: false,
-  setSelectedModels: (selectedModels) => set({ selectedModels }),
-  setUseSharedParams: (useSharedParams) => set({ useSharedParams }),
-  setBaseParams: (baseParams) => set({ baseParams }),
-  setModelParams: (model, p) =>
-    set((s) => ({ perModelParams: { ...s.perModelParams, [model]: p } })),
   setPrompt: (prompt) => set({ prompt }),
   setSystemPrompt: (systemPrompt) => set({ systemPrompt }),
   setHardwareSnapshot: (hardwareSnapshot) => set({ hardwareSnapshot }),
@@ -81,6 +63,6 @@ export const useCompareStore = create<CompareStore>((set) => ({
   finishRun: () =>
     set((s) => ({ isRunning: false,
       rows: s.rows.map((r) => r.status === "pending" ? { ...r, status: "cancelled", endedAt: new Date().toISOString() } : r) })),
-  reset: () => set({ selectedModels: [], prompt: "", systemPrompt: "", hardwareSnapshot: null,
-    strategy: "sequential", useSharedParams: true, baseParams: {}, perModelParams: {}, rows: [], isRunning: false }),
+  reset: () => set({ prompt: "", systemPrompt: "", hardwareSnapshot: null,
+    strategy: "sequential", rows: [], isRunning: false }),
 }));

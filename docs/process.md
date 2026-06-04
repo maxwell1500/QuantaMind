@@ -564,7 +564,41 @@ one. Built one step at a time.
   the Eval tab). **Frontend-only**, padding is approximate (≈tokens via chars/4) and **labelled
   indicative** — no tokenizer; a failed rung records null, never a fabricated score.
 
-### Phase 6+
+### Phase 6 — Agentic reliability & the Automated-Pipeline workspace
+
+Turns the single-turn checker into a stateful agentic diagnostic engine AND
+reshapes the eval experience into a two-zone app. See [Agentic reliability
+eval](reference.md#agentic-eval) for the contract.
+
+**Navigation: two zones.** Zone 1 (Manual Playground): Workspace · **Compare**
+(renamed from Analysis) · Inspector. Zone 2 (Automated Pipeline): **Eval** (the
+3-pane workspace) · **Audit** (compliance home).
+
+| # | Step | Status |
+| --- | --- | --- |
+| 6.1–6.4, 6.6 | Agentic engine: `DeterministicSandbox`, Tauri-free `run_once`/Pass^k runner, `FailureTracker`, effort metric, anti-cheat | done |
+| 0 | Nav: Analysis → Compare, new Audit tab | done |
+| 1 | Data contract: `ToolTask.agentic`, `EndStateRule` enum (`RequireSequence`/`ExpectAbstainingText`), `validate_tasks` gate | done |
+| 2 | VRAM-safe sequential `run_batch` dispatcher + `run_batch_eval` streaming command | done |
+| 3 | Throttled single-stream React consumer (rAF-buffered `batchStore`, `useBatchRun`) | done |
+| 4 | 3-pane Eval workspace: `MatrixScoreboard` + `TraceDebugger` + audit export | done |
+| 5 | Audit tab: saved Matrix history + export + Context-Cliff probe | done |
+
+Locked decisions (set during planning): **iterate in Rust, never React** — one
+`run_batch_eval` command runs a strict sequential model×task queue and streams
+back over a single channel (no N-command JS loop → no local-inference OOM); the
+runner is generic over a `ModelTurn` seam (testable with a scripted model, no
+HTTP); `EndStateRule` is an enum so a correct abstention isn't scored as a lazy
+failure; the React consumer buffers events and flushes at ≤60Hz so a token
+firehose can't freeze the UI; the **Matrix is the central Eval artifact** (per-
+model rows), not buried.
+
+Follow-ups: persist each `run_batch_eval` to history (extend `RunSummary` with
+agentic metrics) so the Audit timeline reflects batch runs; retire the now-
+orphaned `run_collection_matrix`/`run_toolcall_eval` commands + `MatrixPanel`/
+`ToolCallPanel` components once nothing references them.
+
+### Phase 7+
 
 Owners flesh out the next phase's section here when the current lands.
 

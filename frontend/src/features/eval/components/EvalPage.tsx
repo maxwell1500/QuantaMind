@@ -1,75 +1,97 @@
 import { useEffect, useState } from "react";
 import { useEvalRegistryStore } from "../state/evalRegistryStore";
+import { useInstalledModelsStore } from "../../models/state/installedModelsStore";
+import { useSelectedModelStore } from "../../../shared/state/selectedModelStore";
+import { useBackendStore } from "../../../shared/state/backendStore";
+import { useBatchStore } from "../state/batchStore";
 import { EvalManager } from "./manager/EvalManager";
-import { MatrixPanel } from "./matrix/MatrixPanel";
-import { PipelinePanel } from "./pipeline/PipelinePanel";
-import { ToolCallPanel } from "./ToolCallPanel";
-import { ContextCliffPanel } from "./ContextCliffPanel";
+import { CollectionEditor } from "./manager/CollectionEditor";
+import { MatrixScoreboard } from "./scoreboard/MatrixScoreboard";
+import { PerformanceMatrix } from "./scoreboard/PerformanceMatrix";
+import { TraceDebugger } from "./TraceDebugger";
 
-type RunnerView = "scoreboard" | "debugger";
-type Focus = { collection: string; taskId: string; model: string };
-
-/// The Eval tab: the Eval Manager (author/run collections), the LLM Performance
-/// Matrix (batch across models + regression history), the Eval Runner — a toggle
-/// between the Batch Scoreboard (Simulator) and the single-task Trace Debugger
-/// (Pipeline), wired so a row's "View Trace" hands that task to the debugger —
-/// and the Context-Cliff probe.
+/// The Automated-Pipeline Eval workspace. Left: the Eval Manager (collections +
+/// run controls + authoring entry). Right: in run mode, the live Matrix Scoreboard
+/// over the Trace Debugger; in edit mode, the Collection Editor (task list + Task &
+/// Sandbox Configurator).
 export function EvalPage() {
   const initRegistry = useEvalRegistryStore((s) => s.init);
-  const [view, setView] = useState<RunnerView>("scoreboard");
-  const [focus, setFocus] = useState<Focus | null>(null);
+  const startNew = useEvalRegistryStore((s) => s.startNew);
+  const allModels = useInstalledModelsStore((s) => s.list);
+  const selectedBackend = useBackendStore((s) => s.selectedBackend);
+  const models = allModels.filter((m) => m.backend === selectedBackend);
+  const globalModel = useSelectedModelStore((s) => s.selectedModels[0] ?? null);
+
+  const [targets, setTargets] = useState<string[]>([]);
+  const [focusedModel, setFocusedModel] = useState<string>("");
+  const [focusedTaskId, setFocusedTaskId] = useState<string | null>(null);
+  const [iterationsK, setIterationsK] = useState<number>(1);
+  const [maxSteps, setMaxSteps] = useState<number>(8);
+  const [editing, setEditing] = useState(false);
 
   useEffect(() => {
     void initRegistry().catch(() => {});
   }, [initRegistry]);
 
-  const onViewTrace = (f: Focus) => {
-    setFocus(f);
-    setView("debugger");
-  };
+  // On a backend switch, the last run's results + the chosen targets belong to the
+  // PREVIOUS backend's models — clear them so the Simulator/Matrix don't keep
+  // showing stale models. Targets then re-seed from the new backend below.
+  useEffect(() => {
+    if (useBatchStore.getState().running) return;
+    useBatchStore.getState().reset();
+    setTargets([]);
+    setFocusedModel("");
+  }, [selectedBackend]);
+
+  // Default one target once the model list loads — the global header model if
+  // it's installed, else the first installed model.
+  useEffect(() => {
+    if (targets.length > 0) return;
+    const seed = (globalModel && models.some((m) => m.name === globalModel.name))
+      ? globalModel.name
+      : models[0]?.name;
+    if (seed) setTargets([seed]);
+  }, [models, targets.length, globalModel]);
+
+  // Keep the focused model (shown in the Simulator/Evaluator) inside the targets.
+  useEffect(() => {
+    if (targets.length > 0 && !targets.includes(focusedModel)) {
+      setFocusedModel(targets[0]);
+    }
+  }, [targets, focusedModel]);
 
   return (
-    <div className="space-y-4" data-testid="eval-page">
-      <EvalManager />
-      <MatrixPanel onViewTrace={onViewTrace} />
-
-      {/* Eval Runner: Batch Scoreboard ↔ single-task Trace Debugger */}
-      <div>
-        <div style={{ display: "flex", alignItems: "center", gap: 6, marginBottom: 8 }}>
-          <span style={{ fontSize: 12, color: "#64748b", fontFamily: "Inter,sans-serif", marginRight: 4 }}>Eval Runner</span>
-          {([["scoreboard", "Batch Scoreboard"], ["debugger", "Trace Debugger"]] as const).map(([v, label]) => (
-            <button
-              key={v}
-              type="button"
-              onClick={() => setView(v)}
-              aria-pressed={view === v}
-              data-testid={`runner-tab-${v}`}
-              style={{
-                padding: "5px 14px",
-                borderRadius: 7,
-                border: "1px solid rgba(255,255,255,0.1)",
-                background: view === v ? "rgba(59,130,246,0.18)" : "rgba(255,255,255,0.04)",
-                color: view === v ? "#93c5fd" : "#94a3b8",
-                fontSize: 12,
-                fontWeight: 500,
-                fontFamily: "Inter,sans-serif",
-                cursor: "pointer",
-              }}
-            >
-              {label}
-            </button>
-          ))}
-        </div>
-        {/* Both stay mounted (state survives the toggle); only the active one shows. */}
-        <div style={{ display: view === "scoreboard" ? "block" : "none" }}>
-          <ToolCallPanel onViewTrace={onViewTrace} />
-        </div>
-        <div style={{ display: view === "debugger" ? "block" : "none" }}>
-          <PipelinePanel focus={focus} />
-        </div>
+    <div className="grid gap-4" style={{ gridTemplateColumns: "360px 1fr" }} data-testid="eval-page">
+      <EvalManager
+        targets={targets}
+        setTargets={setTargets}
+        k={iterationsK}
+        setK={setIterationsK}
+        maxSteps={maxSteps}
+        setMaxSteps={setMaxSteps}
+        onNewCollection={() => {
+          startNew();
+          setEditing(true);
+        }}
+        onEditCollection={() => setEditing(true)}
+      />
+      <div className="flex flex-col gap-4 min-w-0">
+        {editing ? (
+          <CollectionEditor onClose={() => setEditing(false)} />
+        ) : (
+          <>
+            <MatrixScoreboard
+              model={focusedModel}
+              k={iterationsK}
+              maxSteps={maxSteps}
+              focusedTaskId={focusedTaskId}
+              setFocusedTaskId={setFocusedTaskId}
+            />
+            <TraceDebugger model={focusedModel} taskId={focusedTaskId} setTaskId={setFocusedTaskId} />
+            <PerformanceMatrix focusedModel={focusedModel} onFocusModel={setFocusedModel} />
+          </>
+        )}
       </div>
-
-      <ContextCliffPanel />
     </div>
   );
 }

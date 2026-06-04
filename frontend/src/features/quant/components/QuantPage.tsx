@@ -1,7 +1,7 @@
 import { useEffect, useState } from "react";
 import { useInstalledModelsStore } from "../../models/state/installedModelsStore";
 import { useHardwareSnapshot } from "../../models/hooks/useHardwareSnapshot";
-import { useCompareStore } from "../../compare/state/compareStore";
+import { useSelectedModelStore } from "../../../shared/state/selectedModelStore";
 import { useNavStore } from "../../../shared/state/navStore";
 import { formatBytes } from "../../../shared/format/bytes";
 import { memoryFit, fitOfNeed, fitBadge, type Fit } from "../../models/fit";
@@ -11,6 +11,8 @@ import { useQuantEval, type QuantScore } from "../useQuantEval";
 import { useQuantToolcall } from "../useQuantToolcall";
 import { useVramFit } from "../useVramFit";
 import { servesModelsByName, QUANT_OLLAMA_ONLY_NOTE } from "../../../shared/models/backendSupport";
+import { InfoButton } from "../../../shared/ui/InfoButton";
+import { QUANT_HELP, QUANT_COLUMN_HELP } from "../help";
 
 const CTX_OPTIONS = [4096, 8192, 32768, 131072];
 const ctxLabel = (n: number) => (n % 1024 === 0 ? `${n / 1024}K` : `${n}`);
@@ -85,7 +87,8 @@ export function QuantPage() {
   const status = useInstalledModelsStore((s) => s.status);
   const refresh = useInstalledModelsStore((s) => s.refresh);
   const { snapshot } = useHardwareSnapshot();
-  const setSelectedModels = useCompareStore((s) => s.setSelectedModels);
+  const setSelectedModels = useSelectedModelStore((s) => s.setSelectedModels);
+  const globalModel = useSelectedModelStore((s) => s.selectedModels[0] ?? null);
   const goTo = useNavStore((s) => s.setTopView);
   const { scores, running, run } = useQuantEval();
   const toolcall = useQuantToolcall();
@@ -98,6 +101,13 @@ export function QuantPage() {
   }, [status, refresh]);
 
   const groups = groupQuantVariants(list);
+
+  // Seed the group from the global header model when it belongs to a quant group.
+  useEffect(() => {
+    if (groupKey || !globalModel) return;
+    const g = groups.find((x) => x.variants.some((v) => v.name === globalModel.name));
+    if (g) setGroupKey(g.key);
+  }, [groupKey, globalModel, groups]);
   const group = groups.find((g) => g.key === groupKey) ?? groups[0] ?? null;
   // Cross-quant runs only work on Ollama (single-model llama.cpp/MLX can't
   // switch quants on one server). Size/fit/recommendation still work either way.
@@ -117,12 +127,16 @@ export function QuantPage() {
 
   const compareInBench = () => {
     if (!group) return;
-    setSelectedModels(group.variants.map((v) => ({ name: v.name, size_bytes: v.sizeBytes })));
+    setSelectedModels(group.variants.map((v) => ({ name: v.name, backend: v.backend, size_bytes: v.sizeBytes })));
     goTo("workspace");
   };
 
   return (
     <div className="space-y-3" data-testid="quant-page">
+      <div className="flex items-center gap-2">
+        <h2 className="text-lg font-semibold">Quantization Comparison</h2>
+        <span className="ml-auto"><InfoButton {...QUANT_HELP.page} testId="quant" /></span>
+      </div>
       <div className="flex gap-2 items-center">
         <select
           value={group?.key ?? ""}
@@ -181,7 +195,7 @@ export function QuantPage() {
           data-testid="quant-compare-bench"
           className="border rounded px-3 py-1 text-sm disabled:opacity-50"
         >
-          Compare speed in Bench →
+          Compare in Workspace →
         </button>
       </div>
 
@@ -220,7 +234,11 @@ export function QuantPage() {
         <table className="text-xs w-full border-collapse" data-testid="quant-table">
           <thead>
             <tr className="text-left text-gray-500">
-              <th>Quant</th><th>Size</th>{snapshot && <th>Fit</th>}<th>Quality</th><th>Tool-calls</th>
+              <th title={QUANT_COLUMN_HELP.Quant}>Quant</th>
+              <th title={QUANT_COLUMN_HELP.Size}>Size</th>
+              {snapshot && <th title={QUANT_COLUMN_HELP.Fit}>Fit</th>}
+              <th title={QUANT_COLUMN_HELP.Quality}>Quality</th>
+              <th title={QUANT_COLUMN_HELP["Tool-calls"]}>Tool-calls</th>
             </tr>
           </thead>
           <tbody>

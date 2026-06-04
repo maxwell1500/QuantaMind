@@ -1,7 +1,7 @@
 import { useEffect } from "react";
 import { useOnboardingStore } from "../state/onboardingStore";
 import { currentStep } from "../steps";
-import { useWorkspaceStore } from "../../workspace/state/workspaceStore";
+import { useBackendStore } from "../../../shared/state/backendStore";
 import { useInstalledModelsStore } from "../../models/state/installedModelsStore";
 import { useWorkspacesStore } from "../../workspaces/state/workspaceStore";
 import { useNavStore } from "../../../shared/state/navStore";
@@ -15,7 +15,7 @@ export function OnboardingCoach() {
   const complete = useOnboardingStore((s) => s.complete);
   const load = useOnboardingStore((s) => s.load);
   const finish = useOnboardingStore((s) => s.finish);
-  const healthy = useWorkspaceStore((s) => s.ollamaHealthy);
+  const healthy = useBackendStore((s) => s.ollamaHealthy);
   const modelCount = useInstalledModelsStore((s) => s.list.length);
   const setView = useNavStore((s) => s.setTopView);
 

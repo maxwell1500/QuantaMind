@@ -17,6 +17,8 @@ import { getBuiltinCollection } from "../../../shared/ipc/eval/registry";
 import { inspectModel, estimateKvCacheBytes } from "../../../shared/ipc/system/inspect";
 import { ContextCliffPanel } from "../components/ContextCliffPanel";
 import { useInstalledModelsStore } from "../../models/state/installedModelsStore";
+import { useSelectedModelStore } from "../../../shared/state/selectedModelStore";
+import { useParamsStore } from "../../../shared/state/paramsStore";
 import { useEvalRegistryStore } from "../state/evalRegistryStore";
 
 const tasks = [{
@@ -45,6 +47,9 @@ beforeEach(() => {
     list: [{ name: "m", size_bytes: 1, modified_at: "", family: "", parameter_size: "", quantization: "", backend: "ollama" }],
     status: "ready", error: null, lastRefreshedAt: 1,
   });
+  // The probe runs the global header model — select it.
+  useSelectedModelStore.setState({ selectedModels: [{ name: "m", backend: "ollama", size_bytes: 1 }] });
+  useParamsStore.setState({ globalParams: {} });
   // Bypass real init (IPC) — seed presets so the panel loads its own dataset.
   useEvalRegistryStore.setState({
     presets: [{ id: "curated", label: "Curated Suite" }],
@@ -66,7 +71,6 @@ describe("ContextCliffPanel", () => {
     render(<ContextCliffPanel />);
     await waitFor(() => expect(getBuiltinCollection).toHaveBeenCalledWith("curated"));
 
-    fireEvent.change(screen.getByTestId("cliff-model-select"), { target: { value: "m" } });
     await waitFor(() => expect(screen.getByTestId("cliff-run")).not.toBeDisabled());
     fireEvent.click(screen.getByTestId("cliff-run"));
 
@@ -78,18 +82,27 @@ describe("ContextCliffPanel", () => {
     vi.mocked(runToolcallEval).mockResolvedValue(report(1.0, null) as never);
     render(<ContextCliffPanel />);
     await waitFor(() => expect(getBuiltinCollection).toHaveBeenCalled());
-    fireEvent.change(screen.getByTestId("cliff-model-select"), { target: { value: "m" } });
     await waitFor(() => expect(screen.getByTestId("cliff-run")).not.toBeDisabled());
     fireEvent.click(screen.getByTestId("cliff-run"));
 
     await waitFor(() => expect(screen.getByTestId("cliff-panel")).toHaveTextContent("Not available"));
   });
 
+  it("never claims accuracy maintained to a fake '≈0 tokens' when token depth is unreported", async () => {
+    vi.mocked(runToolcallEval).mockResolvedValue(report(1.0, null) as never);
+    render(<ContextCliffPanel />);
+    await waitFor(() => expect(getBuiltinCollection).toHaveBeenCalled());
+    await waitFor(() => expect(screen.getByTestId("cliff-run")).not.toBeDisabled());
+    fireEvent.click(screen.getByTestId("cliff-run"));
+
+    await waitFor(() => expect(screen.getByTestId("cliff-read")).toHaveTextContent("not reported"));
+    expect(screen.getByTestId("cliff-read")).not.toHaveTextContent("≈0");
+  });
+
   it("surfaces a backend error instead of a silent blank chart", async () => {
     vi.mocked(runToolcallEval).mockRejectedValue(new Error("server down"));
     render(<ContextCliffPanel />);
     await waitFor(() => expect(getBuiltinCollection).toHaveBeenCalled());
-    fireEvent.change(screen.getByTestId("cliff-model-select"), { target: { value: "m" } });
     await waitFor(() => expect(screen.getByTestId("cliff-run")).not.toBeDisabled());
     fireEvent.click(screen.getByTestId("cliff-run"));
 
@@ -100,18 +113,51 @@ describe("ContextCliffPanel", () => {
     vi.mocked(runToolcallEval).mockResolvedValue(report(1.0, 5000) as never);
     render(<ContextCliffPanel />);
     await waitFor(() => expect(getBuiltinCollection).toHaveBeenCalled());
-    fireEvent.change(screen.getByTestId("cliff-model-select"), { target: { value: "m" } });
     await waitFor(() => expect(screen.getByTestId("cliff-run")).not.toBeDisabled());
     fireEvent.click(screen.getByTestId("cliff-run"));
 
     await waitFor(() => expect(screen.getByTestId("cliff-read")).toHaveTextContent(/Accuracy maintained up to/));
   });
 
+  it("runs the global model with the global params (no local picker)", async () => {
+    useParamsStore.setState({ globalParams: { temperature: 0.2 } });
+    vi.mocked(runToolcallEval).mockResolvedValue(report(1.0, 5000) as never);
+    render(<ContextCliffPanel />);
+    await waitFor(() => expect(getBuiltinCollection).toHaveBeenCalled());
+    expect(screen.queryByTestId("cliff-model-select")).toBeNull();
+    expect(screen.getByTestId("cliff-model")).toHaveTextContent("m");
+    await waitFor(() => expect(screen.getByTestId("cliff-run")).not.toBeDisabled());
+    fireEvent.click(screen.getByTestId("cliff-run"));
+    await waitFor(() => expect(runToolcallEval).toHaveBeenCalled());
+    const call = vi.mocked(runToolcallEval).mock.calls[0];
+    expect(call[0]).toBe("m"); // model
+    expect(call[1]).toBe("ollama"); // backend
+    // Global params flow through; the probe also raises num_ctx so the prompt
+    // isn't truncated at Ollama's 4096 default.
+    expect(call[4]).toMatchObject({ temperature: 0.2 });
+    expect((call[4] as { num_ctx?: number }).num_ctx).toBeGreaterThan(4096);
+  });
+
+  it("with 2+ selected Ollama models, a dropdown picks which one the probe runs", async () => {
+    useSelectedModelStore.setState({ selectedModels: [
+      { name: "m", backend: "ollama", size_bytes: 1 },
+      { name: "m2", backend: "ollama", size_bytes: 1 },
+    ] });
+    vi.mocked(runToolcallEval).mockResolvedValue(report(1.0, 5000) as never);
+    render(<ContextCliffPanel />);
+    await waitFor(() => expect(getBuiltinCollection).toHaveBeenCalled());
+    // dropdown appears, listing the selected models; pick the second
+    fireEvent.change(screen.getByTestId("cliff-model-select"), { target: { value: "m2" } });
+    await waitFor(() => expect(screen.getByTestId("cliff-run")).not.toBeDisabled());
+    fireEvent.click(screen.getByTestId("cliff-run"));
+    await waitFor(() => expect(runToolcallEval).toHaveBeenCalled());
+    expect(vi.mocked(runToolcallEval).mock.calls[0][0]).toBe("m2");
+  });
+
   it("caps the Max Tokens slider at the model's context window", async () => {
     vi.mocked(inspectModel).mockResolvedValue(dims(8192) as never);
     render(<ContextCliffPanel />);
     await waitFor(() => expect(getBuiltinCollection).toHaveBeenCalled());
-    fireEvent.change(screen.getByTestId("cliff-model-select"), { target: { value: "m" } });
     await waitFor(() => expect(screen.getByTestId("cliff-max-tokens")).toHaveAttribute("max", "8192"));
   });
 });

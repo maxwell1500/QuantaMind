@@ -25,13 +25,42 @@ export const ExpectedSchema = z.discriminatedUnion("type", [
   z.object({ type: z.literal("no_call") }),
 ]);
 
-export const ToolTaskSchema = z.object({
-  id: z.string().min(1),
-  category: z.enum(["single", "parallel", "select", "abstain"]),
-  prompt: z.string().min(1),
-  tools: z.array(ToolSchemaSchema).min(1),
-  expected: ExpectedSchema,
+// --- Agentic (multi-step) task spec — mirrors backend agentic::spec/sandbox ---
+
+const TaskCheckpointSchema = z.object({ tool: z.string().min(1), args: z.record(z.string(), z.unknown()) });
+const MockResponseSchema = z.object({ call: CallSchema, response: z.string() });
+
+/// Mirrors the externally-tagged Rust `EndStateRule`: a unit variant serializes
+/// to the bare string `"expect_abstaining_text"`; the tuple variant to
+/// `{ "require_sequence": [...] }`.
+export const EndStateRuleSchema = z.union([
+  z.object({ require_sequence: z.array(TaskCheckpointSchema).min(1) }),
+  z.literal("expect_abstaining_text"),
+]);
+
+export const AgenticSpecSchema = z.object({
+  mocks: z.array(MockResponseSchema),
+  end_state: EndStateRuleSchema,
+  k: z.number().int().positive().optional(),
+  max_steps: z.number().int().positive().optional(),
 });
+export type AgenticSpec = z.infer<typeof AgenticSpecSchema>;
+
+export const ToolTaskSchema = z
+  .object({
+    id: z.string().min(1),
+    category: z.enum(["single", "parallel", "select", "abstain", "agentic"]),
+    prompt: z.string().min(1),
+    tools: z.array(ToolSchemaSchema).min(1),
+    expected: ExpectedSchema,
+    agentic: AgenticSpecSchema.optional(),
+  })
+  .superRefine((t, ctx) => {
+    if (t.category === "agentic" && !t.agentic)
+      ctx.addIssue({ code: "custom", message: "agentic task requires an agentic spec", path: ["agentic"] });
+    if (t.category !== "agentic" && t.agentic)
+      ctx.addIssue({ code: "custom", message: "only agentic tasks may carry an agentic spec", path: ["agentic"] });
+  });
 export type ToolTask = z.infer<typeof ToolTaskSchema>;
 
 const TaskArraySchema = z.array(ToolTaskSchema);

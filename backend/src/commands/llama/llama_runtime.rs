@@ -4,7 +4,10 @@ use std::path::Path;
 use std::process::{Child, Command, Stdio};
 use std::time::Duration;
 
-pub const PORT: u16 = 8080;
+/// 8081, NOT 8080 — `mlx_lm.server`'s default is 8080, and a stray one there
+/// would shadow our llama-server (health passes, inference 404s). See
+/// `inference::backend::endpoint`.
+pub const PORT: u16 = 8081;
 pub const READY_TIMEOUT_SECS: u64 = 30;
 pub const POLL_INTERVAL_MS: u64 = 500;
 pub const PROBE_TIMEOUT_MS: u64 = 1000;

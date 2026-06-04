@@ -121,6 +121,47 @@ scoring (BLEU etc.) — quality is human-judged in `verdicts`. No document-level
 
 ---
 
+## Global selection: backend, model, params {#global-selection}
+
+The top header carries three app-wide choices, surfaced on every view so it's
+always clear what you're running and how:
+
+- **Backend** (`backendStore`) — Ollama / llama.cpp / MLX. The model list is
+  filtered to the selected backend; switching backend trims a now-incompatible
+  model selection (a model is bound to its backend's weight format).
+- **Model** (`selectedModelStore`) — the global selection (an array).
+  **Ollama is multi-select** (1 → a single run in the Workspace; 2+ → a
+  sequential/parallel compare shown in the Workspace, results on Analysis);
+  **llama.cpp/MLX are single-select**. Every page reads this — there is no
+  per-page model picker. Analysis is results-only; Eval has its own *target*
+  multi-select but it is filtered to the selected backend; the Audit
+  Context-Cliff probe runs one global model (a dropdown picks which when 2+
+  Ollama models are selected).
+
+The llama.cpp path posts to the native `/completion`; if that route 404s (a build
+that lacks it, or another OpenAI-style server answering on the same port — e.g.
+`mlx_lm.server`, whose default port is also 8080), it falls back to the
+OpenAI-compatible `/v1/chat/completions` so the run still works.
+- **Inference params** (`paramsStore`) — temperature, top_p, top_k, max_tokens,
+  repeat_penalty, seed. **The single source of truth for every run** — Workspace,
+  Analysis compare, Eval batch, and the Context-Cliff probe all read
+  `globalParams`. A field left unset is omitted so the backend default applies;
+  ranges are validated at the Rust boundary (`commands/prompt/prompt_options.rs`).
+  With **2+ Ollama models**, a "use the same parameters for all" toggle switches
+  to per-model overrides (`perModelParams`).
+- **Keep model loaded** (`paramsStore.keepLoaded`, default off) — off unloads the
+  model after each run (Ollama `keep_alive=0`); on keeps it resident
+  (`keep_alive=-1`). Ollama-only; llama.cpp/MLX keep their model while the sidecar
+  runs.
+
+Prompt files (`*.quantamind.yaml`) no longer store params. An older file that
+still carries a `params:` block loads fine (it is ignored and stripped on the
+next save). Restoring a run from History puts its params back into the header.
+The per-model saved temperature (`model_settings.yaml`) remains a last-resort
+fallback, used only when the global temperature is unset.
+
+---
+
 ## Troubleshooting
 
 Error states in QuantaMind aim to tell you *what* broke and *what to do next*.
@@ -254,6 +295,48 @@ an agent — entirely offline and deterministic. Read the scores with these cave
   task exercises it. An unreachable backend → **"Not available"**, never a score.
 - **Custom tasks** — author your own collections in the **Eval** tab (see the
   contract below). The runner treats built-in and custom tasks identically.
+
+## Agentic reliability eval {#agentic-eval}
+
+Where the tool-calling eval is single-turn, the **agentic** engine runs a model
+through a stateful, multi-step loop inside a deterministic sandbox — measuring
+not just whether the model claims success, but whether it *did the work*, and how
+much compute it burned getting there. Agentic tasks live **alongside** single-turn
+tasks in the same collection (an agentic `ToolTask` carries an optional `agentic`
+spec); the **Eval** workspace runs a mixed collection across several models in one
+streaming batch and renders a per-model Matrix (Pass^k · Avg Steps · Effort · Top
+Error), with a click-through Trace Debugger. See [the workspace](#eval-runner).
+
+- **Prompt-based sandbox, same as the tool-call eval.** The `DeterministicSandbox`
+  holds the initial prompt, the tool schemas (injected into the system prompt via
+  the shared `build_system_for`), the mock tool results, and an `EndStateRule`.
+  No native function-calling — identical across Ollama / llama.cpp / MLX.
+- **The loop.** Each turn: render the running transcript → model emits a JSON tool
+  call (parsed with the same lenient `extract_calls`) → the sandbox returns the
+  mocked result, injected back as a `"Tool result: …"` text message. A call the
+  sandbox doesn't recognize gets an error injection and the loop continues. Mock
+  lookup is on a **canonical key** (tool name + recursively key-sorted args), so a
+  model that reorders its arg keys still hits the right mock.
+- **The anti-cheat (`EndStateRule`).** Two variants. `RequireSequence` is an
+  ordered checklist of `(tool, args)` checkpoints — the run succeeds **only** after
+  the model calls each in order (same structural arg-equality the tool-call scorer
+  uses). A model that yields with `{"status":"task_complete"}` without finishing the
+  sequence is logged as a **hallucinated completion**, never a pass — it can't be
+  gamed by claiming done. `ExpectAbstainingText` is the inverse: success is a correct
+  plain-text refusal with **no** tool call (so a robust planner that declines an
+  unsafe/unnecessary action isn't mis-scored as lazy); acting anyway fails.
+- **Pass^k consistency.** The loop runs `k` times (default 5) with absolute
+  isolation between runs. The `AgenticReport` carries `passes/total_runs`, a
+  `FailureTracker` with **distinct** tallies (`infinite_loop_hits` = hit the step
+  cap, `hallucinated_completions` = fake done, `malformed_json_calls` = broken
+  JSON), and a `top_error` headline.
+- **Relative effort, not absolute joules.** `avg_output_tokens_success` is the mean
+  output-token count (`eval_count`) over the **successful** runs only — **n/a**
+  when there are zero successes, never a divide-by-zero. Prompt tokens are
+  deliberately never summed (re-sent history would inflate it and ignore KV-cache
+  reuse). A Q4 model that wanders 1,500 tokens to a result a Q8 finishes in 300 is
+  the signal this exposes — the "faster" quant burning more compute for the same
+  outcome.
 
 ## Custom-eval collections {#custom-evals}
 

@@ -11,7 +11,7 @@ vi.mock("../../../shared/ipc/models/storage", () => ({
 import { invoke } from "@tauri-apps/api/core";
 import { getInstalledModelsWithStats } from "../../../shared/ipc/models/storage";
 import { ModelPicker } from "../components/model-select/ModelPicker";
-import { useWorkspaceStore } from "../state/workspaceStore";
+import { useBackendStore } from "../../../shared/state/backendStore";
 import { useInstalledModelsStore } from "../../models/state/installedModelsStore";
 
 const M = (name: string) => ({
@@ -25,14 +25,14 @@ beforeEach(() => {
   useInstalledModelsStore.setState({
     list: [], status: "idle", error: null, lastRefreshedAt: null,
   });
-  useWorkspaceStore.setState({ ollamaHealthy: true });
+  useBackendStore.setState({ ollamaHealthy: true });
 });
 
 describe("ModelPicker Stop button", () => {
   it("appears only when Ollama is healthy", async () => {
     const { rerender } = render(<ModelPicker value={null} onChange={() => {}} />);
     expect(await screen.findByTestId("ollama-stop-button")).toBeInTheDocument();
-    useWorkspaceStore.setState({ ollamaHealthy: false });
+    useBackendStore.setState({ ollamaHealthy: false });
     rerender(<ModelPicker value={null} onChange={() => {}} />);
     expect(screen.queryByTestId("ollama-stop-button")).toBeNull();
   });
@@ -42,7 +42,7 @@ describe("ModelPicker Stop button", () => {
     fireEvent.click(await screen.findByTestId("ollama-stop-button"));
     await waitFor(() => expect(invoke).toHaveBeenCalledWith("stop_ollama"));
     await waitFor(() =>
-      expect(useWorkspaceStore.getState().ollamaHealthy).toBe(false),
+      expect(useBackendStore.getState().ollamaHealthy).toBe(false),
     );
   });
 });

@@ -8,6 +8,7 @@ export const InferenceParamsSchema = z.object({
   max_tokens: z.number().int().optional(),
   repeat_penalty: z.number().optional(),
   seed: z.number().int().optional(),
+  num_ctx: z.number().int().optional(),
 });
 export type InferenceParams = z.infer<typeof InferenceParamsSchema>;
 
@@ -16,7 +17,10 @@ export const PromptFileSchema = z.object({
   system: z.string().default(""),
   user: z.string().default(""),
   model: z.string().nullable().optional(),
-  params: InferenceParamsSchema.default({}),
+  // Legacy only: prompt files no longer store params (global params are the
+  // single source — see paramsStore). Kept optional so an old file that still
+  // carries a `params` block loads without error; it is never written back.
+  params: InferenceParamsSchema.optional(),
   created_at: z.string(),
   updated_at: z.string(),
   auto_rerun: z.boolean().default(false),

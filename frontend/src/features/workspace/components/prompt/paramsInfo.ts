@@ -30,4 +30,6 @@ export const PARAMS: ParamInfo[] = [
     placeholder: "1.1", tooltip: "Discourage repetition. Above 1 penalizes repeated tokens." },
   { key: "seed", label: "Seed", min: 0, max: 0, step: 1, slider: false, integer: true,
     placeholder: "random", tooltip: "Fixed seed gives reproducible output. Empty = random each run." },
+  { key: "num_ctx", label: "Context window", min: 0, max: 131072, step: 1024, slider: false, integer: true,
+    placeholder: "model default (4096)", tooltip: "Ollama context window (num_ctx). Higher lets the model use more of its window for long prompts, but uses more KV-cache memory. Empty = Ollama's 4096 default. Ollama only — llama.cpp/MLX context is fixed by the server/model." },
 ];

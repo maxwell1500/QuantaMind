@@ -8,9 +8,9 @@ vi.mock("../../hooks/useStopLlamaServer", () => ({ useStopLlamaServer: () => ({ 
 vi.mock("../../hooks/useMlxServer", () => ({ useMlxServer: () => ({ start: vi.fn(), stop: vi.fn(), starting: false, phase: null, error: null }) }));
 
 import { ServerControl } from "../status/ServerControl";
-import { useWorkspaceStore } from "../../state/workspaceStore";
+import { useBackendStore } from "../../../../shared/state/backendStore";
 
-beforeEach(() => useWorkspaceStore.setState({ activeBackend: "ollama", ollamaHealthy: false, llamaHealthy: null }));
+beforeEach(() => useBackendStore.setState({ selectedBackend: "ollama", ollamaHealthy: false, llamaHealthy: null }));
 
 describe("ServerControl (header)", () => {
   it("shows the Ollama Start/Stop when Ollama is active", () => {
@@ -20,14 +20,14 @@ describe("ServerControl (header)", () => {
   });
 
   it("shows the llama.cpp Start/Stop when llama.cpp is active", () => {
-    useWorkspaceStore.setState({ activeBackend: "llama_cpp" });
+    useBackendStore.setState({ selectedBackend: "llama_cpp" });
     render(<ServerControl />);
     expect(screen.getByTestId("llama-start")).toBeInTheDocument();
     expect(screen.queryByTestId("ollama-start")).toBeNull();
   });
 
   it("shows the MLX Start/Stop when MLX is active", () => {
-    useWorkspaceStore.setState({ activeBackend: "mlx", mlxHealthy: false });
+    useBackendStore.setState({ selectedBackend: "mlx", mlxHealthy: false });
     render(<ServerControl />);
     expect(screen.getByTestId("mlx-start")).toBeInTheDocument();
     expect(screen.queryByTestId("llama-start")).toBeNull();

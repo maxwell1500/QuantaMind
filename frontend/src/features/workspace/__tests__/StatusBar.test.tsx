@@ -8,11 +8,13 @@ vi.mock("../../../shared/ipc/core/client", () => ({
 import { checkOllamaHealth } from "../../../shared/ipc/core/client";
 import { StatusBar } from "../components/status/StatusBar";
 import { useWorkspaceStore } from "../state/workspaceStore";
+import { useBackendStore } from "../../../shared/state/backendStore";
 
 describe("StatusBar", () => {
   beforeEach(() => {
     vi.mocked(checkOllamaHealth).mockReset();
-    useWorkspaceStore.setState({ lastRunMetrics: null, activeBackend: "ollama", llamaHealthy: null });
+    useWorkspaceStore.setState({ lastRunMetrics: null });
+    useBackendStore.setState({ selectedBackend: "ollama", llamaHealthy: null });
   });
 
   it("renders 'no run yet' before any run completes", async () => {
@@ -62,7 +64,7 @@ describe("StatusBar", () => {
 
   it("on the llama.cpp backend, names the running model instead of Ollama", async () => {
     vi.mocked(checkOllamaHealth).mockResolvedValue({ available: false, version: null });
-    useWorkspaceStore.setState({ activeBackend: "llama_cpp", llamaHealthy: true });
+    useBackendStore.setState({ selectedBackend: "llama_cpp", llamaHealthy: true });
     render(<StatusBar model="phi3" />);
     const status = await screen.findByLabelText("llama.cpp health");
     expect(status).toHaveTextContent("llama.cpp · running (phi3)");
@@ -72,7 +74,7 @@ describe("StatusBar", () => {
 
   it("on the llama.cpp backend, shows 'not started' when the server is down", async () => {
     vi.mocked(checkOllamaHealth).mockResolvedValue({ available: false, version: null });
-    useWorkspaceStore.setState({ activeBackend: "llama_cpp", llamaHealthy: false });
+    useBackendStore.setState({ selectedBackend: "llama_cpp", llamaHealthy: false });
     render(<StatusBar model="phi3" />);
     const status = await screen.findByLabelText("llama.cpp health");
     expect(status).toHaveTextContent("llama.cpp · not started");
@@ -105,17 +107,17 @@ describe("StatusBar", () => {
     expect(onClick).toHaveBeenCalledTimes(1);
   });
 
-  it("writes ollamaHealthy into workspaceStore on each health tick", async () => {
-    useWorkspaceStore.setState({ ollamaHealthy: null });
+  it("writes ollamaHealthy into backendStore on each health tick", async () => {
+    useBackendStore.setState({ ollamaHealthy: null });
     vi.mocked(checkOllamaHealth).mockResolvedValue({ available: true, version: "0.24.0" });
     render(<StatusBar model={null} />);
-    await waitFor(() => expect(useWorkspaceStore.getState().ollamaHealthy).toBe(true));
+    await waitFor(() => expect(useBackendStore.getState().ollamaHealthy).toBe(true));
   });
 
   it("writes false on health failure (catch path)", async () => {
-    useWorkspaceStore.setState({ ollamaHealthy: null });
+    useBackendStore.setState({ ollamaHealthy: null });
     vi.mocked(checkOllamaHealth).mockRejectedValue(new Error("connect refused"));
     render(<StatusBar model={null} />);
-    await waitFor(() => expect(useWorkspaceStore.getState().ollamaHealthy).toBe(false));
+    await waitFor(() => expect(useBackendStore.getState().ollamaHealthy).toBe(false));
   });
 });

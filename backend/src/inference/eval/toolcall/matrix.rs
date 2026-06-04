@@ -71,6 +71,9 @@ pub fn summaries(report: &MatrixReport, ts: &str) -> Vec<RunSummary> {
                 abstain_acc: r.abstain_acc,
                 composite: r.composite,
                 n: r.n,
+                pass_k: None,
+                agentic_avg_steps: None,
+                effort: None,
             })
         })
         .collect()

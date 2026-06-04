@@ -1,7 +1,7 @@
 import { useCallback, useState } from "react";
 import { stopOllama } from "../../../shared/ipc/models/ollama_start";
 import { formatIpcError } from "../../../shared/ipc/core/error";
-import { useWorkspaceStore } from "../state/workspaceStore";
+import { useBackendStore } from "../../../shared/state/backendStore";
 
 export type StopOllamaStatus = "idle" | "stopping" | "error";
 
@@ -14,7 +14,7 @@ export function useStopOllama() {
     setStatus("stopping");
     try {
       await stopOllama();
-      useWorkspaceStore.getState().setOllamaHealthy(false);
+      useBackendStore.getState().setOllamaHealthy(false);
       setStatus("idle");
     } catch (e) {
       setError(formatIpcError(e));

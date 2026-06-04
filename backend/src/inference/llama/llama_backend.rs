@@ -27,6 +27,7 @@ impl InferenceBackend for LlamaCppBackend {
     ) -> AppResult<GenerateStats> {
         stream_generate(
             &self.endpoint,
+            &spec.model,
             &spec.prompt,
             spec.system.as_deref(),
             spec.options.clone(),

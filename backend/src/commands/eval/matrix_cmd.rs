@@ -32,7 +32,7 @@ pub async fn run_collection_matrix(
         // Keep the report for the matrix; cache the full traces (best-effort) so a
         // cell drill-down shows them without re-running. A down model is captured
         // as that column's error and never aborts the batch.
-        let res = run_eval_traced(target.backend, &endpoint_for(target.backend), &target.model, &tasks)
+        let res = run_eval_traced(target.backend, &endpoint_for(target.backend), &target.model, &tasks, None)
             .await
             .map(|(report, traces)| {
                 if let Some(dir) = &trace_dir {
