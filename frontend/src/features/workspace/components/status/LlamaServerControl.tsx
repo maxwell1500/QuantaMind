@@ -1,16 +1,14 @@
-import { useWorkspaceStore } from "../../state/workspaceStore";
-import { useInstalledModelsStore } from "../../../models/state/installedModelsStore";
-import { useCompareStore } from "../../../compare/state/compareStore";
+import { useBackendStore } from "../../../../shared/state/backendStore";
+import { useSelectedModelStore } from "../../../../shared/state/selectedModelStore";
 import { useStartLlamaServer } from "../../hooks/useStartLlamaServer";
 import { useStopLlamaServer } from "../../hooks/useStopLlamaServer";
 
 /// Manual Start/Stop for the llama-server sidecar. Start launches the server on
-/// the selected llama.cpp model's GGUF (one model at a time); Stop kills it.
+/// the global model's GGUF when it's a llama.cpp model (one model at a time); Stop kills it.
 export function LlamaServerControl() {
-  const healthy = useWorkspaceStore((s) => s.llamaHealthy);
-  const selectedName = useCompareStore((s) => s.selectedModels[0]?.name ?? null);
-  const model = useInstalledModelsStore((s) =>
-    s.list.find((m) => m.name === selectedName && m.backend === "llama_cpp"),
+  const healthy = useBackendStore((s) => s.llamaHealthy);
+  const model = useSelectedModelStore((s) =>
+    s.selectedModels.find((m) => m.backend === "llama_cpp") ?? null,
   );
   const { start, status: startStatus, error: startError } = useStartLlamaServer();
   const { stop, status: stopStatus } = useStopLlamaServer();

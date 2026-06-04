@@ -7,13 +7,13 @@ vi.mock("@monaco-editor/react", () => ({ default: () => <textarea data-testid="p
 
 import { Workspace } from "../Workspace";
 import { useWorkspacesStore } from "../../../workspaces/state/workspaceStore";
-import { useWorkspaceStore } from "../../state/workspaceStore";
-import { useCompareStore } from "../../../compare/state/compareStore";
+import { useBackendStore } from "../../../../shared/state/backendStore";
+import { useSelectedModelStore } from "../../../../shared/state/selectedModelStore";
 
 beforeEach(() => {
   vi.clearAllMocks();
-  useWorkspaceStore.setState({ activeBackend: "ollama", ollamaHealthy: null });
-  useCompareStore.getState().reset();
+  useBackendStore.setState({ selectedBackend: "ollama", ollamaHealthy: null });
+  useSelectedModelStore.setState({ selectedModels: [] });
   useWorkspacesStore.setState({
     root: "/ws", tree: [], currentPath: "/ws/a.quantamind.yaml",
     current: { name: "a", system: "", user: "hi", model: null, params: {}, created_at: "t", updated_at: "t", auto_rerun: false },
@@ -21,55 +21,40 @@ beforeEach(() => {
   });
 });
 
-describe("Workspace branches by selection count", () => {
-  it("one model → the single-run surface, no compare strategy picker", () => {
-    useCompareStore.getState().setSelectedModels([{ name: "llama3.2:1b", size_bytes: 1 }]);
+describe("Workspace (adaptive run surface)", () => {
+  it("one global model → the single-run surface, no compare strategy picker", () => {
+    useSelectedModelStore.setState({ selectedModels: [{ name: "llama3.2:1b", backend: "ollama", size_bytes: 1 }] });
     render(<Workspace />);
     expect(screen.getByTestId("run-status")).toBeTruthy();
     expect(screen.queryByTestId("run-strategy-picker")).toBeNull();
     expect(screen.queryByTestId("multi-toolbar")).toBeNull();
   });
 
-  it("with no model selected, Run is disabled", () => {
+  it("2+ Ollama models → the compare surface (strategy picker + multi run), no single-run", () => {
+    useSelectedModelStore.setState({ selectedModels: [
+      { name: "llama3.2:1b", backend: "ollama", size_bytes: 1 },
+      { name: "mistral:7b", backend: "ollama", size_bytes: 1 },
+    ] });
     render(<Workspace />);
-    expect(screen.getByTestId("run-status")).toBeTruthy();
+    expect(screen.getByTestId("run-strategy-picker")).toBeTruthy();
+    expect(screen.getByTestId("multi-toolbar")).toBeTruthy();
+    expect(screen.queryByTestId("run-status")).toBeNull();
+  });
+
+  it("with no global model, Run is disabled and a pick-a-model hint shows", () => {
+    render(<Workspace />);
+    expect(screen.getByTestId("no-model-hint")).toBeInTheDocument();
     expect((screen.getByRole("button", { name: /^run$/i }) as HTMLButtonElement).disabled).toBe(true);
   });
 
   it("MLX: Run is disabled until the MLX server is healthy", () => {
-    useWorkspaceStore.setState({ activeBackend: "mlx", mlxHealthy: false });
-    useCompareStore.getState().setSelectedModels([{ name: "stub-mlx", size_bytes: 0 }]);
+    useBackendStore.setState({ selectedBackend: "mlx", mlxHealthy: false });
+    useSelectedModelStore.setState({ selectedModels: [{ name: "stub-mlx", backend: "mlx", size_bytes: 0 }] });
     const { rerender } = render(<Workspace />);
     const runBtn = () => screen.getByRole("button", { name: /^run$/i }) as HTMLButtonElement;
     expect(runBtn().disabled).toBe(true);
-    act(() => useWorkspaceStore.setState({ mlxHealthy: true }));
+    act(() => useBackendStore.setState({ mlxHealthy: true }));
     rerender(<Workspace />);
     expect(runBtn().disabled).toBe(false);
-  });
-
-  it("two models → the compare surface with a sequential/parallel picker", () => {
-    useCompareStore.getState().setSelectedModels([
-      { name: "llama3.2:1b", size_bytes: 1 }, { name: "mistral:7b", size_bytes: 1 },
-    ]);
-    render(<Workspace />);
-    expect(screen.getByTestId("run-strategy-picker")).toBeTruthy();
-    expect(screen.getByTestId("multi-toolbar")).toBeTruthy();
-    // Single-run surface is not mounted in compare mode.
-    expect(screen.queryByTestId("run-status")).toBeNull();
-  });
-
-  it("shows the params UI once: shared panel when 'same for all', cards otherwise", () => {
-    useCompareStore.getState().setSelectedModels([
-      { name: "llama3.2:1b", size_bytes: 1 }, { name: "mistral:7b", size_bytes: 1 },
-    ]);
-    const { rerender } = render(<Workspace />);
-    // Default (shared): the shared panel shows, no per-model cards.
-    expect(screen.getByTestId("params-panel")).toBeInTheDocument();
-    expect(screen.queryByTestId("model-params-llama3.2:1b")).toBeNull();
-    // Turn the toggle off: per-model cards replace the shared panel (no duplication).
-    act(() => useCompareStore.getState().setUseSharedParams(false));
-    rerender(<Workspace />);
-    expect(screen.queryByTestId("params-panel")).toBeNull();
-    expect(screen.getByTestId("model-params-llama3.2:1b")).toBeInTheDocument();
   });
 });

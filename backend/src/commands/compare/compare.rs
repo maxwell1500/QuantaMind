@@ -41,6 +41,7 @@ pub async fn run_compare(
     params: Option<InferenceParams>,
     per_model_params: Option<HashMap<String, InferenceParams>>,
     backends: Option<Vec<BackendKind>>,
+    keep_alive: Option<i32>,
 ) -> Result<(), AppError> {
     validate(&models, &prompt)?;
     settings.ensure_loaded(&app)?;
@@ -57,10 +58,12 @@ pub async fn run_compare(
     });
     let sink: Arc<dyn CompareSink> = Arc::new(TauriCompareSink::new(app));
     let system_trim = system.as_deref().map(str::trim).filter(|s| !s.is_empty());
-    let keep_alive = match strategy {
+    // The "keep model loaded" header toggle decides residency; fall back to the
+    // strategy default (Sequential unloads between models) when it isn't sent.
+    let keep_alive = keep_alive.or(match strategy {
         Strategy::Sequential => Some(0),
         Strategy::Parallel => None,
-    };
+    });
     match strategy {
         Strategy::Sequential =>
             run_sequential(sink, state.inner(), DEFAULT_OLLAMA, rows, &prompt, system_trim, keep_alive).await,

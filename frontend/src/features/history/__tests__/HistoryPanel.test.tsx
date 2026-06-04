@@ -15,13 +15,16 @@ vi.mock("../../../shared/ipc/workspace/history", () => ({
 import { HistoryPanel } from "../components/HistoryPanel";
 import { useHistoryStore } from "../state/historyStore";
 import { useWorkspacesStore } from "../../workspaces/state/workspaceStore";
-import { useCompareStore } from "../../compare/state/compareStore";
+import { useParamsStore } from "../../../shared/state/paramsStore";
+import { useSelectedModelStore } from "../../../shared/state/selectedModelStore";
 
 beforeEach(() => {
   useHistoryStore.setState({ open: false, entries: [] });
+  useParamsStore.setState({ globalParams: {} });
+  useSelectedModelStore.setState({ selectedModels: [] });
   useWorkspacesStore.setState({
     root: "/ws", tree: [], currentPath: "/ws/a.quantamind.yaml",
-    current: { name: "a", system: "", user: "", model: null, params: {}, created_at: "t", updated_at: "t", auto_rerun: false },
+    current: { name: "a", system: "", user: "", model: null, created_at: "t", updated_at: "t", auto_rerun: false },
     dirty: false,
   });
   vi.clearAllMocks();
@@ -40,13 +43,13 @@ describe("HistoryPanel", () => {
     expect(screen.getByText(/llama3 · 120 chars · 30 tokens/)).toBeTruthy();
   });
 
-  it("clicking an entry restores inputs+model and closes the drawer", async () => {
+  it("restores inputs into the draft, params into globalParams, model into the global selection", async () => {
     useHistoryStore.setState({ open: true });
     render(<HistoryPanel />);
     fireEvent.click(await screen.findByTestId("history-row"));
     expect(useWorkspacesStore.getState().current?.user).toBe("Explain CRDTs in depth");
-    expect(useWorkspacesStore.getState().current?.params.temperature).toBe(0.4);
-    expect(useCompareStore.getState().selectedModels[0]?.name).toBe("llama3");
+    expect(useParamsStore.getState().globalParams.temperature).toBe(0.4);
+    expect(useSelectedModelStore.getState().selectedModels[0]?.name).toBe("llama3");
     expect(useHistoryStore.getState().open).toBe(false);
   });
 

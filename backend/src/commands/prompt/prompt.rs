@@ -35,6 +35,7 @@ pub async fn run_prompt(
     system: Option<String>,
     params: Option<InferenceParams>,
     backend: Option<BackendKind>,
+    keep_alive: Option<i32>,
 ) -> Result<(), AppError> {
     let backend = backend.unwrap_or_default();
     settings.ensure_loaded(&app)?;
@@ -69,7 +70,7 @@ pub async fn run_prompt(
     let ep = if backend == BackendKind::Mlx { mlx_ep.as_str() } else { endpoint::default_for(backend) };
     let result = run_prompt_inner(
         backend, ep, &model, &prompt, system_trim,
-        Some(options), None, token.clone(), handler,
+        Some(options), keep_alive, token.clone(), handler,
     ).await;
 
     *state.current.lock_recover() = None;

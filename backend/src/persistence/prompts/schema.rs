@@ -14,6 +14,8 @@ pub struct InferenceParams {
     pub repeat_penalty: Option<f32>,
     #[serde(skip_serializing_if = "Option::is_none", default)]
     pub seed: Option<i64>,
+    #[serde(skip_serializing_if = "Option::is_none", default)]
+    pub num_ctx: Option<u32>,
 }
 
 #[derive(Serialize, Deserialize, PartialEq, Debug, Clone)]
@@ -25,7 +27,10 @@ pub struct PromptFile {
     pub user: String,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub model: Option<String>,
-    #[serde(default)]
+    // Legacy only: prompt files no longer persist params (global params are the
+    // single source — see the frontend paramsStore). Read-tolerant so an old
+    // file with a `params` block still loads; never written back.
+    #[serde(default, skip_serializing)]
     pub params: InferenceParams,
     pub created_at: String,
     pub updated_at: String,

@@ -1,7 +1,7 @@
 import { useCallback, useState } from "react";
 import { stopLlamaServer } from "../../../shared/ipc/models/llama_start";
 import { formatIpcError } from "../../../shared/ipc/core/error";
-import { useWorkspaceStore } from "../state/workspaceStore";
+import { useBackendStore } from "../../../shared/state/backendStore";
 
 export type StopLlamaStatus = "idle" | "stopping" | "error";
 
@@ -14,7 +14,7 @@ export function useStopLlamaServer() {
     setStatus("stopping");
     try {
       await stopLlamaServer();
-      useWorkspaceStore.getState().setLlamaHealthy(false);
+      useBackendStore.getState().setLlamaHealthy(false);
       setStatus("idle");
     } catch (e) {
       setError(formatIpcError(e));

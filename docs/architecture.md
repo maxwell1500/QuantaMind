@@ -93,6 +93,17 @@ HTTP to a local Ollama server.
    Hooks may write to the store at completion; components must not read both
    the hook's local state and the store for the same piece of data — pick one
    source per piece of data.
+7. **App-shell selection is global state in `shared/state/`.** The backend
+   (`backendStore`), the model selection (`selectedModelStore`), and the inference
+   parameters (`paramsStore`) define "what am I running and how" for the whole
+   app, surfaced in the global header. They are not owned by any feature slice —
+   a feature must not own state every other feature reads. The model selection is
+   an array: Ollama is multi-select (2+ → a compare), llama.cpp/MLX single. The
+   model list is filtered to the selected backend; switching backend reconciles
+   the selection imperatively inside `setSelectedBackend` (trims off-backend
+   models), never via a cross-store subscription. Every page reads this global
+   selection — there is no per-page model picker (Eval keeps its own batch-target
+   multi-select, filtered to the backend).
 
 Update this section when a new top-level module is added, a boundary rule
 changes, or the IPC contract gains a new category of message.

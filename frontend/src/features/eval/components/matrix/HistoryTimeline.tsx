@@ -11,30 +11,34 @@ const PW = W - ML - MR;
 const PH = H - MT - MB;
 const COLORS = ["#60a5fa", "#f472b6", "#4ade80", "#fbbf24", "#a78bfa", "#22d3ee"];
 
+type MetricKind = "composite" | "Pass^k";
+
 interface Point {
   model: string;
   i: number;
   v: number;
   ts: string;
+  kind: MetricKind;
   x: number;
   y: number;
   color: string;
 }
 
-/// Group history into one composite-over-runs series per model, in record order.
-function seriesByModel(history: RunSummary[]): Array<{ model: string; points: Array<{ v: number; ts: string }> }> {
+/// Group history into one score-over-runs series per model, in record order.
+function seriesByModel(history: RunSummary[]): Array<{ model: string; points: Array<{ v: number; ts: string; kind: MetricKind }> }> {
   const order: string[] = [];
-  const byModel = new Map<string, Array<{ v: number; ts: string }>>();
+  const byModel = new Map<string, Array<{ v: number; ts: string; kind: MetricKind }>>();
   for (const h of history) {
     // Single-turn runs plot their composite; agentic-only runs (no composite)
     // plot their Pass^k rate so batch runs still show on the timeline.
+    const kind: MetricKind = h.composite != null ? "composite" : "Pass^k";
     const v = h.composite ?? h.pass_k ?? null;
     if (v == null) continue;
     if (!byModel.has(h.model)) {
       byModel.set(h.model, []);
       order.push(h.model);
     }
-    byModel.get(h.model)!.push({ v, ts: h.ts });
+    byModel.get(h.model)!.push({ v, ts: h.ts, kind });
   }
   return order.map((model) => ({ model, points: byModel.get(model)! }));
 }
@@ -59,7 +63,7 @@ export function HistoryTimeline({ history }: { history: RunSummary[] }) {
   const yFor = (v: number) => MT + (1 - v) * PH;
 
   const points: Point[][] = series.map((s, si) =>
-    s.points.map((p, i) => ({ model: s.model, i, v: p.v, ts: p.ts, x: xFor(i), y: yFor(p.v), color: COLORS[si % COLORS.length] })),
+    s.points.map((p, i) => ({ model: s.model, i, v: p.v, ts: p.ts, kind: p.kind, x: xFor(i), y: yFor(p.v), color: COLORS[si % COLORS.length] })),
   );
 
   // Clamp the tooltip box inside the plot.
@@ -70,7 +74,7 @@ export function HistoryTimeline({ history }: { history: RunSummary[] }) {
 
   return (
     <div style={{ padding: "12px 20px" }} data-testid="eval-history-timeline">
-      <svg viewBox={`0 0 ${W} ${H}`} width="100%" height={H} role="img" aria-label="Composite score over runs">
+      <svg viewBox={`0 0 ${W} ${H}`} width="100%" height={H} role="img" aria-label="Score (composite or Pass^k) over runs">
         {/* gridlines + y ticks */}
         {[0, 0.5, 1].map((g) => (
           <g key={g}>
@@ -81,7 +85,7 @@ export function HistoryTimeline({ history }: { history: RunSummary[] }) {
 
         {/* axis labels (what the axes mean) */}
         <text transform={`translate(12 ${MT + PH / 2}) rotate(-90)`} textAnchor="middle" fill="#94a3b8" fontSize={10} fontFamily="Inter,sans-serif">
-          Composite score (%)
+          Score (%) — composite or Pass^k
         </text>
         <text x={ML + PW / 2} y={H - 8} textAnchor="middle" fill="#94a3b8" fontSize={10} fontFamily="Inter,sans-serif">
           Run # — oldest → newest
@@ -117,7 +121,7 @@ export function HistoryTimeline({ history }: { history: RunSummary[] }) {
             <rect x={ttX} y={ttY} width={TT_W} height={TT_H} rx={6} fill="#0f1320" stroke="rgba(255,255,255,0.15)" />
             <text x={ttX + 9} y={ttY + 15} fill="#cbd5e1" fontSize={10} fontWeight={600} fontFamily="Inter,sans-serif">{hover.model}</text>
             <text x={ttX + 9} y={ttY + 29} fill="#93c5fd" fontSize={10} fontFamily="Inter,sans-serif">
-              Run {hover.i + 1}: {Math.round(hover.v * 100)}% composite
+              Run {hover.i + 1}: {Math.round(hover.v * 100)}% {hover.kind}
             </text>
           </g>
         )}

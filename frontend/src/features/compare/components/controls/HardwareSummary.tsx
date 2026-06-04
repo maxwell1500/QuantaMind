@@ -1,9 +1,10 @@
 import { useEffect, useState } from "react";
-import { getHardwareSnapshot } from "../../../shared/ipc/compare/hardware";
-import { formatIpcError } from "../../../shared/ipc/core/error";
-import { formatBytes } from "../../../shared/format/bytes";
-import { useCompareStore } from "../state/compareStore";
-import { assessStrategies, type StrategyId, type Verdict } from "../state/strategy";
+import { getHardwareSnapshot } from "../../../../shared/ipc/compare/hardware";
+import { formatIpcError } from "../../../../shared/ipc/core/error";
+import { formatBytes } from "../../../../shared/format/bytes";
+import { useCompareStore } from "../../state/compareStore";
+import { useSelectedModelStore } from "../../../../shared/state/selectedModelStore";
+import { assessStrategies, type StrategyId, type Verdict } from "../../state/strategy";
 
 const STRATEGY_LABEL: Record<StrategyId, string> = {
   sequential: "Sequential",
@@ -21,7 +22,7 @@ const VERDICT_CLASS: Record<Verdict, string> = {
 };
 
 export function HardwareSummary() {
-  const selected = useCompareStore((s) => s.selectedModels);
+  const selected = useSelectedModelStore((s) => s.selectedModels);
   const snapshot = useCompareStore((s) => s.hardwareSnapshot);
   const setSnapshot = useCompareStore((s) => s.setHardwareSnapshot);
   const [status, setStatus] = useState<"loading" | "ready" | "error">("loading");

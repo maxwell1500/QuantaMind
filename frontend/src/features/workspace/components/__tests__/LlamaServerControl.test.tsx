@@ -8,26 +8,20 @@ vi.mock("../../../../shared/ipc/models/llama_start", () => ({
 
 import { startLlamaServer } from "../../../../shared/ipc/models/llama_start";
 import { LlamaServerControl } from "../status/LlamaServerControl";
-import { useWorkspaceStore } from "../../state/workspaceStore";
-import { useCompareStore } from "../../../compare/state/compareStore";
-import { useInstalledModelsStore } from "../../../models/state/installedModelsStore";
-
-const llama = (name: string, path?: string) => ({
-  name, size_bytes: 1, modified_at: "", family: "x", parameter_size: "",
-  quantization: "Q4", backend: "llama_cpp" as const, path,
-});
+import { useBackendStore } from "../../../../shared/state/backendStore";
+import { useSelectedModelStore } from "../../../../shared/state/selectedModelStore";
 
 beforeEach(() => {
   vi.clearAllMocks();
-  useWorkspaceStore.setState({ llamaHealthy: null });
-  useCompareStore.getState().reset();
-  useCompareStore.getState().setSelectedModels([{ name: "phi3", size_bytes: 1 }]);
-  useInstalledModelsStore.setState({ list: [llama("phi3", "/g/phi3.gguf")], status: "ready", error: null });
+  useBackendStore.setState({ llamaHealthy: null });
+  useSelectedModelStore.setState({
+    selectedModels: [{ name: "phi3", backend: "llama_cpp", size_bytes: 1, path: "/g/phi3.gguf" }],
+  });
 });
 
 describe("LlamaServerControl", () => {
   it("Start is disabled until a llama.cpp model with a path is selected", () => {
-    useCompareStore.getState().setSelectedModels([]);
+    useSelectedModelStore.setState({ selectedModels: [] });
     render(<LlamaServerControl />);
     expect(screen.getByTestId("llama-start")).toBeDisabled();
   });
@@ -51,6 +45,6 @@ describe("LlamaServerControl", () => {
     vi.mocked(startLlamaServer).mockResolvedValue({ status: "started", pid: 1, port: 8080 });
     render(<LlamaServerControl />);
     fireEvent.click(screen.getByTestId("llama-start"));
-    await waitFor(() => expect(useWorkspaceStore.getState().llamaHealthy).toBe(true));
+    await waitFor(() => expect(useBackendStore.getState().llamaHealthy).toBe(true));
   });
 });

@@ -11,11 +11,11 @@ vi.mock("../../../../shared/ipc/core/client", () => ({ checkMlxHealth: vi.fn() }
 import { startMlxServer, mlxServerStatus } from "../../../../shared/ipc/models/mlx_start";
 import { checkMlxHealth } from "../../../../shared/ipc/core/client";
 import { useMlxServer } from "../useMlxServer";
-import { useWorkspaceStore } from "../../state/workspaceStore";
+import { useBackendStore } from "../../../../shared/state/backendStore";
 
 beforeEach(() => {
   vi.clearAllMocks();
-  useWorkspaceStore.setState({ mlxHealthy: null });
+  useBackendStore.setState({ mlxHealthy: null });
   vi.mocked(checkMlxHealth).mockResolvedValue({ available: false, version: null });
 });
 
@@ -28,7 +28,7 @@ describe("useMlxServer", () => {
     });
     expect(result.current.error).toContain("mlx_lm.server not found");
     expect(result.current.starting).toBe(false);
-    expect(useWorkspaceStore.getState().mlxHealthy).toBe(false);
+    expect(useBackendStore.getState().mlxHealthy).toBe(false);
   });
 
   it("goes healthy once the health probe reports available", async () => {
@@ -38,7 +38,7 @@ describe("useMlxServer", () => {
     await act(async () => {
       await result.current.start("repo");
     });
-    await waitFor(() => expect(useWorkspaceStore.getState().mlxHealthy).toBe(true));
+    await waitFor(() => expect(useBackendStore.getState().mlxHealthy).toBe(true));
     expect(result.current.starting).toBe(false);
   });
 
@@ -54,6 +54,6 @@ describe("useMlxServer", () => {
       await result.current.start("repo");
     });
     await waitFor(() => expect(result.current.error).toContain("ModuleNotFoundError"));
-    expect(useWorkspaceStore.getState().mlxHealthy).toBe(false);
+    expect(useBackendStore.getState().mlxHealthy).toBe(false);
   });
 });

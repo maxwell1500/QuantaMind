@@ -1,6 +1,16 @@
 import { useBatchStore } from "../../state/batchStore";
 import { useInstalledModelsStore } from "../../../models/state/installedModelsStore";
 import { toScoreRows } from "./scoreRows";
+import { InfoButton } from "../../../../shared/ui/InfoButton";
+import { TOOL_HELP, metricTitle } from "../../help";
+
+/// Native title= tooltip for each metric column header (Model/Quant get none).
+const COLUMN_HELP: Record<string, string | undefined> = {
+  "Pass^k": metricTitle("passK"),
+  "Avg Steps": metricTitle("avgSteps"),
+  Effort: metricTitle("effort"),
+  "Top Error": metricTitle("topError"),
+};
 
 /// The bottom-drawer LLM Performance Matrix: one row per targeted model
 /// (Pass^k · Avg Steps · Effort · Top Error) from the completed batch. Clicking a
@@ -25,6 +35,9 @@ export function PerformanceMatrix({
         <span style={{ fontSize: 12, color: "#64748b", fontFamily: "Inter, sans-serif" }}>
           &nbsp;(per-model summary — click a row to inspect that model)
         </span>
+        <span style={{ marginLeft: "auto" }}>
+          <InfoButton {...TOOL_HELP.performanceMatrix} testId="performance-matrix" />
+        </span>
       </div>
 
       {rows.length === 0 ? (
@@ -35,9 +48,12 @@ export function PerformanceMatrix({
         <table style={{ width: "100%", borderCollapse: "collapse" }} data-testid="performance-matrix-table">
           <thead>
             <tr style={{ borderBottom: "1px solid rgba(255,255,255,0.08)" }}>
-              {["Model", "Quant", "Pass^k", "Avg Steps", "Effort", "Top Error"].map((h) => (
-                <th key={h} style={th}>{h}</th>
-              ))}
+              {["Model", "Quant", "Pass^k", "Avg Steps", "Effort", "Top Error"].map((h) => {
+                const tip = COLUMN_HELP[h];
+                return (
+                  <th key={h} style={th} title={tip}>{h}</th>
+                );
+              })}
             </tr>
           </thead>
           <tbody>

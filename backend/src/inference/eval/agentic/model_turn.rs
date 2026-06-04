@@ -1,6 +1,7 @@
 use crate::errors::AppResult;
 use crate::inference::backend::backend::InferenceBackend;
 use crate::inference::backend::backend_kind::BackendKind;
+use crate::inference::generate::generate_options::GenerateOptions;
 use crate::inference::generate::generate_spec::GenerateSpec;
 use crate::inference::generate::generate_stats::GenerateStats;
 use crate::inference::llama::llama_backend::LlamaCppBackend;
@@ -25,6 +26,11 @@ pub struct BackendTurn {
     pub endpoint: String,
     pub model: String,
     pub cancel: CancellationToken,
+    /// Global inference params (from the header) applied to every eval turn.
+    /// `None` runs at backend defaults.
+    pub options: Option<GenerateOptions>,
+    /// Ollama keep_alive (from the header's "keep model loaded" toggle).
+    pub keep_alive: Option<i32>,
 }
 
 impl ModelTurn for BackendTurn {
@@ -34,8 +40,14 @@ impl ModelTurn for BackendTurn {
         let cancel = self.cancel.clone();
         // The agentic loop builds its spec without a model name (it only knows the
         // `ModelTurn` seam). Inject our own so Ollama — which sends `spec.model` in
-        // the request — targets the right model instead of an empty name.
-        let spec = GenerateSpec { model: self.model.clone(), ..spec.clone() };
+        // the request — targets the right model instead of an empty name. Apply the
+        // global eval params too (prefer them; fall back to whatever the spec set).
+        let spec = GenerateSpec {
+            model: self.model.clone(),
+            options: self.options.clone().or_else(|| spec.options.clone()),
+            keep_alive: self.keep_alive.or(spec.keep_alive),
+            ..spec.clone()
+        };
         let stats = match self.backend {
             BackendKind::Ollama => OllamaBackend::new(self.endpoint.clone()).generate(&spec, cancel, push).await?,
             BackendKind::LlamaCpp => LlamaCppBackend::new(self.endpoint.clone()).generate(&spec, cancel, push).await?,

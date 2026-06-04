@@ -22,8 +22,8 @@ fn already_running_serializes_with_status_tag() {
 
 #[test]
 fn started_serializes_with_pid_and_port() {
-    let json = serde_json::to_string(&LlamaStartResult::Started { pid: 42, port: 8080 }).unwrap();
-    assert_eq!(json, r#"{"status":"started","pid":42,"port":8080}"#);
+    let json = serde_json::to_string(&LlamaStartResult::Started { pid: 42, port: 8081 }).unwrap();
+    assert_eq!(json, r#"{"status":"started","pid":42,"port":8081}"#);
 }
 
 #[test]

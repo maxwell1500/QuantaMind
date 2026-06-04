@@ -2,6 +2,7 @@ import { useEffect, useState } from "react";
 import { checkOllamaHealth } from "../../../../shared/ipc/core/client";
 import type { HealthStatus } from "../../../../shared/ipc/core/types";
 import { useWorkspaceStore } from "../../state/workspaceStore";
+import { useBackendStore } from "../../../../shared/state/backendStore";
 import { formatMetrics } from "../../format";
 import { backendStatus } from "./backendStatus";
 
@@ -14,10 +15,10 @@ type Props = {
 
 export function StatusBar({ model, onModelClick }: Props) {
   const metrics = useWorkspaceStore((s) => s.lastRunMetrics);
-  const setOllamaHealthy = useWorkspaceStore((s) => s.setOllamaHealthy);
-  const activeBackend = useWorkspaceStore((s) => s.activeBackend);
-  const llamaHealthy = useWorkspaceStore((s) => s.llamaHealthy);
-  const mlxHealthy = useWorkspaceStore((s) => s.mlxHealthy);
+  const setOllamaHealthy = useBackendStore((s) => s.setOllamaHealthy);
+  const activeBackend = useBackendStore((s) => s.selectedBackend);
+  const llamaHealthy = useBackendStore((s) => s.llamaHealthy);
+  const mlxHealthy = useBackendStore((s) => s.mlxHealthy);
   const [health, setHealth] = useState<HealthStatus | null>(null);
 
   useEffect(() => {

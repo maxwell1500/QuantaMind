@@ -1,4 +1,4 @@
-import { useWorkspaceStore } from "../../state/workspaceStore";
+import { useBackendStore } from "../../../../shared/state/backendStore";
 import { useStopOllama } from "../../hooks/useStopOllama";
 import { useStartOllama } from "../../hooks/useStartOllama";
 
@@ -6,7 +6,7 @@ import { useStartOllama } from "../../hooks/useStartOllama";
 /// server is up and Start when it's down. Detailed install/error recovery
 /// stays in the model-area empty state.
 export function OllamaControl() {
-  const healthy = useWorkspaceStore((s) => s.ollamaHealthy);
+  const healthy = useBackendStore((s) => s.ollamaHealthy);
   const { stop, status: stopStatus } = useStopOllama();
   const { start, status: startStatus } = useStartOllama();
 

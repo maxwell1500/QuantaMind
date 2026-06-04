@@ -4,6 +4,7 @@ import { BackendKindSchema } from "../models/storage";
 import { ToolCallReportSchema, TraceResultSchema } from "./toolcall";
 import type { ModelTarget } from "./matrix";
 import type { ToolTask } from "./registry";
+import type { InferenceParams } from "../workspace/prompts";
 
 export const EVENT_BATCH_PROGRESS = "batch-progress";
 export const EVENT_AGENTIC_STEP = "agentic-step";
@@ -114,9 +115,11 @@ export async function runBatchEval(
   tasks: ToolTask[],
   k?: number,
   maxSteps?: number,
+  params?: InferenceParams,
+  keepAlive?: number,
 ): Promise<BatchReport> {
   return BatchReportSchema.parse(
-    await invoke("run_batch_eval", { collectionId, targets, tasks, k, maxSteps }),
+    await invoke("run_batch_eval", { collectionId, targets, tasks, k, maxSteps, params, keepAlive }),
   );
 }
 

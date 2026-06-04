@@ -50,3 +50,24 @@ impl GenerateChunk {
         }
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn keep_alive_serializes_when_set_and_is_omitted_when_none() {
+        let with = GenerateRequest {
+            model: "m", prompt: "p", system: None, options: None,
+            keep_alive: Some(-1), stream: true,
+        };
+        let json = serde_json::to_string(&with).unwrap();
+        assert!(json.contains("\"keep_alive\":-1"), "{json}");
+
+        let without = GenerateRequest {
+            model: "m", prompt: "p", system: None, options: None,
+            keep_alive: None, stream: true,
+        };
+        assert!(!serde_json::to_string(&without).unwrap().contains("keep_alive"));
+    }
+}

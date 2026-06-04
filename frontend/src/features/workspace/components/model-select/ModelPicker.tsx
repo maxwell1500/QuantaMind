@@ -3,7 +3,7 @@ import { useInstalledModelsStore } from "../../../models/state/installedModelsSt
 import { isEmbeddingModel } from "../../../../shared/models/classify";
 import { dedupeByDigest } from "../../../../shared/models/dedupeDigest";
 import { modelLabel } from "../../../../shared/models/modelLabel";
-import { useWorkspaceStore } from "../../state/workspaceStore";
+import { useBackendStore } from "../../../../shared/state/backendStore";
 import { useNavStore } from "../../../../shared/state/navStore";
 import { ModelTemperaturePopover } from "./ModelTemperaturePopover";
 import { OllamaEmptyState } from "../status/OllamaEmptyState";
@@ -20,7 +20,7 @@ export function ModelPicker({ value, onChange }: Props) {
   const status = useInstalledModelsStore((s) => s.status);
   const error = useInstalledModelsStore((s) => s.error);
   const refresh = useInstalledModelsStore((s) => s.refresh);
-  const ollamaHealthy = useWorkspaceStore((s) => s.ollamaHealthy);
+  const ollamaHealthy = useBackendStore((s) => s.ollamaHealthy);
   const { status: stopStatus, stop } = useStopOllama();
 
   useEffect(() => {

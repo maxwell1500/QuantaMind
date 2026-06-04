@@ -10,10 +10,18 @@ import { ModelTimeline } from "./ModelTimeline";
 import { LeakBanner } from "./LeakBanner";
 import { ExportReportButton } from "../report/ExportReportButton";
 
+// Per-token event colours (the latency bars) and the run-phase colours (the
+// breakdown track + the chart's vertical phase lines). Disjoint palettes so a
+// colour means one thing across both charts.
 const SWATCH = [
-  { kind: "ttft", label: "TTFT", color: "#7c3aed" },
+  { kind: "ttft", label: "TTFT", color: "#d97706" },
   { kind: "normal", label: "Token gap", color: "#2563eb" },
-  { kind: "outlier", label: "Outlier (latency spike)", color: "#e11d48" },
+  { kind: "outlier", label: "Outlier (latency spike)", color: "#dc2626" },
+];
+const PHASE_SWATCH = [
+  { label: "Model load", color: "#64748b" },
+  { label: "Prompt prefill", color: "#7c3aed" },
+  { label: "Generation", color: "#16a34a" },
 ];
 
 /// Inspector view: per-token timing for the last run, one labeled chart per
@@ -25,7 +33,8 @@ export function InspectorPage() {
   const [ref, width] = useParentWidth<HTMLDivElement>();
   const { byName, refresh } = useLoadedModels();
   const { entries, refresh: refreshHistory } = useRunHistory();
-  const dev = deviceMemory(useHardware());
+  const hw = useHardware();
+  const dev = deviceMemory(hw);
   // The page is always mounted (hidden tab), so re-read /api/ps + history each
   // time the Inspector is opened — the model that just ran is loaded by then.
   useEffect(() => {
@@ -48,7 +57,15 @@ export function InspectorPage() {
     <div className="space-y-4" data-testid="inspector" ref={ref}>
       <LeakBanner />
       <div className="flex items-center justify-between">
-        <div className="flex gap-3 text-xs text-gray-500">
+        <div className="flex flex-wrap gap-x-3 gap-y-1 text-xs text-gray-500">
+          <span className="text-gray-400">Phases:</span>
+          {PHASE_SWATCH.map((s) => (
+            <span key={s.label} className="flex items-center gap-1">
+              <span className="inline-block h-2 w-2 rounded-sm" style={{ background: s.color }} />
+              {s.label}
+            </span>
+          ))}
+          <span className="text-gray-400 ml-1">Tokens:</span>
           {SWATCH.map((s) => (
             <span key={s.kind} className="flex items-center gap-1">
               <span className="inline-block h-2 w-2 rounded-sm" style={{ background: s.color }} />
@@ -66,7 +83,7 @@ export function InspectorPage() {
       </div>
       {charted.map((row) => (
         <ModelTimeline key={row.model} row={row} width={width} vram={pickLoaded(byName, row.model)}
-          history={entries} deviceTotalBytes={dev.totalBytes} unified={dev.unified} />
+          history={entries} deviceTotalBytes={dev.totalBytes} unified={dev.unified} hw={hw} />
       ))}
     </div>
   );

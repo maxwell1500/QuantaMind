@@ -121,6 +121,47 @@ scoring (BLEU etc.) — quality is human-judged in `verdicts`. No document-level
 
 ---
 
+## Global selection: backend, model, params {#global-selection}
+
+The top header carries three app-wide choices, surfaced on every view so it's
+always clear what you're running and how:
+
+- **Backend** (`backendStore`) — Ollama / llama.cpp / MLX. The model list is
+  filtered to the selected backend; switching backend trims a now-incompatible
+  model selection (a model is bound to its backend's weight format).
+- **Model** (`selectedModelStore`) — the global selection (an array).
+  **Ollama is multi-select** (1 → a single run in the Workspace; 2+ → a
+  sequential/parallel compare shown in the Workspace, results on Analysis);
+  **llama.cpp/MLX are single-select**. Every page reads this — there is no
+  per-page model picker. Analysis is results-only; Eval has its own *target*
+  multi-select but it is filtered to the selected backend; the Audit
+  Context-Cliff probe runs one global model (a dropdown picks which when 2+
+  Ollama models are selected).
+
+The llama.cpp path posts to the native `/completion`; if that route 404s (a build
+that lacks it, or another OpenAI-style server answering on the same port — e.g.
+`mlx_lm.server`, whose default port is also 8080), it falls back to the
+OpenAI-compatible `/v1/chat/completions` so the run still works.
+- **Inference params** (`paramsStore`) — temperature, top_p, top_k, max_tokens,
+  repeat_penalty, seed. **The single source of truth for every run** — Workspace,
+  Analysis compare, Eval batch, and the Context-Cliff probe all read
+  `globalParams`. A field left unset is omitted so the backend default applies;
+  ranges are validated at the Rust boundary (`commands/prompt/prompt_options.rs`).
+  With **2+ Ollama models**, a "use the same parameters for all" toggle switches
+  to per-model overrides (`perModelParams`).
+- **Keep model loaded** (`paramsStore.keepLoaded`, default off) — off unloads the
+  model after each run (Ollama `keep_alive=0`); on keeps it resident
+  (`keep_alive=-1`). Ollama-only; llama.cpp/MLX keep their model while the sidecar
+  runs.
+
+Prompt files (`*.quantamind.yaml`) no longer store params. An older file that
+still carries a `params:` block loads fine (it is ignored and stripped on the
+next save). Restoring a run from History puts its params back into the header.
+The per-model saved temperature (`model_settings.yaml`) remains a last-resort
+fallback, used only when the global temperature is unset.
+
+---
+
 ## Troubleshooting
 
 Error states in QuantaMind aim to tell you *what* broke and *what to do next*.

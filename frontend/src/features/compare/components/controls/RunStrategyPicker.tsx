@@ -1,5 +1,6 @@
-import { useCompareStore } from "../state/compareStore";
-import { assessStrategies, type StrategyId, type Verdict } from "../state/strategy";
+import { useCompareStore } from "../../state/compareStore";
+import { useSelectedModelStore } from "../../../../shared/state/selectedModelStore";
+import { assessStrategies, type StrategyId, type Verdict } from "../../state/strategy";
 
 type Option = { id: StrategyId; title: string; help: string };
 const OPTIONS: Option[] = [
@@ -19,7 +20,7 @@ const VERDICT_CLASS: Record<Verdict, string> = {
 export function RunStrategyPicker() {
   const strategy = useCompareStore((s) => s.strategy);
   const setStrategy = useCompareStore((s) => s.setStrategy);
-  const selected = useCompareStore((s) => s.selectedModels);
+  const selected = useSelectedModelStore((s) => s.selectedModels);
   const snapshot = useCompareStore((s) => s.hardwareSnapshot);
   const matrix = assessStrategies(selected, snapshot);
 

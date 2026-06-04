@@ -8,13 +8,13 @@ vi.mock("@tauri-apps/api/event", () => ({ listen: vi.fn().mockResolvedValue(() =
 import { invoke } from "@tauri-apps/api/core";
 import { open as openExternal } from "@tauri-apps/plugin-shell";
 import { OllamaEmptyState } from "../components/status/OllamaEmptyState";
-import { useWorkspaceStore } from "../state/workspaceStore";
+import { useBackendStore } from "../../../shared/state/backendStore";
 import { useInstalledModelsStore } from "../../models/state/installedModelsStore";
 
 beforeEach(() => {
   vi.mocked(invoke).mockReset();
   vi.mocked(openExternal).mockReset().mockResolvedValue(undefined);
-  useWorkspaceStore.setState({ ollamaHealthy: false });
+  useBackendStore.setState({ ollamaHealthy: false });
   useInstalledModelsStore.setState({
     list: [], status: "idle", error: null, lastRefreshedAt: null,
   });
@@ -38,7 +38,7 @@ describe("OllamaEmptyState", () => {
     );
     vi.advanceTimersByTime(1100);
     await vi.waitFor(() =>
-      expect(useWorkspaceStore.getState().ollamaHealthy).toBe(true),
+      expect(useBackendStore.getState().ollamaHealthy).toBe(true),
     );
     vi.useRealTimers();
   });

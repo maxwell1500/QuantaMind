@@ -23,7 +23,8 @@ import { invoke } from "@tauri-apps/api/core";
 import { listen, type EventCallback } from "@tauri-apps/api/event";
 import App from "../App";
 import { useWorkspacesStore } from "../features/workspaces/state/workspaceStore";
-import { useWorkspaceStore } from "../features/workspace/state/workspaceStore";
+import { useBackendStore } from "../shared/state/backendStore";
+import { useSelectedModelStore } from "../shared/state/selectedModelStore";
 import { useCompareStore } from "../features/compare/state/compareStore";
 import { useNavStore } from "../shared/state/navStore";
 import { seedCurrentPrompt } from "./helpers/seedWorkspace";
@@ -59,7 +60,8 @@ beforeEach(() => {
     if (cmd === "save_prompt") return Promise.resolve(useWorkspacesStore.getState().current);
     return Promise.reject(new Error(`unknown ${cmd}`));
   });
-  useWorkspaceStore.setState({ activeBackend: "ollama" });
+  useBackendStore.setState({ selectedBackend: "ollama" });
+  useSelectedModelStore.setState({ selectedModels: [] });
   useCompareStore.getState().reset();
   useNavStore.setState({ topView: "workspace", history: [] });
   seedCurrentPrompt();
@@ -77,8 +79,8 @@ describe("Phase 1 E2E smoke — edit → run → re-run", () => {
     const editor = within(userEditorWrap).getByTestId("prompt-input");
     fireEvent.change(editor, { target: { value: "Why is the sky blue?" } });
     // Pick one model (a chip) → single-run mode
-    fireEvent.click(await screen.findByTestId("model-dropdown"));
-    fireEvent.click(await screen.findByTestId("model-option-llama3.2:1b"));
+    fireEvent.click(await screen.findByTestId("header-model-dropdown"));
+    fireEvent.click(await screen.findByTestId("header-model-option-llama3.2:1b"));
 
     // 2. RUN — navigates to Compare; the response streams into the M1 column
     fireEvent.click(screen.getByRole("button", { name: /^run$/i }));
@@ -125,8 +127,8 @@ describe("Phase 1 E2E smoke — edit → run → re-run", () => {
     fireEvent.change(within(userWrap).getByTestId("prompt-input"), {
       target: { value: "x" },
     });
-    fireEvent.click(await screen.findByTestId("model-dropdown"));
-    fireEvent.click(await screen.findByTestId("model-option-llama3.2:1b"));
+    fireEvent.click(await screen.findByTestId("header-model-dropdown"));
+    fireEvent.click(await screen.findByTestId("header-model-option-llama3.2:1b"));
     fireEvent.click(screen.getByRole("button", { name: /^run$/i }));
     expect(useNavStore.getState().topView).toBe("compare");
     act(() => fire("prompt-token", { text: "partial" }));

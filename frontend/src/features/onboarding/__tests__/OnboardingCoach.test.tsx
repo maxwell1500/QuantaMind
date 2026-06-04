@@ -15,7 +15,7 @@ vi.mock("../../../shared/ipc/system/onboarding", () => ({
 
 import { OnboardingCoach } from "../components/OnboardingCoach";
 import { useOnboardingStore } from "../state/onboardingStore";
-import { useWorkspaceStore } from "../../workspace/state/workspaceStore";
+import { useBackendStore } from "../../../shared/state/backendStore";
 import { useInstalledModelsStore } from "../../models/state/installedModelsStore";
 import { useNavStore } from "../../../shared/state/navStore";
 import { pullModel } from "../../../shared/ipc/system/onboarding";
@@ -23,7 +23,7 @@ import { pullModel } from "../../../shared/ipc/system/onboarding";
 beforeEach(() => {
   vi.clearAllMocks();
   useOnboardingStore.setState({ complete: false });
-  useWorkspaceStore.setState({ ollamaHealthy: true });
+  useBackendStore.setState({ ollamaHealthy: true });
   useInstalledModelsStore.setState({ list: [] });
   useNavStore.setState({ topView: "workspace" });
 });
@@ -36,7 +36,7 @@ describe("OnboardingCoach", () => {
   });
 
   it("shows the Ollama step when not healthy", () => {
-    useWorkspaceStore.setState({ ollamaHealthy: false });
+    useBackendStore.setState({ ollamaHealthy: false });
     render(<OnboardingCoach />);
     expect(screen.getByTestId("onboarding-ollama")).toBeTruthy();
   });

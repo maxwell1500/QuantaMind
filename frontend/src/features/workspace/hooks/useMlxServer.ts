@@ -2,7 +2,7 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import { startMlxServer, stopMlxServer, mlxServerStatus } from "../../../shared/ipc/models/mlx_start";
 import { checkMlxHealth } from "../../../shared/ipc/core/client";
 import { formatIpcError } from "../../../shared/ipc/core/error";
-import { useWorkspaceStore } from "../state/workspaceStore";
+import { useBackendStore } from "../../../shared/state/backendStore";
 
 const POLL_MS = 1500;
 const NOT_FOUND = "mlx_lm.server not found — install mlx-lm (pip install mlx-lm) or set its path.";
@@ -31,7 +31,7 @@ export function useMlxServer() {
     setStarting(false);
     setPhase(null);
     if (msg) setError(msg);
-    useWorkspaceStore.getState().setMlxHealthy(healthy);
+    useBackendStore.getState().setMlxHealthy(healthy);
   }, []);
 
   const poll = useCallback(async () => {

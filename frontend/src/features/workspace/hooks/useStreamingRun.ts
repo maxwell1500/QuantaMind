@@ -14,6 +14,8 @@ import {
 import { withTimeout } from "../../../shared/ipc/core/timeout";
 import { formatIpcError } from "../../../shared/ipc/core/error";
 import { useWorkspaceStore } from "../state/workspaceStore";
+import { useBackendStore } from "../../../shared/state/backendStore";
+import { useParamsStore } from "../../../shared/state/paramsStore";
 import type { InferenceParams } from "../../../shared/ipc/workspace/prompts";
 import { recordRun, type RunContext } from "../../history/recordRun";
 import { useLeakStore } from "../../inspector/state/leakStore";
@@ -88,7 +90,12 @@ export function useStreamingRun() {
         const trimmed = system?.trim();
         if (trimmed) args.system = trimmed;
         if (hasParam(params)) args.params = params;
-        args.backend = useWorkspaceStore.getState().activeBackend;
+        args.backend = useBackendStore.getState().selectedBackend;
+        // Keep loaded → Ollama keep_alive=-1 (resident). Off → omit it so Ollama's
+        // default idle-unload applies: the model lingers (and stays inspectable in
+        // the Inspector) for a few minutes, then frees memory. Sending 0 would
+        // unload instantly and leave nothing for the Inspector to read.
+        if (useParamsStore.getState().keepLoaded) args.keepAlive = -1;
         await invoke("run_prompt", args);
       } catch (e) {
         setError(formatIpcError(e)); setStatus("error");

@@ -1,10 +1,13 @@
 import { useEffect, useState } from "react";
-import { useInstalledModelsStore } from "../../models/state/installedModelsStore";
 import { modelLabel } from "../../../shared/models/modelLabel";
+import { useSelectedModelStore } from "../../../shared/state/selectedModelStore";
+import { useParamsStore } from "../../../shared/state/paramsStore";
 import { useEvalRegistryStore, DEFAULT_PRESET } from "../state/evalRegistryStore";
 import { getBuiltinCollection, loadCustomCollection, type ToolTask } from "../../../shared/ipc/eval/registry";
 import { useVramFit } from "../../quant/useVramFit";
 import { useContextCliff } from "../hooks/useContextCliff";
+import { InfoButton } from "../../../shared/ui/InfoButton";
+import { TOOL_HELP } from "../help";
 import { cliffPoint } from "../cliff";
 import { ContextCliffChart } from "./ContextCliffChart";
 
@@ -15,19 +18,28 @@ const FALLBACK_MAX_TOKENS = 65536; // slider ceiling when the model context wind
 /// approximate (≈tokens) — labelled indicative, not a tokenizer. Owns its own
 /// collection selection so it never depends on the EvalManager editor.
 export function ContextCliffPanel() {
-  const list = useInstalledModelsStore((s) => s.list);
   const { presets, collections, init } = useEvalRegistryStore();
   const [active, setActive] = useState(DEFAULT_PRESET);
   const [tasks, setTasks] = useState<ToolTask[]>([]);
-  const [model, setModel] = useState("");
   const [maxTokens, setMaxTokens] = useState(16384);
   const [testSteps, setTestSteps] = useState(5);
-  const selected = list.find((m) => m.name === model);
+  // The probe runs ONE of the global header models + global params. With 2+
+  // selected (Ollama), a small dropdown picks which one; default the first.
+  const selectedModels = useSelectedModelStore((s) => s.selectedModels);
+  const globalParams = useParamsStore((s) => s.globalParams);
+  const [probeName, setProbeName] = useState("");
+  const selected = selectedModels.find((m) => m.name === probeName) ?? selectedModels[0] ?? null;
+  const model = selected?.name ?? "";
+
+  // Keep the probe model inside the current selection (e.g. after a backend switch).
+  useEffect(() => {
+    if (probeName && !selectedModels.some((m) => m.name === probeName)) setProbeName("");
+  }, [selectedModels, probeName]);
 
   const isPreset = (id: string) => presets.some((p) => p.id === id);
 
   useEffect(() => {
-    void init().catch(() => {});
+    void init().catch(() => { });
   }, [init]);
 
   // Load the chosen collection's tasks itself (preset OR custom) so the probe
@@ -61,8 +73,24 @@ export function ContextCliffPanel() {
     tasks,
     maxTokens,
     testSteps,
+    globalParams,
   );
   const cliff = cliffPoint(points);
+
+  useEffect(() => {
+    if (model && typeof localStorage !== "undefined") {
+      try {
+        if (cliff != null) {
+          localStorage.setItem(`quantamind-cliff-${model}`, cliff.toString());
+        } else {
+          localStorage.removeItem(`quantamind-cliff-${model}`);
+        }
+      } catch (e) {
+        // ignore
+      }
+    }
+  }, [cliff, model]);
+
   const maintainedTo = points.reduce(
     (mx, p) => (p.composite != null && p.promptTokens != null && p.promptTokens > mx ? p.promptTokens : mx),
     0,
@@ -109,30 +137,33 @@ export function ContextCliffPanel() {
             {collections.map((c) => <option key={c} value={c}>{c}</option>)}
           </select>
         </div>
-        <button
-          type="button"
-          onClick={handleReset}
-          title="Reset"
-          style={{
-            background: "rgba(255,255,255,0.07)",
-            border: "1px solid rgba(255,255,255,0.12)",
-            color: "#94a3b8",
-            width: 36,
-            height: 36,
-            borderRadius: "50%",
-            display: "flex",
-            alignItems: "center",
-            justifyContent: "center",
-            fontSize: 16,
-            cursor: "pointer",
-            flexShrink: 0,
-            transition: "background 0.15s",
-          }}
-          onMouseEnter={(e) => (e.currentTarget.style.background = "rgba(255,255,255,0.12)")}
-          onMouseLeave={(e) => (e.currentTarget.style.background = "rgba(255,255,255,0.07)")}
-        >
-          ↺
-        </button>
+        <div className="flex items-center gap-2">
+          <InfoButton {...TOOL_HELP.contextCliff} testId="context-cliff" />
+          <button
+            type="button"
+            onClick={handleReset}
+            title="Reset"
+            style={{
+              background: "rgba(255,255,255,0.07)",
+              border: "1px solid rgba(255,255,255,0.12)",
+              color: "#94a3b8",
+              width: 36,
+              height: 36,
+              borderRadius: "50%",
+              display: "flex",
+              alignItems: "center",
+              justifyContent: "center",
+              fontSize: 16,
+              cursor: "pointer",
+              flexShrink: 0,
+              transition: "background 0.15s",
+            }}
+            onMouseEnter={(e) => (e.currentTarget.style.background = "rgba(255,255,255,0.12)")}
+            onMouseLeave={(e) => (e.currentTarget.style.background = "rgba(255,255,255,0.07)")}
+          >
+            ↺
+          </button>
+        </div>
       </div>
 
       {/* ── Error (a backend failure is shown, never a silent blank chart) ── */}
@@ -273,11 +304,11 @@ export function ContextCliffPanel() {
           >
             Model
           </div>
-          <div style={{ fontSize: 13, color: "#94a3b8", fontFamily: "Inter, ui-sans-serif, system-ui, sans-serif" }}>
-            {selected ? modelLabel(selected) : (
+          <div data-testid="cliff-model" style={{ fontSize: 13, color: "#94a3b8", fontFamily: "Inter, ui-sans-serif, system-ui, sans-serif" }}>
+            {selectedModels.length >= 2 ? (
               <select
                 value={model}
-                onChange={(e) => setModel(e.target.value)}
+                onChange={(e) => setProbeName(e.target.value)}
                 data-testid="cliff-model-select"
                 style={{
                   background: "rgba(255,255,255,0.05)",
@@ -291,14 +322,11 @@ export function ContextCliffPanel() {
                   cursor: "pointer",
                 }}
               >
-                <option value="">Select a model…</option>
-                {list.map((m) => (
-                  <option key={m.name} value={m.name}>
-                    {modelLabel(m)}
-                  </option>
+                {selectedModels.map((m) => (
+                  <option key={m.name} value={m.name}>{modelLabel(m)}</option>
                 ))}
               </select>
-            )}
+            ) : selected ? modelLabel(selected) : "Select a model in the header"}
           </div>
         </div>
         <div>
@@ -323,9 +351,11 @@ export function ContextCliffPanel() {
               ? "Running…"
               : cliff != null
                 ? `≈${Math.round(cliff / 1000) * 1000} context tokens`
-                : points.length > 0
+                : maintainedTo > 0
                   ? `Accuracy maintained up to ≈${Math.round(maintainedTo / 1000) * 1000} tokens`
-                  : "Idle"}
+                  : points.length > 0
+                    ? "Ran — context-token depth not reported"
+                    : "Idle"}
           </div>
         </div>
       </div>
@@ -423,38 +453,6 @@ export function ContextCliffPanel() {
 
       {/* ── Execute Button ── */}
       <div style={{ padding: "14px 20px" }}>
-        {/* Model selector shown here if not selected above */}
-        {selected && (
-          <div style={{ marginBottom: 10, display: "flex", gap: 8, alignItems: "center" }}>
-            <span style={{ fontSize: 12, color: "#64748b", fontFamily: "Inter, ui-sans-serif, system-ui, sans-serif" }}>
-              Model:
-            </span>
-            <select
-              value={model}
-              onChange={(e) => setModel(e.target.value)}
-              data-testid="cliff-model-select"
-              style={{
-                background: "rgba(255,255,255,0.05)",
-                border: "1px solid rgba(255,255,255,0.1)",
-                color: "#94a3b8",
-                borderRadius: 6,
-                padding: "3px 8px",
-                fontSize: 12,
-                fontFamily: "Inter, ui-sans-serif, system-ui, sans-serif",
-                outline: "none",
-                cursor: "pointer",
-              }}
-            >
-              <option value="">Select a model…</option>
-              {list.map((m) => (
-                <option key={m.name} value={m.name}>
-                  {modelLabel(m)}
-                </option>
-              ))}
-            </select>
-          </div>
-        )}
-
         <button
           type="button"
           disabled={!selected || running || tasks.length === 0}

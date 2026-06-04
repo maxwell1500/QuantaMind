@@ -15,6 +15,7 @@ import type { ModelTarget } from "../../../shared/ipc/eval/matrix";
 import type { ToolTask } from "../../../shared/ipc/eval/registry";
 import { useInstalledModelsStore } from "../../models/state/installedModelsStore";
 import { useBatchStore } from "../state/batchStore";
+import { useParamsStore } from "../../../shared/state/paramsStore";
 
 const modelSig = (list: { name: string }[]) =>
   list
@@ -74,7 +75,9 @@ export function useBatchRun() {
     async (collectionId: string, targets: ModelTarget[], tasks: ToolTask[], k?: number, maxSteps?: number) => {
       useBatchStore.getState().startRun();
       try {
-        await runBatchEval(collectionId, targets, tasks, k, maxSteps);
+        const { globalParams, keepLoaded } = useParamsStore.getState();
+        // Keep loaded → resident; off → omit so the backend default applies.
+        await runBatchEval(collectionId, targets, tasks, k, maxSteps, globalParams, keepLoaded ? -1 : undefined);
       } catch (e) {
         useBatchStore.getState().setError(formatIpcError(e));
       }

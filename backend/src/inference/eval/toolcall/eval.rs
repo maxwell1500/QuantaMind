@@ -118,8 +118,8 @@ pub(crate) async fn trace_one_with<M: ModelTurn>(turn: &M, model: &str, task: &T
 /// Run ONE task end-to-end against a live backend. The single source of per-task
 /// execution: `run_eval` loops over it and the pipeline visualizer calls it
 /// directly. Dispatches by `BackendKind` via `BackendTurn`.
-pub async fn trace_one(backend: BackendKind, endpoint: &str, model: &str, task: &ToolTask) -> AppResult<TraceResult> {
-    let turn = BackendTurn { backend, endpoint: endpoint.to_string(), model: model.to_string(), cancel: CancellationToken::new() };
+pub async fn trace_one(backend: BackendKind, endpoint: &str, model: &str, task: &ToolTask, options: Option<GenerateOptions>) -> AppResult<TraceResult> {
+    let turn = BackendTurn { backend, endpoint: endpoint.to_string(), model: model.to_string(), cancel: CancellationToken::new(), options, keep_alive: None };
     trace_one_with(&turn, model, task).await
 }
 
@@ -132,10 +132,11 @@ pub async fn run_eval_traced(
     endpoint: &str,
     model: &str,
     tasks: &[ToolTask],
+    options: Option<GenerateOptions>,
 ) -> AppResult<(ToolCallReport, Vec<TaskTrace>)> {
     let mut traces = Vec::with_capacity(tasks.len());
     for task in tasks {
-        let trace = trace_one(backend, endpoint, model, task).await?;
+        let trace = trace_one(backend, endpoint, model, task, options.clone()).await?;
         traces.push(TaskTrace { id: task.id.clone(), category: task.category.clone(), trace });
     }
     let results = traces
@@ -158,7 +159,7 @@ pub async fn run_eval(
     model: &str,
     tasks: &[ToolTask],
 ) -> AppResult<ToolCallReport> {
-    Ok(run_eval_traced(backend, endpoint, model, tasks).await?.0)
+    Ok(run_eval_traced(backend, endpoint, model, tasks, None).await?.0)
 }
 
 #[cfg(test)]

@@ -16,6 +16,8 @@ import { EvalManager } from "../../components/manager/EvalManager";
 import { useEvalRegistryStore } from "../../state/evalRegistryStore";
 import { useInstalledModelsStore } from "../../../models/state/installedModelsStore";
 import { runBatchEval } from "../../../../shared/ipc/eval/batch";
+import { useParamsStore } from "../../../../shared/state/paramsStore";
+import { useBackendStore } from "../../../../shared/state/backendStore";
 
 const sampleTasks = [{
   id: "w",
@@ -31,6 +33,7 @@ const importFile = vi.fn().mockResolvedValue(undefined);
 
 beforeEach(() => {
   vi.clearAllMocks();
+  useBackendStore.setState({ selectedBackend: "ollama" });
   useInstalledModelsStore.setState({
     list: [{ name: "llama3.2:1b", size_bytes: 1, modified_at: "", family: "", parameter_size: "", quantization: "Q4_0", backend: "ollama" }],
     status: "ready", error: null, lastRefreshedAt: 1,
@@ -47,6 +50,21 @@ beforeEach(() => {
 });
 
 describe("EvalManager Sidebar Controls", () => {
+  it("lists only the selected backend's models in the target dropdown", () => {
+    useBackendStore.setState({ selectedBackend: "llama_cpp" });
+    useInstalledModelsStore.setState({
+      list: [
+        { name: "llama3.2:1b", size_bytes: 1, modified_at: "", family: "", parameter_size: "", quantization: "Q4_0", backend: "ollama" },
+        { name: "qwen.gguf", size_bytes: 1, modified_at: "", family: "", parameter_size: "", quantization: "Q4_0", backend: "llama_cpp", path: "/w/qwen.gguf" },
+      ],
+      status: "ready", error: null, lastRefreshedAt: 1,
+    });
+    render(<EvalManager targets={[]} setTargets={() => {}} k={1} setK={() => {}} maxSteps={8} setMaxSteps={() => {}} />);
+    fireEvent.click(screen.getByTestId("eval-model-dropdown"));
+    expect(screen.getByTestId("eval-model-toggle-qwen.gguf")).toBeInTheDocument();
+    expect(screen.queryByTestId("eval-model-toggle-llama3.2:1b")).toBeNull();
+  });
+
   it("renders the headers and Data Source radio controls", () => {
     render(<EvalManager targets={["llama3.2:1b"]} setTargets={() => {}} k={1} setK={() => {}} maxSteps={8} setMaxSteps={() => {}} />);
     expect(screen.getByText("1. EVAL MANAGER")).toBeInTheDocument();
@@ -117,6 +135,7 @@ describe("EvalManager Sidebar Controls", () => {
   });
 
   it("triggers runBatchEval when ▶ RUN BATCH is clicked", async () => {
+    useParamsStore.setState({ globalParams: { temperature: 0.2 } });
     vi.mocked(runBatchEval).mockResolvedValue({
       collection_id: "curated",
       columns: [],
@@ -134,7 +153,9 @@ describe("EvalManager Sidebar Controls", () => {
         [{ model: "llama3.2:1b", backend: "ollama" }],
         sampleTasks,
         1,
-        8
+        8,
+        { temperature: 0.2 },
+        undefined
       );
     });
   });

@@ -1,7 +1,11 @@
+import { useState } from "react";
 import { Group } from "@visx/group";
 import { scaleLinear } from "@visx/scale";
 import type { CliffPoint } from "../cliff";
 import { cliffPoint } from "../cliff";
+
+const TT_W = 132;
+const TT_H = 34;
 
 const M = { top: 20, right: 24, bottom: 42, left: 52 };
 
@@ -24,6 +28,7 @@ export function ContextCliffChart({
   const pts = points.filter(
     (p): p is { promptTokens: number; composite: number } => p.composite != null && p.promptTokens != null,
   );
+  const [hover, setHover] = useState<{ promptTokens: number; composite: number } | null>(null);
   const iw = Math.max(0, width - M.left - M.right);
   const ih = Math.max(0, height - M.top - M.bottom);
 
@@ -112,7 +117,7 @@ export function ContextCliffChart({
               fontFamily="Inter, ui-sans-serif, system-ui, sans-serif"
               fontWeight={600}
             >
-              Cliff Threshold ({Math.round(cliff! / 1000)}k)
+              Cliff Threshold (≈{Math.round(cliff! / 1000)}k)
             </text>
           </>
         )}
@@ -155,6 +160,40 @@ export function ContextCliffChart({
             />
           );
         })}
+
+        {/* Hover hit targets — wider than the dots so they're easy to land on */}
+        {pts.map((p, i) => (
+          <circle
+            key={`hit-${p.promptTokens}`}
+            cx={x(p.promptTokens)}
+            cy={y(p.composite * 100)}
+            r={10}
+            fill="transparent"
+            style={{ cursor: "pointer" }}
+            data-testid={`cliff-point-${i}`}
+            onMouseEnter={() => setHover(p)}
+            onMouseLeave={() => setHover((h) => (h?.promptTokens === p.promptTokens ? null : h))}
+          />
+        ))}
+
+        {/* Hover tooltip — token depth + accuracy for the point under the cursor */}
+        {hover && (() => {
+          const acc = Math.round(hover.composite * 100);
+          const past = cliff != null && hover.promptTokens >= cliff;
+          const ttX = Math.max(0, Math.min(iw - TT_W, x(hover.promptTokens) + 8));
+          const ttY = Math.max(0, y(hover.composite * 100) - TT_H - 6);
+          return (
+            <g pointerEvents="none" data-testid="cliff-tooltip">
+              <rect x={ttX} y={ttY} width={TT_W} height={TT_H} rx={6} fill="#0f1320" stroke="rgba(255,255,255,0.15)" />
+              <text x={ttX + 9} y={ttY + 15} fill="#cbd5e1" fontSize={10} fontWeight={600} fontFamily="Inter, ui-sans-serif, system-ui, sans-serif">
+                ≈{hover.promptTokens.toLocaleString()} ctx tokens
+              </text>
+              <text x={ttX + 9} y={ttY + 28} fill={past ? "#fca5a5" : "#93c5fd"} fontSize={10} fontFamily="Inter, ui-sans-serif, system-ui, sans-serif">
+                {acc}% accuracy{past ? " · past cliff" : ""}
+              </text>
+            </g>
+          );
+        })()}
 
         {/* X-axis ticks */}
         {xTicks.map((v) => (

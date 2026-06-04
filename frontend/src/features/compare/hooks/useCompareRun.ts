@@ -5,7 +5,8 @@ import { useCompareStore } from "../state/compareStore";
 import { startCompareEventBus } from "../state/compareEventBus";
 import { assessStrategies } from "../state/strategy";
 import { formatBytes } from "../../../shared/format/bytes";
-import { useInstalledModelsStore } from "../../models/state/installedModelsStore";
+import { useParamsStore } from "../../../shared/state/paramsStore";
+import { useSelectedModelStore } from "../../../shared/state/selectedModelStore";
 
 export function useCompareRun() {
   const isRunning = useCompareStore((s) => s.isRunning);
@@ -14,9 +15,9 @@ export function useCompareRun() {
   useEffect(() => { void startCompareEventBus(); }, []);
 
   const start = useCallback(async () => {
-    const { selectedModels, prompt, systemPrompt, strategy, hardwareSnapshot,
-      useSharedParams, baseParams, perModelParams, initRun, finishRun } = useCompareStore.getState();
-    if (selectedModels.length === 0) { setStartError("Pick at least one model."); return; }
+    const { prompt, systemPrompt, strategy, hardwareSnapshot, initRun, finishRun } = useCompareStore.getState();
+    const selectedModels = useSelectedModelStore.getState().selectedModels;
+    if (selectedModels.length === 0) { setStartError("Pick at least one model in the header."); return; }
     if (prompt.trim().length === 0) { setStartError("Type a prompt first."); return; }
     const matrix = assessStrategies(selectedModels, hardwareSnapshot);
     if (matrix && matrix[strategy].status === "wont_fit") {
@@ -29,20 +30,20 @@ export function useCompareRun() {
     initRun(selectedModels);
     try {
       const system = systemPrompt.trim();
-      // Resolve each model's own backend (coupled to its weight format) from the
-      // installed list; fall back to Ollama if unknown.
-      const installed = useInstalledModelsStore.getState().list;
-      const backends = selectedModels.map(
-        (m) => installed.find((i) => i.name === m.name)?.backend ?? "ollama",
-      );
+      // Each global model carries its own backend (coupled to its weight format).
+      const backends = selectedModels.map((m) => m.backend);
+      const { globalParams, keepLoaded, sharedParams, perModelParams } = useParamsStore.getState();
       await runCompare({
         models: selectedModels.map((m) => m.name),
         prompt,
         strategy,
         ...(system ? { system } : {}),
-        params: baseParams,
-        ...(useSharedParams ? {} : { perModelParams }),
+        params: globalParams,
+        ...(sharedParams ? {} : { perModelParams }),
         backends,
+        // Keep loaded → resident; off → omit so run_compare uses its strategy
+        // default (Sequential unloads between models to stay memory-safe).
+        ...(keepLoaded ? { keepAlive: -1 } : {}),
       });
     } catch (e) {
       setStartError(formatIpcError(e));

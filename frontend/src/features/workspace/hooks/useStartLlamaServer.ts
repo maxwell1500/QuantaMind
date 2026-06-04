@@ -1,7 +1,7 @@
 import { useCallback, useState } from "react";
 import { startLlamaServer } from "../../../shared/ipc/models/llama_start";
 import { formatIpcError } from "../../../shared/ipc/core/error";
-import { useWorkspaceStore } from "../state/workspaceStore";
+import { useBackendStore } from "../../../shared/state/backendStore";
 
 export type StartLlamaStatus =
   | "idle" | "starting" | "success" | "error" | "not_bundled";
@@ -19,7 +19,7 @@ export function useStartLlamaServer() {
       switch (result.status) {
         case "already_running":
         case "started":
-          useWorkspaceStore.getState().setLlamaHealthy(true);
+          useBackendStore.getState().setLlamaHealthy(true);
           setStatus("idle");
           return;
         case "not_bundled":

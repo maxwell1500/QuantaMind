@@ -2,6 +2,9 @@ import { useEffect, useState } from "react";
 import { open } from "@tauri-apps/plugin-dialog";
 import { useEvalRegistryStore } from "../../state/evalRegistryStore";
 import { useInstalledModelsStore } from "../../../models/state/installedModelsStore";
+import { useBackendStore } from "../../../../shared/state/backendStore";
+import { InfoButton } from "../../../../shared/ui/InfoButton";
+import { TOOL_HELP } from "../../help";
 import { useBatchStore } from "../../state/batchStore";
 import { useBatchRun } from "../../hooks/useBatchRun";
 import { formatIpcError } from "../../../../shared/ipc/core/error";
@@ -34,6 +37,10 @@ export function EvalManager({
   const { presets, collections, selected, tasks, init, select, isPreset, importFile, remove, hidePreset } =
     useEvalRegistryStore();
   const list = useInstalledModelsStore((s) => s.list);
+  const selectedBackend = useBackendStore((s) => s.selectedBackend);
+  // Only the selected backend's models can be evaluated (a model is bound to its
+  // backend's weight format) — the dropdown and run targets are scoped to it.
+  const backendModels = list.filter((m) => m.backend === selectedBackend);
   const running = useBatchStore((s) => s.running);
   const report = useBatchStore((s) => s.report);
   const { run, stop } = useBatchRun();
@@ -49,6 +56,14 @@ export function EvalManager({
   useEffect(() => {
     void init().catch(() => {});
   }, [init]);
+
+  // Drop targets that aren't on the active backend (handles a backend switch).
+  useEffect(() => {
+    if (useInstalledModelsStore.getState().status !== "ready") return;
+    const names = new Set(backendModels.map((m) => m.name));
+    const kept = targets.filter((t) => names.has(t));
+    if (kept.length !== targets.length) setTargets(kept);
+  }, [selectedBackend, backendModels, targets, setTargets]);
 
   const handleDataSourceChange = async (source: "custom" | "builtin") => {
     setError(null);
@@ -111,7 +126,7 @@ export function EvalManager({
       await stop();
       return;
     }
-    const ts = list.filter((m) => targets.includes(m.name)).map((m) => ({ model: m.name, backend: m.backend }));
+    const ts = backendModels.filter((m) => targets.includes(m.name)).map((m) => ({ model: m.name, backend: m.backend }));
     if (ts.length === 0 || tasks.length === 0) return;
     void run(selected, ts, tasks, k, maxSteps);
   };
@@ -129,8 +144,13 @@ export function EvalManager({
     >
       {/* Title Header */}
       <div style={headerStyle}>
-        <div style={{ fontSize: 16, fontWeight: 700, color: "#f8fafc", fontFamily: "Inter, sans-serif" }}>
-          1. EVAL MANAGER
+        <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+          <div style={{ fontSize: 16, fontWeight: 700, color: "#f8fafc", fontFamily: "Inter, sans-serif" }}>
+            1. EVAL MANAGER
+          </div>
+          <span style={{ marginLeft: "auto" }}>
+            <InfoButton {...TOOL_HELP.evalManager} testId="eval-manager" />
+          </span>
         </div>
         <div style={{ fontSize: 12, color: "#64748b", fontFamily: "Inter, sans-serif", marginTop: 2 }}>
           (File & Controls)
@@ -269,7 +289,7 @@ export function EvalManager({
             {/* Target Models (multi-select) */}
             <div style={{ display: "flex", flexDirection: "column", gap: 6 }} data-testid="eval-manager-model-select">
               <span style={controlLabelStyle}>Target Models:</span>
-              <ModelDropdown models={list} selected={new Set(targets)} onToggle={toggleTarget} />
+              <ModelDropdown models={backendModels} selected={new Set(targets)} onToggle={toggleTarget} />
             </div>
 
             {/* Iterations Selector — Pass^k repeats; only affects Multi-Step tasks */}

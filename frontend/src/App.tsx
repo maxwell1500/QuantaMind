@@ -25,7 +25,7 @@ import { useNavStore, type TopView } from "./shared/state/navStore";
 
 const TABS: { id: TopView; label: string }[] = [
   { id: "workspace", label: "Workspace" },
-  { id: "compare", label: "Compare" },
+  { id: "compare", label: "Analysis" },
   { id: "inspector", label: "Inspector" },
   { id: "models", label: "Models" },
   { id: "downloads", label: "Downloads" },

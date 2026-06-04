@@ -2,6 +2,7 @@ import { invoke } from "@tauri-apps/api/core";
 import { z } from "zod";
 import type { BackendKind } from "../models/storage";
 import type { ToolTask } from "./registry";
+import type { InferenceParams } from "../workspace/prompts";
 
 export const VerdictSchema = z.object({
   parsed: z.boolean(),
@@ -43,9 +44,10 @@ export async function runToolcallEval(
   backend: BackendKind,
   tasks: ToolTask[],
   collectionId = "",
+  params?: InferenceParams,
 ): Promise<ToolCallReport> {
   return ToolCallReportSchema.parse(
-    await invoke("run_toolcall_eval", { model, backend, collectionId, tasks }),
+    await invoke("run_toolcall_eval", { model, backend, collectionId, tasks, params }),
   );
 }
 

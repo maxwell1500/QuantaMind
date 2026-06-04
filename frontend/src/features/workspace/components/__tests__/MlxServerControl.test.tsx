@@ -10,27 +10,13 @@ vi.mock("../../../../shared/ipc/core/client", () => ({ checkMlxHealth: vi.fn() }
 
 import { startMlxServer } from "../../../../shared/ipc/models/mlx_start";
 import { MlxServerControl } from "../status/MlxServerControl";
-import { useWorkspaceStore } from "../../state/workspaceStore";
-import { useInstalledModelsStore } from "../../../models/state/installedModelsStore";
-import { useCompareStore } from "../../../compare/state/compareStore";
-
-const mlxModel = {
-  name: "/m/mlx-community_X-4bit",
-  size_bytes: 0,
-  modified_at: "",
-  family: "MLX",
-  parameter_size: "",
-  quantization: "4bit",
-  backend: "mlx" as const,
-  display_name: "mlx-community/X-4bit",
-  path: "/m/mlx-community_X-4bit",
-};
+import { useBackendStore } from "../../../../shared/state/backendStore";
+import { useSelectedModelStore } from "../../../../shared/state/selectedModelStore";
 
 beforeEach(() => {
   vi.clearAllMocks();
-  useWorkspaceStore.setState({ mlxHealthy: null });
-  useInstalledModelsStore.setState({ list: [], status: "ready", error: null });
-  useCompareStore.getState().reset();
+  useBackendStore.setState({ mlxHealthy: null });
+  useSelectedModelStore.setState({ selectedModels: [] });
 });
 
 describe("MlxServerControl", () => {
@@ -43,8 +29,9 @@ describe("MlxServerControl", () => {
 
   it("starts the selected MLX model by its local path", async () => {
     vi.mocked(startMlxServer).mockResolvedValue({ status: "started", pid: 1, port: 8083 });
-    useInstalledModelsStore.setState({ list: [mlxModel], status: "ready", error: null });
-    useCompareStore.getState().setSelectedModels([{ name: mlxModel.name, size_bytes: 0 }]);
+    useSelectedModelStore.setState({
+      selectedModels: [{ name: "/m/mlx-community_X-4bit", backend: "mlx", size_bytes: 0, path: "/m/mlx-community_X-4bit" }],
+    });
     render(<MlxServerControl />);
     const start = screen.getByTestId("mlx-start");
     expect(start).toBeEnabled();
@@ -53,7 +40,7 @@ describe("MlxServerControl", () => {
   });
 
   it("shows Stop when MLX is healthy", () => {
-    useWorkspaceStore.setState({ mlxHealthy: true });
+    useBackendStore.setState({ mlxHealthy: true });
     render(<MlxServerControl />);
     expect(screen.getByTestId("mlx-stop")).toHaveTextContent("Stop MLX");
     expect(screen.queryByTestId("mlx-start")).toBeNull();

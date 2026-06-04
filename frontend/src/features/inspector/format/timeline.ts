@@ -7,6 +7,7 @@ export interface LatencyBar {
   token: string;
   latencyMs: number;
   kind: BarKind;
+  tMs: number; // ms since run start
 }
 
 export interface TimelineStats {
@@ -61,11 +62,11 @@ export function buildLatencyBars(
 
   const bars: LatencyBar[] = timeline.map((t, i) => {
     if (i === 0) {
-      return { index: t.n, token: t.text, latencyMs: ttftMs ?? t.t_ms, kind: "ttft" };
+      return { index: t.n, token: t.text, latencyMs: ttftMs ?? t.t_ms, kind: "ttft", tMs: ttftMs ?? t.t_ms };
     }
     const latencyMs = t.t_ms - timeline[i - 1].t_ms;
     const kind: BarKind = canFlag && latencyMs > threshold ? "outlier" : "normal";
-    return { index: t.n, token: t.text, latencyMs, kind };
+    return { index: t.n, token: t.text, latencyMs, kind, tMs: t.t_ms };
   });
 
   const maxMs = bars.reduce((m, b) => Math.max(m, b.latencyMs), 0);

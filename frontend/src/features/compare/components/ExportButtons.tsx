@@ -3,6 +3,7 @@ import { save } from "@tauri-apps/plugin-dialog";
 import { saveCompareReport } from "../../../shared/ipc/compare/compare";
 import { formatIpcError } from "../../../shared/ipc/core/error";
 import { useCompareStore } from "../state/compareStore";
+import { useSelectedModelStore } from "../../../shared/state/selectedModelStore";
 import { useInstalledModelsStore } from "../../models/state/installedModelsStore";
 import { buildReport } from "../format/buildReport";
 import { toMarkdown } from "../format/markdownReport";
@@ -26,7 +27,7 @@ export function ExportButtons() {
     const report = buildReport({
       prompt: s.prompt, systemPrompt: s.systemPrompt, strategy: s.strategy,
       hardwareSnapshot: s.hardwareSnapshot,
-      selectedModels: s.selectedModels, rows: s.rows,
+      selectedModels: useSelectedModelStore.getState().selectedModels, rows: s.rows,
       installed: useInstalledModelsStore.getState().list,
     });
     const contents = format === "md" ? toMarkdown(report) : toJson(report);

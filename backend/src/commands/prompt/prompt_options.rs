@@ -15,11 +15,16 @@ pub fn validate_params(p: &InferenceParams) -> AppResult<()> {
     in_range("temperature", p.temperature, 0.0, 2.0)?;
     in_range("top_p", p.top_p, 0.0, 1.0)?;
     in_range("repeat_penalty", p.repeat_penalty, 0.0, 2.0)?;
+    if let Some(n) = p.num_ctx {
+        if n < 1 {
+            return Err(AppError::Validation("num_ctx must be at least 1".into()));
+        }
+    }
     Ok(())
 }
 
 /// Map persisted per-prompt params onto Ollama's option block.
-/// `max_tokens` becomes Ollama's `num_predict`.
+/// `max_tokens` becomes Ollama's `num_predict`; `num_ctx` is the context window.
 pub fn to_generate_options(p: &InferenceParams) -> GenerateOptions {
     GenerateOptions {
         temperature: p.temperature,
@@ -28,6 +33,7 @@ pub fn to_generate_options(p: &InferenceParams) -> GenerateOptions {
         num_predict: p.max_tokens,
         repeat_penalty: p.repeat_penalty,
         seed: p.seed,
+        num_ctx: p.num_ctx,
     }
 }
 

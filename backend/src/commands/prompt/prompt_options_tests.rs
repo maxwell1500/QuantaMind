@@ -11,6 +11,7 @@ fn maps_all_fields() {
     let p = InferenceParams {
         temperature: Some(0.5), top_p: Some(0.9), top_k: Some(40),
         max_tokens: Some(256), repeat_penalty: Some(1.1), seed: Some(7),
+        num_ctx: Some(32768),
     };
     let o = to_generate_options(&p);
     assert_eq!(o.temperature, Some(0.5));
@@ -19,6 +20,7 @@ fn maps_all_fields() {
     assert_eq!(o.num_predict, Some(256));
     assert_eq!(o.repeat_penalty, Some(1.1));
     assert_eq!(o.seed, Some(7));
+    assert_eq!(o.num_ctx, Some(32768));
 }
 
 #[test]

@@ -2,10 +2,13 @@ import { useEffect, useState } from "react";
 import { useEvalRegistryStore } from "../../eval/state/evalRegistryStore";
 import { useBatchStore } from "../../eval/state/batchStore";
 import { useInstalledModelsStore } from "../../models/state/installedModelsStore";
+import { useBackendStore } from "../../../shared/state/backendStore";
 import { loadCollectionHistory, type RunSummary } from "../../../shared/ipc/eval/matrix";
 import { HistoryTimeline } from "../../eval/components/matrix/HistoryTimeline";
 import { ContextCliffPanel } from "../../eval/components/ContextCliffPanel";
 import { batchToCsv, download } from "../../eval/exportBatch";
+import { InfoButton } from "../../../shared/ui/InfoButton";
+import { TOOL_HELP } from "../../eval/help";
 
 const exportBtn: React.CSSProperties = {
   padding: "5px 12px",
@@ -31,8 +34,12 @@ export function AuditPage() {
   const { presets, collections, init } = useEvalRegistryStore();
   const report = useBatchStore((s) => s.report);
   const models = useInstalledModelsStore((s) => s.list);
+  const selectedBackend = useBackendStore((s) => s.selectedBackend);
   const [collection, setCollection] = useState("curated");
   const [history, setHistory] = useState<RunSummary[]>([]);
+  // Show only the selected backend's regression history — a backend switch
+  // shouldn't keep displaying the previous backend's model runs.
+  const backendHistory = history.filter((h) => h.backend === selectedBackend);
 
   useEffect(() => {
     void init().catch(() => {});
@@ -83,8 +90,9 @@ export function AuditPage() {
           >
             ⭳ JSON
           </button>
+          <InfoButton {...TOOL_HELP.auditHistory} testId="audit-history" />
         </div>
-        <HistoryTimeline history={history} />
+        <HistoryTimeline history={backendHistory} />
       </div>
 
       <ContextCliffPanel />

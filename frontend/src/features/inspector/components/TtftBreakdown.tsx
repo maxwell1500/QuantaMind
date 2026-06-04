@@ -1,45 +1,124 @@
 import type { GenerateStats } from "../../../shared/ipc/events/events";
-import { buildTtftSegments, type TtftSegmentKey } from "../format/ttft";
+import { buildTtftSegments } from "../format/ttft";
 
-const COLOR: Record<TtftSegmentKey, string> = {
-  load: "#7c3aed", // model load
-  prefill: "#2563eb", // prompt prefill
-  remainder: "#9ca3af", // network + first token
+// Phase palette — kept distinct from the token-event colors (amber TTFT / blue
+// gap / red outlier) so a colour means one thing across both inspector charts.
+const COLOR: Record<string, string> = {
+  load: "#64748b", // slate-500 — model load
+  prefill: "#7c3aed", // violet-600 — prompt prefill
+  remainder: "#16a34a", // green-600 — generation / stream & gen
 };
 
-/// Stacked horizontal bar decomposing the measured TTFT into the segments a
-/// backend actually reports (load / prefill / remainder). Shows "not available"
-/// rather than fabricating segments when the backend reports nothing.
-export function TtftBreakdown({ ttftMs, stats }: { ttftMs: number | null; stats?: GenerateStats }) {
-  const { segments, total, available, promptTokens } = buildTtftSegments(ttftMs, stats);
+/// Stacked horizontal bar decomposing the measured run duration into
+/// Model load + Prompt prefill + Stream & Gen.
+/// Aligns with the shared X-axis of the model console.
+export function TtftBreakdown({
+  ttftMs,
+  stats,
+  maxTime,
+  marginLeft = 60,
+  marginRight = 150,
+  width = 640,
+}: {
+  ttftMs: number | null;
+  stats?: GenerateStats;
+  maxTime?: number;
+  marginLeft?: number;
+  marginRight?: number;
+  width?: number;
+}) {
+  const { available, promptTokens } = buildTtftSegments(ttftMs, stats);
+
   if (!available) {
     return (
-      <div className="text-xs text-gray-400" data-testid="ttft-na">
+      <div className="text-xs text-gray-400 font-mono" data-testid="ttft-na">
         TTFT breakdown not available for this backend
       </div>
     );
   }
+
+  const loadMs = stats?.load_ms ?? 0;
+  const prefillMs = stats?.prompt_eval_ms ?? 0;
+  const totalDuration = maxTime || Math.max(stats?.total_ms ?? 0, ttftMs ?? 0) || 1;
+  const remainderMs = Math.max(0, totalDuration - loadMs - prefillMs);
+
+  const loadPct = (loadMs / totalDuration) * 100;
+  const prefillPct = (prefillMs / totalDuration) * 100;
+  const remainderPct = (remainderMs / totalDuration) * 100;
+
+  const innerWidth = Math.max(0, width - marginLeft - marginRight);
+
+  // Define segments for rendering and testing compatibility
+  const segments = [
+    { key: "load", label: "Model load", ms: loadMs, pct: loadPct },
+    { key: "prefill", label: "Prompt prefill", ms: prefillMs, pct: prefillPct },
+    { key: "remainder", label: "Stream & Gen", ms: remainderMs, pct: remainderPct },
+  ];
+
   return (
-    <div className="space-y-1" data-testid="ttft-breakdown">
-      <div className="flex h-3 w-full overflow-hidden rounded bg-gray-100">
-        {segments.map((s) => (
-          <div
-            key={s.key}
-            data-testid={`ttft-seg-${s.key}`}
-            title={`${s.label}: ${s.ms}ms`}
-            style={{ width: `${total > 0 ? (s.ms / total) * 100 : 0}%`, background: COLOR[s.key] }}
-          />
-        ))}
+    <div className="space-y-1 font-mono text-xs select-none" data-testid="ttft-breakdown">
+      {/* Align Phase Labels above the timeline */}
+      <div
+        className="flex text-[10px] text-gray-500 font-semibold tracking-wider"
+        style={{ marginLeft: `${marginLeft}px`, width: `${innerWidth}px` }}
+      >
+        {loadMs > 0 && (
+          <div style={{ width: `${loadPct}%` }} className="truncate" title={`Model Load: ${loadMs}ms`}>
+            [ 1. Model Load ]
+          </div>
+        )}
+        {prefillMs > 0 && (
+          <div style={{ width: `${prefillPct}%` }} className="truncate" title={`Prompt Prefill: ${prefillMs}ms`}>
+            [ 2. Prompt Prefill ]
+          </div>
+        )}
+        {remainderMs > 0 && (
+          <div style={{ width: `${remainderPct}%` }} className="truncate" title={`Stream & Gen: ${remainderMs}ms`}>
+            [ 3. Stream & Gen ]
+          </div>
+        )}
       </div>
-      <div className="flex flex-wrap gap-x-3 gap-y-0.5 text-[11px] text-gray-500">
-        {segments.map((s) => (
-          <span key={s.key} className="flex items-center gap-1">
-            <span className="inline-block h-2 w-2 rounded-sm" style={{ background: COLOR[s.key] }} />
-            {s.label} {s.ms}ms
-          </span>
-        ))}
-        {promptTokens != null && <span>· {promptTokens} prompt tokens</span>}
+
+      {/* Aligned Timeline Bar */}
+      <div className="flex items-center text-gray-500">
+        <div
+          style={{ width: `${marginLeft}px` }}
+          className="text-right pr-2 text-[10px] font-semibold text-gray-500"
+        >
+          0ms
+        </div>
+        <div
+          className="flex h-3 overflow-hidden rounded bg-gray-100 border border-gray-400"
+          style={{ width: `${innerWidth}px` }}
+        >
+          {segments.map((s) => {
+            if (s.ms <= 0) return null;
+            return (
+              <div
+                key={s.key}
+                data-testid={`ttft-seg-${s.key}`}
+                title={`${s.label}: ${s.ms}ms`}
+                style={{ width: `${s.pct}%`, background: COLOR[s.key] }}
+              />
+            );
+          })}
+        </div>
+        <div
+          style={{ width: `${marginRight}px` }}
+          className="pl-2 text-[10px] font-semibold text-gray-500"
+        >
+          {Math.round(totalDuration)}ms
+        </div>
       </div>
+
+      {promptTokens != null && (
+        <div
+          className="text-[10px] text-gray-500 font-semibold"
+          style={{ marginLeft: `${marginLeft}px` }}
+        >
+          · {promptTokens} prompt tokens
+        </div>
+      )}
     </div>
   );
 }

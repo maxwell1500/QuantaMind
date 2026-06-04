@@ -27,6 +27,6 @@ describe("App after Workspace extraction", () => {
   it("renders the QuantaMind heading and the model selector", async () => {
     render(<App />);
     expect(screen.getByRole("heading", { name: "QuantaMind" })).toBeTruthy();
-    expect(await screen.findByTestId("compare-model-select")).toBeTruthy();
+    expect(await screen.findByTestId("header-model-select")).toBeTruthy();
   });
 });

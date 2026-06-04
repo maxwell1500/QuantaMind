@@ -1,16 +1,14 @@
-import { useWorkspaceStore } from "../../state/workspaceStore";
-import { useInstalledModelsStore } from "../../../models/state/installedModelsStore";
-import { useCompareStore } from "../../../compare/state/compareStore";
+import { useBackendStore } from "../../../../shared/state/backendStore";
+import { useSelectedModelStore } from "../../../../shared/state/selectedModelStore";
 import { useMlxServer } from "../../hooks/useMlxServer";
 
 /// Start/Stop for the app-managed mlx_lm.server, mirroring the llama.cpp
-/// control: launch it on the selected MLX model's local directory (downloaded
-/// via the HuggingFace tab). No repo input — models are picked in the dropdown.
+/// control: launch it on the global model's local directory when it's an MLX
+/// model (downloaded via the HuggingFace tab). Models are picked in the header.
 export function MlxServerControl() {
-  const healthy = useWorkspaceStore((s) => s.mlxHealthy);
-  const selectedName = useCompareStore((s) => s.selectedModels[0]?.name ?? null);
-  const model = useInstalledModelsStore((s) =>
-    s.list.find((m) => m.name === selectedName && m.backend === "mlx"),
+  const healthy = useBackendStore((s) => s.mlxHealthy);
+  const model = useSelectedModelStore((s) =>
+    s.selectedModels.find((m) => m.backend === "mlx") ?? null,
   );
   const { start, stop, starting, phase, error } = useMlxServer();
 

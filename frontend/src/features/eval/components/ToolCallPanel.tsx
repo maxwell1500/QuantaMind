@@ -10,7 +10,7 @@ import { scoreLabel, isPassed, traceDiag, passedBadge, failedBadge, pendingBadge
 // ── Helpers ────────────────────────────────────────────────────────────────────
 
 const pct = (n: number | null, d: number) =>
-  d === 0 ? "0%" : n == null ? "n/a" : `${Math.round((n / d) * 100)}%`;
+  d === 0 ? "—" : n == null ? "n/a" : `${Math.round((n / d) * 100)}%`;
 
 function taskLabel(id: string): string {
   return id
@@ -243,7 +243,7 @@ export function ToolCallPanel({
 
   // Derived stats (live)
   const passedN = completedResults.filter(isPassed).length;
-  const accuracy = summary?.composite != null ? scoreLabel(summary.composite) : completedResults.length > 0 ? pct(passedN, completedResults.length) : running ? "0%" : "—";
+  const accuracy = summary?.composite != null ? scoreLabel(summary.composite) : completedResults.length > 0 ? pct(passedN, completedResults.length) : "—";
 
   const taskLabelMap = Object.fromEntries(tasks.map((t) => [t.id, taskLabel(t.id)]));
 

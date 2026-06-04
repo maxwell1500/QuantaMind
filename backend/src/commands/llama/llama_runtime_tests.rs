@@ -2,10 +2,10 @@ use super::*;
 
 #[test]
 fn spawn_args_pass_model_path_host_and_port() {
-    let args = build_spawn_args("/models/foo.gguf", 8080);
+    let args = build_spawn_args("/models/foo.gguf", 8081);
     assert_eq!(
         args,
-        vec!["-m", "/models/foo.gguf", "--host", "127.0.0.1", "--port", "8080"]
+        vec!["-m", "/models/foo.gguf", "--host", "127.0.0.1", "--port", "8081"]
     );
 }
 

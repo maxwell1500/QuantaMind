@@ -4,6 +4,7 @@ use crate::commands::eval::batch_payloads::{
     EVENT_BATCH_PROGRESS,
 };
 use crate::commands::eval::toolcall_cmd::endpoint_for;
+use crate::commands::prompt::prompt_options::{to_generate_options, validate_params};
 use crate::errors::AppError;
 use crate::inference::eval::agentic::model_turn::BackendTurn;
 use crate::inference::eval::agentic::step::TrajectoryStep;
@@ -11,6 +12,7 @@ use crate::inference::eval::batch::{batch_summaries, run_batch, BatchReport, Bat
 use crate::inference::eval::toolcall::matrix::ModelTarget;
 use crate::inference::eval::toolcall::tasks::{validate_tasks, ToolTask};
 use crate::persistence::eval_history;
+use crate::persistence::prompts::schema::InferenceParams;
 use crate::sync::MutexExt;
 use std::path::PathBuf;
 use std::sync::{Arc, Mutex};
@@ -81,8 +83,18 @@ pub async fn run_batch_eval(
     tasks: Vec<ToolTask>,
     k: Option<u32>,
     max_steps: Option<u32>,
+    params: Option<InferenceParams>,
+    keep_alive: Option<i32>,
 ) -> Result<BatchReport, AppError> {
     validate_tasks(&tasks)?;
+    // Global inference params (from the header) applied to every eval turn.
+    let options = match &params {
+        Some(p) => {
+            validate_params(p)?;
+            Some(to_generate_options(p))
+        }
+        None => None,
+    };
     let cancel = CancellationToken::new();
     {
         let mut g = state.cancel.lock_recover();
@@ -99,6 +111,8 @@ pub async fn run_batch_eval(
         endpoint: endpoint_for(t.backend),
         model: t.model.clone(),
         cancel: turn_cancel.clone(),
+        options: options.clone(),
+        keep_alive,
     })
     .await?;
     log_emit(&app, EVENT_BATCH_COMPLETE, BatchCompletePayload { report: report.clone() });

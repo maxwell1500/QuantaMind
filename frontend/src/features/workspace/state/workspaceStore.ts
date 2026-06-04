@@ -1,32 +1,16 @@
 import { create } from "zustand";
 import type { DonePayload } from "../../../shared/ipc/events/events";
-import type { BackendKind } from "../../../shared/ipc/models/storage";
 
-// Shared cross-component state only. Per-action/ephemeral state (run
-// status, output buffer, install progress) lives in hooks. See
-// architecture.md rule 6.
+// The last run's final metrics — shared so the StatusBar can show them after a
+// run completes (the run hook writes here on Done). Backend selection + server
+// health moved to shared/state/backendStore (architecture.md rule 7). Per-action
+// state lives in hooks. See architecture.md rule 6.
 export interface WorkspaceStore {
   lastRunMetrics: DonePayload | null;
-  ollamaHealthy: boolean | null;
-  llamaHealthy: boolean | null;
-  mlxHealthy: boolean | null;
-  activeBackend: BackendKind;
   setLastRunMetrics: (m: DonePayload) => void;
-  setOllamaHealthy: (h: boolean) => void;
-  setLlamaHealthy: (h: boolean) => void;
-  setMlxHealthy: (h: boolean) => void;
-  setActiveBackend: (b: BackendKind) => void;
 }
 
 export const useWorkspaceStore = create<WorkspaceStore>((set) => ({
   lastRunMetrics: null,
-  ollamaHealthy: null,
-  llamaHealthy: null,
-  mlxHealthy: null,
-  activeBackend: "ollama",
   setLastRunMetrics: (m) => set({ lastRunMetrics: m }),
-  setOllamaHealthy: (h) => set({ ollamaHealthy: h }),
-  setLlamaHealthy: (h) => set({ llamaHealthy: h }),
-  setMlxHealthy: (h) => set({ mlxHealthy: h }),
-  setActiveBackend: (b) => set({ activeBackend: b }),
 }));

@@ -9,12 +9,12 @@ vi.mock("../../../../shared/ipc/models/ollama_start", () => ({
 }));
 
 import { OllamaControl } from "../status/OllamaControl";
-import { useWorkspaceStore } from "../../state/workspaceStore";
+import { useBackendStore } from "../../../../shared/state/backendStore";
 import { startOllama, stopOllama } from "../../../../shared/ipc/models/ollama_start";
 
 beforeEach(() => {
   vi.clearAllMocks();
-  useWorkspaceStore.setState({ ollamaHealthy: null });
+  useBackendStore.setState({ ollamaHealthy: null });
 });
 
 describe("OllamaControl", () => {
@@ -24,7 +24,7 @@ describe("OllamaControl", () => {
   });
 
   it("shows Stop when Ollama is running and stops it on click", async () => {
-    useWorkspaceStore.setState({ ollamaHealthy: true });
+    useBackendStore.setState({ ollamaHealthy: true });
     render(<OllamaControl />);
     fireEvent.click(screen.getByTestId("ollama-stop"));
     await waitFor(() => expect(stopOllama).toHaveBeenCalled());
@@ -33,7 +33,7 @@ describe("OllamaControl", () => {
   });
 
   it("shows Start when Ollama is down and starts it on click", async () => {
-    useWorkspaceStore.setState({ ollamaHealthy: false });
+    useBackendStore.setState({ ollamaHealthy: false });
     render(<OllamaControl />);
     fireEvent.click(screen.getByTestId("ollama-start"));
     await waitFor(() => expect(startOllama).toHaveBeenCalled());

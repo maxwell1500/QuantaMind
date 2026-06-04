@@ -13,6 +13,8 @@ export interface RunCompareArgs {
   perModelParams?: Record<string, InferenceParams>;
   // One backend per model (parallel to `models`); each model runs on its own.
   backends?: BackendKind[];
+  // Ollama keep_alive: -1 keep loaded, 0 unload after each model.
+  keepAlive?: number;
 }
 
 export async function runCompare(args: RunCompareArgs): Promise<void> {

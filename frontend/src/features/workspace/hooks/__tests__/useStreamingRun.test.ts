@@ -8,6 +8,7 @@ import { invoke } from "@tauri-apps/api/core";
 import { listen, type EventCallback } from "@tauri-apps/api/event";
 import { useStreamingRun } from "../useStreamingRun";
 import { useWorkspaceStore } from "../../state/workspaceStore";
+import { useBackendStore } from "../../../../shared/state/backendStore";
 
 const handlers: Record<string, EventCallback<unknown>> = {};
 
@@ -30,7 +31,8 @@ describe("useStreamingRun", () => {
     vi.mocked(invoke).mockReset();
     vi.mocked(listen).mockReset();
     installListenMock();
-    useWorkspaceStore.setState({ lastRunMetrics: null, activeBackend: "ollama" });
+    useWorkspaceStore.setState({ lastRunMetrics: null });
+    useBackendStore.setState({ selectedBackend: "ollama" });
   });
 
   it("tokens append in order, no dup, no drop; status -> done", async () => {
@@ -74,7 +76,7 @@ describe("useStreamingRun", () => {
 
   it("sends the active backend with the run", async () => {
     vi.mocked(invoke).mockResolvedValue(undefined);
-    useWorkspaceStore.setState({ activeBackend: "llama_cpp" });
+    useBackendStore.setState({ selectedBackend: "llama_cpp" });
     const { result } = renderHook(() => useStreamingRun());
     await waitFor(() => expect(handlers["prompt-token"]).toBeDefined());
     await act(async () => {

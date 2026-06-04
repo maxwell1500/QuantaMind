@@ -2,10 +2,11 @@ import { useEffect } from "react";
 import { RunControls } from "./RunControls";
 import { useStreamingRun } from "../../hooks/useStreamingRun";
 import { useWorkspaceHotkeys } from "../../hooks/useWorkspaceHotkeys";
-import { useWorkspaceStore } from "../../state/workspaceStore";
+import { useBackendStore } from "../../../../shared/state/backendStore";
 import { useWorkspacesStore } from "../../../workspaces/state/workspaceStore";
 import { useNavStore } from "../../../../shared/state/navStore";
 import { useCompareStore } from "../../../compare/state/compareStore";
+import { useParamsStore } from "../../../../shared/state/paramsStore";
 import { backendRunHint } from "../../state/runHint";
 
 /// Single-model run trigger: run_prompt streaming with per-prompt params and
@@ -16,10 +17,10 @@ export function SingleRun({ model }: { model: string | null }) {
   const currentPath = useWorkspacesStore((s) => s.currentPath);
   const save = useWorkspacesStore((s) => s.save);
   const saveDraftAuto = useWorkspacesStore((s) => s.saveDraftAuto);
-  const ollamaHealthy = useWorkspaceStore((s) => s.ollamaHealthy);
-  const llamaHealthy = useWorkspaceStore((s) => s.llamaHealthy);
-  const mlxHealthy = useWorkspaceStore((s) => s.mlxHealthy);
-  const activeBackend = useWorkspaceStore((s) => s.activeBackend);
+  const ollamaHealthy = useBackendStore((s) => s.ollamaHealthy);
+  const llamaHealthy = useBackendStore((s) => s.llamaHealthy);
+  const mlxHealthy = useBackendStore((s) => s.mlxHealthy);
+  const activeBackend = useBackendStore((s) => s.selectedBackend);
   const setSingleRun = useCompareStore((s) => s.setSingleRun);
   const active = useNavStore((s) => s.topView) === "workspace";
   const { output, status, error, metrics, start, cancel } = useStreamingRun();
@@ -51,7 +52,7 @@ export function SingleRun({ model }: { model: string | null }) {
   const runNow = () => {
     if (!model) return;
     useNavStore.getState().setTopView("compare");
-    void start(model, prompt, system, current?.params, currentPath, current?.name);
+    void start(model, prompt, system, useParamsStore.getState().globalParams, currentPath, current?.name);
   };
   useWorkspaceHotkeys({
     active, canRun, running: status === "running", hasPrompt: !!current,
@@ -59,12 +60,19 @@ export function SingleRun({ model }: { model: string | null }) {
   });
 
   return (
-    <RunControls
-      status={status}
-      canRun={canRun}
-      blockedHint={blockedHint}
-      onRun={runNow}
-      onCancel={cancel}
-    />
+    <div className="space-y-1">
+      {!model && (
+        <p className="text-xs text-amber-700" data-testid="no-model-hint">
+          Pick a model in the header to run.
+        </p>
+      )}
+      <RunControls
+        status={status}
+        canRun={canRun}
+        blockedHint={blockedHint}
+        onRun={runNow}
+        onCancel={cancel}
+      />
+    </div>
   );
 }

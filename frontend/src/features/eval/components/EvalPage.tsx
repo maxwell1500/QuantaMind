@@ -1,6 +1,9 @@
 import { useEffect, useState } from "react";
 import { useEvalRegistryStore } from "../state/evalRegistryStore";
 import { useInstalledModelsStore } from "../../models/state/installedModelsStore";
+import { useSelectedModelStore } from "../../../shared/state/selectedModelStore";
+import { useBackendStore } from "../../../shared/state/backendStore";
+import { useBatchStore } from "../state/batchStore";
 import { EvalManager } from "./manager/EvalManager";
 import { CollectionEditor } from "./manager/CollectionEditor";
 import { MatrixScoreboard } from "./scoreboard/MatrixScoreboard";
@@ -14,7 +17,10 @@ import { TraceDebugger } from "./TraceDebugger";
 export function EvalPage() {
   const initRegistry = useEvalRegistryStore((s) => s.init);
   const startNew = useEvalRegistryStore((s) => s.startNew);
-  const models = useInstalledModelsStore((s) => s.list);
+  const allModels = useInstalledModelsStore((s) => s.list);
+  const selectedBackend = useBackendStore((s) => s.selectedBackend);
+  const models = allModels.filter((m) => m.backend === selectedBackend);
+  const globalModel = useSelectedModelStore((s) => s.selectedModels[0] ?? null);
 
   const [targets, setTargets] = useState<string[]>([]);
   const [focusedModel, setFocusedModel] = useState<string>("");
@@ -27,12 +33,25 @@ export function EvalPage() {
     void initRegistry().catch(() => {});
   }, [initRegistry]);
 
-  // Default one target once the model list loads.
+  // On a backend switch, the last run's results + the chosen targets belong to the
+  // PREVIOUS backend's models — clear them so the Simulator/Matrix don't keep
+  // showing stale models. Targets then re-seed from the new backend below.
   useEffect(() => {
-    if (models.length > 0 && targets.length === 0) {
-      setTargets([models[0].name]);
-    }
-  }, [models, targets.length]);
+    if (useBatchStore.getState().running) return;
+    useBatchStore.getState().reset();
+    setTargets([]);
+    setFocusedModel("");
+  }, [selectedBackend]);
+
+  // Default one target once the model list loads — the global header model if
+  // it's installed, else the first installed model.
+  useEffect(() => {
+    if (targets.length > 0) return;
+    const seed = (globalModel && models.some((m) => m.name === globalModel.name))
+      ? globalModel.name
+      : models[0]?.name;
+    if (seed) setTargets([seed]);
+  }, [models, targets.length, globalModel]);
 
   // Keep the focused model (shown in the Simulator/Evaluator) inside the targets.
   useEffect(() => {

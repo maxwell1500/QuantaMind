@@ -1,10 +1,10 @@
 import { useUiStore } from "./shared/state/uiStore";
 import { WorkspaceSwitcher } from "./features/workspaces/components/WorkspaceSwitcher";
-import { BackendList } from "./features/workspace/components/backend/BackendList";
 import { FilesSection } from "./features/workspaces/components/FilesSection";
 
 /// The Workspace's single left rail, composed at the shell level (features
-/// don't import each other): folder picker on top, then backends, then files.
+/// don't import each other): folder picker on top, then files. Backend selection
+/// now lives in the global header (GlobalControls).
 export function WorkspaceSidebar() {
   const visible = useUiStore((s) => s.sidebarVisible);
   const toggle = useUiStore((s) => s.toggleSidebar);
@@ -39,7 +39,6 @@ export function WorkspaceSidebar() {
         </button>
       </div>
       <WorkspaceSwitcher />
-      <BackendList />
       <FilesSection />
     </aside>
   );

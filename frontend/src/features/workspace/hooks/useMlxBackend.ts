@@ -1,7 +1,7 @@
 import { useEffect, useState } from "react";
 import { getHardwareSnapshot } from "../../../shared/ipc/compare/hardware";
 import { checkMlxHealth } from "../../../shared/ipc/core/client";
-import { useWorkspaceStore } from "../state/workspaceStore";
+import { useBackendStore } from "../../../shared/state/backendStore";
 
 const POLL_MS = 5000;
 
@@ -10,7 +10,7 @@ const POLL_MS = 5000;
 // offered, so no polling happens.
 export function useMlxBackend(): { appleSilicon: boolean } {
   const [appleSilicon, setAppleSilicon] = useState(false);
-  const setMlxHealthy = useWorkspaceStore((s) => s.setMlxHealthy);
+  const setMlxHealthy = useBackendStore((s) => s.setMlxHealthy);
 
   useEffect(() => {
     let cancelled = false;

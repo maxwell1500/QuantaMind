@@ -2,6 +2,8 @@ import { useEvalRegistryStore } from "../../state/evalRegistryStore";
 import { useInstalledModelsStore } from "../../../models/state/installedModelsStore";
 import { useBatchStore, cellKey } from "../../state/batchStore";
 import { modelLabel } from "../../../../shared/models/modelLabel";
+import { InfoButton } from "../../../../shared/ui/InfoButton";
+import { TOOL_HELP, metricTitle } from "../../help";
 
 interface MatrixScoreboardProps {
   model: string;
@@ -83,6 +85,9 @@ export function MatrixScoreboard({
         <span style={{ fontSize: 13, color: "#93c5fd", fontFamily: "'JetBrains Mono', monospace", fontWeight: 500 }}>
           &nbsp;- [ Target: {modelTargetLabel} ]
         </span>
+        <span style={{ marginLeft: "auto" }}>
+          <InfoButton {...TOOL_HELP.simulator} testId="simulator" />
+        </span>
       </div>
 
       {error && (
@@ -109,7 +114,7 @@ export function MatrixScoreboard({
         <div style={aggregateBoxStyle}>
           {totalRuns > 0 ? (
             <span>
-              AGGREGATE: <strong style={{ color: "#4ade80" }}>{passRate}% Pass Rate</strong> ({totalPasses}/{totalRuns}) | Avg Steps: <strong>{avgStepsVal}</strong> | Effort: <strong>{effortVal}</strong> tokens
+              AGGREGATE: <strong style={{ color: "#4ade80" }} title={metricTitle("passRate")}>{passRate}% Pass Rate</strong> ({totalPasses}/{totalRuns}) | <span title={metricTitle("avgSteps")}>Avg Steps:</span> <strong>{avgStepsVal}</strong> | <span title={metricTitle("effort")}>Effort:</span> <strong>{effortVal}</strong> tokens
             </span>
           ) : (
             <span style={{ color: "#64748b" }}>
