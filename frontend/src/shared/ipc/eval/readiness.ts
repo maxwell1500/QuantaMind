@@ -34,10 +34,24 @@ export const ReadinessVerdictSchema = z.object({
 });
 export type ReadinessVerdict = z.infer<typeof ReadinessVerdictSchema>;
 
+/// One model's measured memory footprint vs the allocation cap (Phase 7.4).
+/// Present only when VRAM fit was measured (Ollama + a cap); absent otherwise.
+export const MemoryProfileSchema = z.object({
+  weights_bytes: z.number().int().nonnegative(),
+  kv_cache_bytes: z.number().int().nonnegative(),
+  total_bytes: z.number().int().nonnegative(),
+  cap_bytes: z.number().int().nonnegative(),
+  context_length: z.number().int().nonnegative(),
+  fits: z.boolean(),
+  pressure: z.boolean(),
+});
+export type MemoryProfile = z.infer<typeof MemoryProfileSchema>;
+
 export const ModelVerdictSchema = z.object({
   model: z.string(),
   backend: BackendKindSchema,
   verdict: ReadinessVerdictSchema,
+  memory: MemoryProfileSchema.nullish(),
 });
 export type ModelVerdict = z.infer<typeof ModelVerdictSchema>;
 
@@ -54,13 +68,16 @@ export async function deleteReadinessProfile(id: string): Promise<void> {
   await invoke("delete_readiness_profile", { id });
 }
 
-/// Assess a collection's last persisted batch report against a profile. An empty
-/// array means no run has been persisted yet — the page shows an empty state.
+/// Assess a collection's last persisted batch report against a profile. When
+/// `capBytes` is set, VRAM fit is measured for each Ollama model against that
+/// allocation cap. An empty array means no run has been persisted yet — the page
+/// shows an empty state.
 export async function assessReadiness(
   collectionId: string,
   profileId: string,
+  capBytes?: number,
 ): Promise<ModelVerdict[]> {
   return z
     .array(ModelVerdictSchema)
-    .parse(await invoke("assess_readiness", { collectionId, profileId }));
+    .parse(await invoke("assess_readiness", { collectionId, profileId, capBytes }));
 }
