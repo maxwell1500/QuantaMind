@@ -1,4 +1,4 @@
-use serde::Serialize;
+use serde::{Deserialize, Serialize};
 
 /// How a single agentic run failed. Each maps to exactly one `FailureTracker`
 /// tally so the categories never overlap.
@@ -58,7 +58,7 @@ impl RunOutcome {
 
 /// Distinct tallies of the failure modes — never overlapping, so a Q4 model's
 /// "loop cap" failures don't hide its "fake done" or "bad schema" failures.
-#[derive(Serialize, Clone, Debug, Default, PartialEq, Eq)]
+#[derive(Serialize, Deserialize, Clone, Debug, Default, PartialEq, Eq)]
 pub struct FailureTracker {
     pub infinite_loop_hits: u32,
     pub hallucinated_completions: u32,
@@ -93,7 +93,7 @@ impl FailureTracker {
 }
 
 /// The headline failure mode for a model's Comparison-Matrix row.
-#[derive(Serialize, Clone, Copy, Debug, PartialEq, Eq)]
+#[derive(Serialize, Deserialize, Clone, Copy, Debug, PartialEq, Eq)]
 #[serde(rename_all = "snake_case")]
 pub enum TopError {
     None,
@@ -107,7 +107,7 @@ pub enum TopError {
 /// failure breakdown, the relative effort metric (mean output tokens over
 /// successful runs only — `None` ⇒ the UI renders "N/A"), mean steps across all
 /// runs, and the headline error.
-#[derive(Serialize, Clone, Debug, PartialEq)]
+#[derive(Serialize, Deserialize, Clone, Debug, PartialEq)]
 pub struct AgenticReport {
     pub passes: u32,
     pub total_runs: u32,

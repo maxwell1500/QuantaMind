@@ -10,7 +10,7 @@ use crate::inference::eval::toolcall::matrix::ModelTarget;
 use crate::inference::eval::toolcall::score::verdict_passed;
 use crate::inference::eval::toolcall::tasks::ToolTask;
 use crate::persistence::eval_history::RunSummary;
-use serde::Serialize;
+use serde::{Deserialize, Serialize};
 use std::sync::Arc;
 use tokio::sync::mpsc::unbounded_channel;
 use tokio_util::sync::CancellationToken;
@@ -35,7 +35,7 @@ pub trait BatchSink: Send + Sync {
 
 /// Per-model aggregate of the collection's agentic tasks: summed Pass^k, mean
 /// steps/effort, dominant failure. Null metrics render "N/A", never fabricated.
-#[derive(Serialize, Clone, Debug, PartialEq)]
+#[derive(Serialize, Deserialize, Clone, Debug, PartialEq)]
 pub struct AggAgentic {
     pub passes: u32,
     pub total_runs: u32,
@@ -54,7 +54,7 @@ pub struct AggAgentic {
 
 /// One model's row in the Matrix Scoreboard: single-turn report and/or agentic
 /// aggregate (whichever the collection contained), or the error it hit.
-#[derive(Serialize, Clone, Debug, PartialEq)]
+#[derive(Serialize, Deserialize, Clone, Debug, PartialEq)]
 pub struct BatchColumn {
     pub model: String,
     pub backend: BackendKind,
@@ -64,7 +64,7 @@ pub struct BatchColumn {
 }
 
 /// The full batch result: one column per target model.
-#[derive(Serialize, Clone, Debug, PartialEq)]
+#[derive(Serialize, Deserialize, Clone, Debug, PartialEq)]
 pub struct BatchReport {
     pub collection_id: String,
     pub columns: Vec<BatchColumn>,

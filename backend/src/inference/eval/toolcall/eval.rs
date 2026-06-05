@@ -12,7 +12,7 @@ use tokio_util::sync::CancellationToken;
 
 const MAX_TOKENS: u32 = 256;
 
-#[derive(Serialize, Clone, Debug, PartialEq)]
+#[derive(Serialize, Deserialize, Clone, Debug, PartialEq)]
 pub struct TaskResult {
     pub id: String,
     pub category: String,
@@ -52,7 +52,7 @@ pub struct TaskTrace {
 /// its own metric); `tool_selection_acc` over parsed call-tasks; `arg_acc` over
 /// tool-matched tasks; `abstain_acc` over NoCall tasks. Each is `None` (n/a, not
 /// 0) when its denominator is 0. `composite` = mean of the available sub-scores.
-#[derive(Serialize, Clone, Debug, PartialEq)]
+#[derive(Serialize, Deserialize, Clone, Debug, PartialEq)]
 pub struct ToolCallReport {
     pub n: usize,
     pub parse_rate: Option<f64>,

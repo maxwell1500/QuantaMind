@@ -11,8 +11,8 @@ use crate::inference::eval::agentic::step::TrajectoryStep;
 use crate::inference::eval::batch::{batch_summaries, run_batch, BatchReport, BatchSink, TaskOutcome};
 use crate::inference::eval::toolcall::matrix::ModelTarget;
 use crate::inference::eval::toolcall::tasks::{validate_tasks, ToolTask};
-use crate::persistence::eval_history;
 use crate::persistence::prompts::schema::InferenceParams;
+use crate::persistence::{batch_report_store, eval_history};
 use crate::sync::MutexExt;
 use std::path::PathBuf;
 use std::sync::{Arc, Mutex};
@@ -23,6 +23,13 @@ use tokio_util::sync::CancellationToken;
 fn history_dir(app: &AppHandle) -> Result<PathBuf, AppError> {
     let dir = app.path().app_config_dir().map_err(|e| AppError::Io(e.to_string()))?;
     Ok(dir.join("history"))
+}
+
+/// Where the last full batch report per collection is persisted — Rust's source
+/// of truth for the readiness verdict (the Agent Report page + future CLI read it).
+fn reports_dir(app: &AppHandle) -> Result<PathBuf, AppError> {
+    let dir = app.path().app_config_dir().map_err(|e| AppError::Io(e.to_string()))?;
+    Ok(dir.join("batch_reports"))
 }
 
 /// Run-level cancellation for the batch dispatcher (mirrors `CompareRunState`).
@@ -124,6 +131,11 @@ pub async fn run_batch_eval(
         if !entries.is_empty() {
             let _ = eval_history::append(&dir, &collection_id, &entries);
         }
+    }
+    // Persist the full report so the readiness verdict reads it from Rust, not
+    // the frontend store (best effort — never fail the run on a report write).
+    if let Ok(dir) = reports_dir(&app) {
+        let _ = batch_report_store::save(&dir, &report);
     }
 
     Ok(report)
