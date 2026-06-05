@@ -1,3 +1,4 @@
+use crate::inference::backend::backend_kind::BackendKind;
 use serde::{Deserialize, Serialize};
 
 /// Absorbs float drift (a serialized `0.80` read back as `0.7999999999999999`,
@@ -52,4 +53,12 @@ pub struct ReadinessVerdict {
     pub blocking: Vec<String>,
     pub conditions: Vec<String>,
     pub path: AgentPath,
+}
+
+/// A verdict paired with the model it judged — one row of the Agent Report.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct ModelVerdict {
+    pub model: String,
+    pub backend: BackendKind,
+    pub verdict: ReadinessVerdict,
 }

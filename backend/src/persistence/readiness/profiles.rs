@@ -1,6 +1,6 @@
 use crate::errors::{AppError, AppResult};
 use crate::inference::eval::readiness::profile::{builtins, ReadinessProfile};
-use crate::persistence::safe_filename::safe_filename;
+use crate::persistence::readiness::safe_filename::safe_filename;
 use std::path::{Path, PathBuf};
 
 /// Cap a profile read so a corrupt/huge file can't OOM the process — same guard
@@ -75,5 +75,5 @@ pub fn delete(dir: &Path, id: &str) -> AppResult<()> {
 }
 
 #[cfg(test)]
-#[path = "readiness_profiles_tests.rs"]
+#[path = "profiles_tests.rs"]
 mod tests;

@@ -11,8 +11,9 @@ use crate::inference::eval::agentic::step::TrajectoryStep;
 use crate::inference::eval::batch::{batch_summaries, run_batch, BatchReport, BatchSink, TaskOutcome};
 use crate::inference::eval::toolcall::matrix::ModelTarget;
 use crate::inference::eval::toolcall::tasks::{validate_tasks, ToolTask};
+use crate::persistence::eval_history;
 use crate::persistence::prompts::schema::InferenceParams;
-use crate::persistence::{batch_report_store, eval_history};
+use crate::persistence::readiness::reports;
 use crate::sync::MutexExt;
 use std::path::PathBuf;
 use std::sync::{Arc, Mutex};
@@ -135,7 +136,7 @@ pub async fn run_batch_eval(
     // Persist the full report so the readiness verdict reads it from Rust, not
     // the frontend store (best effort — never fail the run on a report write).
     if let Ok(dir) = reports_dir(&app) {
-        let _ = batch_report_store::save(&dir, &report);
+        let _ = reports::save(&dir, &report);
     }
 
     Ok(report)

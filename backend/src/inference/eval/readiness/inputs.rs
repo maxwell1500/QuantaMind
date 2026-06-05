@@ -1,5 +1,7 @@
-use super::types::{NativeFcStatus, ReadinessInputs};
-use crate::inference::eval::batch::BatchColumn;
+use super::profile::ReadinessProfile;
+use super::types::{AgentPath, ModelVerdict, NativeFcStatus, Readiness, ReadinessInputs, ReadinessVerdict};
+use super::verdict::assess;
+use crate::inference::eval::batch::{BatchColumn, BatchReport};
 
 /// Build the measured inputs for `assess` from a Matrix column. Only metrics the
 /// engine produces today are populated; the rest are `None`/`NotSupported`
@@ -21,6 +23,28 @@ pub fn from_column(col: &BatchColumn) -> ReadinessInputs {
         hallucinated,
         native_fc: NativeFcStatus::NotSupported, // Phase 7.2: native function-calling path
     }
+}
+
+/// Assess every model in a persisted batch report against a profile. An errored
+/// column short-circuits to NotReady carrying the real run error — we never
+/// synthesize a score for a column that failed to produce data.
+pub fn assess_report(report: &BatchReport, profile: &ReadinessProfile) -> Vec<ModelVerdict> {
+    report
+        .columns
+        .iter()
+        .map(|col| {
+            let verdict = match &col.error {
+                Some(err) => ReadinessVerdict {
+                    status: Readiness::NotReady,
+                    blocking: vec![format!("run error: {err}")],
+                    conditions: Vec::new(),
+                    path: AgentPath::PromptBased,
+                },
+                None => assess(&from_column(col), profile),
+            };
+            ModelVerdict { model: col.model.clone(), backend: col.backend, verdict }
+        })
+        .collect()
 }
 
 #[cfg(test)]

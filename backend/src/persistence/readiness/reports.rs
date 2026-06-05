@@ -1,6 +1,6 @@
 use crate::errors::{AppError, AppResult};
 use crate::inference::eval::batch::BatchReport;
-use crate::persistence::safe_filename::safe_filename;
+use crate::persistence::readiness::safe_filename::safe_filename;
 use std::path::{Path, PathBuf};
 
 /// Same 1 MB read guard as the trace/history stores — a corrupt/huge report file
@@ -38,5 +38,5 @@ pub fn load(dir: &Path, collection_id: &str) -> AppResult<Option<BatchReport>> {
 }
 
 #[cfg(test)]
-#[path = "batch_report_store_tests.rs"]
+#[path = "reports_tests.rs"]
 mod tests;

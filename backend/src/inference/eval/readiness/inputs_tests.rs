@@ -1,5 +1,7 @@
-use super::super::types::NativeFcStatus;
-use super::from_column;
+use super::super::profile::builtins;
+use super::super::types::{NativeFcStatus, Readiness};
+use super::{assess_report, from_column};
+use crate::inference::eval::batch::BatchReport;
 use crate::inference::backend::backend_kind::BackendKind;
 use crate::inference::eval::agentic::report::{FailureTracker, TopError};
 use crate::inference::eval::batch::{AggAgentic, BatchColumn};
@@ -63,4 +65,27 @@ fn no_agentic_column_yields_unmeasured_pass_k_core_gate() {
 fn zero_total_runs_is_unmeasured_not_a_fabricated_zero() {
     let i = from_column(&col(0, 0, 0, 0, None));
     assert_eq!(i.pass_k, None); // None, not Some(0.0) — never a guessed failing score
+}
+
+#[test]
+fn assess_report_grades_clean_models_and_short_circuits_errors() {
+    let general = builtins().into_iter().find(|p| p.id == "general-agent").unwrap();
+    let report = BatchReport {
+        collection_id: "c".into(),
+        columns: vec![
+            col(5, 5, 0, 0, Some(2.0)), // clean → Ready
+            BatchColumn {
+                model: "boom".into(),
+                backend: BackendKind::Ollama,
+                toolcall: None,
+                agentic: None,
+                error: Some("backend offline".into()),
+            },
+        ],
+    };
+    let verdicts = assess_report(&report, &general);
+    assert_eq!(verdicts[0].model, "m");
+    assert_eq!(verdicts[0].verdict.status, Readiness::Ready);
+    assert_eq!(verdicts[1].verdict.status, Readiness::NotReady);
+    assert!(verdicts[1].verdict.blocking[0].contains("backend offline")); // real error, not a synthesized score
 }
