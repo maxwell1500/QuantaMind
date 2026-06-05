@@ -47,7 +47,11 @@ pub fn sandbox_for(task: &ToolTask) -> AppResult<(DeterministicSandbox, AgenticC
     )
     .with_faults(spec.faults.clone());
     let d = AgenticConfig::default();
-    let cfg = AgenticConfig { k: spec.k.unwrap_or(d.k), max_steps: spec.max_steps.unwrap_or(d.max_steps) };
+    let cfg = AgenticConfig {
+        k: spec.k.unwrap_or(d.k),
+        max_steps: spec.max_steps.unwrap_or(d.max_steps),
+        max_recovery: spec.max_recovery.unwrap_or(d.max_recovery),
+    };
     Ok((sandbox, cfg))
 }
 

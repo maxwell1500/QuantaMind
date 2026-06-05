@@ -15,15 +15,18 @@ const MAX_TOKENS: u32 = 256;
 const UNKNOWN_TOOL: &str =
     "Tool not found or arguments unrecognized. Choose a tool from the provided schema.";
 
-/// Pass^k inputs: how many independent runs (default 5) and the per-run step cap.
+/// Pass^k inputs: how many independent runs (default 5), the per-run step cap, and
+/// the per-run semantic-recovery budget (how many schema errors a run may correct
+/// before it's scored MalformedSchema).
 pub struct AgenticConfig {
     pub k: u32,
     pub max_steps: u32,
+    pub max_recovery: u8,
 }
 
 impl Default for AgenticConfig {
     fn default() -> Self {
-        Self { k: 5, max_steps: 10 }
+        Self { k: 5, max_steps: 10, max_recovery: 2 }
     }
 }
 
@@ -39,7 +42,7 @@ pub async fn run_agentic<M: ModelTurn>(
 ) -> AppResult<AgenticReport> {
     let mut outcomes = Vec::with_capacity(config.k as usize);
     for run_index in 0..config.k {
-        outcomes.push(run_once(turn, sandbox, config.max_steps, run_index, tx).await?);
+        outcomes.push(run_once(turn, sandbox, config.max_steps, config.max_recovery, run_index, tx).await?);
     }
     Ok(AgenticReport::from_outcomes(&outcomes))
 }
@@ -54,6 +57,7 @@ pub async fn run_once<M: ModelTurn>(
     turn: &M,
     sandbox: &DeterministicSandbox,
     max_steps: u32,
+    max_recovery: u8,
     run_index: u32,
     tx: &UnboundedSender<TrajectoryStep>,
 ) -> AppResult<RunOutcome> {
@@ -62,6 +66,9 @@ pub async fn run_once<M: ModelTurn>(
     let mut output_tokens = 0u32;
     let mut next_cp = 0usize; // progress through a RequireSequence end-state
     let mut state = SandboxState::new(); // per-run fault attempt counters (Driver B)
+    let mut recoveries = 0u8; // schema corrections used this run (Driver D)
+    let mut hit_schema_error = false; // this run emitted a schema-invalid call
+    let mut schema_recovered = false; // ...and later produced a valid one
 
     for step_index in 0..max_steps {
         let spec = GenerateSpec {
@@ -90,6 +97,35 @@ pub async fn run_once<M: ModelTurn>(
                     return Ok(RunOutcome::failure(step_index + 1, output_tokens, FailureKind::Hallucinated));
                 }
                 EndStateRule::RequireSequence(checkpoints) => {
+                    // Driver D: SEMANTIC validation precedes everything (only when the
+                    // task declares tool schemas to validate against). An invalid call
+                    // gets a precise correction injected and burns one recovery;
+                    // exhausting the budget ends the run as MalformedSchema.
+                    if !sandbox.tools.is_empty() {
+                        if let Err(msg) = endstate::validate_call(&call, &sandbox.tools) {
+                            hit_schema_error = true;
+                            if recoveries >= max_recovery {
+                                send(StepKind::SchemaError, None); // terminal: budget spent
+                                return Ok(RunOutcome::failure(
+                                    step_index + 1,
+                                    output_tokens,
+                                    FailureKind::MalformedSchema,
+                                )
+                                .with_schema(true, false));
+                            }
+                            recoveries += 1;
+                            let err = format!("[Schema error: {msg}]");
+                            let line = tool_result_line(&err);
+                            convo.push_model(&raw);
+                            convo.push_tool_result(&err);
+                            send(StepKind::SchemaError, Some(line));
+                            continue;
+                        }
+                        // A schema-valid call after a prior schema error is the recovery.
+                        if hit_schema_error && !schema_recovered {
+                            schema_recovered = true;
+                        }
+                    }
                     // Driver B: a fault trap fires BEFORE any checkpoint advance, so a
                     // trapped call can never be a fake pass. Inject the HTTP-style
                     // error and continue — a robust agent retries (transient) or
@@ -104,7 +140,8 @@ pub async fn run_once<M: ModelTurn>(
                     let advances = endstate::checkpoint_matches(&checkpoints[next_cp], &call);
                     if advances && next_cp + 1 == checkpoints.len() {
                         send(StepKind::EndStateReached, None); // final checkpoint hit
-                        return Ok(RunOutcome::success(step_index + 1, output_tokens));
+                        return Ok(RunOutcome::success(step_index + 1, output_tokens)
+                            .with_schema(hit_schema_error, schema_recovered));
                     }
                     if advances {
                         next_cp += 1; // intermediate checkpoint reached, keep going
@@ -132,7 +169,8 @@ pub async fn run_once<M: ModelTurn>(
                         (StepKind::HallucinatedCompletion, FailureKind::Hallucinated)
                     };
                     send(kind, None);
-                    return Ok(RunOutcome::failure(step_index + 1, output_tokens, failure));
+                    return Ok(RunOutcome::failure(step_index + 1, output_tokens, failure)
+                        .with_schema(hit_schema_error, schema_recovered));
                 }
             },
         }
@@ -145,7 +183,8 @@ pub async fn run_once<M: ModelTurn>(
         injection: None,
         kind: StepKind::InfiniteLoop,
     });
-    Ok(RunOutcome::failure(max_steps, output_tokens, FailureKind::InfiniteLoop))
+    Ok(RunOutcome::failure(max_steps, output_tokens, FailureKind::InfiniteLoop)
+        .with_schema(hit_schema_error, schema_recovered))
 }
 
 #[cfg(test)]

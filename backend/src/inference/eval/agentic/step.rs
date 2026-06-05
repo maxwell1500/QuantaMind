@@ -14,6 +14,10 @@ pub enum StepKind {
     /// A parsed call the sandbox has no mock for (unknown tool or wrong args) — an
     /// error is injected and the loop continues.
     UnknownTool,
+    /// Driver D: a schema-invalid call (missing required param / wrong type /
+    /// unknown tool). A precise semantic correction is injected for recovery; the
+    /// terminal SchemaError turn (no injection) means the recovery budget ran out.
+    SchemaError,
     /// The model yielded with broken JSON where a call was attempted.
     MalformedJson,
     /// The model yielded (no call) without satisfying the EndStateRule — a fake
