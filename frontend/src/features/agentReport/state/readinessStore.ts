@@ -2,6 +2,7 @@ import { create } from "zustand";
 import {
   assessReadiness,
   listReadinessProfiles,
+  saveReadinessProfile,
   type ModelVerdict,
   type ReadinessProfile,
 } from "../../../shared/ipc/eval/readiness";
@@ -24,6 +25,9 @@ interface ReadinessStore {
   selectProfile: (id: string) => void;
   setCap: (bytes: number) => void;
   assess: (collectionId: string) => Promise<void>;
+  /// Persist edited thresholds to disk (Rust = source of truth) then reload the
+  /// profile list so the active profile reflects the new gates.
+  saveProfile: (profile: ReadinessProfile) => Promise<void>;
 }
 
 /// Transient readiness state — profiles + the current verdicts. Source of truth
@@ -67,5 +71,9 @@ export const useReadinessStore = create<ReadinessStore>((set, get) => ({
     } catch (e) {
       set({ error: String(e), loading: false, assessed: false });
     }
+  },
+  saveProfile: async (profile) => {
+    await saveReadinessProfile(profile);
+    await get().loadProfiles();
   },
 }));

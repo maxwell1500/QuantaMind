@@ -12,12 +12,22 @@ export function defaultCapBytes(hw: HardwareSnapshot | null): number | null {
   return hw.total_memory_bytes || null;
 }
 
-/// Cap dropdown options (GiB), always including the detected default so the
-/// initial value is selectable. Sorted ascending.
+/// Cap dropdown options (GiB). Only offers caps the machine can actually back —
+/// simulating a SMALLER cap is meaningful (test headroom), but offering more than
+/// physical memory is not (you can't allocate 128 GB on a 16 GB box). The detected
+/// total is the ceiling and is always selectable; when hardware is unknown the full
+/// list is shown. Sorted ascending.
 export function capOptions(detectedBytes: number | null): { bytes: number; label: string }[] {
   const gibs = [8, 12, 16, 24, 32, 48, 64, 96, 128];
-  const bytes = new Set(gibs.map((g) => g * GIB));
-  if (detectedBytes && detectedBytes > 0) bytes.add(detectedBytes);
+  const unknown = !detectedBytes || detectedBytes <= 0;
+  const bytes = new Set<number>();
+  for (const g of gibs) {
+    const b = g * GIB;
+    if (unknown || b <= detectedBytes) bytes.add(b);
+  }
+  if (!unknown) bytes.add(detectedBytes); // the real ceiling, always selectable
+  // Never leave the dropdown empty (e.g. < 8 GB detected): fall back to the floor.
+  if (bytes.size === 0) bytes.add(gibs[0] * GIB);
   return [...bytes].sort((a, b) => a - b).map((b) => ({ bytes: b, label: `${Math.round(b / GIB)} GB` }));
 }
 

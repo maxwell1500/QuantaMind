@@ -29,6 +29,19 @@ describe("capBytes", () => {
     expect(opts.find((o) => o.bytes === 20 * GIB)?.label).toBe("20 GB");
   });
 
+  it("clamps options to the detected memory — never offers more than you physically have", () => {
+    const gb = capOptions(16 * GIB).map((o) => o.bytes / GIB);
+    expect(gb).toContain(8);
+    expect(gb).toContain(16);
+    expect(gb).not.toContain(24); // above the 16 GB ceiling → dropped
+    expect(gb).not.toContain(128);
+  });
+
+  it("shows the full list when hardware is unknown, and never an empty dropdown", () => {
+    expect(capOptions(null).map((o) => o.bytes / GIB)).toContain(128);
+    expect(capOptions(4 * GIB).length).toBeGreaterThan(0); // below the floor → still one option
+  });
+
   it("archLabel distinguishes UMA / discrete / CPU", () => {
     expect(archLabel(hw({ gpu: { unified: true, available: true } }))).toMatch(/UMA/);
     expect(archLabel(hw({ gpu: { unified: false, available: true, name: "RTX 4090" } }))).toMatch(/RTX 4090/);
