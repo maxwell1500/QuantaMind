@@ -40,6 +40,33 @@ pub fn estimate(
     MemoryProfile { weights_bytes, kv_cache_bytes, total_bytes, cap_bytes, context_length, fits, pressure }
 }
 
+/// Transformer dimensions for the KV-cache estimate, mirrored from `commands`'
+/// `ModelDims` so `inference/` doesn't depend on the IPC layer. `context_length`
+/// is the model's max context (the fallback when a run had no `num_ctx`).
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct Dims {
+    pub layers: u64,
+    pub head_count: u64,
+    pub head_count_kv: u64,
+    pub embedding_length: u64,
+    pub context_length: u32,
+}
+
+/// Compute a memory profile only when every input is present: a cap, the exact
+/// weight size, and real dims. Any `None` ⇒ `None` ("not measured" — the verdict
+/// then treats VRAM as unmeasured, never a guessed fit). Sizes the cache to the
+/// run's `num_ctx`, falling back to the model's max context.
+pub fn try_profile(
+    weights_bytes: Option<u64>,
+    dims: Option<Dims>,
+    num_ctx: Option<u32>,
+    cap_bytes: Option<u64>,
+) -> Option<MemoryProfile> {
+    let (weights, d, cap) = (weights_bytes?, dims?, cap_bytes?);
+    let ctx = num_ctx.unwrap_or(d.context_length);
+    Some(estimate(weights, d.layers, d.head_count, d.head_count_kv, d.embedding_length, ctx, cap))
+}
+
 #[cfg(test)]
 #[path = "vram_fit_tests.rs"]
 mod tests;

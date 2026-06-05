@@ -27,24 +27,39 @@ pub fn from_column(col: &BatchColumn, fits_in_vram: Option<bool>, vram_pressure:
     }
 }
 
-/// Assess every model in a persisted batch report against a profile. An errored
-/// column short-circuits to NotReady carrying the real run error — we never
-/// synthesize a score for a column that failed to produce data.
+/// One column's verdict against a profile, with the hardware facts threaded in.
+/// An errored column short-circuits to NotReady carrying the real run error — we
+/// never synthesize a score for a column that failed to produce data. The single
+/// home for the error/assess branch, shared by `assess_report` (no hardware) and
+/// the hardware-aware command.
+pub fn verdict_for(
+    col: &BatchColumn,
+    fits_in_vram: Option<bool>,
+    vram_pressure: bool,
+    profile: &ReadinessProfile,
+) -> ReadinessVerdict {
+    match &col.error {
+        Some(err) => ReadinessVerdict {
+            status: Readiness::NotReady,
+            blocking: vec![format!("run error: {err}")],
+            conditions: Vec::new(),
+            path: AgentPath::PromptBased,
+        },
+        None => assess(&from_column(col, fits_in_vram, vram_pressure), profile),
+    }
+}
+
+/// Assess every model in a persisted batch report against a profile, with no
+/// hardware facts (VRAM unmeasured). The CLI-without-cap and pure-test path.
 pub fn assess_report(report: &BatchReport, profile: &ReadinessProfile) -> Vec<ModelVerdict> {
     report
         .columns
         .iter()
-        .map(|col| {
-            let verdict = match &col.error {
-                Some(err) => ReadinessVerdict {
-                    status: Readiness::NotReady,
-                    blocking: vec![format!("run error: {err}")],
-                    conditions: Vec::new(),
-                    path: AgentPath::PromptBased,
-                },
-                None => assess(&from_column(col, None, false), profile),
-            };
-            ModelVerdict { model: col.model.clone(), backend: col.backend, verdict, memory: None }
+        .map(|col| ModelVerdict {
+            model: col.model.clone(),
+            backend: col.backend,
+            verdict: verdict_for(col, None, false, profile),
+            memory: None,
         })
         .collect()
 }
