@@ -67,6 +67,15 @@ export const AggAgenticSchema = z.object({
   avg_output_tokens_success: z.number().nullable(),
   schema_resilience: z.number().nullable(),
   top_error: TopErrorSchema,
+  // Summed failure breakdown — the readiness verdict gates on the exact loop /
+  // hallucination counts, which `top_error` alone would hide. `.default` mirrors
+  // the Rust `#[serde(default)]` so pre-Phase-7 reports still parse.
+  failures: FailureTrackerSchema.default({
+    infinite_loop_hits: 0,
+    hallucinated_completions: 0,
+    malformed_json_calls: 0,
+    schema_unrecovered_calls: 0,
+  }),
 });
 export type AggAgentic = z.infer<typeof AggAgenticSchema>;
 

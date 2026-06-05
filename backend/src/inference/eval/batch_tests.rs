@@ -133,6 +133,24 @@ async fn batch_summaries_map_per_model_toolcall_and_agentic_metrics() {
     assert!(sums[0].composite.is_some()); // single-turn s1 contributes a composite
 }
 
+#[test]
+fn agg_agentic_sums_failure_breakdown_not_just_top_error() {
+    use crate::inference::eval::agentic::report::{AgenticReport, FailureKind, RunOutcome};
+    // Task A loops once; task B hallucinates nine times. `top_error` is Hallucinated
+    // (9 > 1), but a `forbid_infinite_loop` verdict must still see the single loop —
+    // the gap this aggregate closes.
+    let a = AgenticReport::from_outcomes(&[RunOutcome::failure(4, 10, FailureKind::InfiniteLoop)]);
+    let b_outcomes: Vec<RunOutcome> =
+        (0..9).map(|_| RunOutcome::failure(2, 5, FailureKind::Hallucinated)).collect();
+    let b = AgenticReport::from_outcomes(&b_outcomes);
+
+    let agg = agg_agentic(&[a, b]);
+
+    assert_eq!(agg.top_error, TopError::Hallucinated); // headline still the majority mode
+    assert_eq!(agg.failures.infinite_loop_hits, 1); // …but the loop is NOT hidden
+    assert_eq!(agg.failures.hallucinated_completions, 9);
+}
+
 #[tokio::test]
 async fn cancellation_stops_the_queue_early() {
     let targets = vec![target("m1")];

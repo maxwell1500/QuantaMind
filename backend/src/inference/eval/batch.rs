@@ -2,7 +2,7 @@ use crate::errors::AppResult;
 use crate::inference::backend::backend_kind::BackendKind;
 use crate::inference::eval::agentic::build::sandbox_for;
 use crate::inference::eval::agentic::model_turn::ModelTurn;
-use crate::inference::eval::agentic::report::{AgenticReport, TopError};
+use crate::inference::eval::agentic::report::{AgenticReport, FailureTracker, TopError};
 use crate::inference::eval::agentic::runner::run_agentic;
 use crate::inference::eval::agentic::step::TrajectoryStep;
 use crate::inference::eval::toolcall::eval::{aggregate, trace_one_with, TaskResult, ToolCallReport, TraceResult};
@@ -45,6 +45,11 @@ pub struct AggAgentic {
     /// schema error. `None` when none did → the Matrix renders "—", never a 0.
     pub schema_resilience: Option<f64>,
     pub top_error: TopError,
+    /// Summed failure breakdown across this model's agentic tasks. The readiness
+    /// verdict gates on the exact loop/hallucination counts — `top_error` alone
+    /// would hide a 1-loop/9-hallucination model from a `forbid_infinite_loop` profile.
+    #[serde(default)]
+    pub failures: FailureTracker,
 }
 
 /// One model's row in the Matrix Scoreboard: single-turn report and/or agentic
@@ -98,19 +103,19 @@ pub fn batch_summaries(report: &BatchReport, ts: &str) -> Vec<RunSummary> {
 }
 
 fn agg_agentic(reports: &[AgenticReport]) -> AggAgentic {
-    let (mut il, mut ha, mut mj, mut ms) = (0u32, 0u32, 0u32, 0u32);
+    let mut failures = FailureTracker::default();
     for r in reports {
-        il += r.failures.infinite_loop_hits;
-        ha += r.failures.hallucinated_completions;
-        mj += r.failures.malformed_json_calls;
-        ms += r.failures.schema_unrecovered_calls;
+        failures.infinite_loop_hits += r.failures.infinite_loop_hits;
+        failures.hallucinated_completions += r.failures.hallucinated_completions;
+        failures.malformed_json_calls += r.failures.malformed_json_calls;
+        failures.schema_unrecovered_calls += r.failures.schema_unrecovered_calls;
     }
     // Same severity order as FailureTracker::top (schema above json).
     let top_error = [
-        (il, TopError::InfiniteLoop),
-        (ha, TopError::Hallucinated),
-        (ms, TopError::MalformedSchema),
-        (mj, TopError::MalformedJson),
+        (failures.infinite_loop_hits, TopError::InfiniteLoop),
+        (failures.hallucinated_completions, TopError::Hallucinated),
+        (failures.schema_unrecovered_calls, TopError::MalformedSchema),
+        (failures.malformed_json_calls, TopError::MalformedJson),
     ]
     .into_iter()
     .fold((0u32, TopError::None), |best, (n, e)| if n > best.0 { (n, e) } else { best })
@@ -125,6 +130,7 @@ fn agg_agentic(reports: &[AgenticReport]) -> AggAgentic {
         avg_output_tokens_success: mean_f64(&eff),
         schema_resilience: mean_f64(&resil),
         top_error,
+        failures,
     }
 }
 
