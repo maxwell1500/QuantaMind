@@ -1,8 +1,22 @@
 import { useEffect } from "react";
+import { download } from "../../eval/exportBatch";
+import { useToast } from "../../../shared/ui/Toast";
 import { useEvalRegistryStore } from "../../eval/state/evalRegistryStore";
 import { useReadinessStore } from "../state/readinessStore";
+import { buildReadinessHtml } from "../reportHtml";
 import { ProfileSelector } from "./ProfileSelector";
 import { VerdictTable } from "./VerdictTable";
+
+const exportBtn: React.CSSProperties = {
+  fontSize: 13,
+  fontWeight: 600,
+  padding: "6px 14px",
+  borderRadius: 6,
+  border: "1px solid #cbd5e1",
+  background: "#fff",
+  color: "#334155",
+  cursor: "pointer",
+};
 
 const btn: React.CSSProperties = {
   fontSize: 13,
@@ -22,6 +36,15 @@ export function AgentReportPage() {
   const { presets, collections, selected, select, init } = useEvalRegistryStore();
   const { profiles, selectedProfileId, verdicts, assessed, loading, error, loadProfiles, selectProfile, assess } =
     useReadinessStore();
+  const toast = useToast();
+
+  const onExport = () => {
+    const profile = profiles.find((p) => p.id === selectedProfileId);
+    if (!profile || verdicts.length === 0) return;
+    const html = buildReadinessHtml(verdicts, profile, selected, new Date().toISOString());
+    download(`readiness-${selected}.html`, html, "text/html");
+    toast("Readiness report exported ✓");
+  };
 
   useEffect(() => {
     if (presets.length === 0) void init().catch(() => {});
@@ -77,7 +100,16 @@ export function AgentReportPage() {
         </div>
       )}
 
-      {verdicts.length > 0 && <VerdictTable verdicts={verdicts} />}
+      {verdicts.length > 0 && (
+        <>
+          <VerdictTable verdicts={verdicts} />
+          <div>
+            <button type="button" data-testid="readiness-export" style={exportBtn} onClick={onExport}>
+              ⬇ Export shareable report (.HTML)
+            </button>
+          </div>
+        </>
+      )}
 
       {!assessed && !loading && (
         <div style={{ fontSize: 13, color: "#94a3b8" }}>
