@@ -72,6 +72,7 @@ fn assess_report_grades_clean_models_and_short_circuits_errors() {
     let general = builtins().into_iter().find(|p| p.id == "general-agent").unwrap();
     let report = BatchReport {
         collection_id: "c".into(),
+        num_ctx: None,
         columns: vec![
             col(5, 5, 0, 0, Some(2.0)), // clean → Ready
             BatchColumn {

@@ -68,6 +68,11 @@ pub struct BatchColumn {
 pub struct BatchReport {
     pub collection_id: String,
     pub columns: Vec<BatchColumn>,
+    /// The context length (`num_ctx`) the run used, when set — the basis for the
+    /// readiness VRAM-fit KV-cache estimate. `#[serde(default)]` so reports saved
+    /// before Phase 7.4 (and the engine, which doesn't know the param) still load.
+    #[serde(default)]
+    pub num_ctx: Option<u32>,
 }
 
 fn mean_f64(xs: &[f64]) -> Option<f64> {
@@ -230,7 +235,8 @@ where
             error: col_error,
         });
     }
-    Ok(BatchReport { collection_id: collection_id.to_string(), columns })
+    // The engine is param-agnostic; the command layer stamps `num_ctx` afterwards.
+    Ok(BatchReport { collection_id: collection_id.to_string(), columns, num_ctx: None })
 }
 
 #[cfg(test)]

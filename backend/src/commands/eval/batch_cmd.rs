@@ -114,7 +114,7 @@ pub async fn run_batch_eval(
     let tasks = apply_overrides(tasks, k, max_steps);
     let sink: Arc<dyn BatchSink> = Arc::new(TauriBatchSink { app: app.clone() });
     let turn_cancel = cancel.clone();
-    let report = run_batch(&collection_id, &targets, &tasks, cancel, sink, move |t: &ModelTarget| BackendTurn {
+    let mut report = run_batch(&collection_id, &targets, &tasks, cancel, sink, move |t: &ModelTarget| BackendTurn {
         backend: t.backend,
         endpoint: endpoint_for(t.backend),
         model: t.model.clone(),
@@ -123,6 +123,9 @@ pub async fn run_batch_eval(
         keep_alive,
     })
     .await?;
+    // Stamp the run's context length so the readiness VRAM-fit estimate sizes the
+    // KV cache to what actually ran (the engine itself is param-agnostic).
+    report.num_ctx = params.as_ref().and_then(|p| p.num_ctx);
     log_emit(&app, EVENT_BATCH_COMPLETE, BatchCompletePayload { report: report.clone() });
 
     // Append per-model summaries to the collection's regression history (best

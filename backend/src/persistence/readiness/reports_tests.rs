@@ -7,6 +7,7 @@ use tempfile::tempdir;
 fn report(collection_id: &str, passes: u32) -> BatchReport {
     BatchReport {
         collection_id: collection_id.into(),
+        num_ctx: Some(8192),
         columns: vec![BatchColumn {
             model: "qwen".into(),
             backend: BackendKind::Ollama,
@@ -30,7 +31,21 @@ fn save_then_load_round_trips_the_report() {
     let dir = tempdir().unwrap();
     let r = report("finance", 4);
     save(dir.path(), &r).unwrap();
-    assert_eq!(load(dir.path(), "finance").unwrap(), Some(r));
+    let loaded = load(dir.path(), "finance").unwrap();
+    assert_eq!(loaded, Some(r));
+    assert_eq!(loaded.unwrap().num_ctx, Some(8192)); // the run's context length round-trips
+}
+
+#[test]
+fn pre_7_4_report_without_num_ctx_still_loads() {
+    // Back-compat: a report persisted before Phase 7.4 omits `num_ctx`;
+    // #[serde(default)] must fill it with None rather than fail the load.
+    let dir = tempdir().unwrap();
+    let json = r#"{"collection_id":"old","columns":[]}"#;
+    std::fs::create_dir_all(dir.path()).unwrap();
+    std::fs::write(report_path(dir.path(), "old"), json).unwrap();
+    let loaded = load(dir.path(), "old").unwrap().unwrap();
+    assert_eq!(loaded.num_ctx, None);
 }
 
 #[test]

@@ -91,6 +91,9 @@ export type BatchColumn = z.infer<typeof BatchColumnSchema>;
 export const BatchReportSchema = z.object({
   collection_id: z.string(),
   columns: z.array(BatchColumnSchema),
+  // The run's context length, when set — basis for the readiness VRAM-fit KV-cache
+  // estimate. Nullish so reports saved before Phase 7.4 still parse.
+  num_ctx: z.number().int().nullish(),
 });
 export type BatchReport = z.infer<typeof BatchReportSchema>;
 
