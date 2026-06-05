@@ -618,7 +618,11 @@ for the contract.
 | 7.4 | **Hardware Telemetry**: measure VRAM fit (exact weights + real KV cache at the run's `num_ctx` vs an allocation cap) via the pure `readiness::vram_fit`; Host Hardware Profile panel (arch + cap dropdown) + per-model memory line; flips `require_full_vram` on for Coding-agent | done |
 | 7.2 | **Native-FC test mode**: run the same agentic tasks through Ollama's native `/api/chat` `tool_calls` API (`NativeOllamaTurn` translates back to the canonical call shape, so the sandbox/scoring are byte-identical); parallel **Native FC pass^k** Matrix column behind a toggle; the verdict **prefers native** when measured. Ollama-only — llama.cpp/MLX N/A | done |
 | 7.5 | **Resumable job queue + VRAM isolation**: append-only `.jsonl` job log per run (`persistence/jobs`), healed on a truncated tail; `run_batch_resumable` skips completed units (prompt AND native) and appends each new one; an injected `VramGate` (`OllamaVramGate` = `keep_alive:0` + `/api/ps` poll, **assert-and-fail**) evicts the previous model before the next loads; resume bulk-paints the Matrix from one partial report then streams the tail; transactional finish (save → verify → delete log) | done |
+| 7.3 | **Agentic-aware recommender**: `assess_readiness` returns verdicts **ranked best-first** via the pure `readiness::recommend::rank` (tier Ready>Conditional>NotReady, ties by effort then steps, native-first metrics, float-safe `total_cmp`/`None→MAX`); the Agent Report opens with a leaderboard + a Recommendation banner ("Recommended for {profile}: {model} (Ready)", or "no model is ready — closest" — never a fabricated Ready) | done |
 | 7.6 | Headless `quantamind-cli` | **dropped** |
+
+**Phase 7 complete.** Deferred follow-ups: llama.cpp native-FC; the `unmeasured`/🔧
+badge (lands with a real probe to trigger); per-run (k-level) job granularity.
 
 Locked decisions: **never fabricate** — an unmeasured hard-required metric blocks
 (ignorance is not a pass), unknowns render N/A, prompt-based vs native paths are

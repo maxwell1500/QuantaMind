@@ -698,6 +698,18 @@ and CLI verdicts can never diverge. The frontend stores no verdicts; it renders 
 Rust returns. **Export shareable report (.HTML)** emits a self-contained, offline
 one-pager (escaped, utf-8) to email a verdict to a CTO.
 
+**The recommendation (the one-line answer).** `assess_readiness` returns the verdicts
+**ranked best-first** (`readiness::recommend::rank`, also CLI-shareable) so the page
+opens with a leaderboard and a **Recommendation banner**: *"Recommended for {profile}
+on your hardware: **{model}** (Ready)."* The ranking key is **tier** (Ready >
+Conditional > NotReady), then **effort** (`avg_output_tokens_success`, fewer tokens =
+better), then **avg_steps** (fewer = better) — sourced **native-first**, the exact
+aggregate the verdict gated on. It is float-safe by construction (`f64::total_cmp`,
+unmeasured metrics map to `f64::MAX` and sink — never a `NaN` panic, never floating
+above a measured model). When nothing qualifies the banner says **"No model is ready
+for {profile} — closest: {model} ({reason})"** — never a fabricated Ready. (Latency,
+`ms_per_step`, slots ahead of effort once the per-step timing is wired.)
+
 ## Resumable evaluation & VRAM isolation {#resumable-queue}
 
 A multi-model sweep can run for hours; a sleep, an Ollama crash, or a force-quit must
