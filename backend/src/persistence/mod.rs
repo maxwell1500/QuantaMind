@@ -4,5 +4,7 @@ pub mod eval_trace_store;
 pub mod evals;
 pub mod model_settings;
 pub mod prompts;
+pub mod readiness_profiles;
+pub mod safe_filename;
 pub mod user_settings;
 pub mod workspaces;

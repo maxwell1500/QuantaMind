@@ -30,3 +30,51 @@ pub struct ReadinessProfile {
     /// Built-ins ship this `false` until Phase 7.2 lands the native-FC path.
     pub require_native_fc: bool,
 }
+
+/// The shipped presets, written to disk on first run as editable copies. They
+/// gate only on metrics the engine measures *today* (Pass^k, the loop/
+/// hallucination taxonomy, mean steps). The hard infra gates `require_full_vram`
+/// and `min_context_tokens` stay off here — with strict null-gating an
+/// unmeasured requirement blocks, which would make every model NotReady for
+/// infra reasons until 7.2/7.4 wire VRAM fit and the context cliff. Power users
+/// can switch them on in a custom profile and get exactly that strict behaviour.
+pub fn builtins() -> Vec<ReadinessProfile> {
+    vec![
+        ReadinessProfile {
+            id: "coding-agent".into(),
+            name: "Coding agent".into(),
+            min_pass_k: 0.80,
+            max_avg_steps: Some(8.0),
+            max_ms_per_step: Some(5000),
+            min_context_tokens: None,
+            forbid_infinite_loop: true,
+            forbid_hallucinated_completion: true,
+            require_full_vram: false,
+            require_native_fc: false,
+        },
+        ReadinessProfile {
+            id: "rag-assistant".into(),
+            name: "RAG assistant".into(),
+            min_pass_k: 0.70,
+            max_avg_steps: Some(5.0),
+            max_ms_per_step: Some(8000),
+            min_context_tokens: None,
+            forbid_infinite_loop: true,
+            forbid_hallucinated_completion: true,
+            require_full_vram: false,
+            require_native_fc: false,
+        },
+        ReadinessProfile {
+            id: "general-agent".into(),
+            name: "General agent".into(),
+            min_pass_k: 0.60,
+            max_avg_steps: None,
+            max_ms_per_step: None,
+            min_context_tokens: None,
+            forbid_infinite_loop: true,
+            forbid_hallucinated_completion: false,
+            require_full_vram: false,
+            require_native_fc: false,
+        },
+    ]
+}

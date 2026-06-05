@@ -46,12 +46,12 @@ pub fn assess(i: &ReadinessInputs, p: &ReadinessProfile) -> ReadinessVerdict {
         }
     }
 
-    // Soft targets → Conditional on breach; a "not measured" note otherwise.
-    if let Some(mx) = p.max_ms_per_step {
-        match i.ms_per_step {
-            Some(ms) if ms > mx => conditions.push(format!("slow: {}ms/step > {}ms target", ms, mx)),
-            None => conditions.push("latency not measured on this run".into()),
-            Some(_) => {}
+    // Soft targets → Conditional on breach only. Unmeasured is silent: an
+    // advisory target we didn't run shouldn't downgrade an otherwise-clean model
+    // (unlike a hard gate, where unmeasured blocks).
+    if let (Some(mx), Some(ms)) = (p.max_ms_per_step, i.ms_per_step) {
+        if ms > mx {
+            conditions.push(format!("slow: {}ms/step > {}ms target", ms, mx));
         }
     }
     if let (Some(mx), Some(s)) = (p.max_avg_steps, i.avg_steps) {
