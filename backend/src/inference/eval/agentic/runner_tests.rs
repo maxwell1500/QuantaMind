@@ -1,8 +1,9 @@
 use crate::errors::AppResult;
 use crate::inference::eval::agentic::model_turn::ModelTurn;
-use crate::inference::eval::agentic::report::TopError;
+use crate::inference::eval::agentic::report::{FailureKind, TopError};
 use crate::inference::eval::agentic::runner::{run_agentic, run_once, AgenticConfig};
 use crate::inference::eval::agentic::sandbox::{DeterministicSandbox, EndStateRule, MockResponse, TaskCheckpoint};
+use crate::inference::eval::agentic::spec::{FaultInjection, FaultRule};
 use crate::inference::eval::agentic::step::{StepKind, TrajectoryStep};
 use crate::inference::eval::toolcall::tasks::Call;
 use crate::inference::generate::generate_spec::GenerateSpec;
@@ -185,6 +186,56 @@ async fn lazy_agent_claiming_done_is_a_failure_not_a_pass() {
     let steps = drain(&mut rx);
     assert_eq!(steps.len(), 1); // bailed on turn one, no tools touched
     assert_eq!(steps[0].kind, StepKind::HallucinatedCompletion);
+}
+
+#[tokio::test]
+async fn transient_trap_is_retried_to_success() {
+    // The final call is trapped with a transient 503 that clears after one attempt.
+    // The model re-issues the same valid call: turn 1 trips the 503, turn 2 the trap
+    // has cleared → the sequence completes. A trapped call is never a fake pass.
+    let sb = sandbox().with_faults(vec![FaultRule {
+        call: Call { name: "execute_transfer".into(), args: json!({ "amount": 450.0 }) },
+        fault: FaultInjection::TransientError { status_code: 503, clears_after: 1 },
+    }]);
+    let model = ScriptedModel::new(vec![(END_CALL, 20)]);
+    let (tx, mut rx) = unbounded_channel();
+    let outcome = run_once(&model, &sb, 8, 0, &tx).await.unwrap();
+    drop(tx);
+
+    assert!(outcome.reached_end);
+    assert_eq!(outcome.steps, 2); // one retry, well under the cap (no infinite loop)
+
+    let steps = drain(&mut rx);
+    assert_eq!(steps[0].kind, StepKind::ToolError);
+    assert!(steps[0].injection.as_deref().unwrap().contains("503"));
+    assert_eq!(steps[1].kind, StepKind::EndStateReached);
+}
+
+#[tokio::test]
+async fn persistent_trap_halts_gracefully_not_infinite_loop() {
+    // The final call is trapped with a persistent 500 that never clears. A robust
+    // agent reports the failure in prose on turn 2 → Hallucinated (it didn't finish
+    // the sequence), a graceful halt — NOT a loop to the step cap, NOT a fake pass.
+    let sb = sandbox().with_faults(vec![FaultRule {
+        call: Call { name: "execute_transfer".into(), args: json!({ "amount": 450.0 }) },
+        fault: FaultInjection::PersistentError { status_code: 500 },
+    }]);
+    let model = ScriptedModel::new(vec![
+        (END_CALL, 15),
+        ("The transfer service is down (HTTP 500); I cannot complete the task.", 8),
+    ]);
+    let (tx, mut rx) = unbounded_channel();
+    let outcome = run_once(&model, &sb, 8, 0, &tx).await.unwrap();
+    drop(tx);
+
+    assert!(!outcome.reached_end);
+    assert_eq!(outcome.steps, 2);
+    assert_eq!(outcome.failure, Some(FailureKind::Hallucinated));
+
+    let steps = drain(&mut rx);
+    assert_eq!(steps[0].kind, StepKind::ToolError);
+    assert!(steps[0].injection.as_deref().unwrap().contains("500"));
+    assert_eq!(steps[1].kind, StepKind::HallucinatedCompletion);
 }
 
 #[tokio::test]

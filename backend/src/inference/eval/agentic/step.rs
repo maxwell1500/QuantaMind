@@ -7,6 +7,10 @@ use serde::Serialize;
 pub enum StepKind {
     /// A valid call the sandbox recognized and answered.
     ToolCall,
+    /// A recognized call the sandbox deliberately failed (Driver-B fault trap): an
+    /// HTTP-style error is injected and the loop continues so a robust agent can
+    /// retry (transient) or report the failure (persistent).
+    ToolError,
     /// A parsed call the sandbox has no mock for (unknown tool or wrong args) — an
     /// error is injected and the loop continues.
     UnknownTool,
