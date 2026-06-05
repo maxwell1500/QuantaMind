@@ -31,7 +31,7 @@ fn col(passes: u32, total: u32, loops: u32, hall: u32, steps: Option<f64>) -> Ba
 
 #[test]
 fn agentic_column_maps_pass_k_steps_and_failure_counts() {
-    let i = from_column(&col(4, 5, 1, 2, Some(3.0)));
+    let i = from_column(&col(4, 5, 1, 2, Some(3.0)), None, false);
     assert_eq!(i.pass_k, Some(0.8));
     assert_eq!(i.avg_steps, Some(3.0));
     assert_eq!(i.loops, 1);
@@ -40,7 +40,7 @@ fn agentic_column_maps_pass_k_steps_and_failure_counts() {
 
 #[test]
 fn deferred_metrics_are_not_measured_never_fabricated() {
-    let i = from_column(&col(5, 5, 0, 0, Some(2.0)));
+    let i = from_column(&col(5, 5, 0, 0, Some(2.0)), None, false);
     assert_eq!(i.ms_per_step, None);
     assert_eq!(i.cliff_tokens, None);
     assert_eq!(i.fits_in_vram, None);
@@ -56,14 +56,14 @@ fn no_agentic_column_yields_unmeasured_pass_k_core_gate() {
         agentic: None,
         error: None,
     };
-    let i = from_column(&c);
+    let i = from_column(&c, None, false);
     assert_eq!(i.pass_k, None);
     assert_eq!(i.loops, 0);
 }
 
 #[test]
 fn zero_total_runs_is_unmeasured_not_a_fabricated_zero() {
-    let i = from_column(&col(0, 0, 0, 0, None));
+    let i = from_column(&col(0, 0, 0, 0, None), None, false);
     assert_eq!(i.pass_k, None); // None, not Some(0.0) — never a guessed failing score
 }
 

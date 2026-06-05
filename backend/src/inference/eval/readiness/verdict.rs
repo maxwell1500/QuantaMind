@@ -34,6 +34,12 @@ pub fn assess(i: &ReadinessInputs, p: &ReadinessProfile) -> ReadinessVerdict {
             Some(true) => {}
         }
     }
+    // VRAM pressure: fits but near the allocation ceiling → soft Conditional note.
+    // Independent of require_full_vram — even an offload-tolerant profile wants the
+    // heads-up that headroom is thin.
+    if i.vram_pressure {
+        conditions.push("high VRAM pressure near allocation ceiling".into());
+    }
 
     // Context-cliff hard gate (only when the profile demands headroom).
     if let Some(min_tok) = p.min_context_tokens {

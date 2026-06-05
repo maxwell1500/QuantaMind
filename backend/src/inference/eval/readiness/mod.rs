@@ -5,3 +5,4 @@ pub mod inputs;
 pub mod profile;
 pub mod types;
 pub mod verdict;
+pub mod vram_fit;

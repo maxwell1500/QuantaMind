@@ -1,3 +1,4 @@
+use super::vram_fit::MemoryProfile;
 use crate::inference::backend::backend_kind::BackendKind;
 use serde::{Deserialize, Serialize};
 
@@ -32,6 +33,8 @@ pub struct ReadinessInputs {
     pub ms_per_step: Option<u64>,
     pub cliff_tokens: Option<u32>,
     pub fits_in_vram: Option<bool>,
+    /// Fits, but sits near the allocation ceiling → a soft Conditional note.
+    pub vram_pressure: bool,
     pub loops: u32,
     pub hallucinated: u32,
     pub native_fc: NativeFcStatus,
@@ -55,10 +58,14 @@ pub struct ReadinessVerdict {
     pub path: AgentPath,
 }
 
-/// A verdict paired with the model it judged — one row of the Agent Report.
+/// A verdict paired with the model it judged — one row of the Agent Report. The
+/// `memory` profile is present when VRAM fit was measured (Ollama with a cap),
+/// `None` for single-model backends or when no cap was supplied.
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct ModelVerdict {
     pub model: String,
     pub backend: BackendKind,
     pub verdict: ReadinessVerdict,
+    #[serde(default)]
+    pub memory: Option<MemoryProfile>,
 }

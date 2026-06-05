@@ -26,6 +26,7 @@ fn clean_inputs() -> ReadinessInputs {
         ms_per_step: Some(800),
         cliff_tokens: Some(16_384),
         fits_in_vram: Some(true),
+        vram_pressure: false,
         loops: 0,
         hallucinated: 0,
         native_fc: NativeFcStatus::NotSupported,
@@ -89,6 +90,26 @@ fn required_vram_but_unmeasured_blocks() {
     let v = assess(&i, &p);
     assert_eq!(v.status, Readiness::NotReady);
     assert!(v.blocking.iter().any(|b| b.contains("VRAM fit not measured")));
+}
+
+#[test]
+fn measured_partial_offload_blocks_under_require_full_vram() {
+    let mut p = lenient();
+    p.require_full_vram = true;
+    let mut i = clean_inputs();
+    i.fits_in_vram = Some(false); // measured: doesn't fit the cap
+    let v = assess(&i, &p);
+    assert_eq!(v.status, Readiness::NotReady);
+    assert!(v.blocking.contains(&"partial offload → severe slowdown".to_string()));
+}
+
+#[test]
+fn vram_pressure_is_a_conditional_note_independent_of_the_gate() {
+    let mut i = clean_inputs(); // require_full_vram off in the lenient profile
+    i.vram_pressure = true;
+    let v = assess(&i, &lenient());
+    assert_eq!(v.status, Readiness::Conditional);
+    assert!(v.conditions.contains(&"high VRAM pressure near allocation ceiling".to_string()));
 }
 
 #[test]
