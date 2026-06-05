@@ -64,4 +64,36 @@ describe("validateDrafts", () => {
     expect(r.ok).toBe(false);
     if (!r.ok) expect(r.drafts[0].error).toContain("End-State");
   });
+
+  it("assembles Driver-B faults + Driver-D max_recovery into the spec", () => {
+    const mocksJson = JSON.stringify([{ call: { name: "get_weather", args: { city: "Paris" } }, response: "{}" }]);
+    const endStateJson = JSON.stringify({ require_sequence: [{ tool: "get_weather", args: { city: "Paris" } }] });
+    const faultsJson = JSON.stringify([
+      { call: { name: "get_weather", args: { city: "Paris" } }, fault: { transient_error: { status_code: 503, clears_after: 1 } } },
+    ]);
+    const r = validateDrafts([draft({ category: "agentic", mocksJson, endStateJson, faultsJson, maxRecovery: "3" })]);
+    expect(r.ok).toBe(true);
+    if (r.ok) {
+      expect(r.tasks[0].agentic?.faults).toHaveLength(1);
+      expect(r.tasks[0].agentic?.faults?.[0].fault).toMatchObject({ transient_error: { status_code: 503, clears_after: 1 } });
+      expect(r.tasks[0].agentic?.max_recovery).toBe(3);
+    }
+  });
+
+  it("omits faults/max_recovery when left empty (fault-free task round-trips clean)", () => {
+    const mocksJson = JSON.stringify([{ call: { name: "get_weather", args: { city: "Paris" } }, response: "{}" }]);
+    const endStateJson = JSON.stringify({ require_sequence: [{ tool: "get_weather", args: { city: "Paris" } }] });
+    const r = validateDrafts([draft({ category: "agentic", mocksJson, endStateJson, faultsJson: "", maxRecovery: "" })]);
+    expect(r.ok).toBe(true);
+    if (r.ok) {
+      expect(r.tasks[0].agentic?.faults).toBeUndefined();
+      expect(r.tasks[0].agentic?.max_recovery).toBeUndefined();
+    }
+  });
+
+  it("rejects a non-integer max_recovery", () => {
+    const r = validateDrafts([draft({ category: "agentic", mocksJson: "[]", maxRecovery: "-1" })]);
+    expect(r.ok).toBe(false);
+    if (!r.ok) expect(r.drafts[0].error).toContain("Max Recovery");
+  });
 });

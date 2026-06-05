@@ -100,6 +100,30 @@ export function TaskSandboxConfigurator({ draft, onChange, onRemove, onBack }: P
                 data-testid="configurator-endstate"
               />
             </Field>
+
+            {/* Driver B — Fault Injection (lazy-agent traps). Empty = no traps. */}
+            <Field label="▾ FAULT INJECTION (Lazy-Agent Traps · JSON)">
+              <textarea
+                value={draft.faultsJson}
+                onChange={(e) => patch({ faultsJson: e.target.value })}
+                rows={5}
+                placeholder='[ { "call": { "name": "transfer", "args": { "amount": 450 } }, "fault": { "transient_error": { "status_code": 503, "clears_after": 1 } } } ]'
+                style={{ ...area, fontFamily: "'JetBrains Mono', monospace" }}
+                data-testid="configurator-faults"
+              />
+            </Field>
+
+            {/* Driver D — semantic-recovery budget. Blank = engine default (2). */}
+            <Field label="MAX RECOVERY (Schema-Error Retries)">
+              <input
+                value={draft.maxRecovery}
+                onChange={(e) => patch({ maxRecovery: e.target.value })}
+                placeholder="default 2"
+                inputMode="numeric"
+                style={input}
+                data-testid="configurator-max-recovery"
+              />
+            </Field>
           </>
         ) : (
           <>

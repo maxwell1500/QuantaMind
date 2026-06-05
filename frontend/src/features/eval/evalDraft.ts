@@ -25,6 +25,10 @@ export interface TaskDraft {
   mocksJson: string;
   /// The End-State Checklist (success criteria) JSON, used only for agentic tasks.
   endStateJson: string;
+  /// Driver B fault traps JSON (array of {call, fault}); empty/"[]" = no traps.
+  faultsJson: string;
+  /// Driver D semantic-recovery budget; blank = engine default.
+  maxRecovery: string;
   error: string | null;
 }
 
@@ -42,6 +46,8 @@ export function draftFromTask(task: ToolTask): TaskDraft {
     expectedJson: JSON.stringify(task.expected, null, 2),
     mocksJson: task.agentic ? JSON.stringify(task.agentic.mocks, null, 2) : "",
     endStateJson: task.agentic ? JSON.stringify(task.agentic.end_state, null, 2) : "",
+    faultsJson: task.agentic?.faults?.length ? JSON.stringify(task.agentic.faults, null, 2) : "",
+    maxRecovery: task.agentic?.max_recovery != null ? String(task.agentic.max_recovery) : "",
     error: null,
   };
 }
@@ -70,6 +76,10 @@ export function newDraft(): TaskDraft {
       ] },
       null, 2,
     ),
+    // No traps and engine-default recovery by default — agentic tasks stay simple
+    // until the author opts into a Driver-B/D stress test.
+    faultsJson: "",
+    maxRecovery: "",
     error: null,
   };
 }
@@ -83,6 +93,8 @@ function validateTask(
   expectedJson: string,
   mocksJson: string,
   endStateJson: string,
+  faultsJson: string,
+  maxRecovery: string,
 ): { ok: true; task: Omit<ToolTask, "id" | "category"> } | { ok: false; err: string } {
   if (!prompt.trim()) return { ok: false, err: "Prompt: required" };
 
@@ -120,7 +132,24 @@ function validateTask(
     } catch {
       return { ok: false, err: "End-State Checklist: invalid JSON" };
     }
-    const ar = AgenticSpecSchema.safeParse({ mocks, end_state: endState });
+    // Driver B faults: omit when empty so fault-free tasks round-trip byte-identical.
+    let faults: unknown;
+    try {
+      faults = JSON.parse(faultsJson || "[]");
+    } catch {
+      return { ok: false, err: "Fault Injection: invalid JSON" };
+    }
+    // Driver D recovery budget: blank → omit (engine default); else a non-negative int.
+    let maxRecoveryNum: number | undefined;
+    if (maxRecovery.trim()) {
+      const n = Number(maxRecovery);
+      if (!Number.isInteger(n) || n < 0) return { ok: false, err: "Max Recovery: must be a non-negative integer" };
+      maxRecoveryNum = n;
+    }
+    const spec: Record<string, unknown> = { mocks, end_state: endState };
+    if (Array.isArray(faults) && faults.length > 0) spec.faults = faults;
+    if (maxRecoveryNum !== undefined) spec.max_recovery = maxRecoveryNum;
+    const ar = AgenticSpecSchema.safeParse(spec);
     if (!ar.success) return { ok: false, err: `Agentic: ${ar.error.issues[0]?.message ?? "schema error"}` };
     return { ok: true, task: { prompt: prompt.trim(), tools: tr.data, expected: er.data, agentic: ar.data } };
   }
@@ -150,7 +179,7 @@ export function validateDrafts(
       hasError = true;
       return { ...d, error: "Task ID: required" };
     }
-    const r = validateTask(d.category, d.prompt, d.toolsJson, d.expectedJson, d.mocksJson, d.endStateJson);
+    const r = validateTask(d.category, d.prompt, d.toolsJson, d.expectedJson, d.mocksJson, d.endStateJson, d.faultsJson, d.maxRecovery);
     if (!r.ok) {
       hasError = true;
       return { ...d, error: r.err };

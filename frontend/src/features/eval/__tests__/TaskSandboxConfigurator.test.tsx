@@ -17,11 +17,24 @@ describe("TaskSandboxConfigurator", () => {
     fireEvent.click(screen.getByTestId("type-agentic"));
     expect(onChange).toHaveBeenCalledWith(expect.objectContaining({ category: "agentic" }));
 
-    // Rendered as agentic → the Deterministic Sandbox + End-State boxes appear.
+    // Rendered as agentic → the Deterministic Sandbox + End-State boxes appear,
+    // along with the Driver-B fault-injection editor and Driver-D recovery budget.
     rerender(<TaskSandboxConfigurator draft={{ ...draft, category: "agentic" }} onChange={onChange} onRemove={() => {}} onBack={() => {}} />);
     expect(screen.getByTestId("configurator-mocks")).toBeInTheDocument();
     expect(screen.getByTestId("configurator-endstate")).toBeInTheDocument();
+    expect(screen.getByTestId("configurator-faults")).toBeInTheDocument();
+    expect(screen.getByTestId("configurator-max-recovery")).toBeInTheDocument();
     expect(screen.queryByTestId("configurator-expected")).toBeNull();
+  });
+
+  it("edits the fault-injection box and recovery budget through onChange", () => {
+    const onChange = vi.fn();
+    const draft = { ...newDraft(), key: "k1", id: "t1", category: "agentic" as const };
+    render(<TaskSandboxConfigurator draft={draft} onChange={onChange} onRemove={() => {}} onBack={() => {}} />);
+    fireEvent.change(screen.getByTestId("configurator-faults"), { target: { value: "[]" } });
+    expect(onChange).toHaveBeenCalledWith(expect.objectContaining({ faultsJson: "[]" }));
+    fireEvent.change(screen.getByTestId("configurator-max-recovery"), { target: { value: "3" } });
+    expect(onChange).toHaveBeenCalledWith(expect.objectContaining({ maxRecovery: "3" }));
   });
 
   it("edits the system prompt through onChange", () => {
