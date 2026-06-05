@@ -3,11 +3,22 @@ import { render, screen } from "@testing-library/react";
 import { VerdictTable } from "../components/VerdictTable";
 import type { ModelVerdict } from "../../../shared/ipc/eval/readiness";
 
+const GIB = 1024 ** 3;
+
 const VERDICTS: ModelVerdict[] = [
   {
     model: "qwen2.5-coder",
     backend: "ollama",
     verdict: { status: "ready", blocking: [], conditions: [], path: "prompt_based" },
+    memory: {
+      weights_bytes: 5 * GIB,
+      kv_cache_bytes: 1 * GIB,
+      total_bytes: 6 * GIB,
+      cap_bytes: 24 * GIB,
+      context_length: 8192,
+      fits: true,
+      pressure: false,
+    },
   },
   {
     model: "phi3.5",
@@ -52,5 +63,15 @@ describe("VerdictTable", () => {
     render(<VerdictTable verdicts={VERDICTS} />);
     expect(screen.getByTestId("readiness-row-mistral-nemo")).toHaveTextContent("! slow: 8400ms/step > 5000ms target");
     expect(screen.getByTestId("readiness-row-qwen2.5-coder")).toHaveTextContent("Meets all criteria");
+  });
+
+  it("renders the memory footprint for a measured model and N/A for a single-model backend", () => {
+    render(<VerdictTable verdicts={VERDICTS} />);
+    // Ollama with a measured profile → weights + cache vs cap, "fits".
+    expect(screen.getByTestId("readiness-row-qwen2.5-coder")).toHaveTextContent(
+      "VRAM: 6.0 GB (5.0 model + 1.0 cache) < 24.0 GB cap · fits",
+    );
+    // llama.cpp (no memory profile) → honest N/A, never a guessed fit.
+    expect(screen.getByTestId("readiness-row-mistral-nemo")).toHaveTextContent("VRAM fit: N/A (single-model backend)");
   });
 });

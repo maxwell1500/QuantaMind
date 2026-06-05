@@ -15,8 +15,23 @@ const profile: ReadinessProfile = {
   require_native_fc: false,
 };
 
+const GIB = 1024 ** 3;
+
 const verdicts: ModelVerdict[] = [
-  { model: "qwen", backend: "ollama", verdict: { status: "ready", blocking: [], conditions: [], path: "prompt_based" } },
+  {
+    model: "qwen",
+    backend: "ollama",
+    verdict: { status: "ready", blocking: [], conditions: [], path: "prompt_based" },
+    memory: {
+      weights_bytes: 5 * GIB,
+      kv_cache_bytes: 1 * GIB,
+      total_bytes: 6 * GIB,
+      cap_bytes: 24 * GIB,
+      context_length: 8192,
+      fits: true,
+      pressure: false,
+    },
+  },
   {
     model: "phi3.5",
     backend: "ollama",
@@ -38,6 +53,8 @@ describe("buildReadinessHtml", () => {
     expect(html).toContain("pass^k 0.40 &lt; 0.80 required"); // interpolated math, escaped
     expect(html).toContain("finance");
     expect(html).toContain("Coding agent");
+    // The memory footprint line is in the export (escaped < for the cap comparison).
+    expect(html).toContain("VRAM: 6.0 GB (5.0 model + 1.0 cache) &lt; 24.0 GB cap · fits");
   });
 
   it("escapes all interpolated text — no raw angle brackets from a reason leak through", () => {

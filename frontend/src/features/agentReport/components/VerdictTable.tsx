@@ -1,11 +1,34 @@
 import type { CSSProperties } from "react";
-import type { AgentPath, ModelVerdict } from "../../../shared/ipc/eval/readiness";
+import type { AgentPath, MemoryProfile, ModelVerdict } from "../../../shared/ipc/eval/readiness";
+import type { BackendKind } from "../../../shared/ipc/models/storage";
 import { StatusBadge } from "./StatusBadge";
 
 const PATH_LABEL: Record<AgentPath, string> = {
   prompt_based: "Prompt-Based",
   native_fc: "Native FC",
 };
+
+const gb = (bytes: number) => (bytes / 1024 ** 3).toFixed(1);
+
+/// The per-model memory footprint vs the cap, or an honest N/A for single-model
+/// backends (where precise dims aren't available). Silent when fit simply wasn't
+/// measured (no cap / Ollama unreachable) — never a guessed line.
+function MemoryLine({ m, backend }: { m: MemoryProfile | null | undefined; backend: BackendKind }) {
+  if (!m) {
+    if (backend !== "ollama") {
+      return <div style={{ color: "#64748b", marginBottom: 4 }}>VRAM fit: N/A (single-model backend)</div>;
+    }
+    return null;
+  }
+  const note = !m.fits ? "won't fit" : m.pressure ? "high VRAM pressure" : "fits";
+  const color = !m.fits ? "#dc2626" : m.pressure ? "#b45309" : "#16a34a";
+  return (
+    <div style={{ color, marginBottom: 4 }}>
+      VRAM: {gb(m.total_bytes)} GB ({gb(m.weights_bytes)} model + {gb(m.kv_cache_bytes)} cache){" "}
+      {m.fits ? "<" : ">"} {gb(m.cap_bytes)} GB cap · {note}
+    </div>
+  );
+}
 
 const thStyle: CSSProperties = {
   textAlign: "left",
@@ -47,7 +70,7 @@ export function VerdictTable({ verdicts }: { verdicts: ModelVerdict[] }) {
           <th style={thStyle}>Model</th>
           <th style={thStyle}>Backend</th>
           <th style={thStyle}>Status</th>
-          <th style={thStyle}>Diagnostic reasons</th>
+          <th style={thStyle}>Memory &amp; diagnostic reasons</th>
         </tr>
       </thead>
       <tbody>
@@ -59,7 +82,10 @@ export function VerdictTable({ verdicts }: { verdicts: ModelVerdict[] }) {
             </td>
             <td style={{ ...tdStyle, color: "#475569" }}>{m.backend}</td>
             <td style={tdStyle}><StatusBadge status={m.verdict.status} /></td>
-            <td style={tdStyle}><Reasons v={m.verdict} /></td>
+            <td style={tdStyle}>
+              <MemoryLine m={m.memory} backend={m.backend} />
+              <Reasons v={m.verdict} />
+            </td>
           </tr>
         ))}
       </tbody>
