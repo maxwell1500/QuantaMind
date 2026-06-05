@@ -60,6 +60,11 @@ pub struct BatchColumn {
     pub backend: BackendKind,
     pub toolcall: Option<ToolCallReport>,
     pub agentic: Option<AggAgentic>,
+    /// Phase 7.2: the parallel NATIVE function-calling aggregate (Ollama `/api/chat`
+    /// `tool_calls`), when measured. `None` = not run / unsupported backend → N/A.
+    /// `#[serde(default)]` so pre-7.2 reports still load.
+    #[serde(default)]
+    pub agentic_native_fc: Option<AggAgentic>,
     pub error: Option<String>,
 }
 
@@ -232,11 +237,65 @@ where
             backend: target.backend,
             toolcall,
             agentic,
+            agentic_native_fc: None, // filled by run_native_fc_pass when enabled
             error: col_error,
         });
     }
     // The engine is param-agnostic; the command layer stamps `num_ctx` afterwards.
     Ok(BatchReport { collection_id: collection_id.to_string(), columns, num_ctx: None })
+}
+
+/// Phase 7.2: measure NATIVE function-calling per model and fold a parallel
+/// `agentic_native_fc` aggregate onto each column — the same agentic tasks, the
+/// same sandbox/scoring, but driven by `make_native` (Ollama `/api/chat` tools in
+/// production, a scripted turn in tests). Only Ollama columns whose model is in
+/// `supported` (the capability probe ran upstream) get a native run; others stay
+/// `None` (N/A). Native steps aren't streamed to the UI sink in this slice — they
+/// drain to a throwaway channel. Best-effort: a native run that errors leaves the
+/// column `None` rather than failing the report.
+pub async fn run_native_fc_pass<M, F>(
+    report: &mut BatchReport,
+    tasks: &[ToolTask],
+    supported: &std::collections::HashSet<String>,
+    cancel: CancellationToken,
+    make_native: F,
+) -> AppResult<()>
+where
+    M: ModelTurn + Send + Sync,
+    F: Fn(&str, &ToolTask) -> M,
+{
+    let agentic_tasks: Vec<&ToolTask> = tasks.iter().filter(|t| t.category == "agentic").collect();
+    if agentic_tasks.is_empty() {
+        return Ok(());
+    }
+    for col in report.columns.iter_mut() {
+        if cancel.is_cancelled() {
+            break;
+        }
+        if col.backend != BackendKind::Ollama || !supported.contains(&col.model) {
+            continue;
+        }
+        let mut reports: Vec<AgenticReport> = Vec::new();
+        for task in &agentic_tasks {
+            if cancel.is_cancelled() {
+                break;
+            }
+            let turn = make_native(&col.model, task);
+            let (sandbox, cfg) = sandbox_for(task)?;
+            let (tx, mut rx) = unbounded_channel::<TrajectoryStep>();
+            let drain = tokio::spawn(async move { while rx.recv().await.is_some() {} });
+            let result = run_agentic(&turn, &sandbox, cfg, &tx).await;
+            drop(tx);
+            let _ = drain.await;
+            if let Ok(report) = result {
+                reports.push(report);
+            }
+        }
+        if !reports.is_empty() {
+            col.agentic_native_fc = Some(agg_agentic(&reports));
+        }
+    }
+    Ok(())
 }
 
 #[cfg(test)]

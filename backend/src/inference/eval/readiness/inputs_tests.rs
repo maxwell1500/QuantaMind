@@ -25,6 +25,7 @@ fn col(passes: u32, total: u32, loops: u32, hall: u32, steps: Option<f64>) -> Ba
                 schema_unrecovered_calls: 0,
             },
         }),
+        agentic_native_fc: None,
         error: None,
     }
 }
@@ -54,6 +55,7 @@ fn no_agentic_column_yields_unmeasured_pass_k_core_gate() {
         backend: BackendKind::Ollama,
         toolcall: None,
         agentic: None,
+        agentic_native_fc: None,
         error: None,
     };
     let i = from_column(&c, None, false);
@@ -80,6 +82,7 @@ fn assess_report_grades_clean_models_and_short_circuits_errors() {
                 backend: BackendKind::Ollama,
                 toolcall: None,
                 agentic: None,
+                agentic_native_fc: None,
                 error: Some("backend offline".into()),
             },
         ],

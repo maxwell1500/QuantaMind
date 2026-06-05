@@ -133,6 +133,27 @@ async fn batch_summaries_map_per_model_toolcall_and_agentic_metrics() {
     assert!(sums[0].composite.is_some()); // single-turn s1 contributes a composite
 }
 
+#[tokio::test]
+async fn native_fc_pass_aggregates_into_the_column_for_supported_models_only() {
+    let targets = vec![target("m1"), target("m2")];
+    let tasks = vec![agentic_task("a1", 3)];
+    let sink = Arc::new(CountingSink::default());
+    let mut report = run_batch("c", &targets, &tasks, CancellationToken::new(), sink, make_turn).await.unwrap();
+
+    // Only m1 reports the `tools` capability; m2 doesn't → stays N/A.
+    let supported: std::collections::HashSet<String> = ["m1".to_string()].into_iter().collect();
+    run_native_fc_pass(&mut report, &tasks, &supported, CancellationToken::new(), |_model, _task| {
+        ScriptedModel { reply: r#"{"name":"ping","args":{}}"#.into() }
+    })
+    .await
+    .unwrap();
+
+    let m1 = report.columns.iter().find(|c| c.model == "m1").unwrap();
+    let m2 = report.columns.iter().find(|c| c.model == "m2").unwrap();
+    assert_eq!(m1.agentic_native_fc.as_ref().unwrap().passes, 3); // native ping passes all 3 runs
+    assert!(m2.agentic_native_fc.is_none()); // unsupported → never a fabricated native score
+}
+
 #[test]
 fn agg_agentic_sums_failure_breakdown_not_just_top_error() {
     use crate::inference::eval::agentic::report::{AgenticReport, FailureKind, RunOutcome};
