@@ -615,6 +615,7 @@ for the contract.
 | — | `AggAgentic` carries the full `FailureTracker` so the loop/hallucination gates see exact counts, not just `top_error` | done |
 | — | Persist the last `BatchReport` per collection (`persistence/readiness/reports`) — Rust is the verdict's source of truth, not the frontend store | done |
 | 7.7 | **Agent Report** tab: pick a collection + profile, run `assess_readiness`, render per-model badges + interpolated reasons + measured path; shareable offline HTML export | done |
+| 7.4 | **Hardware Telemetry**: measure VRAM fit (exact weights + real KV cache at the run's `num_ctx` vs an allocation cap) via the pure `readiness::vram_fit`; Host Hardware Profile panel (arch + cap dropdown) + per-model memory line; flips `require_full_vram` on for Coding-agent | done |
 | 7.2 | Native-FC measurement (second labelled column) | deferred |
 | 7.5 | Resumable job queue + VRAM isolation | deferred |
 | 7.6 | Headless `quantamind-cli` (shares `readiness::assess`) | deferred |
@@ -623,10 +624,12 @@ Locked decisions: **never fabricate** — an unmeasured hard-required metric blo
 (ignorance is not a pass), unknowns render N/A, prompt-based vs native paths are
 labelled never conflated; thresholds live in **editable profiles**, not constants;
 built-in profiles gate only on metrics measured today (Pass^k, loop/hallucination
-taxonomy, steps) — the VRAM/context hard gates stay off in built-ins until 7.2/7.4
-wire those measurements, so a default profile doesn't mark every model NotReady for
-infra reasons; the verdict scoring is **one function** (`assess`) so GUI and the
-future CLI can never diverge.
+taxonomy, steps, and — since 7.4 — VRAM fit on Coding-agent), so a default profile
+doesn't mark every model NotReady for infra reasons; the `min_context_tokens` gate
+stays off until the cliff is routed server-side. VRAM fit is **Ollama-precise**
+(real `/api/show` dims) — single-model backends are N/A, never approximated; the
+cap is auto-detected and overridable in-session (not persisted). The verdict scoring
+is **one function** (`assess`) so GUI and the future CLI can never diverge.
 
 ### Phase 7+
 

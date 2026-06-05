@@ -639,18 +639,34 @@ Float comparisons are epsilon-guarded (`1e-6`) so a true `0.80` can't false-bloc
 **Profiles** are flat JSON files under the OS app-config dir (`readiness/`),
 editable by power users and seeded on first run with three built-ins:
 
-| Profile | Min Pass^k | Forbid loops | Forbid fake-done | Soft targets |
-| --- | --- | --- | --- | --- |
-| Coding agent | 80% | yes | yes | ≤8 steps · ≤5000 ms/step |
-| RAG assistant | 70% | yes | yes | ≤5 steps · ≤8000 ms/step |
-| General agent | 60% | yes | no | — |
+| Profile | Min Pass^k | Forbid loops | Forbid fake-done | Full VRAM | Soft targets |
+| --- | --- | --- | --- | --- | --- |
+| Coding agent | 80% | yes | yes | **yes** | ≤8 steps · ≤5000 ms/step |
+| RAG assistant | 70% | yes | yes | no | ≤5 steps · ≤8000 ms/step |
+| General agent | 60% | yes | no | no | — |
 
-Built-ins keep the `require_full_vram` / `min_context_tokens` / native-FC hard
-gates **off** — those measurements aren't wired yet (deferred), and with strict
-null-gating an unmeasured requirement would mark every model NotReady for infra
-reasons. Author a custom profile to switch them on and get exactly that strict
-behaviour. Long/nested profile ids are safe: the file is keyed by a 40-char slug
-plus an 8-hex hash of the full id, so two ids sharing a prefix never collide.
+Built-ins gate on the metrics the engine measures: since Phase 7.4 wired VRAM fit,
+**Coding agent** turns `require_full_vram` on (a model that spills past the cap is
+NotReady). The `min_context_tokens` and native-FC hard gates stay **off** in
+built-ins — those measurements aren't wired yet, and with strict null-gating an
+unmeasured requirement would mark every model NotReady for infra reasons. Author a
+custom profile to switch any gate on and get exactly that strict behaviour.
+Long/nested profile ids are safe: the file is keyed by a 40-char slug plus an
+8-hex hash of the full id, so two ids sharing a prefix never collide.
+
+**VRAM fit (Hardware Telemetry).** The Host Hardware Profile panel shows the detected
+architecture (Apple unified memory / NVIDIA discrete / CPU) and an allocation-cap
+dropdown defaulting to your VRAM (unified RAM on Apple), overridable in-session
+(never persisted). For each **Ollama** model the verdict measures the footprint —
+exact on-disk weights + the real f16 KV cache (the canonical `vram_math` formula) at
+the run's `num_ctx` — against the cap: `fits` when total ≤ cap, a soft **high VRAM
+pressure** condition at ≥85% of the cap, **won't fit** otherwise (which, under
+`require_full_vram`, blocks). The per-model line reads `VRAM: 6.0 GB (5.0 model +
+1.0 cache) < 24 GB cap · fits`. Single-model backends (llama.cpp / MLX) where precise
+dims aren't available show **N/A (single-model backend)** — never an approximated fit;
+under `require_full_vram` that N/A blocks (ignorance is not a pass). Lower the cap and
+a fitting model flips to NotReady deterministically — model the exact hardware you're
+buying for.
 
 **Prompt-based vs native path.** Verdicts today are measured on the **prompt-based**
 proxy (the only cross-backend-fair method); each row is labelled `Prompt-Based` so a
