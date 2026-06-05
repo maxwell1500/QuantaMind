@@ -7,6 +7,7 @@ import { buildReadinessHtml } from "../reportHtml";
 import { HostHardwareProfile } from "./HostHardwareProfile";
 import { ProfileSelector } from "./ProfileSelector";
 import { VerdictTable } from "./VerdictTable";
+import { RecommendationBanner } from "./RecommendationBanner";
 
 const exportBtn: React.CSSProperties = {
   fontSize: 13,
@@ -125,6 +126,10 @@ export function AgentReportPage() {
 
       {verdicts.length > 0 && (
         <>
+          <RecommendationBanner
+            verdicts={verdicts}
+            profileName={profiles.find((p) => p.id === selectedProfileId)?.name ?? "this profile"}
+          />
           <VerdictTable verdicts={verdicts} />
           <div>
             <button type="button" data-testid="readiness-export" style={exportBtn} onClick={onExport}>

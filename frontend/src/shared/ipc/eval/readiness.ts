@@ -52,6 +52,10 @@ export const ModelVerdictSchema = z.object({
   backend: BackendKindSchema,
   verdict: ReadinessVerdictSchema,
   memory: MemoryProfileSchema.nullish(),
+  // Efficiency telemetry for the recommender ranking (Phase 7.3). The backend
+  // returns verdicts already ranked best-first.
+  avg_steps: z.number().nullish(),
+  effort: z.number().nullish(),
 });
 export type ModelVerdict = z.infer<typeof ModelVerdictSchema>;
 
