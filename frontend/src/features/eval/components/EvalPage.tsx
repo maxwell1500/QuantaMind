@@ -63,6 +63,18 @@ export function EvalPage() {
     }
   }, [targets, focusedModel]);
 
+  // Robustness: once a run produces per-(model,task) outcomes, make sure the
+  // focused model is one that actually has results — otherwise the Simulator /
+  // Evaluator would read an empty key and show blank Steps/Result even though the
+  // batch completed.
+  const tasksByModel = useBatchStore((s) => s.tasksByModel);
+  useEffect(() => {
+    const withData = Object.keys(tasksByModel);
+    if (withData.length > 0 && !withData.includes(focusedModel)) {
+      setFocusedModel(withData[0]);
+    }
+  }, [tasksByModel, focusedModel]);
+
   return (
     <div className="grid gap-4" style={{ gridTemplateColumns: "360px 1fr" }} data-testid="eval-page">
       {recovery.pending && (

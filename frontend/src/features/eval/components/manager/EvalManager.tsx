@@ -15,6 +15,7 @@ import { ModelDropdown } from "../matrix/ModelDropdown";
 import { ConfirmDialog } from "./ConfirmDialog";
 import { CsvImportModal } from "./CsvImportModal";
 import { KebabMenu } from "./KebabMenu";
+import { Spinner } from "../../../../shared/ui/Spinner";
 
 interface EvalManagerProps {
   targets: string[];
@@ -150,14 +151,14 @@ export function EvalManager({
 
   return (
     <div
-      className="rounded-xl overflow-hidden border border-white/10"
+      className="rounded-xl overflow-hidden border border-slate-200"
       style={panelStyle}
       data-testid="eval-manager"
     >
       {/* Title Header */}
       <div style={headerStyle}>
         <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
-          <div style={{ fontSize: 16, fontWeight: 700, color: "#f8fafc", fontFamily: "Inter, sans-serif" }}>
+          <div style={{ fontSize: 16, fontWeight: 700, color: "#0f172a", fontFamily: "Inter, sans-serif" }}>
             1. EVAL MANAGER
           </div>
           <span style={{ marginLeft: "auto" }}>
@@ -190,7 +191,7 @@ export function EvalManager({
                 onChange={() => void handleDataSourceChange("custom")}
                 style={radioInputStyle}
               />
-              <span style={{ fontSize: 13, color: dataSource === "custom" ? "#e2e8f0" : "#94a3b8" }}>
+              <span style={{ fontSize: 13, color: dataSource === "custom" ? "#0f172a" : "#64748b" }}>
                 {dataSource === "custom" ? "◉" : "◯"} Custom JSON
               </span>
             </label>
@@ -202,7 +203,7 @@ export function EvalManager({
                 onChange={() => void handleDataSourceChange("builtin")}
                 style={radioInputStyle}
               />
-              <span style={{ fontSize: 13, color: dataSource === "builtin" ? "#e2e8f0" : "#94a3b8" }}>
+              <span style={{ fontSize: 13, color: dataSource === "builtin" ? "#0f172a" : "#64748b" }}>
                 {dataSource === "builtin" ? "◉" : "◯"} Built-in
               </span>
             </label>
@@ -224,7 +225,7 @@ export function EvalManager({
               <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
                 {dataSource === "custom" ? (
                   collections.length === 0 ? (
-                    <div style={{ color: "#475569", fontSize: 12, fontStyle: "italic", paddingLeft: 8 }}>
+                    <div style={{ color: "#64748b", fontSize: 12, fontStyle: "italic", paddingLeft: 8 }}>
                       No custom JSONs
                     </div>
                   ) : (
@@ -234,7 +235,7 @@ export function EvalManager({
                         style={{
                           ...collectionItemStyle,
                           justifyContent: "space-between",
-                          color: selected === c ? "#3b82f6" : "#94a3b8",
+                          color: selected === c ? "#2563eb" : "#475569",
                           fontWeight: selected === c ? 600 : 400,
                         }}
                       >
@@ -260,7 +261,7 @@ export function EvalManager({
                       style={{
                         ...collectionItemStyle,
                         justifyContent: "space-between",
-                        color: selected === p.id ? "#3b82f6" : "#94a3b8",
+                        color: selected === p.id ? "#2563eb" : "#475569",
                         fontWeight: selected === p.id ? 600 : 400,
                       }}
                     >
@@ -357,26 +358,37 @@ export function EvalManager({
               style={{
                 ...runBatchBtnStyle,
                 background: running
-                  ? "rgba(239, 68, 68, 0.2)"
+                  ? "#fee2e2"
                   : runDisabled
-                    ? "rgba(255, 255, 255, 0.03)"
-                    : "rgba(34, 197, 94, 0.18)",
+                    ? "#f1f5f9"
+                    : "#dcfce7",
                 color: running
-                  ? "#f87171"
+                  ? "#991b1b"
                   : runDisabled
-                    ? "#475569"
-                    : "#4ade80",
+                    ? "#94a3b8"
+                    : "#166534",
                 borderColor: running
-                  ? "rgba(239, 68, 68, 0.3)"
+                  ? "#fca5a5"
                   : runDisabled
-                    ? "rgba(255, 255, 255, 0.06)"
-                    : "rgba(34, 197, 94, 0.3)",
+                    ? "#e2e8f0"
+                    : "#bbf7d0",
                 cursor: runDisabled ? "not-allowed" : "pointer",
               }}
               data-testid="eval-run-all"
             >
-              {running ? "■ STOP BATCH" : "▶ RUN BATCH"}
+              {running ? (
+                <span style={{ display: "inline-flex", alignItems: "center", justifyContent: "center", gap: 8 }}>
+                  <Spinner color="#991b1b" /> ■ STOP BATCH
+                </span>
+              ) : (
+                "▶ RUN BATCH"
+              )}
             </button>
+            {running && (
+              <div style={{ fontSize: 11, color: "#64748b", fontFamily: "Inter, sans-serif", textAlign: "center", marginTop: -6 }}>
+                Evaluating… click to cancel.
+              </div>
+            )}
 
             {/* Import & Export Links */}
             <div style={{ display: "flex", flexDirection: "column", gap: 6, marginTop: 8 }}>
@@ -437,8 +449,10 @@ export function EvalManager({
 // ── Styles ──────────────────────────────────────────────────────────────────
 
 const panelStyle: React.CSSProperties = {
-  background: "linear-gradient(145deg, #121620 0%, #0d0f15 100%)",
-  boxShadow: "0 8px 32px rgba(0,0,0,0.5), inset 0 1px 0 rgba(255,255,255,0.03)",
+  background: "#ffffff",
+  border: "1px solid #e2e8f0",
+  borderRadius: "16px",
+  boxShadow: "0 1px 3px 0 rgba(0, 0, 0, 0.05)",
   display: "flex",
   flexDirection: "column",
   minHeight: 520,
@@ -446,13 +460,14 @@ const panelStyle: React.CSSProperties = {
 
 const headerStyle: React.CSSProperties = {
   padding: "16px 20px 14px",
-  borderBottom: "1px solid rgba(255,255,255,0.06)",
+  borderBottom: "1px solid #e2e8f0",
+  background: "#fafafa",
 };
 
 const sectionHeaderStyle: React.CSSProperties = {
   fontSize: 11,
-  fontWeight: 700,
-  color: "#475569",
+  fontWeight: 800,
+  color: "#64748b",
   letterSpacing: "0.06em",
   fontFamily: "Inter, sans-serif",
   userSelect: "none",
@@ -482,21 +497,21 @@ const collectionItemStyle: React.CSSProperties = {
 
 const controlLabelStyle: React.CSSProperties = {
   fontSize: 12,
-  color: "#94a3b8",
+  color: "#475569",
   fontFamily: "Inter, sans-serif",
 };
 
 
 const numberInputStyle: React.CSSProperties = {
-  background: "rgba(255,255,255,0.04)",
-  border: "1px solid rgba(255,255,255,0.08)",
+  background: "#ffffff",
+  border: "1px solid #cbd5e1",
   borderRadius: 6,
-  color: "#e2e8f0",
+  color: "#0f172a",
   fontSize: 12,
   fontFamily: "Inter, sans-serif",
   padding: "4px 8px",
   outline: "none",
-  width: 50,
+  width: 55,
   textAlign: "center",
 };
 
@@ -517,7 +532,7 @@ const runBatchBtnStyle: React.CSSProperties = {
 const actionBtnStyle: React.CSSProperties = {
   background: "transparent",
   border: "none",
-  color: "#3b82f6",
+  color: "#2563eb",
   fontSize: 13,
   fontFamily: "Inter, sans-serif",
   cursor: "pointer",
@@ -529,10 +544,10 @@ const actionBtnStyle: React.CSSProperties = {
 
 const errorTextStyle: React.CSSProperties = {
   fontSize: 11,
-  color: "#f87171",
+  color: "#b91c1c",
   fontFamily: "Inter, sans-serif",
-  background: "rgba(239,68,68,0.08)",
-  border: "1px solid rgba(239,68,68,0.15)",
+  background: "#fef2f2",
+  border: "1px solid #fee2e2",
   borderRadius: 5,
   padding: "5px 10px",
   margin: 0,
