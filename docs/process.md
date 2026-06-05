@@ -602,6 +602,32 @@ agentic metrics) so the Audit timeline reflects batch runs; retire the now-
 orphaned `run_collection_matrix`/`run_toolcall_eval` commands + `MatrixPanel`/
 `ToolCallPanel` components once nothing references them.
 
+### Phase 7 — Local Agent Readiness Validator
+
+Packages the Phase-6 engine into a transparent **"is this model ready to replace
+my cloud agent"** verdict. See [Local Agent Readiness](reference.md#agent-readiness)
+for the contract.
+
+| # | Step | Status |
+| --- | --- | --- |
+| 7.1 | Pure `readiness::assess` verdict model (Ready/Conditional/NotReady) — epsilon-guarded thresholds, strict null-gating (required-but-unmeasured blocks), one scoring source of truth for GUI + future CLI | done |
+| 7.1 | Editable built-in profiles (Coding agent / RAG assistant / General agent) as flat JSON via `persistence/readiness/profiles` + collision-proof `safe_filename` | done |
+| — | `AggAgentic` carries the full `FailureTracker` so the loop/hallucination gates see exact counts, not just `top_error` | done |
+| — | Persist the last `BatchReport` per collection (`persistence/readiness/reports`) — Rust is the verdict's source of truth, not the frontend store | done |
+| 7.7 | **Agent Report** tab: pick a collection + profile, run `assess_readiness`, render per-model badges + interpolated reasons + measured path; shareable offline HTML export | done |
+| 7.2 | Native-FC measurement (second labelled column) | deferred |
+| 7.5 | Resumable job queue + VRAM isolation | deferred |
+| 7.6 | Headless `quantamind-cli` (shares `readiness::assess`) | deferred |
+
+Locked decisions: **never fabricate** — an unmeasured hard-required metric blocks
+(ignorance is not a pass), unknowns render N/A, prompt-based vs native paths are
+labelled never conflated; thresholds live in **editable profiles**, not constants;
+built-in profiles gate only on metrics measured today (Pass^k, loop/hallucination
+taxonomy, steps) — the VRAM/context hard gates stay off in built-ins until 7.2/7.4
+wire those measurements, so a default profile doesn't mark every model NotReady for
+infra reasons; the verdict scoring is **one function** (`assess`) so GUI and the
+future CLI can never diverge.
+
 ### Phase 7+
 
 Owners flesh out the next phase's section here when the current lands.

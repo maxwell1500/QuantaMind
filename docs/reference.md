@@ -606,3 +606,61 @@ ignoring the requested name. So on those backends:
 
 This is a property of those servers, not a QuantaMind limitation; auto-restarting
 a single-model server per model is a deferred future option.
+
+## Local Agent Readiness {#agent-readiness}
+
+The **Agent Report** tab turns a collection's last batch run into a transparent
+per-model verdict answering *"is this local model ready to replace my cloud
+agent?"*. It adds no new measurement — it synthesizes the Phase-6 agentic metrics
+([Agentic reliability eval](#agentic-eval)) against a **profile** and shows the
+exact reasons. Pick a target collection + a profile, click **Run readiness**.
+
+**The verdict.** Each model gets one of three statuses, never a black-box number:
+
+- 🟢 **Ready** — meets every gate in the profile.
+- 🟡 **Conditional** — passes the hard gates but trips a *soft target* (e.g. slow,
+  or inefficient step count). The reason carries the interpolated math, e.g.
+  `slow: 8400ms/step > 5000ms target`.
+- 🔴 **NotReady** — trips a *hard gate*. Reasons are explicit, e.g.
+  `pass^k 0.40 < 0.80 required`, `loops on some runs`, or `run error: …` for a
+  column that failed to produce data.
+
+**Blocking vs conditions.** Hard gates push to `blocking[]` (→ NotReady); soft
+targets push to `conditions[]` (→ Conditional). Status = NotReady if any blocking,
+else Conditional if any conditions, else Ready.
+
+**Never fabricated.** A metric the engine didn't measure is N/A, never a guessed
+pass. If a profile *requires* a metric that wasn't measured (e.g. `require_full_vram`
+with no VRAM-fit measurement, or `min_context_tokens` with no cliff probe), that is
+**blocking** — ignorance is not a pass; the report tells you to run the missing
+diagnostic. The `pass^k` core gate likewise blocks when no agentic run was recorded.
+Float comparisons are epsilon-guarded (`1e-6`) so a true `0.80` can't false-block.
+
+**Profiles** are flat JSON files under the OS app-config dir (`readiness/`),
+editable by power users and seeded on first run with three built-ins:
+
+| Profile | Min Pass^k | Forbid loops | Forbid fake-done | Soft targets |
+| --- | --- | --- | --- | --- |
+| Coding agent | 80% | yes | yes | ≤8 steps · ≤5000 ms/step |
+| RAG assistant | 70% | yes | yes | ≤5 steps · ≤8000 ms/step |
+| General agent | 60% | yes | no | — |
+
+Built-ins keep the `require_full_vram` / `min_context_tokens` / native-FC hard
+gates **off** — those measurements aren't wired yet (deferred), and with strict
+null-gating an unmeasured requirement would mark every model NotReady for infra
+reasons. Author a custom profile to switch them on and get exactly that strict
+behaviour. Long/nested profile ids are safe: the file is keyed by a 40-char slug
+plus an 8-hex hash of the full id, so two ids sharing a prefix never collide.
+
+**Prompt-based vs native path.** Verdicts today are measured on the **prompt-based**
+proxy (the only cross-backend-fair method); each row is labelled `Prompt-Based` so a
+"Ready" is never mistaken for the model's native `tool_calls` path. Native-FC
+measurement is a deferred second column (Phase 7.2) — until then it shows as N/A,
+not a guessed score.
+
+**Source of truth.** `run_batch_eval` persists the full report per collection; the
+`assess_readiness` command loads it and calls the one pure scoring function
+(`readiness::assess`) — the same function a future headless CLI will link, so GUI
+and CLI verdicts can never diverge. The frontend stores no verdicts; it renders what
+Rust returns. **Export shareable report (.HTML)** emits a self-contained, offline
+one-pager (escaped, utf-8) to email a verdict to a CTO.
