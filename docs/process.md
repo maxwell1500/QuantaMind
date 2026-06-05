@@ -616,9 +616,9 @@ for the contract.
 | — | Persist the last `BatchReport` per collection (`persistence/readiness/reports`) — Rust is the verdict's source of truth, not the frontend store | done |
 | 7.7 | **Agent Report** tab: pick a collection + profile, run `assess_readiness`, render per-model badges + interpolated reasons + measured path; shareable offline HTML export | done |
 | 7.4 | **Hardware Telemetry**: measure VRAM fit (exact weights + real KV cache at the run's `num_ctx` vs an allocation cap) via the pure `readiness::vram_fit`; Host Hardware Profile panel (arch + cap dropdown) + per-model memory line; flips `require_full_vram` on for Coding-agent | done |
-| 7.2 | Native-FC measurement (second labelled column) | deferred |
+| 7.2 | **Native-FC test mode**: run the same agentic tasks through Ollama's native `/api/chat` `tool_calls` API (`NativeOllamaTurn` translates back to the canonical call shape, so the sandbox/scoring are byte-identical); parallel **Native FC pass^k** Matrix column behind a toggle; the verdict **prefers native** when measured. Ollama-only — llama.cpp/MLX N/A | done |
 | 7.5 | Resumable job queue + VRAM isolation | deferred |
-| 7.6 | Headless `quantamind-cli` (shares `readiness::assess`) | deferred |
+| 7.6 | Headless `quantamind-cli` | **dropped** |
 
 Locked decisions: **never fabricate** — an unmeasured hard-required metric blocks
 (ignorance is not a pass), unknowns render N/A, prompt-based vs native paths are

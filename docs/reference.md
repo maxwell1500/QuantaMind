@@ -668,11 +668,28 @@ under `require_full_vram` that N/A blocks (ignorance is not a pass). Lower the c
 a fitting model flips to NotReady deterministically — model the exact hardware you're
 buying for.
 
-**Prompt-based vs native path.** Verdicts today are measured on the **prompt-based**
-proxy (the only cross-backend-fair method); each row is labelled `Prompt-Based` so a
-"Ready" is never mistaken for the model's native `tool_calls` path. Native-FC
-measurement is a deferred second column (Phase 7.2) — until then it shows as N/A,
-not a guessed score.
+**Prompt-based vs native path.** Two ways a model can do tool-calling, measured and
+labelled **separately** so they're never conflated. The **prompt-based** proxy injects
+the tool schemas into the system prompt and parses the text JSON the model emits — the
+only cross-backend-fair method. The **native** path (Phase 7.2) runs the *same* agentic
+tasks through the model's real `tool_calls` API — the path a production agent actually
+uses.
+
+- **Measuring native.** Tick **Measure native tool-calling (Ollama)** on the Eval run.
+  For each **Ollama** model that reports the `tools` capability (`/api/show`), QuantaMind
+  runs a parallel pass via `/api/chat` with a native `tools` array, parses the real
+  `tool_calls`, and shows a **Native FC pass^k** column in the Matrix (behind a toggle).
+  Only the call *extraction* differs — the deterministic sandbox, scoring, and failure
+  taxonomy are identical, so the two columns are comparable. An empty/abstaining
+  `tool_calls` is scored as a correct no-call; parallel `tool_calls` are processed
+  one-per-step (the sandbox is sequential). **Ollama-only** today: llama.cpp / MLX show
+  **N/A**, never a guessed score.
+- **In the verdict.** When native was measured for a model, the readiness verdict
+  **prefers it** — the core Pass^k gate and the loop/hallucination gates use the native
+  result, and the row is labelled **(Native FC)**. Models without a native measurement
+  fall back to the prompt-based proxy, labelled **(Prompt-Based)**. So a model that passes
+  the prompt proxy but fails the native path reads **NotReady** on the path your app
+  actually uses — the honest gap, made visible.
 
 **Source of truth.** `run_batch_eval` persists the full report per collection; the
 `assess_readiness` command loads it and calls the one pure scoring function
