@@ -75,4 +75,13 @@ pub struct ModelVerdict {
     pub avg_steps: Option<f64>,
     #[serde(default)]
     pub effort: Option<f64>,
+    /// The measured Pass^k the verdict gated on (native-first), as a raw fraction —
+    /// the headline reliability metric for the row. `None` when no agentic run was
+    /// measured (rendered "N/A", never fabricated).
+    #[serde(default)]
+    pub pass_k: Option<f64>,
+    /// The model's real quantization (e.g. `Q4_K_M`) from the installed-models
+    /// registry — never guessed. `None` when the backend didn't report one.
+    #[serde(default)]
+    pub quantization: Option<String>,
 }

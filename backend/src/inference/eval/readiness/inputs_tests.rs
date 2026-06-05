@@ -1,6 +1,6 @@
 use super::super::profile::builtins;
 use super::super::types::{AgentPath, NativeFcStatus, Readiness};
-use super::{agentic_metrics, assess_report, from_column, verdict_for};
+use super::{agentic_metrics, assess_report, from_column, pass_k_of, verdict_for};
 use crate::inference::eval::batch::BatchReport;
 use crate::inference::backend::backend_kind::BackendKind;
 use crate::inference::eval::agentic::report::{FailureTracker, TopError};
@@ -139,6 +139,29 @@ fn ranking_puts_a_ready_model_first_regardless_of_column_order() {
     assert_eq!(verdicts[0].model, "m"); // the Ready model is ranked first
     assert_eq!(verdicts[0].verdict.status, Readiness::Ready);
     assert_eq!(verdicts[1].model, "bad");
+}
+
+#[test]
+fn pass_k_of_is_native_first_then_prompt_then_none() {
+    // Native present → native pass^k (3/5 = 0.6), even with a different prompt rate.
+    let mut c = col(5, 5, 0, 0, Some(2.0)); // prompt 5/5
+    c.agentic_native_fc = Some(AggAgentic {
+        passes: 3,
+        total_runs: 5,
+        avg_steps: Some(4.0),
+        avg_output_tokens_success: Some(120.0),
+        schema_resilience: None,
+        top_error: TopError::None,
+        failures: FailureTracker::default(),
+    });
+    assert_eq!(pass_k_of(&c), Some(0.6)); // native, not the prompt 1.0
+
+    // No native → prompt pass^k (4/10 = 0.4).
+    assert_eq!(pass_k_of(&col(4, 10, 0, 0, Some(2.0))), Some(0.4));
+
+    // No agentic data → None (renders N/A, never fabricated).
+    let bare = BatchColumn { model: "m".into(), backend: BackendKind::Ollama, toolcall: None, agentic: None, agentic_native_fc: None, error: None };
+    assert_eq!(pass_k_of(&bare), None);
 }
 
 #[test]

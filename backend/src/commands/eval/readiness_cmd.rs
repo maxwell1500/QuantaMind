@@ -3,7 +3,7 @@ use crate::commands::storage::storage::fetch_installed_with_stats;
 use crate::errors::AppError;
 use crate::inference::backend::backend_kind::BackendKind;
 use crate::inference::backend::endpoint;
-use crate::inference::eval::readiness::inputs::{agentic_metrics, verdict_for};
+use crate::inference::eval::readiness::inputs::{agentic_metrics, pass_k_of, verdict_for};
 use crate::inference::eval::readiness::recommend;
 use crate::inference::eval::readiness::profile::ReadinessProfile;
 use crate::inference::eval::readiness::types::ModelVerdict;
@@ -13,14 +13,12 @@ use std::collections::HashMap;
 use std::path::PathBuf;
 use tauri::{AppHandle, Manager};
 
-/// Look up an installed model's on-disk weight size, tolerant of the `:latest`
-/// tag mismatch between an eval target and the `/api/tags` listing.
-fn weights_of(map: &HashMap<String, u64>, model: &str) -> Option<u64> {
+/// Look up an installed model's metadata, tolerant of the `:latest` tag mismatch
+/// between an eval target and the `/api/tags` listing. Used for both the real
+/// weight size and the real quantization.
+fn registry_get<'a, V>(map: &'a HashMap<String, V>, model: &str) -> Option<&'a V> {
     let base = model.strip_suffix(":latest").unwrap_or(model);
-    map.get(model)
-        .or_else(|| map.get(base))
-        .or_else(|| map.get(&format!("{base}:latest")))
-        .copied()
+    map.get(model).or_else(|| map.get(base)).or_else(|| map.get(&format!("{base}:latest")))
 }
 
 /// Editable readiness profiles live as flat JSON here (built-ins seeded on first list).
@@ -70,21 +68,19 @@ pub async fn assess_readiness(
         None => return Ok(Vec::new()),
     };
 
-    // Weights by model name (Ollama `/api/tags`). Best-effort: if Ollama is down,
-    // the map is empty and fit stays unmeasured rather than failing the assess.
-    let weights: HashMap<String, u64> = if cap_bytes.is_some() {
-        fetch_installed_with_stats(endpoint::OLLAMA)
-            .await
-            .map(|v| v.into_iter().map(|m| (m.name, m.size_bytes)).collect())
-            .unwrap_or_default()
-    } else {
-        HashMap::new()
-    };
+    // Real model metadata by name (Ollama `/api/tags` + `/api/show`): the weight
+    // size (for VRAM fit) and the real quantization (for the table — never guessed).
+    // Best-effort: if Ollama is down the maps are empty and those fields stay N/A
+    // rather than failing the assess.
+    let installed = fetch_installed_with_stats(endpoint::OLLAMA).await.unwrap_or_default();
+    let weights: HashMap<String, u64> = installed.iter().map(|m| (m.name.clone(), m.size_bytes)).collect();
+    let quants: HashMap<String, String> =
+        installed.iter().filter(|m| !m.quantization.is_empty()).map(|m| (m.name.clone(), m.quantization.clone())).collect();
 
     let mut out = Vec::with_capacity(report.columns.len());
     for col in &report.columns {
         let memory = if cap_bytes.is_some() && col.backend == BackendKind::Ollama {
-            let w = weights_of(&weights, &col.model);
+            let w = registry_get(&weights, &col.model).copied();
             let dims = match w {
                 Some(_) => fetch_dims(&col.model).await.map(|d| Dims {
                     layers: d.layers,
@@ -103,7 +99,16 @@ pub async fn assess_readiness(
         let vram_pressure = memory.as_ref().map(|m| m.pressure).unwrap_or(false);
         let verdict = verdict_for(col, fits_in_vram, vram_pressure, &profile);
         let (avg_steps, effort) = agentic_metrics(col);
-        out.push(ModelVerdict { model: col.model.clone(), backend: col.backend, verdict, memory, avg_steps, effort });
+        out.push(ModelVerdict {
+            model: col.model.clone(),
+            backend: col.backend,
+            verdict,
+            memory,
+            avg_steps,
+            effort,
+            pass_k: pass_k_of(col),
+            quantization: registry_get(&quants, &col.model).cloned(),
+        });
     }
     // Phase 7.3: rank best-first (Ready > Conditional > NotReady, ties by effort
     // then steps) so the page's recommendation banner + leaderboard are correct.

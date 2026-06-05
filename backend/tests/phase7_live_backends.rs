@@ -178,9 +178,11 @@ async fn live_ollama_native_passk_drives_verdict_and_recommender() {
         memory: None,
         avg_steps: Some(1.0),
         effort: Some(eff),
+        pass_k: None,
+        quantization: None,
     };
     let mut board = vec![
-        ModelVerdict { model: model.clone(), backend: BackendKind::Ollama, verdict: v.clone(), memory: None, avg_steps: Some(1.0), effort: Some(20.0) },
+        ModelVerdict { model: model.clone(), backend: BackendKind::Ollama, verdict: v.clone(), memory: None, avg_steps: Some(1.0), effort: Some(20.0), pass_k: None, quantization: None },
         mk("synthetic-notready", Readiness::NotReady, 10.0),
         mk("synthetic-ready-costly", Readiness::Ready, 999.0),
     ];
@@ -284,8 +286,14 @@ async fn live_full_readiness_walk_real_agentic_batch() {
     println!("\n=== S1: verdicts @ min_pass_k=0.60 (Prompt-Based path) ===");
     let v_lenient = assess_report(&report, &profile(0.60));
     for v in &v_lenient {
-        println!("  {:<40} {:?}  path={:?}  blocking={:?} conditions={:?}", v.model, v.verdict.status, v.verdict.path, v.verdict.blocking, v.verdict.conditions);
+        println!(
+            "  {:<40} {:?}  pass^k={:?} steps={:?} effort={:?}  path={:?}  blocking={:?}",
+            v.model, v.verdict.status, v.pass_k, v.avg_steps, v.effort, v.verdict.path, v.verdict.blocking
+        );
     }
+    // Real metrics must be populated for a model that produced agentic data.
+    let strong_v = v_lenient.iter().find(|v| v.model == strong).unwrap();
+    assert!(strong_v.pass_k.is_some(), "real pass^k must flow into the verdict");
 
     // ── S1: raise the bar → a previously-passing model flips deterministically ──
     println!("\n=== S1: same data @ min_pass_k=0.99 (stricter) ===");

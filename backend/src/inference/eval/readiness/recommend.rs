@@ -45,6 +45,8 @@ mod tests {
             memory: None,
             avg_steps: steps,
             effort,
+            pass_k: None,
+            quantization: None,
         }
     }
 

@@ -1,5 +1,5 @@
 import { describe, it, expect } from "vitest";
-import { render, screen } from "@testing-library/react";
+import { render, screen, within } from "@testing-library/react";
 import { VerdictTable } from "../components/VerdictTable";
 import type { ModelVerdict } from "../../../shared/ipc/eval/readiness";
 
@@ -73,5 +73,50 @@ describe("VerdictTable", () => {
     );
     // llama.cpp (no memory profile) → honest N/A, never a guessed fit.
     expect(screen.getByTestId("readiness-row-mistral-nemo")).toHaveTextContent("VRAM fit: N/A (single-model backend)");
+  });
+
+  it("shows REAL measured metrics (Pass^k / steps / effort) — values or N/A, never fabricated", () => {
+    const real: ModelVerdict[] = [
+      {
+        model: "llama3.2:3b",
+        backend: "ollama",
+        verdict: { status: "ready", blocking: [], conditions: [], path: "native_fc" },
+        pass_k: 1.0,
+        avg_steps: 1.0,
+        effort: 29,
+        quantization: "Q4_K_M", // real backend value
+        memory: null, // VRAM not measured (no cap)
+      },
+      {
+        model: "phi3.5",
+        backend: "ollama",
+        verdict: { status: "not_ready", blocking: ["pass^k 0.40 < 0.80 required"], conditions: [], path: "prompt_based" },
+        pass_k: 0.4, // steps/effort undefined → N/A
+      },
+    ];
+    render(<VerdictTable verdicts={real} />);
+
+    const ready = screen.getByTestId("readiness-row-llama3.2:3b");
+    expect(within(ready).getByTestId("metric-passk")).toHaveTextContent("100%");
+    expect(within(ready).getByTestId("metric-steps")).toHaveTextContent("1.0");
+    expect(within(ready).getByTestId("metric-effort")).toHaveTextContent("29 tok");
+    expect(ready).toHaveTextContent("Q4_K_M"); // real quant, not a per-family guess
+    // VRAM was NOT measured → must NOT claim it fits.
+    expect(ready).not.toHaveTextContent("Fits completely in VRAM");
+
+    const weak = screen.getByTestId("readiness-row-phi3.5");
+    expect(within(weak).getByTestId("metric-passk")).toHaveTextContent("40%");
+    expect(within(weak).getByTestId("metric-steps")).toHaveTextContent("N/A");
+    expect(within(weak).getByTestId("metric-effort")).toHaveTextContent("N/A");
+  });
+
+  it("never guesses a quant — an unknown name renders a dash, not a family default", () => {
+    render(
+      <VerdictTable
+        verdicts={[{ model: "qwen2.5-coder", backend: "ollama", verdict: { status: "ready", blocking: [], conditions: [], path: "prompt_based" } }]}
+      />,
+    );
+    // The old code fabricated "q5_k_m" for any qwen; an unknown quant is now an honest "—".
+    expect(screen.getByTestId("readiness-row-qwen2.5-coder")).not.toHaveTextContent(/q5_k_m/i);
   });
 });

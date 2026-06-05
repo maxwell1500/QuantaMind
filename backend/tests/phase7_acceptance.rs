@@ -257,6 +257,8 @@ fn verdict(model: &str, status: Readiness, effort: Option<f64>, steps: Option<f6
         memory: None,
         avg_steps: steps,
         effort,
+        pass_k: None,
+        quantization: None,
     }
 }
 

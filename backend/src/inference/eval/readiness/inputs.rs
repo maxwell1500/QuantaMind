@@ -71,6 +71,17 @@ pub fn agentic_metrics(col: &BatchColumn) -> (Option<f64>, Option<f64>) {
     }
 }
 
+/// The measured Pass^k the verdict gated on — **native-first**, as a raw fraction.
+/// `None` when no agentic run produced data (the row then renders "N/A").
+pub fn pass_k_of(col: &BatchColumn) -> Option<f64> {
+    let source = col
+        .agentic_native_fc
+        .as_ref()
+        .filter(|a| a.total_runs > 0)
+        .or(col.agentic.as_ref());
+    source.and_then(|a| (a.total_runs > 0).then(|| a.passes as f64 / a.total_runs as f64))
+}
+
 /// Assess every model in a persisted batch report against a profile, with no
 /// hardware facts (VRAM unmeasured). The CLI-without-cap and pure-test path.
 pub fn assess_report(report: &BatchReport, profile: &ReadinessProfile) -> Vec<ModelVerdict> {
@@ -86,6 +97,8 @@ pub fn assess_report(report: &BatchReport, profile: &ReadinessProfile) -> Vec<Mo
                 memory: None,
                 avg_steps,
                 effort,
+                pass_k: pass_k_of(col),
+                quantization: None, // the no-hardware path has no registry to read the real quant
             }
         })
         .collect()

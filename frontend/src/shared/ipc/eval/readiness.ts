@@ -56,6 +56,11 @@ export const ModelVerdictSchema = z.object({
   // returns verdicts already ranked best-first.
   avg_steps: z.number().nullish(),
   effort: z.number().nullish(),
+  // Real measured metrics for the verdict row — never guessed. `pass_k` is the
+  // native-first Pass^k fraction; `quantization` is the model's real quant from the
+  // installed-models registry. Both null → rendered "N/A"/"—".
+  pass_k: z.number().nullish(),
+  quantization: z.string().nullish(),
 });
 export type ModelVerdict = z.infer<typeof ModelVerdictSchema>;
 
