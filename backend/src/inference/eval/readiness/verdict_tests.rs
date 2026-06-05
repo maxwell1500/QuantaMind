@@ -1,4 +1,4 @@
-use super::super::profile::ReadinessProfile;
+use super::super::profile::{builtins, ReadinessProfile};
 use super::super::types::{NativeFcStatus, Readiness, ReadinessInputs};
 use super::assess;
 
@@ -162,6 +162,17 @@ fn required_native_fc_blocks_when_unsupported() {
     let v = assess(&clean_inputs(), &p); // native_fc is NotSupported
     assert_eq!(v.status, Readiness::NotReady);
     assert!(v.blocking.iter().any(|b| b.contains("native tool-calling required")));
+}
+
+#[test]
+fn coding_agent_gates_on_measured_vram_fit() {
+    let coding = builtins().into_iter().find(|p| p.id == "coding-agent").unwrap();
+    let mut overflow = clean_inputs();
+    overflow.fits_in_vram = Some(false); // measured: spills past the cap
+    assert_eq!(assess(&overflow, &coding).status, Readiness::NotReady);
+    let mut fits = clean_inputs();
+    fits.fits_in_vram = Some(true);
+    assert_eq!(assess(&fits, &coding).status, Readiness::Ready); // clean + fits → Ready
 }
 
 #[test]

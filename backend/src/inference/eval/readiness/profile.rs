@@ -32,12 +32,12 @@ pub struct ReadinessProfile {
 }
 
 /// The shipped presets, written to disk on first run as editable copies. They
-/// gate only on metrics the engine measures *today* (Pass^k, the loop/
-/// hallucination taxonomy, mean steps). The hard infra gates `require_full_vram`
-/// and `min_context_tokens` stay off here — with strict null-gating an
-/// unmeasured requirement blocks, which would make every model NotReady for
-/// infra reasons until 7.2/7.4 wire VRAM fit and the context cliff. Power users
-/// can switch them on in a custom profile and get exactly that strict behaviour.
+/// gate on the metrics the engine measures today: Pass^k, the loop/hallucination
+/// taxonomy, mean steps — and, since Phase 7.4 wired VRAM fit, `require_full_vram`
+/// on the Coding-agent profile. The `min_context_tokens` hard gate still stays off
+/// (the context cliff isn't routed server-side yet — strict null-gating would
+/// otherwise block every model). Power users can switch any gate on in a custom
+/// profile and get exactly that strict behaviour.
 pub fn builtins() -> Vec<ReadinessProfile> {
     vec![
         ReadinessProfile {
@@ -49,7 +49,7 @@ pub fn builtins() -> Vec<ReadinessProfile> {
             min_context_tokens: None,
             forbid_infinite_loop: true,
             forbid_hallucinated_completion: true,
-            require_full_vram: false,
+            require_full_vram: true,
             require_native_fc: false,
         },
         ReadinessProfile {
@@ -77,4 +77,19 @@ pub fn builtins() -> Vec<ReadinessProfile> {
             require_native_fc: false,
         },
     ]
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn coding_agent_requires_full_vram_now_that_fit_is_measured() {
+        let find = |id: &str| builtins().into_iter().find(|p| p.id == id).unwrap();
+        assert!(find("coding-agent").require_full_vram); // flipped on in 7.4
+        assert!(!find("rag-assistant").require_full_vram); // others stay offload-tolerant
+        assert!(!find("general-agent").require_full_vram);
+        // The context gate stays off everywhere until the cliff is wired.
+        assert!(builtins().iter().all(|p| p.min_context_tokens.is_none()));
+    }
 }
