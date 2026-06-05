@@ -1,3 +1,4 @@
+use crate::inference::eval::agentic::spec::{FaultInjection, FaultRule};
 use crate::inference::eval::toolcall::tasks::{Call, ToolSchema};
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
@@ -46,6 +47,10 @@ pub struct DeterministicSandbox {
     /// a model that reorders its arg keys still hits the right mock.
     pub mock_responses: HashMap<String, String>,
     pub end_state: EndStateRule,
+    /// Driver-B lazy-agent traps: `canonical(call)` -> the fault that call trips.
+    /// Empty for a fault-free sandbox. The mocks are immutable; the per-RUN attempt
+    /// counters live in `SandboxState`, never here.
+    pub faults: HashMap<String, FaultInjection>,
 }
 
 impl DeterministicSandbox {
@@ -56,7 +61,14 @@ impl DeterministicSandbox {
         end_state: EndStateRule,
     ) -> Self {
         let mock_responses = mocks.into_iter().map(|m| (canonical(&m.call), m.response)).collect();
-        Self { initial_prompt, tools, mock_responses, end_state }
+        Self { initial_prompt, tools, mock_responses, end_state, faults: HashMap::new() }
+    }
+
+    /// Attach Driver-B fault traps (builder form, so the `new` signature and every
+    /// existing caller/test stay unchanged). Keyed by `canonical(call)`.
+    pub fn with_faults(mut self, faults: Vec<FaultRule>) -> Self {
+        self.faults = faults.into_iter().map(|f| (canonical(&f.call), f.fault)).collect();
+        self
     }
 
     /// The deterministic result for a parsed call, or `None` when the agent called
@@ -65,6 +77,48 @@ impl DeterministicSandbox {
     /// ordering is irrelevant.
     pub fn respond(&self, call: &Call) -> Option<&str> {
         self.mock_responses.get(&canonical(call)).map(String::as_str)
+    }
+}
+
+/// Per-RUN mutable fault state: how many times each trapped call has been
+/// attempted so far. Lives outside `DeterministicSandbox` (which is immutable and
+/// shared across the Pass^k runs) so each run starts with a clean slate — a
+/// transient trap that cleared in run 1 traps again in run 2.
+#[derive(Default)]
+pub struct SandboxState {
+    attempts: HashMap<String, u8>,
+}
+
+impl SandboxState {
+    pub fn new() -> Self {
+        Self::default()
+    }
+
+    /// The error text to inject for `call` on THIS attempt, or `None` when the call
+    /// is untrapped or its transient fault has already cleared (so the real mock
+    /// result should flow). Persistent faults always return text; transient faults
+    /// return text for the first `clears_after` attempts, then clear. Counters are
+    /// per-call (`canonical`), so multi-tool tasks trap independently.
+    pub fn fault_for(
+        &mut self,
+        call: &Call,
+        faults: &HashMap<String, FaultInjection>,
+    ) -> Option<String> {
+        let key = canonical(call);
+        match faults.get(&key)? {
+            FaultInjection::PersistentError { status_code } => {
+                Some(format!("HTTP {status_code} Fatal"))
+            }
+            FaultInjection::TransientError { status_code, clears_after } => {
+                let n = self.attempts.entry(key).or_insert(0);
+                if *n < *clears_after {
+                    *n += 1;
+                    Some(format!("HTTP {status_code} Service Unavailable"))
+                } else {
+                    None // cleared — let the deterministic mock result through
+                }
+            }
+        }
     }
 }
 
@@ -149,5 +203,71 @@ mod tests {
             EndStateRule::RequireSequence(vec![TaskCheckpoint { tool: "done".into(), args: json!({}) }]),
         );
         assert_eq!(sb.respond(&call("f", json!({ "y": 2, "x": 1 }))), Some("ok"));
+    }
+
+    fn faults(rules: Vec<FaultRule>) -> HashMap<String, FaultInjection> {
+        rules.into_iter().map(|r| (canonical(&r.call), r.fault)).collect()
+    }
+
+    #[test]
+    fn transient_fault_clears_after_n_attempts() {
+        let c = call("fetch", json!({ "id": 1 }));
+        let f = faults(vec![FaultRule {
+            call: c.clone(),
+            fault: FaultInjection::TransientError { status_code: 503, clears_after: 2 },
+        }]);
+        let mut state = SandboxState::new();
+        assert_eq!(state.fault_for(&c, &f), Some("HTTP 503 Service Unavailable".into())); // 1
+        assert_eq!(state.fault_for(&c, &f), Some("HTTP 503 Service Unavailable".into())); // 2
+        assert_eq!(state.fault_for(&c, &f), None); // cleared on the 3rd attempt
+        assert_eq!(state.fault_for(&c, &f), None); // stays cleared
+    }
+
+    #[test]
+    fn persistent_fault_never_clears() {
+        let c = call("charge", json!({ "amt": 10 }));
+        let f = faults(vec![FaultRule {
+            call: c.clone(),
+            fault: FaultInjection::PersistentError { status_code: 500 },
+        }]);
+        let mut state = SandboxState::new();
+        for _ in 0..5 {
+            assert_eq!(state.fault_for(&c, &f), Some("HTTP 500 Fatal".into()));
+        }
+    }
+
+    #[test]
+    fn fault_counters_are_per_call_independent() {
+        let a = call("a", json!({}));
+        let b = call("b", json!({}));
+        let f = faults(vec![
+            FaultRule { call: a.clone(), fault: FaultInjection::TransientError { status_code: 503, clears_after: 1 } },
+            FaultRule { call: b.clone(), fault: FaultInjection::TransientError { status_code: 429, clears_after: 1 } },
+        ]);
+        let mut state = SandboxState::new();
+        assert!(state.fault_for(&a, &f).is_some()); // a: attempt 1 → fails
+        assert!(state.fault_for(&b, &f).is_some()); // b: attempt 1 → fails (independent of a)
+        assert!(state.fault_for(&a, &f).is_none()); // a: cleared
+        assert!(state.fault_for(&b, &f).is_none()); // b: cleared
+    }
+
+    #[test]
+    fn untrapped_call_never_faults() {
+        let f = faults(vec![FaultRule {
+            call: call("trapped", json!({})),
+            fault: FaultInjection::PersistentError { status_code: 500 },
+        }]);
+        let mut state = SandboxState::new();
+        assert_eq!(state.fault_for(&call("safe", json!({})), &f), None);
+    }
+
+    #[test]
+    fn with_faults_keys_by_canonical_form() {
+        let sb = sandbox().with_faults(vec![FaultRule {
+            call: call("get_balance", json!({ "account_id": "ACC-123" })),
+            fault: FaultInjection::PersistentError { status_code: 500 },
+        }]);
+        // Reordered args still resolve to the same fault key.
+        assert!(sb.faults.contains_key(&canonical(&call("get_balance", json!({ "account_id": "ACC-123" })))));
     }
 }

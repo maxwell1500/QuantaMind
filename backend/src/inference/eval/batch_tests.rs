@@ -77,6 +77,8 @@ fn agentic_task(id: &str, k: u32) -> ToolTask {
             end_state: EndStateRule::RequireSequence(vec![TaskCheckpoint { tool: "ping".into(), args: json!({}) }]),
             k: Some(k),
             max_steps: Some(4),
+            faults: vec![],
+            max_recovery: None,
         }),
     }
 }

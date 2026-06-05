@@ -167,6 +167,8 @@ fn agentic_valid() -> ToolTask {
             }]),
             k: None,
             max_steps: None,
+            faults: vec![],
+            max_recovery: None,
         }),
     }
 }
