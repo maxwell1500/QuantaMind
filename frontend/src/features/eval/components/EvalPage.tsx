@@ -9,6 +9,8 @@ import { CollectionEditor } from "./manager/CollectionEditor";
 import { MatrixScoreboard } from "./scoreboard/MatrixScoreboard";
 import { PerformanceMatrix } from "./scoreboard/PerformanceMatrix";
 import { TraceDebugger } from "./TraceDebugger";
+import { RunRecoveryDialog } from "./RunRecoveryDialog";
+import { useRunRecovery } from "../hooks/useRunRecovery";
 
 /// The Automated-Pipeline Eval workspace. Left: the Eval Manager (collections +
 /// run controls + authoring entry). Right: in run mode, the live Matrix Scoreboard
@@ -28,6 +30,7 @@ export function EvalPage() {
   const [iterationsK, setIterationsK] = useState<number>(1);
   const [maxSteps, setMaxSteps] = useState<number>(8);
   const [editing, setEditing] = useState(false);
+  const recovery = useRunRecovery();
 
   useEffect(() => {
     void initRegistry().catch(() => {});
@@ -62,6 +65,14 @@ export function EvalPage() {
 
   return (
     <div className="grid gap-4" style={{ gridTemplateColumns: "360px 1fr" }} data-testid="eval-page">
+      {recovery.pending && (
+        <RunRecoveryDialog
+          run={recovery.pending}
+          onResume={() => void recovery.resume()}
+          onDiscard={() => void recovery.discard()}
+          onDismiss={recovery.dismiss}
+        />
+      )}
       <EvalManager
         targets={targets}
         setTargets={setTargets}

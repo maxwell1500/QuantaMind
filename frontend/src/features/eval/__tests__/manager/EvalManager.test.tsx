@@ -155,7 +155,8 @@ describe("EvalManager Sidebar Controls", () => {
         1,
         8,
         { temperature: 0.2 },
-        undefined
+        undefined,
+        false, // runNativeFc — the "Measure native tool-calling" checkbox (Phase 7.2), off by default
       );
     });
   });
