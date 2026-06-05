@@ -4,6 +4,7 @@ use crate::errors::AppError;
 use crate::inference::backend::backend_kind::BackendKind;
 use crate::inference::backend::endpoint;
 use crate::inference::eval::readiness::inputs::{agentic_metrics, verdict_for};
+use crate::inference::eval::readiness::recommend;
 use crate::inference::eval::readiness::profile::ReadinessProfile;
 use crate::inference::eval::readiness::types::ModelVerdict;
 use crate::inference::eval::readiness::vram_fit::{try_profile, Dims};
@@ -104,5 +105,8 @@ pub async fn assess_readiness(
         let (avg_steps, effort) = agentic_metrics(col);
         out.push(ModelVerdict { model: col.model.clone(), backend: col.backend, verdict, memory, avg_steps, effort });
     }
+    // Phase 7.3: rank best-first (Ready > Conditional > NotReady, ties by effort
+    // then steps) so the page's recommendation banner + leaderboard are correct.
+    recommend::rank(&mut out);
     Ok(out)
 }

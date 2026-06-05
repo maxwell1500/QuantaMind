@@ -115,6 +115,33 @@ fn a_prompt_passing_model_that_fails_native_is_not_ready_on_the_native_path() {
 }
 
 #[test]
+fn ranking_puts_a_ready_model_first_regardless_of_column_order() {
+    use super::super::recommend;
+    let general = builtins().into_iter().find(|p| p.id == "general-agent").unwrap();
+    let report = BatchReport {
+        collection_id: "c".into(),
+        num_ctx: None,
+        columns: vec![
+            // NotReady first (no agentic → the core pass^k gate blocks)…
+            BatchColumn {
+                model: "bad".into(),
+                backend: BackendKind::Ollama,
+                toolcall: None,
+                agentic: None,
+                agentic_native_fc: None,
+                error: None,
+            },
+            col(5, 5, 0, 0, Some(2.0)), // …a clean Ready model ("m") second.
+        ],
+    };
+    let mut verdicts = assess_report(&report, &general);
+    recommend::rank(&mut verdicts);
+    assert_eq!(verdicts[0].model, "m"); // the Ready model is ranked first
+    assert_eq!(verdicts[0].verdict.status, Readiness::Ready);
+    assert_eq!(verdicts[1].model, "bad");
+}
+
+#[test]
 fn agentic_metrics_prefers_native_then_falls_back_to_prompt() {
     // Prompt aggregate: avg_steps 2.0. Native aggregate: avg_steps 4.0, effort 120.
     let mut c = col(5, 5, 0, 0, Some(2.0));
