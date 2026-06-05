@@ -18,6 +18,14 @@ describe("CsvImportModal", () => {
     expect(screen.getByTestId("csv-import-modal")).toBeInTheDocument();
   });
 
+  it("shows no validation error before any CSV is entered", () => {
+    render(<CsvImportModal onImport={vi.fn()} onClose={vi.fn()} />);
+    // The untouched modal must not scream "CSV is empty" — the panel is gated on input.
+    expect(screen.queryByTestId("csv-import-preview")).toBeNull();
+    expect(screen.queryByTestId("csv-import-header-error")).toBeNull();
+    expect(screen.getByTestId("csv-import-submit")).toBeDisabled();
+  });
+
   it("previews valid rows, enables import, and calls onImport with mapped tasks", async () => {
     const onImport = vi.fn().mockResolvedValue(undefined);
     const onClose = vi.fn();

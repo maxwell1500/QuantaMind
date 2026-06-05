@@ -64,11 +64,16 @@ export function CsvImportModal({
     setFileError(null);
     try {
       const picked = await open({ multiple: false, filters: [{ name: "CSV", extensions: ["csv"] }] });
-      if (typeof picked === "string") {
-        const text = await readTextCapped(picked);
-        setCsvText(text);
-        if (!name.trim()) setName(stemOf(picked));
+      // open() returns a path string (or, in some plugin versions, { path }); null = cancelled.
+      const path = typeof picked === "string" ? picked : (picked as { path?: string } | null)?.path;
+      if (!path) return; // user cancelled
+      const text = await readTextCapped(path);
+      if (!text.trim()) {
+        setFileError("The selected file is empty.");
+        return;
       }
+      setCsvText(text);
+      if (!name.trim()) setName(stemOf(path));
     } catch (e) {
       setFileError(formatIpcError(e));
     }
@@ -185,15 +190,21 @@ export function CsvImportModal({
           />
         </Field>
 
-        {/* Live preview / validation */}
-        {(csvText.trim() || result.headerError) && (
+        {/* Live preview / validation — only once the user has supplied input, so an
+            untouched modal never shows a spurious "CSV is empty" error. */}
+        {csvText.trim() && (
           <div className="space-y-2" data-testid="csv-import-preview">
             {result.headerError && (
               <div className="text-xs text-red-400 bg-red-500/10 border border-red-500/20 rounded-md px-3 py-2" data-testid="csv-import-header-error">
                 Header error — {result.headerError}
               </div>
             )}
-            {!result.headerError && (
+            {!result.headerError && result.rows.length === 0 && (
+              <div className="text-xs text-amber-400 bg-amber-500/10 border border-amber-500/20 rounded-md px-3 py-2" data-testid="csv-import-norows">
+                No data rows found — add at least one task row below the header.
+              </div>
+            )}
+            {!result.headerError && result.rows.length > 0 && (
               <>
                 <div className="text-[11px] text-slate-400">
                   <span className="text-green-400">{validCount} valid</span>
