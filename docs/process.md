@@ -629,8 +629,11 @@ Locked decisions: **never fabricate** — an unmeasured hard-required metric blo
 labelled never conflated; thresholds live in **editable profiles**, not constants;
 built-in profiles gate only on metrics measured today (Pass^k, loop/hallucination
 taxonomy, steps, and — since 7.4 — VRAM fit on Coding-agent), so a default profile
-doesn't mark every model NotReady for infra reasons; the `min_context_tokens` gate
-stays off until the cliff is routed server-side. VRAM fit is **Ollama-precise**
+doesn't mark every model NotReady for infra reasons. The **context-cliff is now
+wired** end-to-end (Matrix pre-fills the probe → measured cliff saved per
+(collection, model) → fed into the verdict → shown in the Agent Report), but the
+`min_context_tokens` gate stays **opt-in** (off in the built-ins; a custom profile
+turns it on) so an un-probed model is never silently failed. VRAM fit is **Ollama-precise**
 (real `/api/show` dims) — single-model backends are N/A, never approximated; the
 cap is auto-detected and overridable in-session (not persisted). The verdict scoring
 is **one function** (`assess`) so GUI and the future CLI can never diverge.

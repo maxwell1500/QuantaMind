@@ -362,8 +362,10 @@ Error), with a click-through Trace Debugger. See [the workspace](#eval-runner).
 - **The Matrix columns.** Per model: **Pass^k · Avg Steps · Effort · Schema Resil.
   · Cliff Depth · Top Error**. `Schema Resil.` is the Driver-D metric above;
   `Cliff Depth` is the measured context-cliff depth from the Audit probe (real
-  `prompt_eval_count` at the accuracy collapse), shared with the Inspector budget
-  gauge via the `quantamind-cliff-<model>` marker — "—" until the probe is run.
+  `prompt_eval_count` at the accuracy collapse), read from the backend per
+  (collection, model); unmeasured cells show **"Run probe ↗"** which pre-fills the
+  Audit probe for that model (see [#context-cliff](#context-cliff)), and a live run
+  shows **"probing…"**.
   Faults and the recovery budget are authored in the Task & Sandbox Configurator
   (the **Fault Injection** box and **Max Recovery** field); single-turn tasks and
   fault-free agentic tasks omit both and round-trip byte-identical.
@@ -586,6 +588,20 @@ A run that errors surfaces a **"Not available — …"** banner rather than a si
 cliff is the first rung whose composite drops **≥ 20pp** below the unpadded baseline, reported at that
 rung's measured token depth; if it never collapses the read-out shows **"Accuracy maintained up to
 ≈N tokens"**. ↺ clears the results. Single-turn, greedy — a failed rung is a gap, never a fabricated score.
+
+**The probe is part of the pipeline, not a dead-end.** The journey is Eval → Audit → Agent Report.
+On the **Performance Matrix**, an unmeasured *Cliff Depth* cell shows **"Run probe ↗"** which
+**pre-fills** the probe for that model + the current collection + a context length and switches to the
+Audit tab — it **never auto-runs** (a misclick must not lock the GPU on a long sweep); you click
+**Execute**. The run lives in a store, so it **survives tab navigation** (a progress bar shows rung
+X/N at ~N tokens; **Stop** cancels). On completion the cliff is saved to the backend **per
+(collection, model)** — `~/.config/quantamind/cliff/<collection>.json`, written atomically
+(temp-file + rename) with the **raw** model name as the key (colons intact). The Matrix then shows the
+real **N tok** (read from the backend, not browser storage), and `assess_readiness` feeds each model's
+cliff into the verdict: the Agent Report **displays** the Cliff depth, and the context gate **blocks**
+(*"reasoning cliff at X < Y needed"*) only when a profile **opts in** via `min_context_tokens` (now
+editable in the profile modal). The gate is off by default, so an un-probed model is never silently
+failed for context.
 
 ## Comparing across models/quants needs Ollama {#multi-model-ollama-only}
 
