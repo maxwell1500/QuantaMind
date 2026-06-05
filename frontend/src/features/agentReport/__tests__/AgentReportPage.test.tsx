@@ -5,11 +5,14 @@ vi.mock("../../../shared/ipc/eval/readiness", () => ({
   listReadinessProfiles: vi.fn(),
   assessReadiness: vi.fn(),
 }));
+vi.mock("../../../shared/ipc/compare/hardware", () => ({ getHardwareSnapshot: vi.fn() }));
 
 import { listReadinessProfiles, assessReadiness, type ReadinessProfile } from "../../../shared/ipc/eval/readiness";
+import { getHardwareSnapshot } from "../../../shared/ipc/compare/hardware";
 import { AgentReportPage } from "../components/AgentReportPage";
 import { useEvalRegistryStore } from "../../eval/state/evalRegistryStore";
 import { useReadinessStore } from "../state/readinessStore";
+import { GIB } from "../capBytes";
 
 const profile = (id: string, name: string, min: number): ReadinessProfile => ({
   id,
@@ -28,8 +31,14 @@ beforeEach(() => {
   vi.clearAllMocks();
   // Non-empty presets so the page doesn't trigger a registry init() in the test.
   useEvalRegistryStore.setState({ presets: [{ id: "curated", label: "Curated Suite" }], collections: ["finance"], selected: "finance" });
-  useReadinessStore.setState({ profiles: [], selectedProfileId: "", verdicts: [], assessed: false, loading: false, error: null });
+  useReadinessStore.setState({ profiles: [], selectedProfileId: "", verdicts: [], hardware: null, capBytes: null, assessed: false, loading: false, error: null });
   vi.mocked(listReadinessProfiles).mockResolvedValue([profile("coding-agent", "Coding agent", 0.8)]);
+  vi.mocked(getHardwareSnapshot).mockResolvedValue({
+    total_memory_bytes: 64 * GIB,
+    available_memory_bytes: 32 * GIB,
+    is_apple_silicon: false,
+    gpu: { unified: false, available: true, name: "RTX 4090", vram_total_bytes: 24 * GIB },
+  });
 });
 
 describe("AgentReportPage", () => {
@@ -45,8 +54,12 @@ describe("AgentReportPage", () => {
     ]);
     render(<AgentReportPage />);
     await waitFor(() => expect(screen.getByTestId("readiness-profile-select")).toBeInTheDocument());
+    // Wait for the detected hardware cap to populate before running.
+    await waitFor(() =>
+      expect((screen.getByTestId("readiness-cap-select") as HTMLSelectElement).value).toBe(String(24 * GIB)),
+    );
     fireEvent.click(screen.getByTestId("readiness-run"));
-    await waitFor(() => expect(assessReadiness).toHaveBeenCalledWith("finance", "coding-agent"));
+    await waitFor(() => expect(assessReadiness).toHaveBeenCalledWith("finance", "coding-agent", 24 * GIB));
     await waitFor(() => expect(screen.getByTestId("readiness-verdict-table")).toBeInTheDocument());
   });
 

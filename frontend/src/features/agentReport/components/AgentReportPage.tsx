@@ -4,6 +4,7 @@ import { useToast } from "../../../shared/ui/Toast";
 import { useEvalRegistryStore } from "../../eval/state/evalRegistryStore";
 import { useReadinessStore } from "../state/readinessStore";
 import { buildReadinessHtml } from "../reportHtml";
+import { HostHardwareProfile } from "./HostHardwareProfile";
 import { ProfileSelector } from "./ProfileSelector";
 import { VerdictTable } from "./VerdictTable";
 
@@ -34,9 +35,28 @@ const btn: React.CSSProperties = {
 /// transparent Ready / Conditional / NotReady per model with its reasons.
 export function AgentReportPage() {
   const { presets, collections, selected, select, init } = useEvalRegistryStore();
-  const { profiles, selectedProfileId, verdicts, assessed, loading, error, loadProfiles, selectProfile, assess } =
-    useReadinessStore();
+  const {
+    profiles,
+    selectedProfileId,
+    verdicts,
+    hardware,
+    capBytes,
+    assessed,
+    loading,
+    error,
+    loadProfiles,
+    loadHardware,
+    selectProfile,
+    setCap,
+    assess,
+  } = useReadinessStore();
   const toast = useToast();
+
+  // Changing the cap re-assesses fit in-session (only once a run is on screen).
+  const onCapChange = (bytes: number) => {
+    setCap(bytes);
+    if (assessed) void assess(selected);
+  };
 
   const onExport = () => {
     const profile = profiles.find((p) => p.id === selectedProfileId);
@@ -49,7 +69,8 @@ export function AgentReportPage() {
   useEffect(() => {
     if (presets.length === 0) void init().catch(() => {});
     void loadProfiles();
-  }, [presets.length, init, loadProfiles]);
+    void loadHardware();
+  }, [presets.length, init, loadProfiles, loadHardware]);
 
   const options = [...presets.map((p) => ({ id: p.id, label: p.label })), ...collections.map((c) => ({ id: c, label: c }))];
 
@@ -62,6 +83,8 @@ export function AgentReportPage() {
           profile and carries the exact reasons — never a black-box score.
         </p>
       </header>
+
+      <HostHardwareProfile hardware={hardware} capBytes={capBytes} onCapChange={onCapChange} />
 
       <section style={{ display: "flex", flexWrap: "wrap", gap: 16, alignItems: "flex-start" }}>
         <label style={{ fontSize: 13, color: "#334155" }}>
