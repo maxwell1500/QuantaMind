@@ -117,3 +117,9 @@ export async function deleteCustomCollection(name: string): Promise<void> {
 export async function importCustomCollection(sourcePath: string): Promise<string> {
   return z.string().parse(await invoke("import_custom_collection", { sourcePath }));
 }
+
+/// Read a picked text file (e.g. a CSV) by PATH — Rust reads + size-caps it; the
+/// frontend parses/validates the returned text (used by the CSV importer).
+export async function readTextCapped(sourcePath: string): Promise<string> {
+  return z.string().parse(await invoke("read_text_capped", { sourcePath }));
+}

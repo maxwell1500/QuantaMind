@@ -8,9 +8,12 @@ import { TOOL_HELP } from "../../help";
 import { useBatchStore } from "../../state/batchStore";
 import { useBatchRun } from "../../hooks/useBatchRun";
 import { formatIpcError } from "../../../../shared/ipc/core/error";
+import { useToast } from "../../../../shared/ui/Toast";
+import type { ToolTask } from "../../../../shared/ipc/eval/registry";
 import { batchToCsv, download } from "../../exportBatch";
 import { ModelDropdown } from "../matrix/ModelDropdown";
 import { ConfirmDialog } from "./ConfirmDialog";
+import { CsvImportModal } from "./CsvImportModal";
 import { KebabMenu } from "./KebabMenu";
 
 interface EvalManagerProps {
@@ -34,8 +37,9 @@ export function EvalManager({
   onNewCollection = () => {},
   onEditCollection = () => {},
 }: Partial<EvalManagerProps> = {}) {
-  const { presets, collections, selected, tasks, init, select, isPreset, importFile, remove, hidePreset } =
+  const { presets, collections, selected, tasks, init, select, isPreset, importFile, save, remove, hidePreset } =
     useEvalRegistryStore();
+  const showToast = useToast();
   const list = useInstalledModelsStore((s) => s.list);
   const selectedBackend = useBackendStore((s) => s.selectedBackend);
   // Only the selected backend's models can be evaluated (a model is bound to its
@@ -48,6 +52,12 @@ export function EvalManager({
   const [collectionsExpanded, setCollectionsExpanded] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [deleteTarget, setDeleteTarget] = useState<string | null>(null);
+  const [csvOpen, setCsvOpen] = useState(false);
+
+  const handleCsvImport = async (name: string, csvTasks: ToolTask[]) => {
+    await save(name, csvTasks);
+    showToast(`CSV imported: ${csvTasks.length} task${csvTasks.length > 1 ? "s" : ""} ✓`);
+  };
 
   // Determine dataSource based on the active selection
   const dataSource = isPreset(selected) ? "builtin" : "custom";
@@ -363,6 +373,14 @@ export function EvalManager({
               </button>
               <button
                 type="button"
+                onClick={() => setCsvOpen(true)}
+                style={actionBtnStyle}
+                data-testid="eval-manager-import-csv"
+              >
+                [↓] Import CSV
+              </button>
+              <button
+                type="button"
                 onClick={handleExport}
                 disabled={!report}
                 style={{
@@ -394,6 +412,7 @@ export function EvalManager({
           onClose={() => setDeleteTarget(null)}
         />
       )}
+      {csvOpen && <CsvImportModal onImport={handleCsvImport} onClose={() => setCsvOpen(false)} />}
     </div>
   );
 }
