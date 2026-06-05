@@ -16,7 +16,8 @@ use tokio::sync::mpsc::unbounded_channel;
 use tokio_util::sync::CancellationToken;
 
 /// The per-task outcome streamed to the UI and cached for the trace debugger.
-#[derive(Serialize, Clone, Debug)]
+/// `Deserialize` so the resumable job queue can reload a completed unit's outcome.
+#[derive(Serialize, Deserialize, Clone, Debug)]
 #[serde(tag = "kind", rename_all = "snake_case")]
 pub enum TaskOutcome {
     Single { passed: bool, trace: TraceResult },
