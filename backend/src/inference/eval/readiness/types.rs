@@ -84,4 +84,10 @@ pub struct ModelVerdict {
     /// registry — never guessed. `None` when the backend didn't report one.
     #[serde(default)]
     pub quantization: Option<String>,
+    /// The model's measured context-cliff depth (tokens) for this collection, from
+    /// the cliff store — the headroom before tool-call accuracy collapses. `None`
+    /// when no probe has run (rendered "N/A"; the gate only blocks when a profile
+    /// opts in via `min_context_tokens`).
+    #[serde(default)]
+    pub cliff_tokens: Option<u32>,
 }

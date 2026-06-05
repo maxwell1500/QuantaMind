@@ -8,7 +8,7 @@ use crate::inference::eval::readiness::recommend;
 use crate::inference::eval::readiness::profile::ReadinessProfile;
 use crate::inference::eval::readiness::types::ModelVerdict;
 use crate::inference::eval::readiness::vram_fit::{try_profile, Dims};
-use crate::persistence::readiness::{profiles, reports};
+use crate::persistence::readiness::{cliff, profiles, reports};
 use std::collections::HashMap;
 use std::path::PathBuf;
 use tauri::{AppHandle, Manager};
@@ -31,6 +31,24 @@ fn profiles_dir(app: &AppHandle) -> Result<PathBuf, AppError> {
 fn reports_dir(app: &AppHandle) -> Result<PathBuf, AppError> {
     let dir = app.path().app_config_dir().map_err(|e| AppError::Io(e.to_string()))?;
     Ok(dir.join("batch_reports"))
+}
+
+/// Measured context-cliff depths per (collection, model) — written by the probe.
+fn cliff_dir(app: &AppHandle) -> Result<PathBuf, AppError> {
+    let dir = app.path().app_config_dir().map_err(|e| AppError::Io(e.to_string()))?;
+    Ok(dir.join("cliff"))
+}
+
+/// The probe writes one model's measured cliff depth for a collection (atomic).
+#[tauri::command]
+pub fn save_cliff_result(app: AppHandle, collection_id: String, model: String, cliff_tokens: u32) -> Result<(), AppError> {
+    cliff::save(&cliff_dir(&app)?, &collection_id, &model, cliff_tokens)
+}
+
+/// The Matrix / readiness page reads the collection's measured cliff depths.
+#[tauri::command]
+pub fn get_cliff_results(app: AppHandle, collection_id: String) -> Result<HashMap<String, u32>, AppError> {
+    cliff::load(&cliff_dir(&app)?, &collection_id)
 }
 
 #[tauri::command]
@@ -77,6 +95,10 @@ pub async fn assess_readiness(
     let quants: HashMap<String, String> =
         installed.iter().filter(|m| !m.quantization.is_empty()).map(|m| (m.name.clone(), m.quantization.clone())).collect();
 
+    // Measured context-cliff depths for this collection (verbatim model keys). The
+    // verdict only blocks on these when a profile opts in via `min_context_tokens`.
+    let cliffs = cliff::load(&cliff_dir(&app)?, &collection_id).unwrap_or_default();
+
     let mut out = Vec::with_capacity(report.columns.len());
     for col in &report.columns {
         let memory = if cap_bytes.is_some() && col.backend == BackendKind::Ollama {
@@ -97,7 +119,8 @@ pub async fn assess_readiness(
         };
         let fits_in_vram = memory.as_ref().map(|m| m.fits);
         let vram_pressure = memory.as_ref().map(|m| m.pressure).unwrap_or(false);
-        let verdict = verdict_for(col, fits_in_vram, vram_pressure, &profile);
+        let cliff_tokens = registry_get(&cliffs, &col.model).copied();
+        let verdict = verdict_for(col, fits_in_vram, vram_pressure, cliff_tokens, &profile);
         let (avg_steps, effort) = agentic_metrics(col);
         out.push(ModelVerdict {
             model: col.model.clone(),
@@ -108,6 +131,7 @@ pub async fn assess_readiness(
             effort,
             pass_k: pass_k_of(col),
             quantization: registry_get(&quants, &col.model).cloned(),
+            cliff_tokens,
         });
     }
     // Phase 7.3: rank best-first (Ready > Conditional > NotReady, ties by effort

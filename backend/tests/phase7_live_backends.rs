@@ -166,7 +166,7 @@ async fn live_ollama_native_passk_drives_verdict_and_recommender() {
     };
     let col = BatchColumn { model: model.clone(), backend: BackendKind::Ollama, toolcall: None, agentic: None, agentic_native_fc: Some(native), error: None };
     let p = profile(0.80);
-    let v = verdict_for(&col, Some(true), false, &p);
+    let v = verdict_for(&col, Some(true), false, None, &p);
     println!("[verdict @min_pass_k=0.80] {model} => {:?}  path={:?}  blocking={:?}", v.status, v.path, v.blocking);
 
     // Rank it next to two synthetic baselines to show the leaderboard logic on a real row.
@@ -180,9 +180,10 @@ async fn live_ollama_native_passk_drives_verdict_and_recommender() {
         effort: Some(eff),
         pass_k: None,
         quantization: None,
+        cliff_tokens: None,
     };
     let mut board = vec![
-        ModelVerdict { model: model.clone(), backend: BackendKind::Ollama, verdict: v.clone(), memory: None, avg_steps: Some(1.0), effort: Some(20.0), pass_k: None, quantization: None },
+        ModelVerdict { model: model.clone(), backend: BackendKind::Ollama, verdict: v.clone(), memory: None, avg_steps: Some(1.0), effort: Some(20.0), pass_k: None, quantization: None, cliff_tokens: None },
         mk("synthetic-notready", Readiness::NotReady, 10.0),
         mk("synthetic-ready-costly", Readiness::Ready, 999.0),
     ];
@@ -381,8 +382,8 @@ async fn live_s2_real_vram_fit_flips_with_cap() {
         agentic_native_fc: None,
         error: None,
     };
-    let ready = verdict_for(&col, Some(roomy.fits), roomy.pressure, &p).status;
-    let blocked = verdict_for(&col, Some(tight.fits), false, &p).status;
+    let ready = verdict_for(&col, Some(roomy.fits), roomy.pressure, None, &p).status;
+    let blocked = verdict_for(&col, Some(tight.fits), false, None, &p).status;
     println!("  verdict @24GB={:?}  @2GB={:?}", ready, blocked);
     assert_eq!(ready, Readiness::Ready);
     assert_eq!(blocked, Readiness::NotReady);

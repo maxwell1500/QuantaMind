@@ -8,7 +8,12 @@ use crate::inference::eval::batch::{BatchColumn, BatchReport};
 /// threaded in by the caller (the command computes them from the snapshot + cap;
 /// the no-hardware path passes `None`/`false`). Unmeasured metrics stay
 /// `None`/`NotSupported` — never a fabricated value.
-pub fn from_column(col: &BatchColumn, fits_in_vram: Option<bool>, vram_pressure: bool) -> ReadinessInputs {
+pub fn from_column(
+    col: &BatchColumn,
+    fits_in_vram: Option<bool>,
+    vram_pressure: bool,
+    cliff_tokens: Option<u32>,
+) -> ReadinessInputs {
     // Prefer the NATIVE aggregate when it was measured — that's the path a
     // production agent actually uses. Native present → source the gated metrics
     // from it and label the path NativeFc; otherwise the prompt-based proxy.
@@ -24,8 +29,8 @@ pub fn from_column(col: &BatchColumn, fits_in_vram: Option<bool>, vram_pressure:
     ReadinessInputs {
         pass_k,
         avg_steps: source.and_then(|a| a.avg_steps),
-        ms_per_step: None,  // Phase 7.4: route the StepEconomy per-step duration here
-        cliff_tokens: None, // Phase 7: wire the context-cliff probe (frontend-only today)
+        ms_per_step: None, // Phase 7.4: route the StepEconomy per-step duration here
+        cliff_tokens,      // measured context-cliff depth (the command threads it in; None on the no-hardware path)
         fits_in_vram,
         vram_pressure,
         loops,
@@ -34,15 +39,16 @@ pub fn from_column(col: &BatchColumn, fits_in_vram: Option<bool>, vram_pressure:
     }
 }
 
-/// One column's verdict against a profile, with the hardware facts threaded in.
-/// An errored column short-circuits to NotReady carrying the real run error — we
-/// never synthesize a score for a column that failed to produce data. The single
-/// home for the error/assess branch, shared by `assess_report` (no hardware) and
-/// the hardware-aware command.
+/// One column's verdict against a profile, with the hardware facts + measured cliff
+/// threaded in. An errored column short-circuits to NotReady carrying the real run
+/// error — we never synthesize a score for a column that failed to produce data.
+/// The single home for the error/assess branch, shared by `assess_report` (no
+/// hardware/cliff) and the hardware-aware command.
 pub fn verdict_for(
     col: &BatchColumn,
     fits_in_vram: Option<bool>,
     vram_pressure: bool,
+    cliff_tokens: Option<u32>,
     profile: &ReadinessProfile,
 ) -> ReadinessVerdict {
     match &col.error {
@@ -52,7 +58,7 @@ pub fn verdict_for(
             conditions: Vec::new(),
             path: AgentPath::PromptBased,
         },
-        None => assess(&from_column(col, fits_in_vram, vram_pressure), profile),
+        None => assess(&from_column(col, fits_in_vram, vram_pressure, cliff_tokens), profile),
     }
 }
 
@@ -93,12 +99,13 @@ pub fn assess_report(report: &BatchReport, profile: &ReadinessProfile) -> Vec<Mo
             ModelVerdict {
                 model: col.model.clone(),
                 backend: col.backend,
-                verdict: verdict_for(col, None, false, profile),
+                verdict: verdict_for(col, None, false, None, profile),
                 memory: None,
                 avg_steps,
                 effort,
                 pass_k: pass_k_of(col),
                 quantization: None, // the no-hardware path has no registry to read the real quant
+                cliff_tokens: None, // the no-hardware/CLI path has no cliff store to read
             }
         })
         .collect()

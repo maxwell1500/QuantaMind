@@ -103,6 +103,8 @@ pub fn run() {
             commands::eval::readiness_cmd::save_readiness_profile,
             commands::eval::readiness_cmd::delete_readiness_profile,
             commands::eval::readiness_cmd::assess_readiness,
+            commands::eval::readiness_cmd::save_cliff_result,
+            commands::eval::readiness_cmd::get_cliff_results,
             commands::workspace::workspace_prompts::load_prompt,
             commands::workspace::workspace_prompts::save_prompt,
             commands::workspace::workspace_prompts::create_prompt,

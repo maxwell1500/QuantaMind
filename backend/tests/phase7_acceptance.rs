@@ -62,7 +62,7 @@ fn profile(min_pass_k: f64, forbid_loop: bool, require_vram: bool) -> ReadinessP
 }
 
 fn status_of(col: &BatchColumn, fits: Option<bool>, pressure: bool, p: &ReadinessProfile) -> Readiness {
-    verdict_for(col, fits, pressure, p).status
+    verdict_for(col, fits, pressure, None, p).status
 }
 
 // ── S1 — Readiness verdict + the page (7.1 + 7.7) ────────────────────────────
@@ -77,7 +77,7 @@ fn s1_verdict_grades_ready_conditional_and_not_ready_with_real_reasons() {
 
     // Below the pass bar → NotReady, with the interpolated reason.
     let weak = column("weak", Some(agg(4, 10, Some(4.0), Some(120.0), 0, 0)), None);
-    let v = verdict_for(&weak, Some(true), false, &p);
+    let v = verdict_for(&weak, Some(true), false, None, &p);
     assert_eq!(v.status, Readiness::NotReady);
     assert!(
         v.blocking.iter().any(|r| r.contains("0.4") && r.contains("0.8")),
@@ -87,7 +87,7 @@ fn s1_verdict_grades_ready_conditional_and_not_ready_with_real_reasons() {
 
     // A looping model → NotReady (loop gate), even with a passing rate.
     let looper = column("looper", Some(agg(9, 10, Some(4.0), Some(120.0), 2, 0)), None);
-    let lv = verdict_for(&looper, Some(true), false, &p);
+    let lv = verdict_for(&looper, Some(true), false, None, &p);
     assert_eq!(lv.status, Readiness::NotReady);
     assert!(lv.blocking.iter().any(|r| r.to_lowercase().contains("loop")), "got {:?}", lv.blocking);
 }
@@ -149,7 +149,7 @@ fn s2_coding_agent_builtin_ships_require_full_vram_on() {
 fn s3_native_pass_k_is_preferred_over_the_prompt_proxy() {
     // Prompt proxy passes (9/10), native fails (3/10). The verdict must use NATIVE.
     let col = column("m", Some(agg(9, 10, Some(4.0), Some(120.0), 0, 0)), Some(agg(3, 10, Some(6.0), Some(300.0), 0, 0)));
-    let v = verdict_for(&col, Some(true), false, &profile(0.80, true, false));
+    let v = verdict_for(&col, Some(true), false, None, &profile(0.80, true, false));
     assert_eq!(v.status, Readiness::NotReady, "native 0.30 < 0.80 must block despite a passing prompt proxy");
     assert_eq!(v.path, AgentPath::NativeFc, "the path must be labelled native");
 
@@ -162,7 +162,7 @@ fn s3_native_pass_k_is_preferred_over_the_prompt_proxy() {
 #[test]
 fn s3_prompt_only_model_is_labelled_prompt_based() {
     let col = column("m", Some(agg(9, 10, Some(4.0), Some(120.0), 0, 0)), None);
-    assert_eq!(verdict_for(&col, Some(true), false, &profile(0.80, true, false)).path, AgentPath::PromptBased);
+    assert_eq!(verdict_for(&col, Some(true), false, None, &profile(0.80, true, false)).path, AgentPath::PromptBased);
 }
 
 // ── S4 — Resumable queue + VRAM isolation (7.5) ──────────────────────────────
@@ -259,6 +259,7 @@ fn verdict(model: &str, status: Readiness, effort: Option<f64>, steps: Option<f6
         effort,
         pass_k: None,
         quantization: None,
+        cliff_tokens: None,
     }
 }
 
@@ -296,7 +297,7 @@ fn s6_required_but_unmeasured_metric_blocks_it_is_not_a_soft_pass() {
     let mut p = profile(0.80, true, false);
     p.min_context_tokens = Some(8000);
     let col = column("m", Some(agg(9, 10, Some(4.0), Some(120.0), 0, 0)), None);
-    let v = verdict_for(&col, Some(true), false, &p);
+    let v = verdict_for(&col, Some(true), false, None, &p);
     assert_eq!(v.status, Readiness::NotReady);
     assert!(
         v.blocking.iter().any(|r| r.to_lowercase().contains("context") || r.to_lowercase().contains("measur")),

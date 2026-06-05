@@ -47,6 +47,7 @@ mod tests {
             effort,
             pass_k: None,
             quantization: None,
+            cliff_tokens: None,
         }
     }
 
