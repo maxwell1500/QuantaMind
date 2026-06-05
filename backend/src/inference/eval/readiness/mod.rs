@@ -3,6 +3,7 @@
 //! Pure and Tauri-free — the GUI command and the future CLI share `assess`.
 pub mod inputs;
 pub mod profile;
+pub mod recommend;
 pub mod types;
 pub mod verdict;
 pub mod vram_fit;
