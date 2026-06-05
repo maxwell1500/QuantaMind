@@ -43,17 +43,24 @@ pub fn list(dir: &Path) -> AppResult<Vec<String>> {
     Ok(names)
 }
 
+/// Read a file to a `String` with the size cap enforced first, so a mis-picked
+/// giant file can't OOM the process. The raw-text primitive behind both the JSON
+/// collection reader and the CSV-import reader (the frontend never reads files).
+pub fn read_text_capped(path: &Path) -> AppResult<String> {
+    let len = std::fs::metadata(path)?.len();
+    if len > MAX_BYTES {
+        return Err(AppError::Validation(format!(
+            "file is too large ({len} bytes > {MAX_BYTES} cap)"
+        )));
+    }
+    Ok(std::fs::read_to_string(path)?)
+}
+
 /// Read a `.json` task collection from an arbitrary path: size-cap first, then
 /// parse and validate. Shared by `load` (managed dir) and the import command
 /// (external path) so the cap and the trust boundary are enforced once.
 pub fn read_capped(path: &Path) -> AppResult<Vec<ToolTask>> {
-    let len = std::fs::metadata(path)?.len();
-    if len > MAX_BYTES {
-        return Err(AppError::Validation(format!(
-            "collection file is too large ({len} bytes > {MAX_BYTES} cap)"
-        )));
-    }
-    let content = std::fs::read_to_string(path)?;
+    let content = read_text_capped(path)?;
     let tasks: Vec<ToolTask> = serde_json::from_str(&content)?;
     validate_tasks(&tasks)?;
     Ok(tasks)

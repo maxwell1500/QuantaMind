@@ -91,6 +91,7 @@ pub fn run() {
             commands::eval::eval_registry::save_custom_collection,
             commands::eval::eval_registry::delete_custom_collection,
             commands::eval::eval_registry::import_custom_collection,
+            commands::eval::eval_registry::read_text_capped,
             commands::eval::matrix_cmd::run_collection_matrix,
             commands::eval::matrix_cmd::load_collection_history,
             commands::eval::batch_cmd::run_batch_eval,

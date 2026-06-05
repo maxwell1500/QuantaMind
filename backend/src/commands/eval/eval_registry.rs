@@ -35,6 +35,14 @@ pub fn delete_custom_collection(app: tauri::AppHandle, name: String) -> Result<(
     evals::delete(&evals_dir(&app)?, &name)
 }
 
+/// Read a picked text file (e.g. a CSV) by PATH with the size cap, returning its
+/// raw contents. The frontend never reads files itself; for CSV import it then
+/// parses + validates the text and saves via `save_custom_collection`.
+#[tauri::command]
+pub fn read_text_capped(source_path: PathBuf) -> Result<String, AppError> {
+    evals::read_text_capped(&source_path)
+}
+
 /// Import an external `.json` collection by PATH (the frontend never reads file
 /// contents): read it with the size cap, validate, derive a safe name from the
 /// file stem, write it into the managed dir, and return the new name.
