@@ -84,6 +84,9 @@ export const BatchColumnSchema = z.object({
   backend: BackendKindSchema,
   toolcall: ToolCallReportSchema.nullable(),
   agentic: AggAgenticSchema.nullable(),
+  // Phase 7.2: parallel native function-calling aggregate (Ollama /api/chat
+  // tool_calls), when measured. Nullish so pre-7.2 reports still parse.
+  agentic_native_fc: AggAgenticSchema.nullish(),
   error: z.string().nullable(),
 });
 export type BatchColumn = z.infer<typeof BatchColumnSchema>;
@@ -140,9 +143,10 @@ export async function runBatchEval(
   maxSteps?: number,
   params?: InferenceParams,
   keepAlive?: number,
+  runNativeFc?: boolean,
 ): Promise<BatchReport> {
   return BatchReportSchema.parse(
-    await invoke("run_batch_eval", { collectionId, targets, tasks, k, maxSteps, params, keepAlive }),
+    await invoke("run_batch_eval", { collectionId, targets, tasks, k, maxSteps, params, keepAlive, runNativeFc }),
   );
 }
 
