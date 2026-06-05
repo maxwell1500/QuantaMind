@@ -142,9 +142,16 @@ async fn native_fc_pass_aggregates_into_the_column_for_supported_models_only() {
 
     // Only m1 reports the `tools` capability; m2 doesn't → stays N/A.
     let supported: std::collections::HashSet<String> = ["m1".to_string()].into_iter().collect();
-    run_native_fc_pass(&mut report, &tasks, &supported, CancellationToken::new(), |_model, _task| {
-        ScriptedModel { reply: r#"{"name":"ping","args":{}}"#.into() }
-    })
+    run_native_fc_pass(
+        &mut report,
+        &tasks,
+        &supported,
+        CancellationToken::new(),
+        |_model, _task| ScriptedModel { reply: r#"{"name":"ping","args":{}}"#.into() },
+        &[],
+        &|_| {},
+        &NoVramGate,
+    )
     .await
     .unwrap();
 
@@ -170,6 +177,70 @@ fn agg_agentic_sums_failure_breakdown_not_just_top_error() {
     assert_eq!(agg.top_error, TopError::Hallucinated); // headline still the majority mode
     assert_eq!(agg.failures.infinite_loop_hits, 1); // …but the loop is NOT hidden
     assert_eq!(agg.failures.hallucinated_completions, 9);
+}
+
+use crate::inference::eval::agentic::report::{AgenticReport, RunOutcome};
+use std::sync::Mutex as StdMutex;
+
+/// A gate that always fails — to prove the run halts (assert-and-fail) rather than
+/// load the next model onto dirty VRAM.
+struct FailingGate;
+impl VramGate for FailingGate {
+    async fn unload(&self, _model: &str) -> AppResult<()> {
+        Err(crate::errors::AppError::Inference("VRAM stuck".into()))
+    }
+}
+
+fn completed_agentic(model: &str, task: &str, passes: u32) -> CompletedUnit {
+    let outcomes: Vec<RunOutcome> = (0..passes).map(|_| RunOutcome::success(2, 50)).collect();
+    CompletedUnit {
+        model: model.into(),
+        task_id: task.into(),
+        category: "agentic".into(),
+        outcome: TaskOutcome::Agentic { report: AgenticReport::from_outcomes(&outcomes) },
+        is_native: false,
+    }
+}
+
+#[tokio::test]
+async fn resume_folds_a_completed_unit_without_re_running_or_re_emitting() {
+    let targets = vec![target("m1")];
+    let tasks = vec![agentic_task("a1", 1)];
+    let sink = Arc::new(CountingSink::default());
+    // Prior says a1 already passed (1/1). The live turn would FAIL it (wrong tool) —
+    // so if the report shows a pass, the unit was folded, not re-run.
+    let prior = vec![completed_agentic("m1", "a1", 1)];
+    let failing_turn = |_t: &ModelTarget| ScriptedModel { reply: r#"{"name":"wrong","args":{}}"#.into() };
+
+    let report = run_batch_resumable(
+        "c", &targets, &tasks, CancellationToken::new(), sink.clone(), failing_turn,
+        &prior, &|_| {}, &NoVramGate,
+    )
+    .await
+    .unwrap();
+
+    assert_eq!(report.columns[0].agentic.as_ref().unwrap().passes, 1); // the prior success, not a re-run failure
+    assert_eq!(*sink.done.lock().unwrap(), 0); // folded silently — no task_done replay (no IPC flood)
+}
+
+#[tokio::test]
+async fn vram_gate_error_halts_the_run_with_records_already_appended() {
+    let targets = vec![target("m1"), target("m2")]; // both Ollama → a model switch
+    let tasks = vec![agentic_task("a1", 1)];
+    let sink = Arc::new(CountingSink::default());
+    let recorded: Arc<StdMutex<Vec<String>>> = Arc::new(StdMutex::new(Vec::new()));
+    let rec = recorded.clone();
+    let record = move |u: &CompletedUnit| rec.lock().unwrap().push(format!("{}/{}", u.model, u.task_id));
+
+    let result = run_batch_resumable(
+        "c", &targets, &tasks, CancellationToken::new(), sink, make_turn,
+        &[], &record, &FailingGate,
+    )
+    .await;
+
+    assert!(result.is_err()); // the stuck-VRAM gate halts — never loads m2 onto dirty VRAM
+    // m1's unit was appended BEFORE the halt at the m1→m2 switch (no lost work).
+    assert_eq!(*recorded.lock().unwrap(), vec!["m1/a1".to_string()]);
 }
 
 #[tokio::test]

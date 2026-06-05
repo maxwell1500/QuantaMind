@@ -1,5 +1,5 @@
 use crate::errors::{AppError, AppResult};
-use crate::inference::eval::batch::TaskOutcome;
+use crate::inference::eval::batch::CompletedUnit;
 use crate::inference::eval::toolcall::matrix::ModelTarget;
 use crate::inference::eval::toolcall::tasks::ToolTask;
 use crate::persistence::prompts::schema::InferenceParams;
@@ -24,17 +24,6 @@ pub struct RunConfig {
     pub max_steps: Option<u32>,
     pub params: Option<InferenceParams>,
     pub native: bool,
-}
-
-/// One finished (model, task) unit — the durable result line. `is_native` tags
-/// the parallel native-FC pass so it resumes as a first-class citizen.
-#[derive(Serialize, Deserialize, Clone, Debug)]
-pub struct CompletedUnit {
-    pub model: String,
-    pub task_id: String,
-    pub category: String,
-    pub outcome: TaskOutcome,
-    pub is_native: bool,
 }
 
 /// One `.jsonl` line: the run header (first line) or a completed unit.

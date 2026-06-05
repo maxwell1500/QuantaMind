@@ -1,4 +1,5 @@
 use super::*;
+use crate::inference::eval::batch::{CompletedUnit, TaskOutcome};
 use std::io::Write;
 use tempfile::tempdir;
 

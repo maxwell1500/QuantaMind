@@ -1,5 +1,6 @@
 use crate::errors::AppResult;
 use crate::inference::backend::backend_kind::BackendKind;
+use crate::inference::backend::endpoint;
 use crate::inference::eval::agentic::build::sandbox_for;
 use crate::inference::eval::agentic::model_turn::ModelTurn;
 use crate::inference::eval::agentic::report::{AgenticReport, FailureTracker, TopError};
@@ -9,8 +10,10 @@ use crate::inference::eval::toolcall::eval::{aggregate, trace_one_with, TaskResu
 use crate::inference::eval::toolcall::matrix::ModelTarget;
 use crate::inference::eval::toolcall::score::verdict_passed;
 use crate::inference::eval::toolcall::tasks::ToolTask;
+use crate::inference::ollama::ollama::force_unload;
 use crate::persistence::eval_history::RunSummary;
 use serde::{Deserialize, Serialize};
+use std::collections::HashMap;
 use std::sync::Arc;
 use tokio::sync::mpsc::unbounded_channel;
 use tokio_util::sync::CancellationToken;
@@ -23,6 +26,69 @@ pub enum TaskOutcome {
     Single { passed: bool, trace: TraceResult },
     Agentic { report: AgenticReport },
     Error { message: String },
+}
+
+/// One finished (model, task) unit — the durable result the resumable queue
+/// appends and reloads. `is_native` tags the parallel native-FC pass. Lives in
+/// `inference` (not `persistence`) so the run loop can fold it without `inference`
+/// importing the persistence queue (the queue imports this, not the reverse).
+#[derive(Serialize, Deserialize, Clone, Debug)]
+pub struct CompletedUnit {
+    pub model: String,
+    pub task_id: String,
+    pub category: String,
+    pub outcome: TaskOutcome,
+    pub is_native: bool,
+}
+
+/// The VRAM-isolation gate: evict the previous model and assert its VRAM cleared
+/// before the next loads. Injected (not a hardcoded call) so the run loop is
+/// testable without live HTTP. An `Err` from `unload` is the hard halt.
+#[allow(async_fn_in_trait)]
+pub trait VramGate {
+    async fn unload(&self, model: &str) -> AppResult<()>;
+}
+
+/// No isolation (tests / single-model runs).
+pub struct NoVramGate;
+impl VramGate for NoVramGate {
+    async fn unload(&self, _model: &str) -> AppResult<()> {
+        Ok(())
+    }
+}
+
+/// Production gate: Ollama `keep_alive:0` + poll `/api/ps` until VRAM is 0
+/// (assert-and-fail). The only gate that touches hardware.
+pub struct OllamaVramGate;
+impl VramGate for OllamaVramGate {
+    async fn unload(&self, model: &str) -> AppResult<()> {
+        force_unload(endpoint::OLLAMA, model).await
+    }
+}
+
+/// Fold a reloaded completed unit straight into a model's accumulators on resume —
+/// no re-run, no `task_done` replay (the Matrix is repainted in bulk upstream).
+fn fold_completed(
+    unit: &CompletedUnit,
+    task: &ToolTask,
+    single_tasks: &mut Vec<ToolTask>,
+    single_results: &mut Vec<TaskResult>,
+    agentic_reports: &mut Vec<AgenticReport>,
+    col_error: &mut Option<String>,
+) {
+    match &unit.outcome {
+        TaskOutcome::Agentic { report } => agentic_reports.push(report.clone()),
+        TaskOutcome::Single { trace, .. } => {
+            single_tasks.push(task.clone());
+            single_results.push(TaskResult {
+                id: task.id.clone(),
+                category: task.category.clone(),
+                verdict: trace.verdict.clone(),
+                prompt_tokens: trace.prompt_tokens,
+            });
+        }
+        TaskOutcome::Error { message } => *col_error = Some(message.clone()),
+    }
 }
 
 /// Streaming surface for a batch run. The command layer implements this to
@@ -167,11 +233,9 @@ async fn run_one_agentic<M: ModelTurn + Send + Sync>(
     result
 }
 
-/// The VRAM-safe sequential dispatcher: for each target model, run every task in
-/// order (single-turn or agentic), streaming progress through `sink`, and fold a
-/// per-model `BatchReport`. ONE model runs ONE task at a time — never fans out
-/// local inference. `make_turn` builds the per-model executor (a live backend in
-/// production, a scripted model in tests).
+/// The non-resumable dispatcher (tests, no hardware gate): a thin wrapper over
+/// `run_batch_resumable` with no prior units, a no-op recorder, and VRAM isolation
+/// off — byte-identical to the pre-7.5 behaviour.
 pub async fn run_batch<M, F>(
     collection_id: &str,
     targets: &[ModelTarget],
@@ -184,8 +248,49 @@ where
     M: ModelTurn + Send + Sync,
     F: Fn(&ModelTarget) -> M,
 {
+    run_batch_resumable(collection_id, targets, tasks, cancel, sink, make_turn, &[], &|_| {}, &NoVramGate).await
+}
+
+/// The VRAM-safe, **resumable** sequential dispatcher. For each target model:
+/// (1) the **VRAM-isolation gate** unloads the previous Ollama model and asserts
+/// its VRAM cleared before this one loads — an `Err` here propagates and **halts**
+/// the run with the job log intact (never loads onto dirty VRAM); (2) every task
+/// runs in order — a unit already in `prior` is **folded silently** (no re-run, no
+/// `task_done` replay), others run, stream through `sink`, and are handed to
+/// `record` (the durable append). ONE model runs ONE task at a time.
+#[allow(clippy::too_many_arguments)]
+pub async fn run_batch_resumable<M, F, G>(
+    collection_id: &str,
+    targets: &[ModelTarget],
+    tasks: &[ToolTask],
+    cancel: CancellationToken,
+    sink: Arc<dyn BatchSink>,
+    make_turn: F,
+    prior: &[CompletedUnit],
+    record: &(dyn Fn(&CompletedUnit) + Sync),
+    gate: &G,
+) -> AppResult<BatchReport>
+where
+    M: ModelTurn + Send + Sync,
+    F: Fn(&ModelTarget) -> M,
+    G: VramGate,
+{
+    // Completed prompt-pass units, keyed by (model, task) — skipped on resume.
+    let done: HashMap<(&str, &str), &CompletedUnit> = prior
+        .iter()
+        .filter(|u| !u.is_native)
+        .map(|u| ((u.model.as_str(), u.task_id.as_str()), u))
+        .collect();
     let mut columns = Vec::with_capacity(targets.len());
+    let mut prev: Option<(String, BackendKind)> = None;
     for target in targets {
+        // VRAM-isolation gate: evict the previous Ollama model and confirm VRAM
+        // freed before this model loads. Assert-and-fail — Err halts (log intact).
+        if let Some((pm, pb)) = &prev {
+            if *pb == BackendKind::Ollama && pm != &target.model {
+                gate.unload(pm).await?;
+            }
+        }
         let turn = make_turn(target);
         let mut single_tasks: Vec<ToolTask> = Vec::new();
         let mut single_results: Vec<TaskResult> = Vec::new();
@@ -196,14 +301,21 @@ where
             if cancel.is_cancelled() {
                 break;
             }
+            if let Some(unit) = done.get(&(target.model.as_str(), task.id.as_str())) {
+                fold_completed(unit, task, &mut single_tasks, &mut single_results, &mut agentic_reports, &mut col_error);
+                continue;
+            }
             sink.task_started(&target.model, &task.id, i, tasks.len(), &task.category);
             if task.category == "agentic" {
                 match run_one_agentic(&turn, task, &target.model, sink.clone()).await {
                     Ok(report) => {
-                        sink.task_done(&target.model, &task.id, &TaskOutcome::Agentic { report: report.clone() });
+                        let outcome = TaskOutcome::Agentic { report: report.clone() };
+                        record(&unit_of(target, task, outcome.clone(), false));
+                        sink.task_done(&target.model, &task.id, &outcome);
                         agentic_reports.push(report);
                     }
                     Err(e) => {
+                        // Errors are NOT recorded → they re-run on resume (the backend may be back).
                         let msg = e.to_string();
                         sink.task_done(&target.model, &task.id, &TaskOutcome::Error { message: msg.clone() });
                         col_error = Some(msg);
@@ -220,7 +332,9 @@ where
                             verdict: trace.verdict.clone(),
                             prompt_tokens: trace.prompt_tokens,
                         });
-                        sink.task_done(&target.model, &task.id, &TaskOutcome::Single { passed, trace });
+                        let outcome = TaskOutcome::Single { passed, trace };
+                        record(&unit_of(target, task, outcome.clone(), false));
+                        sink.task_done(&target.model, &task.id, &outcome);
                     }
                     Err(e) => {
                         let msg = e.to_string();
@@ -241,9 +355,20 @@ where
             agentic_native_fc: None, // filled by run_native_fc_pass when enabled
             error: col_error,
         });
+        prev = Some((target.model.clone(), target.backend));
     }
     // The engine is param-agnostic; the command layer stamps `num_ctx` afterwards.
     Ok(BatchReport { collection_id: collection_id.to_string(), columns, num_ctx: None })
+}
+
+fn unit_of(target: &ModelTarget, task: &ToolTask, outcome: TaskOutcome, is_native: bool) -> CompletedUnit {
+    CompletedUnit {
+        model: target.model.clone(),
+        task_id: task.id.clone(),
+        category: task.category.clone(),
+        outcome,
+        is_native,
+    }
 }
 
 /// Phase 7.2: measure NATIVE function-calling per model and fold a parallel
@@ -254,21 +379,34 @@ where
 /// `None` (N/A). Native steps aren't streamed to the UI sink in this slice — they
 /// drain to a throwaway channel. Best-effort: a native run that errors leaves the
 /// column `None` rather than failing the report.
-pub async fn run_native_fc_pass<M, F>(
+#[allow(clippy::too_many_arguments)]
+pub async fn run_native_fc_pass<M, F, G>(
     report: &mut BatchReport,
     tasks: &[ToolTask],
     supported: &std::collections::HashSet<String>,
     cancel: CancellationToken,
     make_native: F,
+    prior: &[CompletedUnit],
+    record: &(dyn Fn(&CompletedUnit) + Sync),
+    gate: &G,
 ) -> AppResult<()>
 where
     M: ModelTurn + Send + Sync,
     F: Fn(&str, &ToolTask) -> M,
+    G: VramGate,
 {
     let agentic_tasks: Vec<&ToolTask> = tasks.iter().filter(|t| t.category == "agentic").collect();
     if agentic_tasks.is_empty() {
         return Ok(());
     }
+    // Completed NATIVE units, keyed by (model, task) — skipped on resume so an
+    // overnight native pass resumes where it left off, not from scratch.
+    let done: HashMap<(&str, &str), &CompletedUnit> = prior
+        .iter()
+        .filter(|u| u.is_native)
+        .map(|u| ((u.model.as_str(), u.task_id.as_str()), u))
+        .collect();
+    let mut prev: Option<String> = None; // native is Ollama-only
     for col in report.columns.iter_mut() {
         if cancel.is_cancelled() {
             break;
@@ -276,10 +414,22 @@ where
         if col.backend != BackendKind::Ollama || !supported.contains(&col.model) {
             continue;
         }
+        // Same VRAM-isolation gate between native model runs (assert-and-fail).
+        if let Some(pm) = &prev {
+            if pm != &col.model {
+                gate.unload(pm).await?;
+            }
+        }
         let mut reports: Vec<AgenticReport> = Vec::new();
         for task in &agentic_tasks {
             if cancel.is_cancelled() {
                 break;
+            }
+            if let Some(unit) = done.get(&(col.model.as_str(), task.id.as_str())) {
+                if let TaskOutcome::Agentic { report } = &unit.outcome {
+                    reports.push(report.clone());
+                }
+                continue;
             }
             let turn = make_native(&col.model, task);
             let (sandbox, cfg) = sandbox_for(task)?;
@@ -289,12 +439,20 @@ where
             drop(tx);
             let _ = drain.await;
             if let Ok(report) = result {
+                record(&CompletedUnit {
+                    model: col.model.clone(),
+                    task_id: task.id.clone(),
+                    category: task.category.clone(),
+                    outcome: TaskOutcome::Agentic { report: report.clone() },
+                    is_native: true,
+                });
                 reports.push(report);
             }
         }
         if !reports.is_empty() {
             col.agentic_native_fc = Some(agg_agentic(&reports));
         }
+        prev = Some(col.model.clone());
     }
     Ok(())
 }

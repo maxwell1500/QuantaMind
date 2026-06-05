@@ -9,7 +9,7 @@ use crate::errors::AppError;
 use crate::inference::backend::backend_kind::BackendKind;
 use crate::inference::eval::agentic::model_turn::{BackendTurn, NativeOllamaTurn};
 use crate::inference::eval::agentic::step::TrajectoryStep;
-use crate::inference::eval::batch::{batch_summaries, run_batch, run_native_fc_pass, BatchReport, BatchSink, TaskOutcome};
+use crate::inference::eval::batch::{batch_summaries, run_batch, run_native_fc_pass, BatchReport, BatchSink, NoVramGate, TaskOutcome};
 use crate::inference::eval::toolcall::matrix::ModelTarget;
 use crate::inference::eval::toolcall::tasks::{validate_tasks, ToolTask};
 use crate::inference::ollama::ollama_show::probe_supports_tools;
@@ -157,14 +157,21 @@ pub async fn run_batch_eval(
                 supported.insert(t.model.clone());
             }
         }
-        let _ = run_native_fc_pass(&mut report, &tasks, &supported, native_cancel, |model, task| {
-            NativeOllamaTurn {
+        let _ = run_native_fc_pass(
+            &mut report,
+            &tasks,
+            &supported,
+            native_cancel,
+            |model, task| NativeOllamaTurn {
                 endpoint: endpoint.clone(),
                 model: model.to_string(),
                 tools: task.tools.clone(),
                 options: native_options.clone(),
-            }
-        })
+            },
+            &[],
+            &|_| {},
+            &NoVramGate,
+        )
         .await;
         log_emit(&app, EVENT_BATCH_COMPLETE, BatchCompletePayload { report: report.clone() });
     }
