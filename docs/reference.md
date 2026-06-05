@@ -329,7 +329,29 @@ Error), with a click-through Trace Debugger. See [the workspace](#eval-runner).
   isolation between runs. The `AgenticReport` carries `passes/total_runs`, a
   `FailureTracker` with **distinct** tallies (`infinite_loop_hits` = hit the step
   cap, `hallucinated_completions` = fake done, `malformed_json_calls` = broken
-  JSON), and a `top_error` headline.
+  JSON, `schema_unrecovered_calls` = exhausted the recovery budget), and a
+  `top_error` headline.
+- **Lazy-agent traps (Driver B fault injection).** A task may attach `faults` —
+  per-call `TransientError { status_code, clears_after }` or
+  `PersistentError { status_code }`, keyed by the same canonical call form as the
+  mocks. The sandbox checks a fault **before** advancing the checkpoint (so a
+  trapped final call can never be a fake pass) and injects an `HTTP …` error as the
+  tool result (a `ToolError` step). A transient clears after `clears_after`
+  attempts — a robust agent retries through it to success; a persistent one never
+  clears — a robust agent reports the failure (a graceful `Hallucinated` halt)
+  rather than looping to the step cap. Attempt counters are **per-run** and
+  **per-call**, so multi-tool tasks trap independently and run *k* is never poisoned
+  by run *k-1*.
+- **Schema resilience (Driver D semantic recovery).** When the task declares tool
+  schemas, every parsed call is **semantically validated** (`validate_call`: known
+  tool, all `required` params present, primitive types match) — distinct from "did
+  it parse" and from "is it the right call". An invalid call injects a precise
+  `[Schema error: key \`x\` required]` correction (a `SchemaError` step) and spends
+  one of `max_recovery` (default 2) tries; producing a valid call after an error is
+  a **recovery**, exhausting the budget ends the run as `MalformedSchema`. The
+  report's `schema_resilience` is recovered ÷ runs-that-hit-an-error — **n/a** (UI
+  "—") when no run ever hit one, never a fabricated 0. Constrained-decoding paths
+  can't emit syntactically-broken calls, so this targets **semantic** faults.
 - **Relative effort, not absolute joules.** `avg_output_tokens_success` is the mean
   output-token count (`eval_count`) over the **successful** runs only — **n/a**
   when there are zero successes, never a divide-by-zero. Prompt tokens are
@@ -337,6 +359,14 @@ Error), with a click-through Trace Debugger. See [the workspace](#eval-runner).
   reuse). A Q4 model that wanders 1,500 tokens to a result a Q8 finishes in 300 is
   the signal this exposes — the "faster" quant burning more compute for the same
   outcome.
+- **The Matrix columns.** Per model: **Pass^k · Avg Steps · Effort · Schema Resil.
+  · Cliff Depth · Top Error**. `Schema Resil.` is the Driver-D metric above;
+  `Cliff Depth` is the measured context-cliff depth from the Audit probe (real
+  `prompt_eval_count` at the accuracy collapse), shared with the Inspector budget
+  gauge via the `quantamind-cliff-<model>` marker — "—" until the probe is run.
+  Faults and the recovery budget are authored in the Task & Sandbox Configurator
+  (the **Fault Injection** box and **Max Recovery** field); single-turn tasks and
+  fault-free agentic tasks omit both and round-trip byte-identical.
 
 ## Custom-eval collections {#custom-evals}
 

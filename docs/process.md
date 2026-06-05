@@ -583,6 +583,9 @@ eval](reference.md#agentic-eval) for the contract.
 | 3 | Throttled single-stream React consumer (rAF-buffered `batchStore`, `useBatchRun`) | done |
 | 4 | 3-pane Eval workspace: `MatrixScoreboard` + `TraceDebugger` + audit export | done |
 | 5 | Audit tab: saved Matrix history + export + Context-Cliff probe | done |
+| 6 | Driver B lazy-agent traps: per-call `FaultInjection` (transient/persistent) in the sandbox + runner (`ToolError` step), authored in the Configurator | done |
+| 7 | Driver D schema resilience: semantic `validate_call` + `max_recovery` loop (`SchemaError` step, `MalformedSchema` failure, `schema_resilience` metric) | done |
+| 8 | Matrix `Schema Resil.` + `Cliff Depth` columns (cliff depth shared with the Inspector budget gauge via the `quantamind-cliff-<model>` marker) | done |
 
 Locked decisions (set during planning): **iterate in Rust, never React** — one
 `run_batch_eval` command runs a strict sequential model×task queue and streams
