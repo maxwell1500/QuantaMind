@@ -52,7 +52,15 @@ export const METRIC_HELP = {
   },
   topError: {
     title: "Top error",
-    body: "The model's dominant agentic failure mode across the collection: Loop Cap (hit the step limit), Fake Done (claimed success without the end-state), or Malformed (unparseable tool JSON). 'None' means no failures dominated.",
+    body: "The model's dominant agentic failure mode across the collection: Loop Cap (hit the step limit), Fake Done (claimed success without the end-state), Bad Schema (burned its recovery budget on schema-invalid calls), or Malformed (unparseable tool JSON). 'None' means no failures dominated.",
+  },
+  schemaResil: {
+    title: "Schema resilience",
+    body: "Of the runs that hit a semantic schema error (missing/typed-wrong param), the share that recovered — emitted a valid call after the injected correction. '—' means no run ever hit one, so the metric didn't apply.",
+  },
+  cliffDepth: {
+    title: "Cliff depth",
+    body: "The measured context length (real prompt tokens) at which this model's accuracy collapses, from the Context-Cliff probe in the Audit tab. '—' until you run the probe for this model.",
   },
   passRate: {
     title: "Pass rate",

@@ -163,7 +163,9 @@ export function TraceDebugger({
                 ) : (
                   steps.map((s, index) => {
                     const isError =
+                      s.kind === "tool_error" ||
                       s.kind === "unknown_tool" ||
+                      s.kind === "schema_error" ||
                       s.kind === "malformed_json" ||
                       s.kind === "hallucinated_completion" ||
                       s.kind === "infinite_loop";

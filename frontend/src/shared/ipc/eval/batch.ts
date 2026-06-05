@@ -12,7 +12,9 @@ export const EVENT_BATCH_COMPLETE = "batch-complete";
 
 export const StepKindSchema = z.enum([
   "tool_call",
+  "tool_error",
   "unknown_tool",
+  "schema_error",
   "malformed_json",
   "hallucinated_completion",
   "end_state_reached",
@@ -29,13 +31,20 @@ export const TrajectoryStepSchema = z.object({
 });
 export type TrajectoryStep = z.infer<typeof TrajectoryStepSchema>;
 
-export const TopErrorSchema = z.enum(["none", "infinite_loop", "hallucinated", "malformed_json"]);
+export const TopErrorSchema = z.enum([
+  "none",
+  "infinite_loop",
+  "hallucinated",
+  "malformed_json",
+  "malformed_schema",
+]);
 export type TopError = z.infer<typeof TopErrorSchema>;
 
 export const FailureTrackerSchema = z.object({
   infinite_loop_hits: z.number().int(),
   hallucinated_completions: z.number().int(),
   malformed_json_calls: z.number().int(),
+  schema_unrecovered_calls: z.number().int(),
 });
 
 export const AgenticReportSchema = z.object({
@@ -45,16 +54,18 @@ export const AgenticReportSchema = z.object({
   avg_output_tokens_success: z.number().nullable(),
   avg_steps: z.number().nullable(),
   top_error: TopErrorSchema,
+  schema_resilience: z.number().nullable(),
 });
 export type AgenticReport = z.infer<typeof AgenticReportSchema>;
 
 /// Per-model aggregate across the collection's agentic tasks. Null metrics render
-/// "N/A" — never a fabricated number.
+/// "N/A"/"—" — never a fabricated number.
 export const AggAgenticSchema = z.object({
   passes: z.number().int(),
   total_runs: z.number().int(),
   avg_steps: z.number().nullable(),
   avg_output_tokens_success: z.number().nullable(),
+  schema_resilience: z.number().nullable(),
   top_error: TopErrorSchema,
 });
 export type AggAgentic = z.infer<typeof AggAgenticSchema>;

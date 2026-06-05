@@ -40,10 +40,11 @@ describe("batchStore (rAF-buffered)", () => {
         report: {
           passes: 3,
           total_runs: 5,
-          failures: { infinite_loop_hits: 0, hallucinated_completions: 2, malformed_json_calls: 0 },
+          failures: { infinite_loop_hits: 0, hallucinated_completions: 2, malformed_json_calls: 0, schema_unrecovered_calls: 0 },
           avg_output_tokens_success: 120,
           avg_steps: 2.4,
           top_error: "hallucinated",
+          schema_resilience: null,
         },
       },
     };
@@ -62,7 +63,7 @@ describe("batchStore (rAF-buffered)", () => {
     const report: BatchReport = {
       collection_id: "c",
       columns: [
-        { model: "m1", backend: "ollama", toolcall: null, agentic: { passes: 0, total_runs: 5, avg_steps: null, avg_output_tokens_success: null, top_error: "infinite_loop" }, error: null },
+        { model: "m1", backend: "ollama", toolcall: null, agentic: { passes: 0, total_runs: 5, avg_steps: null, avg_output_tokens_success: null, schema_resilience: null, top_error: "infinite_loop" }, error: null },
       ],
     };
     get().complete(report);

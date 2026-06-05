@@ -9,6 +9,8 @@ const COLUMN_HELP: Record<string, string | undefined> = {
   "Pass^k": metricTitle("passK"),
   "Avg Steps": metricTitle("avgSteps"),
   Effort: metricTitle("effort"),
+  "Schema Resil.": metricTitle("schemaResil"),
+  "Cliff Depth": metricTitle("cliffDepth"),
   "Top Error": metricTitle("topError"),
 };
 
@@ -48,7 +50,7 @@ export function PerformanceMatrix({
         <table style={{ width: "100%", borderCollapse: "collapse" }} data-testid="performance-matrix-table">
           <thead>
             <tr style={{ borderBottom: "1px solid rgba(255,255,255,0.08)" }}>
-              {["Model", "Quant", "Pass^k", "Avg Steps", "Effort", "Top Error"].map((h) => {
+              {["Model", "Quant", "Pass^k", "Avg Steps", "Effort", "Schema Resil.", "Cliff Depth", "Top Error"].map((h) => {
                 const tip = COLUMN_HELP[h];
                 return (
                   <th key={h} style={th} title={tip}>{h}</th>
@@ -72,6 +74,8 @@ export function PerformanceMatrix({
                   <td style={{ ...td, fontWeight: 600 }}>{r.passK}</td>
                   <td style={td}>{r.avgSteps}</td>
                   <td style={td}>{r.effort}</td>
+                  <td style={td}>{r.schemaResil}</td>
+                  <td style={td}>{r.cliffDepth}</td>
                   <td style={{ ...td, color: r.topError === "None" ? "#4ade80" : r.topError === "—" ? "#64748b" : "#fca5a5" }}>{r.topError}</td>
                 </tr>
               );

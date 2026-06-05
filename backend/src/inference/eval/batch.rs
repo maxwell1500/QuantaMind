@@ -41,6 +41,9 @@ pub struct AggAgentic {
     pub total_runs: u32,
     pub avg_steps: Option<f64>,
     pub avg_output_tokens_success: Option<f64>,
+    /// Driver D: mean per-task schema resilience over this model's tasks that hit a
+    /// schema error. `None` when none did → the Matrix renders "—", never a 0.
+    pub schema_resilience: Option<f64>,
     pub top_error: TopError,
 }
 
@@ -95,23 +98,32 @@ pub fn batch_summaries(report: &BatchReport, ts: &str) -> Vec<RunSummary> {
 }
 
 fn agg_agentic(reports: &[AgenticReport]) -> AggAgentic {
-    let (mut il, mut ha, mut mj) = (0u32, 0u32, 0u32);
+    let (mut il, mut ha, mut mj, mut ms) = (0u32, 0u32, 0u32, 0u32);
     for r in reports {
         il += r.failures.infinite_loop_hits;
         ha += r.failures.hallucinated_completions;
         mj += r.failures.malformed_json_calls;
+        ms += r.failures.schema_unrecovered_calls;
     }
-    let top_error = [(il, TopError::InfiniteLoop), (ha, TopError::Hallucinated), (mj, TopError::MalformedJson)]
-        .into_iter()
-        .fold((0u32, TopError::None), |best, (n, e)| if n > best.0 { (n, e) } else { best })
-        .1;
+    // Same severity order as FailureTracker::top (schema above json).
+    let top_error = [
+        (il, TopError::InfiniteLoop),
+        (ha, TopError::Hallucinated),
+        (ms, TopError::MalformedSchema),
+        (mj, TopError::MalformedJson),
+    ]
+    .into_iter()
+    .fold((0u32, TopError::None), |best, (n, e)| if n > best.0 { (n, e) } else { best })
+    .1;
     let steps: Vec<f64> = reports.iter().filter_map(|r| r.avg_steps).collect();
     let eff: Vec<f64> = reports.iter().filter_map(|r| r.avg_output_tokens_success).collect();
+    let resil: Vec<f64> = reports.iter().filter_map(|r| r.schema_resilience).collect();
     AggAgentic {
         passes: reports.iter().map(|r| r.passes).sum(),
         total_runs: reports.iter().map(|r| r.total_runs).sum(),
         avg_steps: mean_f64(&steps),
         avg_output_tokens_success: mean_f64(&eff),
+        schema_resilience: mean_f64(&resil),
         top_error,
     }
 }

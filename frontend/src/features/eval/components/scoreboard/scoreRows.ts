@@ -7,6 +7,7 @@ const TOP_ERROR_LABEL: Record<TopError, string> = {
   infinite_loop: "Loop Cap",
   hallucinated: "Fake Done",
   malformed_json: "Malformed",
+  malformed_schema: "Bad Schema",
 };
 
 /// One per-model row of the Matrix Scoreboard. Every metric is a display string;
@@ -19,6 +20,8 @@ export interface ScoreRow {
   passK: string;
   avgSteps: string;
   effort: string;
+  schemaResil: string;
+  cliffDepth: string;
   topError: string;
   composite: string;
 }
@@ -26,6 +29,19 @@ export interface ScoreRow {
 const fmtNum = (n: number | null) => (n == null ? "N/A" : (Math.round(n * 10) / 10).toString());
 const fmtTokens = (n: number | null) => (n == null ? "N/A" : `${Math.round(n)} tok`);
 const fmtPct = (n: number | null | undefined) => (n == null ? "—" : `${Math.round(n * 100)}%`);
+
+/// The model's measured context-cliff depth, read from the same marker the cliff
+/// probe writes and the Inspector gauge reads (`quantamind-cliff-${model}`). "—"
+/// when no probe has run for this model — never fabricated.
+function cliffDepthFor(model: string): string {
+  if (typeof localStorage === "undefined") return "—";
+  try {
+    const v = localStorage.getItem(`quantamind-cliff-${model}`);
+    return v ? `${parseInt(v, 10)} tok` : "—";
+  } catch {
+    return "—";
+  }
+}
 
 export function toScoreRows(report: BatchReport | null, models: InstalledModelInfo[]): ScoreRow[] {
   if (!report) return [];
@@ -47,6 +63,10 @@ export function toScoreRows(report: BatchReport | null, models: InstalledModelIn
       passK: pass,
       avgSteps: ag ? fmtNum(ag.avg_steps) : "—",
       effort: ag ? fmtTokens(ag.avg_output_tokens_success) : "—",
+      // Schema resilience is agentic-only; null (no run hit a schema error) → "—".
+      schemaResil: ag ? fmtPct(ag.schema_resilience) : "—",
+      // Cliff depth comes from the measured cliff probe marker, not this batch.
+      cliffDepth: cliffDepthFor(c.model),
       topError: c.error ? "Error" : ag ? TOP_ERROR_LABEL[ag.top_error] : "—",
       composite: fmtPct(c.toolcall?.composite),
     };
