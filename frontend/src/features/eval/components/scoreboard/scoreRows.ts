@@ -18,6 +18,9 @@ export interface ScoreRow {
   label: string;
   quant: string;
   passK: string;
+  /// Phase 7.2 native function-calling Pass^k (Ollama `/api/chat` tool_calls),
+  /// "N/A" when native wasn't measured for this model. Shown behind a toggle.
+  passKNative: string;
   avgSteps: string;
   effort: string;
   schemaResil: string;
@@ -56,11 +59,16 @@ export function toScoreRows(report: BatchReport | null, models: InstalledModelIn
       : ag
         ? `${ag.passes}/${ag.total_runs}`
         : fmtPct(c.toolcall?.composite);
+    // Native FC pass^k is the parallel measurement; "N/A" when not run for this
+    // model (unsupported backend / no `tools` capability) — never a fabricated 0.
+    const nat = c.agentic_native_fc;
+    const passKNative = c.error ? "Error" : nat ? `${nat.passes}/${nat.total_runs}` : "N/A";
     return {
       model: c.model,
       label: modelLabel(info ?? { name: c.model }),
       quant: info?.quantization || "—",
       passK: pass,
+      passKNative,
       avgSteps: ag ? fmtNum(ag.avg_steps) : "—",
       effort: ag ? fmtTokens(ag.avg_output_tokens_success) : "—",
       // Schema resilience is agentic-only; null (no run hit a schema error) → "—".

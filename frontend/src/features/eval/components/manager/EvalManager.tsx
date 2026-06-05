@@ -53,6 +53,8 @@ export function EvalManager({
   const [error, setError] = useState<string | null>(null);
   const [deleteTarget, setDeleteTarget] = useState<string | null>(null);
   const [csvOpen, setCsvOpen] = useState(false);
+  // Phase 7.2: also measure each Ollama model's NATIVE tool-calling path.
+  const [nativeFc, setNativeFc] = useState(false);
 
   const handleCsvImport = async (name: string, csvTasks: ToolTask[]) => {
     await save(name, csvTasks);
@@ -138,7 +140,7 @@ export function EvalManager({
     }
     const ts = backendModels.filter((m) => targets.includes(m.name)).map((m) => ({ model: m.name, backend: m.backend }));
     if (ts.length === 0 || tasks.length === 0) return;
-    void run(selected, ts, tasks, k, maxSteps);
+    void run(selected, ts, tasks, k, maxSteps, nativeFc);
   };
 
   const toggleTarget = (name: string) =>
@@ -331,6 +333,21 @@ export function EvalManager({
                 data-testid="eval-manager-max-steps"
               />
             </div>
+
+            {/* Native function-calling (Phase 7.2) — measure the Ollama tool_calls
+                path alongside the prompt-based proxy. */}
+            <label
+              style={{ ...controlLabelStyle, display: "flex", alignItems: "center", gap: 8, cursor: "pointer" }}
+              title="Also run each Ollama model through its native /api/chat tool_calls API and compare. llama.cpp / MLX show N/A."
+            >
+              <input
+                type="checkbox"
+                checked={nativeFc}
+                onChange={(e) => setNativeFc(e.target.checked)}
+                data-testid="eval-native-fc"
+              />
+              Measure native tool-calling (Ollama)
+            </label>
 
             {/* RUN BATCH Button */}
             <button

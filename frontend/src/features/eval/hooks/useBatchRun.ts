@@ -72,12 +72,19 @@ export function useBatchRun() {
   }, []);
 
   const run = useCallback(
-    async (collectionId: string, targets: ModelTarget[], tasks: ToolTask[], k?: number, maxSteps?: number) => {
+    async (
+      collectionId: string,
+      targets: ModelTarget[],
+      tasks: ToolTask[],
+      k?: number,
+      maxSteps?: number,
+      runNativeFc?: boolean,
+    ) => {
       useBatchStore.getState().startRun();
       try {
         const { globalParams, keepLoaded } = useParamsStore.getState();
         // Keep loaded → resident; off → omit so the backend default applies.
-        await runBatchEval(collectionId, targets, tasks, k, maxSteps, globalParams, keepLoaded ? -1 : undefined);
+        await runBatchEval(collectionId, targets, tasks, k, maxSteps, globalParams, keepLoaded ? -1 : undefined, runNativeFc);
       } catch (e) {
         useBatchStore.getState().setError(formatIpcError(e));
       }

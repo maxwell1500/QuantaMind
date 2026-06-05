@@ -1,3 +1,4 @@
+import { useState } from "react";
 import { useBatchStore } from "../../state/batchStore";
 import { useInstalledModelsStore } from "../../../models/state/installedModelsStore";
 import { useNavStore } from "../../../../shared/state/navStore";
@@ -8,6 +9,7 @@ import { TOOL_HELP, metricTitle } from "../../help";
 /// Native title= tooltip for each metric column header (Model/Quant get none).
 const COLUMN_HELP: Record<string, string | undefined> = {
   "Pass^k": metricTitle("passK"),
+  "Native FC": "Pass^k measured via the model's NATIVE tool_calls API (Ollama /api/chat), not the prompt-based proxy. N/A when not measured / unsupported.",
   "Avg Steps": metricTitle("avgSteps"),
   Effort: metricTitle("effort"),
   "Schema Resil.": metricTitle("schemaResil"),
@@ -99,6 +101,22 @@ export function PerformanceMatrix({
   const models = useInstalledModelsStore((s) => s.list);
   const goAudit = useNavStore((s) => s.setTopView);
   const rows = toScoreRows(report, models);
+  // The Native-FC column only appears when at least one model was measured
+  // natively; a toggle keeps the prompt-based view the default.
+  // Note: "N/A" contains "/", so check the column data, not the formatted string.
+  const anyNative = (report?.columns ?? []).some((c) => c.agentic_native_fc != null);
+  const [showNative, setShowNative] = useState(false);
+  const columns = [
+    "Model",
+    "Quant",
+    "Pass^k",
+    ...(showNative ? ["Native FC"] : []),
+    "Avg Steps",
+    "Effort",
+    "Schema Resil.",
+    "Cliff Depth",
+    "Top Error",
+  ];
 
   return (
     <div
@@ -116,7 +134,26 @@ export function PerformanceMatrix({
         <span style={{ fontSize: 11, color: "#64748b", fontFamily: "Inter, sans-serif" }}>
           &nbsp;(per-model summary — click a row to inspect model details)
         </span>
-        <span style={{ marginLeft: "auto" }}>
+        <span style={{ marginLeft: "auto", display: "inline-flex", alignItems: "center", gap: 10 }}>
+          {anyNative && (
+            <button
+              type="button"
+              data-testid="matrix-native-toggle"
+              onClick={() => setShowNative((v) => !v)}
+              style={{
+                fontSize: 11,
+                fontWeight: 700,
+                padding: "3px 10px",
+                borderRadius: 6,
+                border: "1px solid rgba(59,130,246,0.4)",
+                background: showNative ? "rgba(59,130,246,0.2)" : "transparent",
+                color: "#93c5fd",
+                cursor: "pointer",
+              }}
+            >
+              {showNative ? "Hide" : "Show"} Native-FC {showNative ? "🟢" : ""}
+            </button>
+          )}
           <InfoButton {...TOOL_HELP.performanceMatrix} testId="performance-matrix" />
         </span>
       </div>
@@ -130,7 +167,7 @@ export function PerformanceMatrix({
           <table style={{ width: "100%", borderCollapse: "collapse" }} data-testid="performance-matrix-table">
             <thead>
               <tr style={{ borderBottom: "1px solid rgba(255,255,255,0.08)", background: "rgba(0,0,0,0.12)" }}>
-                {["Model", "Quant", "Pass^k", "Avg Steps", "Effort", "Schema Resil.", "Cliff Depth", "Top Error"].map((h) => {
+                {columns.map((h) => {
                   const tip = COLUMN_HELP[h];
                   return (
                     <th key={h} style={th} title={tip}>{h}</th>
@@ -158,6 +195,11 @@ export function PerformanceMatrix({
                     <td style={{ ...td, color: active ? "#93c5fd" : "#f1f5f9", fontWeight: active ? 700 : 500 }}>{r.label}</td>
                     <td style={{ ...td, color: "#94a3b8", fontFamily: "'JetBrains Mono', monospace", fontSize: 12 }}>{r.quant}</td>
                     <td style={{ ...td, fontWeight: 700 }}>{getPassKBadge(r.passK)}</td>
+                    {showNative && (
+                      <td style={{ ...td, fontWeight: 700 }} data-testid={`matrix-native-${r.model}`}>
+                        {getPassKBadge(r.passKNative)}
+                      </td>
+                    )}
                     <td style={{ ...td, color: r.avgSteps === "—" ? "#475569" : "#cbd5e1" }}>{r.avgSteps}</td>
                     <td style={{ ...td, color: r.effort === "—" ? "#475569" : "#cbd5e1", fontFamily: r.effort !== "—" ? "'JetBrains Mono', monospace" : "inherit", fontSize: 12 }}>{r.effort}</td>
                     <td style={td}>{getSchemaResilBadge(r.schemaResil)}</td>

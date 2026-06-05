@@ -51,4 +51,41 @@ describe("PerformanceMatrix", () => {
     expect(screen.queryByTestId("performance-matrix-table")).toBeNull();
     expect(screen.getByText(/Run Batch to compare/i)).toBeInTheDocument();
   });
+
+  const failures = { infinite_loop_hits: 0, hallucinated_completions: 0, malformed_json_calls: 0, schema_unrecovered_calls: 0 };
+  const nativeReport: BatchReport = {
+    collection_id: "c",
+    columns: [
+      {
+        model: "qwen",
+        backend: "ollama",
+        toolcall: null,
+        agentic: { passes: 5, total_runs: 5, avg_steps: 2.4, avg_output_tokens_success: 112, schema_resilience: null, top_error: "none", failures },
+        agentic_native_fc: { passes: 2, total_runs: 5, avg_steps: 3.0, avg_output_tokens_success: 90, schema_resilience: null, top_error: "hallucinated", failures: { ...failures, hallucinated_completions: 3 } },
+        error: null,
+      },
+    ],
+  };
+
+  it("reveals a parallel Native-FC pass^k column behind a toggle when native was measured", () => {
+    useBatchStore.setState({ report: nativeReport });
+    render(<PerformanceMatrix focusedModel="qwen" onFocusModel={() => {}} />);
+
+    // Hidden by default — prompt-based is the default view.
+    expect(screen.queryByRole("columnheader", { name: "Native FC" })).toBeNull();
+
+    fireEvent.click(screen.getByTestId("matrix-native-toggle"));
+    expect(screen.getByRole("columnheader", { name: "Native FC" })).toBeInTheDocument();
+    expect(screen.getByTestId("matrix-native-qwen")).toHaveTextContent("2/5"); // native pass^k
+    expect(screen.getByTestId("matrix-model-row-qwen")).toHaveTextContent("5/5"); // prompt-based still there
+
+    fireEvent.click(screen.getByTestId("matrix-native-toggle"));
+    expect(screen.queryByRole("columnheader", { name: "Native FC" })).toBeNull(); // toggled back off
+  });
+
+  it("offers no Native-FC toggle when native was not measured", () => {
+    useBatchStore.setState({ report });
+    render(<PerformanceMatrix focusedModel="qwen" onFocusModel={() => {}} />);
+    expect(screen.queryByTestId("matrix-native-toggle")).toBeNull();
+  });
 });
