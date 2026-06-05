@@ -59,6 +59,17 @@ export const HELP_SECTIONS: HelpSection[] = [
     ],
   },
   {
+    id: "csv-import",
+    title: "CSV import — bulk-load eval tasks from a spreadsheet",
+    body: [
+      "The Eval tab has an 'Import CSV' button (next to Import .json) that turns a flat spreadsheet of test cases into a custom collection — the same kind you'd otherwise author task-by-task. It's for single-turn tool-call tasks; parallel/agentic tasks stay in Import .json or the configurator.",
+      "The CSV must have exactly these four columns, in this order: id, prompt, expected_tool, expected_args. One row = one task. 'id' is a unique name, 'prompt' is what the model sees, 'expected_tool' is the tool you expect it to call, and 'expected_args' is that call's arguments as a JSON object (e.g. {\"city\":\"Paris\"}). Quote any cell that contains a comma or quotes, doubling inner quotes (standard CSV).",
+      "Leave expected_tool (and expected_args) empty to make an abstain task — one where the correct behavior is to make NO tool call and answer in plain text.",
+      "The tool schemas live in a separate 'Tools schema (JSON)' box in the import dialog and apply to every row, so you don't repeat them per line. Each expected_tool must be one of the names you define there.",
+      "When you pick or paste a CSV, the dialog validates it live: a header in the wrong order is flagged with the exact column, and each row gets a green check or a red located error (bad JSON args, a tool not in the schema box, a duplicate id, a missing field). Import stays disabled until everything is clean — a partly-broken CSV is never imported.",
+    ],
+  },
+  {
     id: "controls",
     title: "Global controls — Refresh + Feedback",
     body: [
