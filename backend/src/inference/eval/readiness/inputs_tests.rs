@@ -1,6 +1,6 @@
 use super::super::profile::builtins;
-use super::super::types::{NativeFcStatus, Readiness};
-use super::{assess_report, from_column};
+use super::super::types::{AgentPath, NativeFcStatus, Readiness};
+use super::{assess_report, from_column, verdict_for};
 use crate::inference::eval::batch::BatchReport;
 use crate::inference::backend::backend_kind::BackendKind;
 use crate::inference::eval::agentic::report::{FailureTracker, TopError};
@@ -67,6 +67,51 @@ fn no_agentic_column_yields_unmeasured_pass_k_core_gate() {
 fn zero_total_runs_is_unmeasured_not_a_fabricated_zero() {
     let i = from_column(&col(0, 0, 0, 0, None), None, false);
     assert_eq!(i.pass_k, None); // None, not Some(0.0) — never a guessed failing score
+}
+
+fn agg(passes: u32, total: u32, loops: u32) -> AggAgentic {
+    AggAgentic {
+        passes,
+        total_runs: total,
+        avg_steps: Some(2.0),
+        avg_output_tokens_success: None,
+        schema_resilience: None,
+        top_error: TopError::None,
+        failures: FailureTracker {
+            infinite_loop_hits: loops,
+            hallucinated_completions: 0,
+            malformed_json_calls: 0,
+            schema_unrecovered_calls: 0,
+        },
+    }
+}
+
+#[test]
+fn prefers_the_native_aggregate_when_native_fc_was_measured() {
+    let mut c = col(9, 10, 0, 0, Some(2.0)); // prompt-based pass^k 0.9
+    c.agentic_native_fc = Some(agg(2, 10, 1)); // native pass^k 0.2, with a loop
+    let i = from_column(&c, None, false);
+    assert_eq!(i.pass_k, Some(0.2)); // the native result, NOT the 0.9 prompt proxy
+    assert_eq!(i.loops, 1); // native failure breakdown
+    assert_eq!(i.native_fc, NativeFcStatus::Tested { pass_k: 0.2 });
+}
+
+#[test]
+fn falls_back_to_prompt_based_when_native_was_not_measured() {
+    let i = from_column(&col(8, 10, 0, 0, Some(2.0)), None, false);
+    assert_eq!(i.pass_k, Some(0.8));
+    assert_eq!(i.native_fc, NativeFcStatus::NotSupported);
+}
+
+#[test]
+fn a_prompt_passing_model_that_fails_native_is_not_ready_on_the_native_path() {
+    let coding = builtins().into_iter().find(|p| p.id == "coding-agent").unwrap();
+    let mut c = col(9, 10, 0, 0, Some(2.0)); // prompt 0.9 would pass coding-agent's 0.80
+    c.agentic_native_fc = Some(agg(2, 10, 0)); // native 0.2 fails it
+    let v = verdict_for(&c, Some(true), false, &coding); // fits VRAM (coding requires it)
+    assert_eq!(v.status, Readiness::NotReady);
+    assert_eq!(v.path, AgentPath::NativeFc); // the report states the native path
+    assert!(v.blocking.iter().any(|b| b.contains("pass^k 0.20 < 0.80 required")));
 }
 
 #[test]

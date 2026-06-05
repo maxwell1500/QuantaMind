@@ -9,21 +9,28 @@ use crate::inference::eval::batch::{BatchColumn, BatchReport};
 /// the no-hardware path passes `None`/`false`). Unmeasured metrics stay
 /// `None`/`NotSupported` — never a fabricated value.
 pub fn from_column(col: &BatchColumn, fits_in_vram: Option<bool>, vram_pressure: bool) -> ReadinessInputs {
-    let ag = col.agentic.as_ref();
-    let pass_k = ag.and_then(|a| (a.total_runs > 0).then(|| a.passes as f64 / a.total_runs as f64));
-    let (loops, hallucinated) = ag
+    // Prefer the NATIVE aggregate when it was measured — that's the path a
+    // production agent actually uses. Native present → source the gated metrics
+    // from it and label the path NativeFc; otherwise the prompt-based proxy.
+    let native = col.agentic_native_fc.as_ref().filter(|a| a.total_runs > 0);
+    let (source, native_fc) = match native {
+        Some(n) => (Some(n), NativeFcStatus::Tested { pass_k: n.passes as f64 / n.total_runs as f64 }),
+        None => (col.agentic.as_ref(), NativeFcStatus::NotSupported),
+    };
+    let pass_k = source.and_then(|a| (a.total_runs > 0).then(|| a.passes as f64 / a.total_runs as f64));
+    let (loops, hallucinated) = source
         .map(|a| (a.failures.infinite_loop_hits, a.failures.hallucinated_completions))
         .unwrap_or((0, 0));
     ReadinessInputs {
         pass_k,
-        avg_steps: ag.and_then(|a| a.avg_steps),
+        avg_steps: source.and_then(|a| a.avg_steps),
         ms_per_step: None,  // Phase 7.4: route the StepEconomy per-step duration here
         cliff_tokens: None, // Phase 7: wire the context-cliff probe (frontend-only today)
         fits_in_vram,
         vram_pressure,
         loops,
         hallucinated,
-        native_fc: NativeFcStatus::NotSupported, // Phase 7.2: native function-calling path
+        native_fc,
     }
 }
 
