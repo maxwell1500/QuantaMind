@@ -56,17 +56,37 @@ pub fn verdict_for(
     }
 }
 
+/// Efficiency telemetry (avg_steps, effort) for the recommender ranking —
+/// **native-first**, the exact aggregate the verdict gates on, so the recommender
+/// praises the same telemetry the verdict was computed from (not the wrong column).
+pub fn agentic_metrics(col: &BatchColumn) -> (Option<f64>, Option<f64>) {
+    if let Some(n) = &col.agentic_native_fc {
+        if n.total_runs > 0 {
+            return (n.avg_steps, n.avg_output_tokens_success);
+        }
+    }
+    match &col.agentic {
+        Some(a) => (a.avg_steps, a.avg_output_tokens_success),
+        None => (None, None),
+    }
+}
+
 /// Assess every model in a persisted batch report against a profile, with no
 /// hardware facts (VRAM unmeasured). The CLI-without-cap and pure-test path.
 pub fn assess_report(report: &BatchReport, profile: &ReadinessProfile) -> Vec<ModelVerdict> {
     report
         .columns
         .iter()
-        .map(|col| ModelVerdict {
-            model: col.model.clone(),
-            backend: col.backend,
-            verdict: verdict_for(col, None, false, profile),
-            memory: None,
+        .map(|col| {
+            let (avg_steps, effort) = agentic_metrics(col);
+            ModelVerdict {
+                model: col.model.clone(),
+                backend: col.backend,
+                verdict: verdict_for(col, None, false, profile),
+                memory: None,
+                avg_steps,
+                effort,
+            }
         })
         .collect()
 }

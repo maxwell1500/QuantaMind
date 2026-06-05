@@ -3,7 +3,7 @@ use crate::commands::storage::storage::fetch_installed_with_stats;
 use crate::errors::AppError;
 use crate::inference::backend::backend_kind::BackendKind;
 use crate::inference::backend::endpoint;
-use crate::inference::eval::readiness::inputs::verdict_for;
+use crate::inference::eval::readiness::inputs::{agentic_metrics, verdict_for};
 use crate::inference::eval::readiness::profile::ReadinessProfile;
 use crate::inference::eval::readiness::types::ModelVerdict;
 use crate::inference::eval::readiness::vram_fit::{try_profile, Dims};
@@ -101,7 +101,8 @@ pub async fn assess_readiness(
         let fits_in_vram = memory.as_ref().map(|m| m.fits);
         let vram_pressure = memory.as_ref().map(|m| m.pressure).unwrap_or(false);
         let verdict = verdict_for(col, fits_in_vram, vram_pressure, &profile);
-        out.push(ModelVerdict { model: col.model.clone(), backend: col.backend, verdict, memory });
+        let (avg_steps, effort) = agentic_metrics(col);
+        out.push(ModelVerdict { model: col.model.clone(), backend: col.backend, verdict, memory, avg_steps, effort });
     }
     Ok(out)
 }

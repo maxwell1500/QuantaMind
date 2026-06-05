@@ -68,4 +68,11 @@ pub struct ModelVerdict {
     pub verdict: ReadinessVerdict,
     #[serde(default)]
     pub memory: Option<MemoryProfile>,
+    /// Efficiency telemetry for the recommender ranking (Phase 7.3), sourced
+    /// native-first — the same aggregate the verdict was computed from. `None` when
+    /// the model had no agentic run (sinks to the bottom of the ranking).
+    #[serde(default)]
+    pub avg_steps: Option<f64>,
+    #[serde(default)]
+    pub effort: Option<f64>,
 }

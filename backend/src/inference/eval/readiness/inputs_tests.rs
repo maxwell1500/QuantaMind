@@ -1,6 +1,6 @@
 use super::super::profile::builtins;
 use super::super::types::{AgentPath, NativeFcStatus, Readiness};
-use super::{assess_report, from_column, verdict_for};
+use super::{agentic_metrics, assess_report, from_column, verdict_for};
 use crate::inference::eval::batch::BatchReport;
 use crate::inference::backend::backend_kind::BackendKind;
 use crate::inference::eval::agentic::report::{FailureTracker, TopError};
@@ -112,6 +112,28 @@ fn a_prompt_passing_model_that_fails_native_is_not_ready_on_the_native_path() {
     assert_eq!(v.status, Readiness::NotReady);
     assert_eq!(v.path, AgentPath::NativeFc); // the report states the native path
     assert!(v.blocking.iter().any(|b| b.contains("pass^k 0.20 < 0.80 required")));
+}
+
+#[test]
+fn agentic_metrics_prefers_native_then_falls_back_to_prompt() {
+    // Prompt aggregate: avg_steps 2.0. Native aggregate: avg_steps 4.0, effort 120.
+    let mut c = col(5, 5, 0, 0, Some(2.0));
+    c.agentic_native_fc = Some(AggAgentic {
+        passes: 3,
+        total_runs: 5,
+        avg_steps: Some(4.0),
+        avg_output_tokens_success: Some(120.0),
+        schema_resilience: None,
+        top_error: TopError::None,
+        failures: FailureTracker::default(),
+    });
+    let (steps, effort) = agentic_metrics(&c);
+    assert_eq!(steps, Some(4.0)); // native, NOT the prompt 2.0 — same telemetry the verdict gated on
+    assert_eq!(effort, Some(120.0));
+
+    // No native measurement → fall back to the prompt aggregate.
+    let (steps2, _) = agentic_metrics(&col(5, 5, 0, 0, Some(2.0)));
+    assert_eq!(steps2, Some(2.0));
 }
 
 #[test]
