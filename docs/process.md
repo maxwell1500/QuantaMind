@@ -586,6 +586,7 @@ eval](reference.md#agentic-eval) for the contract.
 | 6 | Driver B lazy-agent traps: per-call `FaultInjection` (transient/persistent) in the sandbox + runner (`ToolError` step), authored in the Configurator | done |
 | 7 | Driver D schema resilience: semantic `validate_call` + `max_recovery` loop (`SchemaError` step, `MalformedSchema` failure, `schema_resilience` metric) | done |
 | 8 | Matrix `Schema Resil.` + `Cliff Depth` columns (cliff depth shared with the Inspector budget gauge via the `quantamind-cliff-<model>` marker) | done |
+| 9 | CSV import: strict flat `id,prompt,expected_tool,expected_args` + shared Tools box → custom collection (`read_text_capped`, `csvImport.ts`, `CsvImportModal`); single-turn only, live located validation | done |
 
 Locked decisions (set during planning): **iterate in Rust, never React** — one
 `run_batch_eval` command runs a strict sequential model×task queue and streams

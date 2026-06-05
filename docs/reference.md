@@ -380,8 +380,25 @@ small name dialog, then an empty task list. **+ Add Task** opens a task in its
 the list. Click any task row to reopen its detail. Validation is friendly and
 inline — an empty prompt or id shows "Prompt: required" / "Task ID: required",
 never a raw error. **Save** persists the collection (it then appears, selected, in
-the sidebar). You can also **Import** an existing file (read by path, capped at
-1 MiB, validated). CRUD = create / edit / delete (✕ on a custom collection).
+the sidebar). You can also **Import** an existing `.json` file (read by path, capped
+at 1 MiB, validated). CRUD = create / edit / delete (✕ on a custom collection).
+
+**Import CSV (bulk single-turn).** Next to Import .json, **Import CSV** opens a
+modal that turns a flat spreadsheet into a custom collection — the on-ramp for
+teams who keep test cases in a spreadsheet, not in `ToolTask` JSON. The strict
+format is exactly four columns in order: `id,prompt,expected_tool,expected_args`
+(one row per task; `expected_args` is a JSON object; an empty `expected_tool`
+column means an **abstain** task). Tool schemas are supplied **once** in the modal's
+**Tools schema** box and apply to every row, so the CSV stays flat. Scope is
+**single-turn only** — `parallel`/`select`/`agentic` don't flatten cleanly and stay
+on the JSON/configurator path. The file is read in Rust (`read_text_capped`, same
+1 MiB cap; the frontend never reads files); the modal then parses + validates live:
+a header in the wrong order is flagged with the exact column, every row gets a
+green ✓ or a located red error (bad-JSON args, a tool not in the schema box, a
+duplicate id, a missing field), and **Import stays disabled until the whole CSV is
+clean** — a partly-broken CSV is never imported. Assembly reuses the same
+`validateDrafts` gate as the form editor, and the save re-validates server-side.
+(Format reference: Help → "CSV import".)
 
 Any selection is editable — including a built-in preset; editing a preset and
 saving writes a new custom copy (the bundled preset is read-only and stays a seed).
