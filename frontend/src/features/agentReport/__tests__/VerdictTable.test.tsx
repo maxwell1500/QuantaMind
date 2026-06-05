@@ -85,6 +85,7 @@ describe("VerdictTable", () => {
         avg_steps: 1.0,
         effort: 29,
         quantization: "Q4_K_M", // real backend value
+        cliff_tokens: 12000, // measured by the Context-Cliff probe
         memory: null, // VRAM not measured (no cap)
       },
       {
@@ -100,6 +101,7 @@ describe("VerdictTable", () => {
     expect(within(ready).getByTestId("metric-passk")).toHaveTextContent("100%");
     expect(within(ready).getByTestId("metric-steps")).toHaveTextContent("1.0");
     expect(within(ready).getByTestId("metric-effort")).toHaveTextContent("29 tok");
+    expect(within(ready).getByTestId("metric-cliff")).toHaveTextContent("12,000 tok"); // measured cliff
     expect(ready).toHaveTextContent("Q4_K_M"); // real quant, not a per-family guess
     // VRAM was NOT measured → must NOT claim it fits.
     expect(ready).not.toHaveTextContent("Fits completely in VRAM");
@@ -108,6 +110,7 @@ describe("VerdictTable", () => {
     expect(within(weak).getByTestId("metric-passk")).toHaveTextContent("40%");
     expect(within(weak).getByTestId("metric-steps")).toHaveTextContent("N/A");
     expect(within(weak).getByTestId("metric-effort")).toHaveTextContent("N/A");
+    expect(within(weak).getByTestId("metric-cliff")).toHaveTextContent("N/A"); // no probe → N/A, not fabricated
   });
 
   it("never guesses a quant — an unknown name renders a dash, not a family default", () => {

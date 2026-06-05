@@ -44,6 +44,12 @@ function MetricsLine({ v }: { v: ModelVerdict }) {
         <span className="font-semibold text-slate-500">Effort:</span>{" "}
         <span data-testid="metric-effort" className="font-bold text-slate-800">{tok(v.effort)}</span>
       </span>
+      <span>
+        <span className="font-semibold text-slate-500">Cliff:</span>{" "}
+        <span data-testid="metric-cliff" className="font-bold text-slate-800">
+          {v.cliff_tokens == null ? "N/A" : `${v.cliff_tokens.toLocaleString()} tok`}
+        </span>
+      </span>
     </div>
   );
 }

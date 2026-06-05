@@ -61,6 +61,9 @@ export const ModelVerdictSchema = z.object({
   // installed-models registry. Both null → rendered "N/A"/"—".
   pass_k: z.number().nullish(),
   quantization: z.string().nullish(),
+  // The measured context-cliff depth (tokens) for this collection, from the probe.
+  // `null` → "N/A". The hard gate only blocks when a profile sets `min_context_tokens`.
+  cliff_tokens: z.number().nullish(),
 });
 export type ModelVerdict = z.infer<typeof ModelVerdictSchema>;
 
