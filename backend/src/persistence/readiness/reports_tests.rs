@@ -50,6 +50,20 @@ fn pre_7_4_report_without_num_ctx_still_loads() {
 }
 
 #[test]
+fn pre_7_2_column_without_native_fc_loads_as_none() {
+    // Back-compat: a column persisted before Phase 7.2 has no `agentic_native_fc`
+    // key; #[serde(default)] must fill it with None rather than fail the load.
+    let dir = tempdir().unwrap();
+    let json = r#"{"collection_id":"old","num_ctx":4096,"columns":[
+        {"model":"m","backend":"ollama","toolcall":null,"agentic":null,"error":null}
+    ]}"#;
+    std::fs::create_dir_all(dir.path()).unwrap();
+    std::fs::write(report_path(dir.path(), "old"), json).unwrap();
+    let loaded = load(dir.path(), "old").unwrap().unwrap();
+    assert!(loaded.columns[0].agentic_native_fc.is_none());
+}
+
+#[test]
 fn load_missing_is_none_not_error() {
     let dir = tempdir().unwrap();
     assert_eq!(load(dir.path(), "never-run").unwrap(), None);

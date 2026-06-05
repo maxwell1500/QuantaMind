@@ -6,15 +6,18 @@ use crate::commands::eval::batch_payloads::{
 use crate::commands::eval::toolcall_cmd::endpoint_for;
 use crate::commands::prompt::prompt_options::{to_generate_options, validate_params};
 use crate::errors::AppError;
-use crate::inference::eval::agentic::model_turn::BackendTurn;
+use crate::inference::backend::backend_kind::BackendKind;
+use crate::inference::eval::agentic::model_turn::{BackendTurn, NativeOllamaTurn};
 use crate::inference::eval::agentic::step::TrajectoryStep;
-use crate::inference::eval::batch::{batch_summaries, run_batch, BatchReport, BatchSink, TaskOutcome};
+use crate::inference::eval::batch::{batch_summaries, run_batch, run_native_fc_pass, BatchReport, BatchSink, TaskOutcome};
 use crate::inference::eval::toolcall::matrix::ModelTarget;
 use crate::inference::eval::toolcall::tasks::{validate_tasks, ToolTask};
+use crate::inference::ollama::ollama_show::probe_supports_tools;
 use crate::persistence::eval_history;
 use crate::persistence::prompts::schema::InferenceParams;
 use crate::persistence::readiness::reports;
 use crate::sync::MutexExt;
+use std::collections::HashSet;
 use std::path::PathBuf;
 use std::sync::{Arc, Mutex};
 use tauri::{AppHandle, Manager};
@@ -93,6 +96,7 @@ pub async fn run_batch_eval(
     max_steps: Option<u32>,
     params: Option<InferenceParams>,
     keep_alive: Option<i32>,
+    run_native_fc: Option<bool>,
 ) -> Result<BatchReport, AppError> {
     validate_tasks(&tasks)?;
     // Global inference params (from the header) applied to every eval turn.
@@ -114,6 +118,10 @@ pub async fn run_batch_eval(
     let tasks = apply_overrides(tasks, k, max_steps);
     let sink: Arc<dyn BatchSink> = Arc::new(TauriBatchSink { app: app.clone() });
     let turn_cancel = cancel.clone();
+    // Keep copies the native-FC pass needs (the prompt run moves `cancel` and
+    // `options` into the dispatcher/closure below).
+    let native_cancel = cancel.clone();
+    let native_options = options.clone();
     let mut report = run_batch(&collection_id, &targets, &tasks, cancel, sink, move |t: &ModelTarget| BackendTurn {
         backend: t.backend,
         endpoint: endpoint_for(t.backend),
@@ -136,6 +144,31 @@ pub async fn run_batch_eval(
             let _ = eval_history::append(&dir, &collection_id, &entries);
         }
     }
+
+    // Opt-in NATIVE function-calling pass (Phase 7.2): after the prompt-based
+    // results are emitted, measure native tool-calling for the Ollama models that
+    // report the `tools` capability, then re-emit so the Matrix gains the parallel
+    // column. Best-effort — never fails the run.
+    if run_native_fc.unwrap_or(false) {
+        let endpoint = endpoint_for(BackendKind::Ollama);
+        let mut supported = HashSet::new();
+        for t in &targets {
+            if t.backend == BackendKind::Ollama && probe_supports_tools(&endpoint, &t.model).await {
+                supported.insert(t.model.clone());
+            }
+        }
+        let _ = run_native_fc_pass(&mut report, &tasks, &supported, native_cancel, |model, task| {
+            NativeOllamaTurn {
+                endpoint: endpoint.clone(),
+                model: model.to_string(),
+                tools: task.tools.clone(),
+                options: native_options.clone(),
+            }
+        })
+        .await;
+        log_emit(&app, EVENT_BATCH_COMPLETE, BatchCompletePayload { report: report.clone() });
+    }
+
     // Persist the full report so the readiness verdict reads it from Rust, not
     // the frontend store (best effort — never fail the run on a report write).
     if let Ok(dir) = reports_dir(&app) {
