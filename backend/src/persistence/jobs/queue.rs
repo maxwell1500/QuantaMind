@@ -23,6 +23,7 @@ pub struct RunConfig {
     pub k: Option<u32>,
     pub max_steps: Option<u32>,
     pub params: Option<InferenceParams>,
+    pub keep_alive: Option<i32>,
     pub native: bool,
 }
 

@@ -361,6 +361,51 @@ where
     Ok(BatchReport { collection_id: collection_id.to_string(), columns, num_ctx: None })
 }
 
+/// Build a partial `BatchReport` from already-completed units ONLY — no execution.
+/// Used on resume to repaint the Matrix in one payload (bulk rehydration) before
+/// the live run continues. Folds both prompt units (agentic/single) and native
+/// units (`agentic_native_fc`).
+pub fn fold_report(
+    collection_id: &str,
+    targets: &[ModelTarget],
+    tasks: &[ToolTask],
+    prior: &[CompletedUnit],
+) -> BatchReport {
+    let prompt: HashMap<(&str, &str), &CompletedUnit> =
+        prior.iter().filter(|u| !u.is_native).map(|u| ((u.model.as_str(), u.task_id.as_str()), u)).collect();
+    let native: HashMap<(&str, &str), &CompletedUnit> =
+        prior.iter().filter(|u| u.is_native).map(|u| ((u.model.as_str(), u.task_id.as_str()), u)).collect();
+    let columns = targets
+        .iter()
+        .map(|target| {
+            let mut single_tasks = Vec::new();
+            let mut single_results = Vec::new();
+            let mut agentic_reports = Vec::new();
+            let mut native_reports = Vec::new();
+            let mut col_error = None;
+            for task in tasks {
+                if let Some(u) = prompt.get(&(target.model.as_str(), task.id.as_str())) {
+                    fold_completed(u, task, &mut single_tasks, &mut single_results, &mut agentic_reports, &mut col_error);
+                }
+                if let Some(u) = native.get(&(target.model.as_str(), task.id.as_str())) {
+                    if let TaskOutcome::Agentic { report } = &u.outcome {
+                        native_reports.push(report.clone());
+                    }
+                }
+            }
+            BatchColumn {
+                model: target.model.clone(),
+                backend: target.backend,
+                toolcall: (!single_results.is_empty()).then(|| aggregate(&single_tasks, single_results)),
+                agentic: (!agentic_reports.is_empty()).then(|| agg_agentic(&agentic_reports)),
+                agentic_native_fc: (!native_reports.is_empty()).then(|| agg_agentic(&native_reports)),
+                error: col_error,
+            }
+        })
+        .collect();
+    BatchReport { collection_id: collection_id.to_string(), columns, num_ctx: None }
+}
+
 fn unit_of(target: &ModelTarget, task: &ToolTask, outcome: TaskOutcome, is_native: bool) -> CompletedUnit {
     CompletedUnit {
         model: target.model.clone(),

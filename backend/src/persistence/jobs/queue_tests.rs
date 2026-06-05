@@ -11,6 +11,7 @@ fn config() -> RunConfig {
         k: Some(5),
         max_steps: Some(8),
         params: None,
+        keep_alive: None,
         native: true,
     }
 }

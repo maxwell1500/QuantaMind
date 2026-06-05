@@ -223,6 +223,23 @@ async fn resume_folds_a_completed_unit_without_re_running_or_re_emitting() {
     assert_eq!(*sink.done.lock().unwrap(), 0); // folded silently — no task_done replay (no IPC flood)
 }
 
+#[test]
+fn fold_report_rebuilds_a_partial_from_completed_prompt_and_native_units() {
+    // The bulk-rehydration core: on resume, completed units paint the Matrix in
+    // one report — prompt units → `agentic`, native units → `agentic_native_fc`.
+    let targets = vec![target("m1")];
+    let tasks = vec![agentic_task("a1", 3)];
+    let mut native = completed_agentic("m1", "a1", 1);
+    native.is_native = true; // 1/1 native
+    let prior = vec![completed_agentic("m1", "a1", 2), native]; // prompt 2/2 + native 1/1
+
+    let report = fold_report("c", &targets, &tasks, &prior);
+
+    let col = &report.columns[0];
+    assert_eq!(col.agentic.as_ref().unwrap().passes, 2); // prompt folded
+    assert_eq!(col.agentic_native_fc.as_ref().unwrap().passes, 1); // native folded (first-class)
+}
+
 #[tokio::test]
 async fn vram_gate_error_halts_the_run_with_records_already_appended() {
     let targets = vec![target("m1"), target("m2")]; // both Ollama → a model switch
