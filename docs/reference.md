@@ -697,3 +697,32 @@ uses.
 and CLI verdicts can never diverge. The frontend stores no verdicts; it renders what
 Rust returns. **Export shareable report (.HTML)** emits a self-contained, offline
 one-pager (escaped, utf-8) to email a verdict to a CTO.
+
+## Resumable evaluation & VRAM isolation {#resumable-queue}
+
+A multi-model sweep can run for hours; a sleep, an Ollama crash, or a force-quit must
+not vaporize it, and two models must never stack in VRAM and OOM-lock the machine.
+Phase 7.5 makes a batch **crash-resumable** and inserts a **hardware-enforced VRAM
+gate**.
+
+**The job log.** Every run writes an append-only `~/.config/quantamind/jobs/<collection>.jsonl`
+— a header line (the full run config: targets, tasks, params) then one line per finished
+`(model, task)` unit, appended atomically (`O(1)`, not a read-modify-write). The **native-FC
+pass is a first-class citizen** (units tagged `is_native: true`), so an interrupted native
+pass resumes too. The order is idempotent — *run → stream → append the outcome line* — so a
+crash before the append just re-runs that one unit. A truncated final line (a hard crash
+mid-write) is **healed**: the loader discards the unparseable tail rather than panic.
+
+**VRAM isolation (assert-and-fail).** Between models, QuantaMind sends Ollama
+`keep_alive: 0` to the previous model and **polls `/api/ps` until its `size_vram` is 0**
+before loading the next. If the VRAM doesn't release within 30 s the run **halts** (the job
+log stays intact for a later resume) — it never loads onto dirty VRAM, which is the exact
+OOM it prevents. (Multi-model batches are Ollama-only; llama.cpp/MLX single-model servers
+already reap deterministically via `kill` + `wait`.)
+
+**Recovery.** On the Eval tab, if an interrupted run is found you're prompted to **Resume**
+or **Discard**. Resume rebuilds the completed units into **one** partial report that paints
+the Matrix instantly (no per-task event flood), then continues the live run, skipping
+completed units. On a clean finish the report is **transactionally** persisted — saved,
+verified on disk, and only **then** is the job log deleted — so a crash between the two can
+never lose the run. At most the one in-flight `(model, task)` re-runs.
