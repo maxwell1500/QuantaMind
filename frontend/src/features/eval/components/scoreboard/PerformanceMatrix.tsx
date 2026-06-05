@@ -1,5 +1,6 @@
 import { useBatchStore } from "../../state/batchStore";
 import { useInstalledModelsStore } from "../../../models/state/installedModelsStore";
+import { useNavStore } from "../../../../shared/state/navStore";
 import { toScoreRows } from "./scoreRows";
 import { InfoButton } from "../../../../shared/ui/InfoButton";
 import { TOOL_HELP, metricTitle } from "../../help";
@@ -26,6 +27,7 @@ export function PerformanceMatrix({
 }) {
   const report = useBatchStore((s) => s.report);
   const models = useInstalledModelsStore((s) => s.list);
+  const goAudit = useNavStore((s) => s.setTopView);
   const rows = toScoreRows(report, models);
 
   return (
@@ -75,7 +77,21 @@ export function PerformanceMatrix({
                   <td style={td}>{r.avgSteps}</td>
                   <td style={td}>{r.effort}</td>
                   <td style={td}>{r.schemaResil}</td>
-                  <td style={td}>{r.cliffDepth}</td>
+                  <td style={td}>
+                    {r.cliffDepth === "—" ? (
+                      <button
+                        type="button"
+                        onClick={(e) => { e.stopPropagation(); goAudit("audit"); }}
+                        title="Not measured yet — run the Context-Cliff probe in the Audit tab for this model"
+                        style={cliffLink}
+                        data-testid={`cliff-run-${r.model}`}
+                      >
+                        Run probe ↗
+                      </button>
+                    ) : (
+                      r.cliffDepth
+                    )}
+                  </td>
                   <td style={{ ...td, color: r.topError === "None" ? "#4ade80" : r.topError === "—" ? "#64748b" : "#fca5a5" }}>{r.topError}</td>
                 </tr>
               );
@@ -109,3 +125,14 @@ const th: React.CSSProperties = {
   fontFamily: "Inter, sans-serif",
 };
 const td: React.CSSProperties = { fontSize: 13, color: "#e2e8f0", padding: "9px 14px", fontFamily: "Inter, sans-serif" };
+const cliffLink: React.CSSProperties = {
+  background: "transparent",
+  border: "none",
+  color: "#60a5fa",
+  fontSize: 12,
+  fontFamily: "Inter, sans-serif",
+  cursor: "pointer",
+  padding: 0,
+  textDecoration: "underline",
+  textUnderlineOffset: 2,
+};

@@ -35,6 +35,17 @@ describe("PerformanceMatrix", () => {
     expect(screen.getByRole("columnheader", { name: "Cliff Depth" })).toBeInTheDocument();
   });
 
+  it("offers a Run-probe link to the Audit tab when cliff depth is unmeasured", async () => {
+    const { useNavStore } = await import("../../../shared/state/navStore");
+    useBatchStore.setState({ report });
+    render(<PerformanceMatrix focusedModel="qwen" onFocusModel={() => {}} />);
+
+    const link = screen.getByTestId("cliff-run-qwen");
+    expect(link).toHaveTextContent("Run probe");
+    fireEvent.click(link);
+    expect(useNavStore.getState().topView).toBe("audit");
+  });
+
   it("prompts to run when there is no report yet", () => {
     render(<PerformanceMatrix focusedModel="" onFocusModel={() => {}} />);
     expect(screen.queryByTestId("performance-matrix-table")).toBeNull();
