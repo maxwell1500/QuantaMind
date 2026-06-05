@@ -1,19 +1,7 @@
-import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import { describe, expect, it } from "vitest";
 import { toScoreRows } from "../components/scoreboard/scoreRows";
 import type { BatchReport } from "../../../shared/ipc/eval/batch";
 import type { InstalledModelInfo } from "../../../shared/ipc/models/storage";
-
-/// jsdom here doesn't expose localStorage; cliff depth reads from it, so back it
-/// with a Map for the duration of these tests.
-beforeEach(() => {
-  const store = new Map<string, string>();
-  vi.stubGlobal("localStorage", {
-    getItem: (k: string) => store.get(k) ?? null,
-    setItem: (k: string, v: string) => void store.set(k, v),
-    removeItem: (k: string) => void store.delete(k),
-  });
-});
-afterEach(() => vi.unstubAllGlobals());
 
 const model = (name: string, quantization: string): InstalledModelInfo =>
   ({ name, quantization, parameter_size: "7B", family: "x", size_bytes: 0, modified_at: "", backend: "ollama" }) as InstalledModelInfo;
@@ -50,20 +38,19 @@ describe("toScoreRows", () => {
     expect(rows[1]).toMatchObject({ quant: "—", passK: "0/5", avgSteps: "N/A", effort: "N/A", topError: "Loop Cap" });
   });
 
-  it("maps schema resilience as a percent (— when null) and reads cliff depth from the probe marker", () => {
-    localStorage.setItem("quantamind-cliff-qwen", "8192");
+  it("maps schema resilience as a percent (— when null) and the top error label", () => {
     const report: BatchReport = {
       collection_id: "c",
       columns: [
         {
-          model: "qwen", // has a cliff marker + a measured resilience
+          model: "qwen", // a measured resilience + a schema top error
           backend: "ollama",
           toolcall: null,
           agentic: { passes: 4, total_runs: 5, avg_steps: 2, avg_output_tokens_success: 100, schema_resilience: 0.5, top_error: "malformed_schema", failures: { infinite_loop_hits: 0, hallucinated_completions: 0, malformed_json_calls: 0, schema_unrecovered_calls: 1 } },
           error: null,
         },
         {
-          model: "noprobe", // no cliff marker, no schema errors seen
+          model: "clean", // no schema errors seen
           backend: "ollama",
           toolcall: null,
           agentic: { passes: 5, total_runs: 5, avg_steps: 1, avg_output_tokens_success: 80, schema_resilience: null, top_error: "none", failures: { infinite_loop_hits: 0, hallucinated_completions: 0, malformed_json_calls: 0, schema_unrecovered_calls: 0 } },
@@ -72,9 +59,8 @@ describe("toScoreRows", () => {
       ],
     };
     const rows = toScoreRows(report, []);
-    expect(rows[0]).toMatchObject({ schemaResil: "50%", cliffDepth: "8192 tok", topError: "Bad Schema" });
-    expect(rows[1]).toMatchObject({ schemaResil: "—", cliffDepth: "—" });
-    localStorage.removeItem("quantamind-cliff-qwen");
+    expect(rows[0]).toMatchObject({ schemaResil: "50%", topError: "Bad Schema" });
+    expect(rows[1]).toMatchObject({ schemaResil: "—" });
   });
 
   it("shows — for steps/effort when the column has no agentic tasks", () => {

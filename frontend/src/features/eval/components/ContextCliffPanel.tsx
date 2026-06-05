@@ -5,11 +5,17 @@ import { useParamsStore } from "../../../shared/state/paramsStore";
 import { useEvalRegistryStore, DEFAULT_PRESET } from "../state/evalRegistryStore";
 import { getBuiltinCollection, loadCustomCollection, type ToolTask } from "../../../shared/ipc/eval/registry";
 import { useVramFit } from "../../quant/useVramFit";
-import { useContextCliff } from "../hooks/useContextCliff";
+import { useCliffStore } from "../state/cliffStore";
 import { InfoButton } from "../../../shared/ui/InfoButton";
 import { TOOL_HELP } from "../help";
 import { cliffPoint } from "../cliff";
 import { ContextCliffChart } from "./ContextCliffChart";
+import type { BackendKind } from "../../../shared/ipc/models/storage";
+
+interface ProbeModel {
+  name: string;
+  backend: BackendKind;
+}
 
 const FALLBACK_MAX_TOKENS = 65536; // slider ceiling when the model context window is unknown
 
@@ -24,17 +30,47 @@ export function ContextCliffPanel() {
   const [maxTokens, setMaxTokens] = useState(16384);
   const [testSteps, setTestSteps] = useState(5);
   // The probe runs ONE of the global header models + global params. With 2+
-  // selected (Ollama), a small dropdown picks which one; default the first.
+  // selected (Ollama), a small dropdown picks which one; default the first. A
+  // pre-fill request from the Matrix can OVERRIDE that with any batch-target model.
   const selectedModels = useSelectedModelStore((s) => s.selectedModels);
   const globalParams = useParamsStore((s) => s.globalParams);
   const [probeName, setProbeName] = useState("");
-  const selected = selectedModels.find((m) => m.name === probeName) ?? selectedModels[0] ?? null;
+  const [override, setOverride] = useState<ProbeModel | null>(null);
+  const selected: ProbeModel | null =
+    override ?? selectedModels.find((m) => m.name === probeName) ?? selectedModels[0] ?? null;
   const model = selected?.name ?? "";
+  // Header models, plus the Matrix-pre-filled override when it isn't one of them.
+  const modelOptions: ProbeModel[] =
+    override && !selectedModels.some((m) => m.name === override.name) ? [override, ...selectedModels] : selectedModels;
 
-  // Keep the probe model inside the current selection (e.g. after a backend switch).
+  // Keep the probe model inside the current selection (e.g. after a backend switch),
+  // unless an explicit Matrix pre-fill override is in effect.
   useEffect(() => {
-    if (probeName && !selectedModels.some((m) => m.name === probeName)) setProbeName("");
-  }, [selectedModels, probeName]);
+    if (!override && probeName && !selectedModels.some((m) => m.name === probeName)) setProbeName("");
+  }, [selectedModels, probeName, override]);
+
+  // ── Cliff store: the probe run lives in the store so it survives navigation ──
+  const points = useCliffStore((s) => s.points);
+  const running = useCliffStore((s) => s.running);
+  const error = useCliffStore((s) => s.error);
+  const progress = useCliffStore((s) => s.progress);
+  const runningModel = useCliffStore((s) => s.runningModel);
+  const runProbe = useCliffStore((s) => s.runProbe);
+  const stopProbe = useCliffStore((s) => s.stop);
+  const resetProbe = useCliffStore((s) => s.reset);
+  const consumeRequest = useCliffStore((s) => s.consumeRequest);
+
+  // Consume a Matrix pre-fill ONCE on mount: pre-select model + collection + max
+  // tokens, but NEVER auto-run (guardrail 1) — the user clicks Execute.
+  useEffect(() => {
+    const req = consumeRequest();
+    if (req) {
+      setOverride({ name: req.model, backend: req.backend });
+      setActive(req.collectionId);
+      setMaxTokens(req.maxTokens);
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
 
   const isPreset = (id: string) => presets.some((p) => p.id === id);
 
@@ -67,44 +103,41 @@ export function ContextCliffPanel() {
     setMaxTokens((m) => Math.min(m, sliderMax));
   }, [sliderMax]);
 
-  const { points, running, error, run, reset } = useContextCliff(
-    selected?.name ?? "",
-    selected?.backend ?? "ollama",
-    tasks,
-    maxTokens,
-    testSteps,
-    globalParams,
-  );
   const cliff = cliffPoint(points);
 
+  // Clear a stale chart when the selection changes (and nothing is running), so the
+  // graph always reflects the currently-selected model/collection.
   useEffect(() => {
-    if (model && typeof localStorage !== "undefined") {
-      try {
-        if (cliff != null) {
-          localStorage.setItem(`quantamind-cliff-${model}`, cliff.toString());
-        } else {
-          localStorage.removeItem(`quantamind-cliff-${model}`);
-        }
-      } catch (e) {
-        // ignore
-      }
-    }
-  }, [cliff, model]);
+    if (!running) resetProbe();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [model, active]);
 
   const maintainedTo = points.reduce(
     (mx, p) => (p.composite != null && p.promptTokens != null && p.promptTokens > mx ? p.promptTokens : mx),
     0,
   );
+  const lastDepth = points.length > 0 ? points[points.length - 1].promptTokens : null;
 
-  const handleRun = () => void run();
-  const handleReset = () => reset();
+  const handleRun = () => {
+    if (!selected) return;
+    void runProbe({
+      model: selected.name,
+      backend: selected.backend,
+      collectionId: active, // scope the saved cliff per (collection, model)
+      tasks,
+      maxTokens,
+      steps: testSteps,
+      params: globalParams,
+    });
+  };
+  const handleStop = () => stopProbe();
+  const handleReset = () => resetProbe();
 
   return (
     <div
-      className="rounded-xl overflow-hidden border border-white/10"
+      className="rounded-xl overflow-hidden border border-slate-200 bg-white"
       style={{
-        background: "linear-gradient(145deg, #1a1f2e 0%, #161b27 100%)",
-        boxShadow: "0 8px 32px rgba(0,0,0,0.4), inset 0 1px 0 rgba(255,255,255,0.05)",
+        boxShadow: "0 1px 3px rgba(0,0,0,0.05)",
       }}
       data-testid="cliff-panel"
     >
@@ -113,13 +146,13 @@ export function ContextCliffPanel() {
         <div>
           <h2
             className="text-lg font-semibold tracking-tight"
-            style={{ color: "#e2e8f0", fontFamily: "Inter, ui-sans-serif, system-ui, sans-serif" }}
+            style={{ color: "#1e293b", fontFamily: "Inter, ui-sans-serif, system-ui, sans-serif" }}
           >
             Context-Cliff Diagnostic Probe
           </h2>
           <select
             value={active}
-            onChange={(e) => { setActive(e.target.value); reset(); }}
+            onChange={(e) => { setActive(e.target.value); setOverride(null); resetProbe(); }}
             data-testid="cliff-collection-select"
             style={{
               background: "transparent",
@@ -144,9 +177,9 @@ export function ContextCliffPanel() {
             onClick={handleReset}
             title="Reset"
             style={{
-              background: "rgba(255,255,255,0.07)",
-              border: "1px solid rgba(255,255,255,0.12)",
-              color: "#94a3b8",
+              background: "#f1f5f9",
+              border: "1px solid #cbd5e1",
+              color: "#475569",
               width: 36,
               height: 36,
               borderRadius: "50%",
@@ -158,8 +191,8 @@ export function ContextCliffPanel() {
               flexShrink: 0,
               transition: "background 0.15s",
             }}
-            onMouseEnter={(e) => (e.currentTarget.style.background = "rgba(255,255,255,0.12)")}
-            onMouseLeave={(e) => (e.currentTarget.style.background = "rgba(255,255,255,0.07)")}
+            onMouseEnter={(e) => (e.currentTarget.style.background = "#e2e8f0")}
+            onMouseLeave={(e) => (e.currentTarget.style.background = "#f1f5f9")}
           >
             ↺
           </button>
@@ -172,10 +205,10 @@ export function ContextCliffPanel() {
           <p
             style={{
               fontSize: 11,
-              color: "#f87171",
+              color: "#dc2626",
               fontFamily: "Inter, ui-sans-serif, system-ui, sans-serif",
-              background: "rgba(239,68,68,0.08)",
-              border: "1px solid rgba(239,68,68,0.15)",
+              background: "rgba(220,38,38,0.05)",
+              border: "1px solid rgba(220,38,38,0.15)",
               borderRadius: 6,
               padding: "6px 10px",
             }}
@@ -198,7 +231,7 @@ export function ContextCliffPanel() {
               display: "flex",
               alignItems: "center",
               justifyContent: "center",
-              color: "rgba(148,163,184,0.4)",
+              color: "#94a3b8",
               fontSize: 13,
               fontFamily: "Inter, ui-sans-serif, system-ui, sans-serif",
               letterSpacing: "0.02em",
@@ -225,7 +258,7 @@ export function ContextCliffPanel() {
                       fontWeight: 600,
                       color: "#64748b",
                       fontFamily: "Inter, ui-sans-serif, system-ui, sans-serif",
-                      borderBottom: "1px solid rgba(255,255,255,0.07)",
+                      borderBottom: "1px solid #e2e8f0",
                       letterSpacing: "0.03em",
                     }}
                   >
@@ -246,7 +279,7 @@ export function ContextCliffPanel() {
                     key={i}
                     style={{
                       background: isEven
-                        ? "rgba(255,255,255,0.02)"
+                        ? "#f8fafc"
                         : "transparent",
                     }}
                   >
@@ -254,16 +287,16 @@ export function ContextCliffPanel() {
                     <td style={tdStyle}>
                       {p.promptTokens != null ? Math.round(p.promptTokens).toLocaleString() : "Not available"}
                     </td>
-                    <td style={{ ...tdStyle, fontWeight: 600, color: "#e2e8f0" }}>{pct}</td>
+                    <td style={{ ...tdStyle, fontWeight: 600, color: "#1e293b" }}>{pct}</td>
                     <td style={tdStyle}>
                       {passed && (
                         <span style={passChipStyle}>
-                          <span style={{ fontSize: 13 }}>✅</span> Pass
+                          Pass
                         </span>
                       )}
                       {failed && (
                         <span style={failChipStyle}>
-                          <span style={{ fontSize: 13 }}>⚠️</span> Failure
+                          Failure
                         </span>
                       )}
                       {p.composite == null && (
@@ -279,7 +312,7 @@ export function ContextCliffPanel() {
       )}
 
       {/* ── Divider ── */}
-      <div style={{ height: 1, background: "rgba(255,255,255,0.06)", margin: "0 0" }} />
+      <div style={{ height: 1, background: "#f1f5f9", margin: "0 0" }} />
 
       {/* ── Model & Status Row ── */}
       <div
@@ -287,7 +320,7 @@ export function ContextCliffPanel() {
           display: "grid",
           gridTemplateColumns: "1fr 1fr",
           padding: "14px 20px",
-          borderBottom: "1px solid rgba(255,255,255,0.06)",
+          borderBottom: "1px solid #f1f5f9",
         }}
       >
         <div>
@@ -299,21 +332,24 @@ export function ContextCliffPanel() {
               fontFamily: "Inter, ui-sans-serif, system-ui, sans-serif",
               letterSpacing: "0.04em",
               textTransform: "uppercase",
-              fontWeight: 600,
+              fontWeight: 650,
             }}
           >
             Model
           </div>
-          <div data-testid="cliff-model" style={{ fontSize: 13, color: "#94a3b8", fontFamily: "Inter, ui-sans-serif, system-ui, sans-serif" }}>
-            {selectedModels.length >= 2 ? (
+          <div data-testid="cliff-model" style={{ fontSize: 13, color: "#475569", fontFamily: "Inter, ui-sans-serif, system-ui, sans-serif" }}>
+            {modelOptions.length >= 2 ? (
               <select
                 value={model}
-                onChange={(e) => setProbeName(e.target.value)}
+                onChange={(e) => {
+                  setOverride(null);
+                  setProbeName(e.target.value);
+                }}
                 data-testid="cliff-model-select"
                 style={{
-                  background: "rgba(255,255,255,0.05)",
-                  border: "1px solid rgba(255,255,255,0.1)",
-                  color: "#94a3b8",
+                  background: "#ffffff",
+                  border: "1px solid #cbd5e1",
+                  color: "#334155",
                   borderRadius: 6,
                   padding: "3px 8px",
                   fontSize: 12,
@@ -322,7 +358,7 @@ export function ContextCliffPanel() {
                   cursor: "pointer",
                 }}
               >
-                {selectedModels.map((m) => (
+                {modelOptions.map((m) => (
                   <option key={m.name} value={m.name}>{modelLabel(m)}</option>
                 ))}
               </select>
@@ -338,13 +374,13 @@ export function ContextCliffPanel() {
               fontFamily: "Inter, ui-sans-serif, system-ui, sans-serif",
               letterSpacing: "0.04em",
               textTransform: "uppercase",
-              fontWeight: 600,
+              fontWeight: 650,
             }}
           >
             Status
           </div>
           <div
-            style={{ fontSize: 13, color: "#94a3b8", fontFamily: "Inter, ui-sans-serif, system-ui, sans-serif" }}
+            style={{ fontSize: 13, color: "#475569", fontFamily: "Inter, ui-sans-serif, system-ui, sans-serif" }}
             data-testid="cliff-read"
           >
             {running
@@ -367,7 +403,7 @@ export function ContextCliffPanel() {
           gridTemplateColumns: "1fr 1fr",
           padding: "14px 20px",
           gap: 16,
-          borderBottom: "1px solid rgba(255,255,255,0.06)",
+          borderBottom: "1px solid #f1f5f9",
         }}
       >
         {/* Max Tokens */}
@@ -397,10 +433,10 @@ export function ContextCliffPanel() {
           <span
             style={{
               fontSize: 12,
-              color: "#e2e8f0",
+              color: "#334155",
               fontFamily: "Inter, ui-sans-serif, system-ui, sans-serif",
-              background: "rgba(255,255,255,0.07)",
-              border: "1px solid rgba(255,255,255,0.1)",
+              background: "#f1f5f9",
+              border: "1px solid #e2e8f0",
               borderRadius: 6,
               padding: "2px 8px",
               minWidth: 48,
@@ -436,10 +472,10 @@ export function ContextCliffPanel() {
           <span
             style={{
               fontSize: 12,
-              color: "#e2e8f0",
+              color: "#334155",
               fontFamily: "Inter, ui-sans-serif, system-ui, sans-serif",
-              background: "rgba(255,255,255,0.07)",
-              border: "1px solid rgba(255,255,255,0.1)",
+              background: "#f1f5f9",
+              border: "1px solid #e2e8f0",
               borderRadius: 6,
               padding: "2px 8px",
               minWidth: 32,
@@ -451,49 +487,48 @@ export function ContextCliffPanel() {
         </div>
       </div>
 
-      {/* ── Execute Button ── */}
+      {/* ── Progress + Execute / Stop ── */}
       <div style={{ padding: "14px 20px" }}>
+        {running && (
+          <div data-testid="cliff-progress" style={{ marginBottom: 12 }}>
+            <div style={{ fontSize: 11, color: "#475569", fontFamily: "Inter, ui-sans-serif, system-ui, sans-serif", marginBottom: 6 }}>
+              Probing {runningModel ?? model} — rung {progress.done}/{progress.total}
+              {lastDepth != null ? ` · ~${(lastDepth / 1000).toFixed(1)}k tokens` : ""}… keep this tab open or switch away — the run continues.
+            </div>
+            <div style={{ height: 5, background: "#f1f5f9", borderRadius: 3 }}>
+              <div
+                style={{
+                  height: 5,
+                  width: `${progress.total > 0 ? Math.round((progress.done / progress.total) * 100) : 0}%`,
+                  background: "#2563eb",
+                  borderRadius: 3,
+                  transition: "width 200ms ease",
+                }}
+              />
+            </div>
+          </div>
+        )}
         <button
           type="button"
-          disabled={!selected || running || tasks.length === 0}
-          onClick={handleRun}
+          disabled={running ? false : !selected || tasks.length === 0}
+          onClick={running ? handleStop : handleRun}
           data-testid="cliff-run"
           style={{
             width: "100%",
             padding: "12px 0",
             borderRadius: 10,
-            border: "none",
-            background:
-              !selected || running || tasks.length === 0
-                ? "rgba(255,255,255,0.06)"
-                : "linear-gradient(135deg, #1e3a5f 0%, #1e40af 50%, #1d4ed8 100%)",
-            color:
-              !selected || running || tasks.length === 0 ? "rgba(148,163,184,0.5)" : "#e0e7ff",
+            border: running ? "1px solid #fca5a5" : "none",
+            background: running ? "#fee2e2" : !selected || tasks.length === 0 ? "#f1f5f9" : "#0f172a",
+            color: running ? "#991b1b" : !selected || tasks.length === 0 ? "#94a3b8" : "#ffffff",
             fontSize: 14,
             fontWeight: 600,
             fontFamily: "Inter, ui-sans-serif, system-ui, sans-serif",
             letterSpacing: "0.02em",
-            cursor: !selected || running || tasks.length === 0 ? "not-allowed" : "pointer",
+            cursor: running || (selected && tasks.length > 0) ? "pointer" : "not-allowed",
             transition: "all 0.2s",
-            boxShadow:
-              !selected || running || tasks.length === 0
-                ? "none"
-                : "0 4px 16px rgba(29,78,216,0.3), inset 0 1px 0 rgba(255,255,255,0.1)",
-          }}
-          onMouseEnter={(e) => {
-            if (!(!selected || running || tasks.length === 0)) {
-              e.currentTarget.style.boxShadow =
-                "0 6px 24px rgba(29,78,216,0.5), inset 0 1px 0 rgba(255,255,255,0.15)";
-            }
-          }}
-          onMouseLeave={(e) => {
-            if (!(!selected || running || tasks.length === 0)) {
-              e.currentTarget.style.boxShadow =
-                "0 4px 16px rgba(29,78,216,0.3), inset 0 1px 0 rgba(255,255,255,0.1)";
-            }
           }}
         >
-          {running ? "Probing…" : "Execute Probe"}
+          {running ? "■ Stop Probe" : "Execute Probe"}
         </button>
       </div>
     </div>
@@ -505,22 +540,22 @@ export function ContextCliffPanel() {
 const tdStyle: React.CSSProperties = {
   padding: "8px 12px",
   fontSize: 13,
-  color: "#94a3b8",
+  color: "#475569",
   fontFamily: "Inter, ui-sans-serif, system-ui, sans-serif",
-  borderBottom: "1px solid rgba(255,255,255,0.04)",
+  borderBottom: "1px solid #f1f5f9",
 };
 
 const passChipStyle: React.CSSProperties = {
   display: "inline-flex",
   alignItems: "center",
   gap: 5,
-  background: "rgba(34,197,94,0.15)",
-  border: "1px solid rgba(34,197,94,0.25)",
-  color: "#4ade80",
+  background: "rgba(16,185,129,0.06)",
+  border: "1px solid rgba(16,185,129,0.2)",
+  color: "#059669",
   borderRadius: 6,
   padding: "2px 8px",
   fontSize: 12,
-  fontWeight: 500,
+  fontWeight: 650,
   fontFamily: "Inter, ui-sans-serif, system-ui, sans-serif",
 };
 
@@ -528,19 +563,20 @@ const failChipStyle: React.CSSProperties = {
   display: "inline-flex",
   alignItems: "center",
   gap: 5,
-  background: "rgba(234,179,8,0.12)",
-  border: "1px solid rgba(234,179,8,0.25)",
-  color: "#facc15",
+  background: "rgba(220,38,38,0.05)",
+  border: "1px solid rgba(220,38,38,0.2)",
+  color: "#dc2626",
   borderRadius: 6,
   padding: "2px 8px",
   fontSize: 12,
-  fontWeight: 500,
+  fontWeight: 650,
   fontFamily: "Inter, ui-sans-serif, system-ui, sans-serif",
 };
 
 const sliderStyle: React.CSSProperties = {
   flex: 1,
-  accentColor: "#3b82f6",
+  accentColor: "#2563eb",
   cursor: "pointer",
   height: 4,
 };
+

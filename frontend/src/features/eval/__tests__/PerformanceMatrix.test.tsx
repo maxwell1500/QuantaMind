@@ -1,8 +1,12 @@
 import { describe, it, expect, vi, beforeEach } from "vitest";
 import { render, screen, fireEvent } from "@testing-library/react";
+
+vi.mock("@tauri-apps/api/core", () => ({ invoke: vi.fn().mockRejectedValue(new Error("no backend in test")) }));
+
 import { PerformanceMatrix } from "../components/scoreboard/PerformanceMatrix";
 import { useBatchStore } from "../state/batchStore";
 import { useInstalledModelsStore } from "../../models/state/installedModelsStore";
+import { useCliffStore } from "../state/cliffStore";
 import type { BatchReport } from "../../../shared/ipc/eval/batch";
 
 const report: BatchReport = {
@@ -14,7 +18,10 @@ const report: BatchReport = {
 };
 
 beforeEach(() => {
+  vi.clearAllMocks();
   useBatchStore.getState().reset();
+  useCliffStore.getState().reset();
+  useCliffStore.setState({ results: {}, request: null });
   useInstalledModelsStore.setState({ list: [], status: "ready", error: null, lastRefreshedAt: 1 });
 });
 
@@ -35,7 +42,7 @@ describe("PerformanceMatrix", () => {
     expect(screen.getByRole("columnheader", { name: "Cliff Depth" })).toBeInTheDocument();
   });
 
-  it("offers a Run-probe link to the Audit tab when cliff depth is unmeasured", async () => {
+  it("pre-fills the cliff request (model + collection) and navigates to Audit — never auto-runs", async () => {
     const { useNavStore } = await import("../../../shared/state/navStore");
     useBatchStore.setState({ report });
     render(<PerformanceMatrix focusedModel="qwen" onFocusModel={() => {}} />);
@@ -43,7 +50,19 @@ describe("PerformanceMatrix", () => {
     const link = screen.getByTestId("cliff-run-qwen");
     expect(link).toHaveTextContent("Run probe");
     fireEvent.click(link);
+
+    // The probe is PRE-FILLED for this model + the report's collection, then we
+    // switch tabs — the panel waits for an explicit Run (guardrail 1).
+    expect(useCliffStore.getState().request).toMatchObject({ model: "qwen", backend: "ollama", collectionId: "c" });
     expect(useNavStore.getState().topView).toBe("audit");
+  });
+
+  it("shows the measured cliff depth from the backend store instead of the Run-probe link", () => {
+    useBatchStore.setState({ report });
+    useCliffStore.setState({ results: { c: { qwen: 12000 } } });
+    render(<PerformanceMatrix focusedModel="qwen" onFocusModel={() => {}} />);
+    expect(screen.getByTestId("cliff-value-qwen")).toHaveTextContent("12,000 tok");
+    expect(screen.queryByTestId("cliff-run-qwen")).toBeNull(); // measured → no link
   });
 
   it("prompts to run when there is no report yet", () => {

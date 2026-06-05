@@ -160,4 +160,22 @@ describe("ContextCliffPanel", () => {
     await waitFor(() => expect(getBuiltinCollection).toHaveBeenCalled());
     await waitFor(() => expect(screen.getByTestId("cliff-max-tokens")).toHaveAttribute("max", "8192"));
   });
+
+  it("pre-fills from a Matrix request (model + collection + max tokens) and does NOT auto-run", async () => {
+    const { useCliffStore } = await import("../state/cliffStore");
+    // The Matrix sets this before navigating to Audit.
+    useCliffStore.setState({ request: { model: "m2", backend: "ollama", collectionId: "curated", maxTokens: 8192 } });
+    vi.mocked(runToolcallEval).mockResolvedValue(report(1.0, 5000) as never);
+
+    render(<ContextCliffPanel />);
+    await waitFor(() => expect(getBuiltinCollection).toHaveBeenCalledWith("curated"));
+
+    // Pre-filled with the requested model (an override — not the header "m").
+    expect((screen.getByTestId("cliff-model-select") as HTMLSelectElement).value).toBe("m2");
+    expect((screen.getByTestId("cliff-max-tokens") as HTMLInputElement).value).toBe("8192");
+    // Request is one-shot.
+    expect(useCliffStore.getState().request).toBeNull();
+    // GUARDRAIL 1: pre-fill only — the probe never starts on navigation.
+    expect(runToolcallEval).not.toHaveBeenCalled();
+  });
 });
