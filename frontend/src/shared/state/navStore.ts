@@ -14,6 +14,7 @@ export type TopView =
   | "eval"
   | "audit"
   | "quant"
+  | "agentReport"
   | "settings"
   | "help";
 

@@ -8,6 +8,7 @@ import { DownloadsPage } from "./features/models/components/DownloadsPage";
 import { EvalPage } from "./features/eval/components/EvalPage";
 import { AuditPage } from "./features/audit/components/AuditPage";
 import { QuantPage } from "./features/quant/components/QuantPage";
+import { AgentReportPage } from "./features/agentReport/components/AgentReportPage";
 import { startInstalledModelsBus } from "./features/models/state/installedModelsBus";
 import { useModelSettingsStore } from "./features/models/state/modelSettingsStore";
 import { FeedbackButton } from "./features/feedback/components/FeedbackButton";
@@ -32,6 +33,7 @@ const TABS: { id: TopView; label: string }[] = [
   { id: "eval", label: "Eval" },
   { id: "audit", label: "Audit" },
   { id: "quant", label: "Quant" },
+  { id: "agentReport", label: "Agent Report" },
   { id: "settings", label: "Settings" },
   { id: "help", label: "Help" },
 ];
@@ -84,6 +86,7 @@ export default function App() {
       <div hidden={view !== "eval"} data-testid="view-eval"><EvalPage /></div>
       <div hidden={view !== "audit"} data-testid="view-audit"><AuditPage /></div>
       <div hidden={view !== "quant"} data-testid="view-quant"><QuantPage /></div>
+      <div hidden={view !== "agentReport"} data-testid="view-agentReport"><AgentReportPage /></div>
       <div hidden={view !== "settings"} data-testid="view-settings"><SettingsPage /></div>
       <div hidden={view !== "help"} data-testid="view-help"><HelpPage /></div>
       <FeedbackButton />
