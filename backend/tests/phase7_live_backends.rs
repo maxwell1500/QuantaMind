@@ -191,6 +191,195 @@ async fn live_ollama_native_passk_drives_verdict_and_recommender() {
     assert!(passes >= 1, "a tool-capable model should pass at least once in {k} tries");
 }
 
+// ── S1+S2+S4+S5+S6 — a REAL agentic multi-model batch → verdicts → recommender ─
+// Runs the app's real engine (run_batch_resumable) over two live Ollama models
+// with the REAL Ollama VRAM-isolation gate and a real job log, then walks the
+// readiness scenarios off the resulting BatchReport.
+
+use quantamind_lib::inference::eval::agentic::sandbox::{EndStateRule, MockResponse, TaskCheckpoint};
+use quantamind_lib::inference::eval::agentic::spec::AgenticSpec;
+use quantamind_lib::inference::eval::batch::{run_batch_resumable, BatchSink, OllamaVramGate, TaskOutcome};
+use quantamind_lib::inference::eval::agentic::model_turn::BackendTurn;
+use quantamind_lib::inference::eval::readiness::inputs::assess_report;
+use quantamind_lib::inference::eval::toolcall::matrix::ModelTarget;
+use quantamind_lib::persistence::jobs::queue::{self, RunConfig};
+use std::sync::Arc;
+
+struct SilentSink;
+impl BatchSink for SilentSink {
+    fn task_started(&self, _m: &str, _t: &str, _i: usize, _n: usize, _c: &str) {}
+    fn agentic_turn(&self, _m: &str, _t: &str, _s: &quantamind_lib::inference::eval::agentic::step::TrajectoryStep) {}
+    fn task_done(&self, _m: &str, _t: &str, _o: &TaskOutcome) {}
+}
+
+fn weather_agentic_task() -> ToolTask {
+    let mut t = weather_task();
+    t.id = "weather_agentic".into();
+    t.category = "agentic".into();
+    t.prompt = "Find the current weather in Paris using the available tool, then report it.".into();
+    t.agentic = Some(AgenticSpec {
+        mocks: vec![MockResponse {
+            call: Call { name: "get_weather".into(), args: json!({ "city": "Paris" }) },
+            response: "18°C and sunny in Paris.".into(),
+        }],
+        end_state: EndStateRule::RequireSequence(vec![TaskCheckpoint { tool: "get_weather".into(), args: json!({ "city": "Paris" }) }]),
+        k: Some(2),
+        max_steps: Some(6),
+        faults: vec![],
+        max_recovery: None,
+    });
+    t
+}
+
+#[tokio::test]
+#[ignore]
+async fn live_full_readiness_walk_real_agentic_batch() {
+    let strong = ollama_tool_model(); // llama3.2:3b — should navigate the sandbox
+    let weak = std::env::var("QM_OLLAMA_WEAK").unwrap_or_else(|_| "llama-3.2-1b-instruct_q8_0:latest".into());
+    let targets = vec![
+        ModelTarget { model: strong.clone(), backend: BackendKind::Ollama },
+        ModelTarget { model: weak.clone(), backend: BackendKind::Ollama },
+    ];
+    let tasks = vec![weather_agentic_task()];
+
+    // Real job log (S4) + the real VRAM-isolation gate between the two models.
+    let dir = std::env::temp_dir().join("qm_live_jobs");
+    let _ = std::fs::create_dir_all(&dir);
+    let path = queue::run_path(&dir, "live-collection");
+    let cfg = RunConfig { collection_id: "live-collection".into(), targets: targets.clone(), tasks: tasks.clone(), k: Some(2), max_steps: Some(6), params: None, keep_alive: None, native: false };
+    queue::create(&path, &cfg).unwrap();
+    let rec_path = path.clone();
+    let record = move |u: &_| {
+        let _ = queue::append(&rec_path, u);
+    };
+
+    println!("[batch] running REAL agentic batch over {strong} + {weak} with OllamaVramGate (VRAM isolation between models)…");
+    let sink: Arc<dyn BatchSink> = Arc::new(SilentSink);
+    let report = run_batch_resumable(
+        "live-collection",
+        &targets,
+        &tasks,
+        CancellationToken::new(),
+        sink,
+        move |t: &ModelTarget| BackendTurn { backend: t.backend, endpoint: endpoint::OLLAMA.to_string(), model: t.model.clone(), cancel: CancellationToken::new(), options: None, keep_alive: None },
+        &[],
+        &record,
+        &OllamaVramGate,
+    )
+    .await
+    .expect("batch failed");
+
+    println!("\n=== REAL BatchReport ===");
+    for c in &report.columns {
+        let a = c.agentic.as_ref();
+        println!(
+            "  {:<40} agentic={}  err={:?}",
+            c.model,
+            a.map(|x| format!("pass {}/{} (pass^k={:.2}) loops={} avg_steps={:?}", x.passes, x.total_runs, x.passes as f64 / x.total_runs.max(1) as f64, x.failures.infinite_loop_hits, x.avg_steps)).unwrap_or_else(|| "none".into()),
+            c.error
+        );
+    }
+
+    // ── S1: verdicts + interpolated reasons under a Coding-agent-like profile ──
+    println!("\n=== S1: verdicts @ min_pass_k=0.60 (Prompt-Based path) ===");
+    let v_lenient = assess_report(&report, &profile(0.60));
+    for v in &v_lenient {
+        println!("  {:<40} {:?}  path={:?}  blocking={:?} conditions={:?}", v.model, v.verdict.status, v.verdict.path, v.verdict.blocking, v.verdict.conditions);
+    }
+
+    // ── S1: raise the bar → a previously-passing model flips deterministically ──
+    println!("\n=== S1: same data @ min_pass_k=0.99 (stricter) ===");
+    let v_strict = assess_report(&report, &profile(0.99));
+    for v in &v_strict {
+        println!("  {:<40} {:?}  blocking={:?}", v.model, v.verdict.status, v.verdict.blocking);
+    }
+    let strong_lenient = v_lenient.iter().find(|v| v.model == strong).map(|v| v.verdict.status);
+    let strong_strict = v_strict.iter().find(|v| v.model == strong).map(|v| v.verdict.status);
+    println!("  flip check: {strong} {:?} -> {:?}", strong_lenient, strong_strict);
+
+    // ── S5: rank into the recommendation leaderboard ──
+    let mut board = assess_report(&report, &profile(0.60));
+    recommend::rank(&mut board);
+    println!("\n=== S5: recommendation leaderboard ===");
+    for (i, v) in board.iter().enumerate() {
+        println!("  #{} {:<40} {:?} effort={:?}", i + 1, v.model, v.verdict.status, v.effort);
+    }
+    let top = recommend::recommendation(&board).unwrap();
+    let banner = match top.verdict.status {
+        Readiness::Ready => format!("Recommended for Coding agent: {} (Ready)", top.model),
+        Readiness::Conditional => format!("Best available: {} (Conditional)", top.model),
+        Readiness::NotReady => format!("No model is ready — closest: {} (NotReady — {})", top.model, top.verdict.blocking.first().cloned().unwrap_or_default()),
+    };
+    println!("  BANNER: {banner}");
+
+    // ── S4: the real job log on disk (Header + per-(model,task) units) ──
+    let (loaded_cfg, units) = queue::load(&path).unwrap().expect("job log present");
+    println!("\n=== S4: job log {} ===", path.display());
+    println!("  header.collection={} native={}", loaded_cfg.collection_id, loaded_cfg.native);
+    for u in &units {
+        println!("  unit: model={} task={} is_native={} outcome={}", u.model, u.task_id, u.is_native, match &u.outcome { TaskOutcome::Agentic { .. } => "agentic", TaskOutcome::Single { .. } => "single", TaskOutcome::Error { .. } => "error" });
+    }
+    // S4 resume: fold the completed units into a partial report (bulk rehydration).
+    let partial = quantamind_lib::inference::eval::batch::fold_report("live-collection", &targets, &tasks, &units);
+    println!("  fold_report → {} columns rebuilt for instant repaint", partial.columns.iter().filter(|c| c.agentic.is_some()).count());
+    queue::delete(&path).unwrap(); // S4 discard
+    assert!(queue::load(&path).unwrap().is_none(), "discard removes the log");
+
+    // ── S6: a model with no agentic data is never Ready ──
+    let bare = BatchColumn { model: "ghost".into(), backend: BackendKind::Ollama, toolcall: None, agentic: None, agentic_native_fc: None, error: None };
+    let bare_report = quantamind_lib::inference::eval::batch::BatchReport { collection_id: "x".into(), num_ctx: None, columns: vec![bare] };
+    let bv = assess_report(&bare_report, &profile(0.60));
+    println!("\n=== S6: no-agentic-data model => {:?} (must be NotReady) ===", bv[0].verdict.status);
+    assert_eq!(bv[0].verdict.status, Readiness::NotReady);
+
+    // Sanity: the strong model should have produced real agentic data.
+    let strong_col = report.columns.iter().find(|c| c.model == strong).unwrap();
+    assert!(strong_col.agentic.is_some() || strong_col.error.is_some(), "strong model produced neither data nor an error");
+    println!("\n[done] real agentic batch + S1/S4/S5/S6 walked against live Ollama.");
+}
+
+// ── S2 — real VRAM fit from REAL model dims, flips at a low cap ───────────────
+
+#[tokio::test]
+#[ignore]
+async fn live_s2_real_vram_fit_flips_with_cap() {
+    use quantamind_lib::commands::models::model_inspect::fetch_dims;
+    use quantamind_lib::commands::storage::storage::fetch_installed_with_stats;
+    use quantamind_lib::inference::eval::readiness::vram_fit::estimate;
+
+    let model = ollama_tool_model();
+    let dims = fetch_dims(&model).await.expect("fetch_dims (Ollama /api/show) failed");
+    let weights = fetch_installed_with_stats(endpoint::OLLAMA)
+        .await
+        .ok()
+        .and_then(|v| v.into_iter().find(|m| m.name == model || m.name == format!("{model}:latest")).map(|m| m.size_bytes))
+        .expect("weight size from /api/tags");
+    let ctx = 8192u32;
+    let roomy = estimate(weights, dims.layers, dims.head_count, dims.head_count_kv, dims.embedding_length, ctx, 24 * 1024u64.pow(3));
+    let tight = estimate(weights, dims.layers, dims.head_count, dims.head_count_kv, dims.embedding_length, ctx, 2 * 1024u64.pow(3));
+    println!("[S2 real VRAM fit] {model}: weights={:.2}GB kv@{ctx}={:.2}GB", weights as f64 / 1e9, roomy.kv_cache_bytes as f64 / 1e9);
+    println!("  cap 24GB → fits={} ; cap 2GB → fits={}", roomy.fits, tight.fits);
+    assert!(roomy.fits, "should fit a 24GB cap");
+    assert!(!tight.fits, "should NOT fit a 2GB cap");
+
+    // The verdict follows the real fit under a require_full_vram (Coding-agent) profile.
+    let mut p = profile(0.60);
+    p.require_full_vram = true;
+    let col = BatchColumn {
+        model: model.clone(),
+        backend: BackendKind::Ollama,
+        toolcall: None,
+        agentic: Some(AggAgentic { passes: 2, total_runs: 2, avg_steps: Some(2.0), avg_output_tokens_success: Some(50.0), schema_resilience: None, top_error: TopError::None, failures: FailureTracker::default() }),
+        agentic_native_fc: None,
+        error: None,
+    };
+    let ready = verdict_for(&col, Some(roomy.fits), roomy.pressure, &p).status;
+    let blocked = verdict_for(&col, Some(tight.fits), false, &p).status;
+    println!("  verdict @24GB={:?}  @2GB={:?}", ready, blocked);
+    assert_eq!(ready, Readiness::Ready);
+    assert_eq!(blocked, Readiness::NotReady);
+}
+
 // ── llama.cpp — spawn the REAL server (app's own code) + generate ────────────
 
 #[tokio::test]
