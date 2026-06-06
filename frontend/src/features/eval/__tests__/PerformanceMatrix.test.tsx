@@ -132,14 +132,19 @@ describe("PerformanceMatrix", () => {
   it("surfaces the full failure breakdown (incl. the 2 previously-hidden counts) on the Top Error cell", () => {
     useBatchStore.setState({ report });
     render(<PerformanceMatrix focusedModel="qwen" onFocusModel={() => {}} />);
-    // loopy hit the loop cap 4×, so the ⓘ exposes ALL four counts in its native
-    // (clip-proof) title — including Fake Done / Bad Schema, which the badge hides.
+    // loopy hit the loop cap 4×. Hovering the ⓘ opens a clip-safe portal tooltip
+    // (replacing the WebView-unreliable native title) exposing ALL four counts —
+    // including Fake Done / Bad Schema, which the badge itself hides.
     const info = screen.getByTestId("failbreak-loopy");
-    const title = info.getAttribute("title") ?? "";
-    expect(title).toMatch(/Loop Cap 4/);
-    expect(title).toMatch(/Fake Done 0/);
-    expect(title).toMatch(/Bad Schema 0/);
-    expect(title).toMatch(/Malformed 0/);
+    expect(screen.queryByTestId("tooltip-failbreak-loopy")).toBeNull(); // closed until hover
+    fireEvent.mouseEnter(info);
+    const tip = screen.getByTestId("tooltip-failbreak-loopy");
+    expect(tip).toHaveTextContent(/Loop Cap 4/);
+    expect(tip).toHaveTextContent(/Fake Done 0/);
+    expect(tip).toHaveTextContent(/Bad Schema 0/);
+    expect(tip).toHaveTextContent(/Malformed 0/);
+    fireEvent.mouseLeave(info);
+    expect(screen.queryByTestId("tooltip-failbreak-loopy")).toBeNull(); // closes on leave
     // qwen had zero failures → no breakdown affordance.
     expect(screen.queryByTestId("failbreak-qwen")).toBeNull();
   });

@@ -5,6 +5,7 @@ import { useNavStore } from "../../../../shared/state/navStore";
 import { useCliffStore } from "../../state/cliffStore";
 import { toScoreRows } from "./scoreRows";
 import { InfoButton } from "../../../../shared/ui/InfoButton";
+import { Tooltip } from "../../../../shared/ui/Tooltip";
 import { TOOL_HELP, metricTitle } from "../../help";
 import type { FailureTracker } from "../../../../shared/ipc/eval/batch";
 
@@ -227,7 +228,9 @@ export function PerformanceMatrix({
                 {columns.map((h) => {
                   const tip = COLUMN_HELP[h];
                   return (
-                    <th key={h} style={th} title={tip}>{h}</th>
+                    <th key={h} style={th}>
+                      {tip ? <Tooltip label={tip} testId={`col-${h}`}><span style={{ cursor: "help" }}>{h}</span></Tooltip> : h}
+                    </th>
                   );
                 })}
               </tr>
@@ -330,20 +333,22 @@ export function PerformanceMatrix({
                     <td style={td}>
                       {getTopErrorBadge(r.topError)}
                       {(() => {
-                        // Native title (not an absolute popup) — the table card is
-                        // overflow-hidden, which would clip an InfoButton popup; a
-                        // native tooltip is OS-rendered and never clips.
+                        // Clip-safe portal tooltip — the table card scrolls
+                        // (overflow), which would clip an in-flow popup, and the
+                        // native title= the cell used before doesn't render
+                        // reliably in the WebView. Tooltip portals to <body>.
                         if (!r.failures) return null;
                         const fb = failureBreakdown(r.failures);
                         if (fb.total === 0) return null;
                         return (
-                          <span
-                            title={fb.text}
-                            data-testid={`failbreak-${r.model}`}
-                            style={{ marginLeft: 5, cursor: "help", color: "#94a3b8", fontSize: 10, fontWeight: 700 }}
-                          >
-                            ⓘ
-                          </span>
+                          <Tooltip label={fb.text} testId={`failbreak-${r.model}`}>
+                            <span
+                              data-testid={`failbreak-${r.model}`}
+                              style={{ marginLeft: 5, cursor: "help", color: "#94a3b8", fontSize: 10, fontWeight: 700 }}
+                            >
+                              ⓘ
+                            </span>
+                          </Tooltip>
                         );
                       })()}
                     </td>

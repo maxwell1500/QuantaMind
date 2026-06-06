@@ -384,8 +384,10 @@ Error), with a click-through Trace Debugger. See [the workspace](#eval-runner).
   `Top Error` shows the dominant failure mode; when a model had
   any agentic failure an **ⓘ** sits next to the badge — hovering it reveals the full
   count of all four modes (Loop Cap · Fake Done · Bad Schema · Malformed), including
-  the two the headline badge hides. It's a native tooltip (the Matrix card is
-  overflow-clipped, so an absolute popup would be cut off).
+  the two the headline badge hides. The breakdown (and each column header) uses a
+  **clip-safe tooltip** (`shared/ui/Tooltip`) that portals to `<body>` and is
+  `position: fixed`, so the overflow-scrolled Matrix card can't clip it — replacing
+  the native `title=` attribute, which the macOS WebView rendered unreliably.
   Faults and the recovery budget are authored in the Task & Sandbox Configurator
   (the **Fault Injection** box and **Max Recovery** field); single-turn tasks and
   fault-free agentic tasks omit both and round-trip byte-identical.
