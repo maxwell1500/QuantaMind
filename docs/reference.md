@@ -725,6 +725,16 @@ under `require_full_vram` that N/A blocks (ignorance is not a pass). Lower the c
 a fitting model flips to NotReady deterministically — model the exact hardware you're
 buying for.
 
+**Metadata resilience.** Some newer Ollama archs (e.g. `qwen35`) omit
+`attention.head_count_kv` from `/api/show`. Rather than mark such a model "VRAM fit not
+measured" (which would wrongly block it under `require_full_vram`), the dims parser
+defaults a missing KV head count to `head_count` (MHA, the GGUF convention) and labels
+the result a **conservative estimate** — for a GQA model this overestimates the KV
+cache, so it can only ever under-promise fit, never over-promise it. The per-model line
+and the recommendation banner say the figure is a conservative estimate; the other four
+dims stay required (still N/A if any is missing). This keeps the "never fabricate —
+label estimates" contract while not penalising a working model for incomplete metadata.
+
 **Prompt-based vs native path.** Two ways a model can do tool-calling, measured and
 labelled **separately** so they're never conflated. The **prompt-based** proxy injects
 the tool schemas into the system prompt and parses the text JSON the model emits — the

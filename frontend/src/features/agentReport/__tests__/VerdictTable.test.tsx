@@ -73,6 +73,23 @@ describe("VerdictTable", () => {
     );
     // llama.cpp (no memory profile) → honest N/A, never a guessed fit.
     expect(screen.getByTestId("readiness-row-mistral-nemo")).toHaveTextContent("VRAM fit: N/A (single-model backend)");
+    // A measured-but-exact profile shows no estimate caveat.
+    expect(screen.queryByTestId("vram-estimated")).not.toBeInTheDocument();
+  });
+
+  it("labels the VRAM line as a conservative estimate when KV head count was defaulted", () => {
+    const est: ModelVerdict[] = [
+      {
+        model: "qwen3.5",
+        backend: "ollama",
+        verdict: { status: "ready", blocking: [], conditions: [], path: "native_fc" },
+        memory: { weights_bytes: 5 * GIB, kv_cache_bytes: 2 * GIB, total_bytes: 7 * GIB, cap_bytes: 24 * GIB, context_length: 8192, fits: true, pressure: false, estimated: true },
+      },
+    ];
+    render(<VerdictTable verdicts={est} />);
+    const row = screen.getByTestId("readiness-row-qwen3.5");
+    expect(row).toHaveTextContent("· est."); // hidden machine-readable string
+    expect(within(row).getByTestId("vram-estimated")).toBeInTheDocument();
   });
 
   it("shows REAL measured metrics (Pass^k / steps / effort) — values or N/A, never fabricated", () => {

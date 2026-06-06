@@ -95,7 +95,8 @@ function MemoryLine({ m, backend }: { m: MemoryProfile | null | undefined; backe
       return "";
     }
     const note = !m.fits ? "won't fit" : m.pressure ? "high VRAM pressure" : "fits";
-    return `VRAM: ${gb(m.total_bytes)} GB (${gb(m.weights_bytes)} model + ${gb(m.kv_cache_bytes)} cache) ${m.fits ? "<" : ">"} ${gb(m.cap_bytes)} GB cap · ${note}`;
+    const est = m.estimated ? " · est." : "";
+    return `VRAM: ${gb(m.total_bytes)} GB (${gb(m.weights_bytes)} model + ${gb(m.kv_cache_bytes)} cache) ${m.fits ? "<" : ">"} ${gb(m.cap_bytes)} GB cap · ${note}${est}`;
   };
 
   const expectedText = getExpectedText();
@@ -122,6 +123,11 @@ function MemoryLine({ m, backend }: { m: MemoryProfile | null | undefined; backe
       <div className={color}>
         VRAM: {gb(m.total_bytes)} GB used ({gb(m.weights_bytes)}GB model + {gb(m.kv_cache_bytes)}GB cache) {m.fits ? "<" : ">"} {gb(m.cap_bytes)}GB cap
       </div>
+      {m.estimated && (
+        <div data-testid="vram-estimated" className="text-[11px] text-slate-400">
+          conservative estimate — model didn't report KV head count
+        </div>
+      )}
     </div>
   );
 }

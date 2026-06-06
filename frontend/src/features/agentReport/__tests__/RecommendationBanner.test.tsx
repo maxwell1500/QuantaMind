@@ -38,4 +38,16 @@ describe("RecommendationBanner", () => {
     const { container } = render(<RecommendationBanner verdicts={[]} profileName="X" />);
     expect(container).toBeEmptyDOMElement();
   });
+
+  it("notes a conservative VRAM estimate when the pick's fit was estimated", () => {
+    const pick = verdict("qwen3.5", "ready");
+    pick.memory = { weights_bytes: 1, kv_cache_bytes: 1, total_bytes: 2, cap_bytes: 24, context_length: 8192, fits: true, pressure: false, estimated: true };
+    render(<RecommendationBanner verdicts={[pick]} profileName="Coding agent" />);
+    expect(screen.getByTestId("recommendation-estimated")).toHaveTextContent("conservative estimate");
+  });
+
+  it("shows no estimate note when fit was exact or unmeasured", () => {
+    render(<RecommendationBanner verdicts={[verdict("qwen2.5-coder", "ready")]} profileName="Coding agent" />);
+    expect(screen.queryByTestId("recommendation-estimated")).not.toBeInTheDocument();
+  });
 });

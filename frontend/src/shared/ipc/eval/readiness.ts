@@ -44,6 +44,8 @@ export const MemoryProfileSchema = z.object({
   context_length: z.number().int().nonnegative(),
   fits: z.boolean(),
   pressure: z.boolean(),
+  // KV cache sized from a defaulted head_count_kv → a conservative overestimate.
+  estimated: z.boolean().optional(),
 });
 export type MemoryProfile = z.infer<typeof MemoryProfileSchema>;
 

@@ -3,7 +3,7 @@ use super::{estimate, try_profile, Dims};
 const GIB: u64 = 1_073_741_824;
 
 fn dims() -> Dims {
-    Dims { layers: 32, head_count: 32, head_count_kv: 8, embedding_length: 4096, context_length: 8192 }
+    Dims { layers: 32, head_count: 32, head_count_kv: 8, embedding_length: 4096, context_length: 8192, kv_estimated: false }
 }
 
 #[test]
@@ -18,6 +18,14 @@ fn try_profile_falls_back_to_model_max_context_when_run_has_no_num_ctx() {
     let p = try_profile(Some(5 * GIB), Some(dims()), None, Some(16 * GIB)).unwrap();
     assert_eq!(p.context_length, 8192); // dims.context_length (model max)
     assert_eq!(p.kv_cache_bytes, GIB);
+}
+
+#[test]
+fn try_profile_propagates_the_estimated_flag_from_dims() {
+    let measured = try_profile(Some(5 * GIB), Some(dims()), Some(8192), Some(16 * GIB)).unwrap();
+    assert!(!measured.estimated); // real KV head count → exact
+    let est = try_profile(Some(5 * GIB), Some(Dims { kv_estimated: true, ..dims() }), Some(8192), Some(16 * GIB)).unwrap();
+    assert!(est.estimated); // defaulted KV head count → conservative estimate
 }
 // Llama-3-8B (GQA): 32 layers, 32 heads, 8 KV heads, 4096 emb → KV @ 8k = exactly 1 GiB.
 fn llama3_8b(weights: u64, ctx: u32, cap: u64) -> super::MemoryProfile {

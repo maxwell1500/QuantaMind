@@ -17,6 +17,10 @@ pub struct MemoryProfile {
     pub context_length: u32,
     pub fits: bool,
     pub pressure: bool,
+    /// The KV cache was sized from a defaulted `head_count_kv` (the model didn't
+    /// report one) → a conservative overestimate. The UI labels the fit "estimated".
+    #[serde(default)]
+    pub estimated: bool,
 }
 
 /// Pure VRAM-fit estimate: weights + KV cache (via the canonical `vram_math`
@@ -37,7 +41,7 @@ pub fn estimate(
     let total_bytes = weights_bytes.saturating_add(kv_cache_bytes);
     let fits = total_bytes <= cap_bytes;
     let pressure = fits && cap_bytes > 0 && total_bytes as f64 >= cap_bytes as f64 * PRESSURE_FRACTION;
-    MemoryProfile { weights_bytes, kv_cache_bytes, total_bytes, cap_bytes, context_length, fits, pressure }
+    MemoryProfile { weights_bytes, kv_cache_bytes, total_bytes, cap_bytes, context_length, fits, pressure, estimated: false }
 }
 
 /// Transformer dimensions for the KV-cache estimate, mirrored from `commands`'
@@ -50,6 +54,9 @@ pub struct Dims {
     pub head_count_kv: u64,
     pub embedding_length: u64,
     pub context_length: u32,
+    /// `head_count_kv` was defaulted (model didn't report it) → the resulting fit
+    /// is a conservative estimate; propagated to `MemoryProfile.estimated`.
+    pub kv_estimated: bool,
 }
 
 /// Compute a memory profile only when every input is present: a cap, the exact
@@ -64,7 +71,9 @@ pub fn try_profile(
 ) -> Option<MemoryProfile> {
     let (weights, d, cap) = (weights_bytes?, dims?, cap_bytes?);
     let ctx = num_ctx.unwrap_or(d.context_length);
-    Some(estimate(weights, d.layers, d.head_count, d.head_count_kv, d.embedding_length, ctx, cap))
+    let mut profile = estimate(weights, d.layers, d.head_count, d.head_count_kv, d.embedding_length, ctx, cap);
+    profile.estimated = d.kv_estimated;
+    Some(profile)
 }
 
 #[cfg(test)]

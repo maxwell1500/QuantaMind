@@ -71,6 +71,11 @@ export function RecommendationBanner({ verdicts, profileName }: { verdicts: Mode
         </strong>{" "}
         <span className="font-semibold">({statusLabel(status)})</span>
         <span>{tail}</span>
+        {pick.memory?.estimated && (
+          <div data-testid="recommendation-estimated" className="text-xs opacity-70 mt-1">
+            VRAM usage is a conservative estimate due to incomplete model metadata.
+          </div>
+        )}
       </div>
     </div>
   );

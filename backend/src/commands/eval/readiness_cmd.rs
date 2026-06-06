@@ -110,6 +110,7 @@ pub async fn assess_readiness(
                     head_count_kv: d.head_count_kv,
                     embedding_length: d.embedding_length,
                     context_length: d.context_length as u32,
+                    kv_estimated: d.kv_estimated,
                 }),
                 None => None,
             };
