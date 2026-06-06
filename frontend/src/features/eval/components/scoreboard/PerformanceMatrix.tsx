@@ -161,7 +161,9 @@ export function PerformanceMatrix({
           </span>
         </div>
         <span style={{ fontSize: 11, color: "#64748b", fontFamily: "Inter, sans-serif" }}>
-          &nbsp;(per-model summary — click a row to inspect model details)
+          {/* The "click to inspect" hint only earns its place with ≥2 models to switch
+              between; with one model the row click just scrolls to the (already-shown) detail. */}
+          {rows.length > 1 ? " (per-model summary — click a row to inspect model details)" : " (per-model summary)"}
         </span>
         <span style={{ marginLeft: "auto", display: "inline-flex", alignItems: "center", gap: 10 }}>
           {anyNative && (

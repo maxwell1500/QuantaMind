@@ -95,6 +95,16 @@ describe("PerformanceMatrix", () => {
     expect(screen.queryByTestId("cliff-value-qwen")).toBeNull(); // the "388 tok" depth is suppressed
   });
 
+  it("shows the 'click a row to inspect' hint only with 2+ models", () => {
+    useBatchStore.setState({ report }); // two models
+    const { rerender } = render(<PerformanceMatrix focusedModel="qwen" onFocusModel={() => {}} />);
+    expect(screen.getByText(/click a row to inspect/)).toBeInTheDocument();
+
+    useBatchStore.setState({ report: { collection_id: "c", columns: [report.columns[0]] } }); // one model
+    rerender(<PerformanceMatrix focusedModel="qwen" onFocusModel={() => {}} />);
+    expect(screen.queryByText(/click a row to inspect/)).toBeNull();
+  });
+
   it("renders an always-visible legend explaining Cliff Depth + the probe payoff", () => {
     useBatchStore.setState({ report });
     render(<PerformanceMatrix focusedModel="qwen" onFocusModel={() => {}} />);

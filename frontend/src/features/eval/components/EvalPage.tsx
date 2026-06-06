@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { useEvalRegistryStore } from "../state/evalRegistryStore";
 import { useInstalledModelsStore } from "../../models/state/installedModelsStore";
 import { useSelectedModelStore } from "../../../shared/state/selectedModelStore";
@@ -30,6 +30,13 @@ export function EvalPage() {
   const [targets, setTargets] = useState<string[]>([]);
   const [focusedModel, setFocusedModel] = useState<string>("");
   const [focusedTaskId, setFocusedTaskId] = useState<string | null>(null);
+  // The per-model detail panels live above the Performance Matrix; a row click
+  // scrolls them into view so the inspect action is tangible even for one model.
+  const detailRef = useRef<HTMLDivElement>(null);
+  const focusModel = (m: string) => {
+    setFocusedModel(m);
+    detailRef.current?.scrollIntoView?.({ behavior: "smooth", block: "start" });
+  };
   const [iterationsK, setIterationsK] = useState<number>(1);
   const [maxSteps, setMaxSteps] = useState<number>(8);
   const [editing, setEditing] = useState(false);
@@ -127,15 +134,17 @@ export function EvalPage() {
           <CollectionEditor onClose={() => setEditing(false)} />
         ) : (
           <>
-            <MatrixScoreboard
-              model={focusedModel}
-              k={iterationsK}
-              maxSteps={maxSteps}
-              focusedTaskId={focusedTaskId}
-              setFocusedTaskId={setFocusedTaskId}
-            />
+            <div ref={detailRef}>
+              <MatrixScoreboard
+                model={focusedModel}
+                k={iterationsK}
+                maxSteps={maxSteps}
+                focusedTaskId={focusedTaskId}
+                setFocusedTaskId={setFocusedTaskId}
+              />
+            </div>
             <TraceDebugger model={focusedModel} taskId={focusedTaskId} setTaskId={setFocusedTaskId} />
-            <PerformanceMatrix focusedModel={focusedModel} onFocusModel={setFocusedModel} />
+            <PerformanceMatrix focusedModel={focusedModel} onFocusModel={focusModel} />
           </>
         )}
       </div>
