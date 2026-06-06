@@ -583,6 +583,10 @@ eval](reference.md#agentic-eval) for the contract.
 | 3 | Throttled single-stream React consumer (rAF-buffered `batchStore`, `useBatchRun`) | done |
 | 4 | 3-pane Eval workspace: `MatrixScoreboard` + `TraceDebugger` + audit export | done |
 | 5 | Audit tab: saved Matrix history + export + Context-Cliff probe | done |
+| 6 | Driver B lazy-agent traps: per-call `FaultInjection` (transient/persistent) in the sandbox + runner (`ToolError` step), authored in the Configurator | done |
+| 7 | Driver D schema resilience: semantic `validate_call` + `max_recovery` loop (`SchemaError` step, `MalformedSchema` failure, `schema_resilience` metric) | done |
+| 8 | Matrix `Schema Resil.` + `Cliff Depth` columns (cliff depth shared with the Inspector budget gauge via the `quantamind-cliff-<model>` marker) | done |
+| 9 | CSV import: strict flat `id,prompt,expected_tool,expected_args` + shared Tools box → custom collection (`read_text_capped`, `csvImport.ts`, `CsvImportModal`); single-turn only, live located validation | done |
 
 Locked decisions (set during planning): **iterate in Rust, never React** — one
 `run_batch_eval` command runs a strict sequential model×task queue and streams
@@ -597,6 +601,42 @@ Follow-ups: persist each `run_batch_eval` to history (extend `RunSummary` with
 agentic metrics) so the Audit timeline reflects batch runs; retire the now-
 orphaned `run_collection_matrix`/`run_toolcall_eval` commands + `MatrixPanel`/
 `ToolCallPanel` components once nothing references them.
+
+### Phase 7 — Local Agent Readiness Validator
+
+Packages the Phase-6 engine into a transparent **"is this model ready to replace
+my cloud agent"** verdict. See [Local Agent Readiness](reference.md#agent-readiness)
+for the contract.
+
+| # | Step | Status |
+| --- | --- | --- |
+| 7.1 | Pure `readiness::assess` verdict model (Ready/Conditional/NotReady) — epsilon-guarded thresholds, strict null-gating (required-but-unmeasured blocks), one scoring source of truth for GUI + future CLI | done |
+| 7.1 | Editable built-in profiles (Coding agent / RAG assistant / General agent) as flat JSON via `persistence/readiness/profiles` + collision-proof `safe_filename` | done |
+| — | `AggAgentic` carries the full `FailureTracker` so the loop/hallucination gates see exact counts, not just `top_error` | done |
+| — | Persist the last `BatchReport` per collection (`persistence/readiness/reports`) — Rust is the verdict's source of truth, not the frontend store | done |
+| 7.7 | **Agent Report** tab: pick a collection + profile, run `assess_readiness`, render per-model badges + interpolated reasons + measured path; shareable offline HTML export | done |
+| 7.4 | **Hardware Telemetry**: measure VRAM fit (exact weights + real KV cache at the run's `num_ctx` vs an allocation cap) via the pure `readiness::vram_fit`; Host Hardware Profile panel (arch + cap dropdown) + per-model memory line; flips `require_full_vram` on for Coding-agent | done |
+| 7.2 | **Native-FC test mode**: run the same agentic tasks through Ollama's native `/api/chat` `tool_calls` API (`NativeOllamaTurn` translates back to the canonical call shape, so the sandbox/scoring are byte-identical); parallel **Native FC pass^k** Matrix column behind a toggle; the verdict **prefers native** when measured. Ollama-only — llama.cpp/MLX N/A | done |
+| 7.5 | **Resumable job queue + VRAM isolation**: append-only `.jsonl` job log per run (`persistence/jobs`), healed on a truncated tail; `run_batch_resumable` skips completed units (prompt AND native) and appends each new one; an injected `VramGate` (`OllamaVramGate` = `keep_alive:0` + `/api/ps` poll, **assert-and-fail**) evicts the previous model before the next loads; resume bulk-paints the Matrix from one partial report then streams the tail; transactional finish (save → verify → delete log) | done |
+| 7.3 | **Agentic-aware recommender**: `assess_readiness` returns verdicts **ranked best-first** via the pure `readiness::recommend::rank` (tier Ready>Conditional>NotReady, ties by effort then steps, native-first metrics, float-safe `total_cmp`/`None→MAX`); the Agent Report opens with a leaderboard + a Recommendation banner ("Recommended for {profile}: {model} (Ready)", or "no model is ready — closest" — never a fabricated Ready) | done |
+| 7.6 | Headless `quantamind-cli` | **dropped** |
+
+**Phase 7 complete.** Deferred follow-ups: llama.cpp native-FC; the `unmeasured`/🔧
+badge (lands with a real probe to trigger); per-run (k-level) job granularity.
+
+Locked decisions: **never fabricate** — an unmeasured hard-required metric blocks
+(ignorance is not a pass), unknowns render N/A, prompt-based vs native paths are
+labelled never conflated; thresholds live in **editable profiles**, not constants;
+built-in profiles gate only on metrics measured today (Pass^k, loop/hallucination
+taxonomy, steps, and — since 7.4 — VRAM fit on Coding-agent), so a default profile
+doesn't mark every model NotReady for infra reasons. The **context-cliff is now
+wired** end-to-end (Matrix pre-fills the probe → measured cliff saved per
+(collection, model) → fed into the verdict → shown in the Agent Report), but the
+`min_context_tokens` gate stays **opt-in** (off in the built-ins; a custom profile
+turns it on) so an un-probed model is never silently failed. VRAM fit is **Ollama-precise**
+(real `/api/show` dims) — single-model backends are N/A, never approximated; the
+cap is auto-detected and overridable in-session (not persisted). The verdict scoring
+is **one function** (`assess`) so GUI and the future CLI can never diverge.
 
 ### Phase 7+
 

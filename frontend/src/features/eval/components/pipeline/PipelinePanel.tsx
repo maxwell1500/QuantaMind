@@ -39,7 +39,7 @@ export function PipelinePanel({
   const selectedModel = list.find((m) => m.name === model) ?? null;
 
   useEffect(() => {
-    void init().catch(() => {});
+    void init().catch((e) => console.error("eval registry init failed (PipelinePanel):", e));
   }, [init]);
 
   // Apply a Scoreboard/Matrix handoff: jump to the handed collection/task/model

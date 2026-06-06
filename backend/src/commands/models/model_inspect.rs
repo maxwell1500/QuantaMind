@@ -105,6 +105,15 @@ pub async fn inspect_model(
     })
 }
 
+/// Best-effort fetch of an Ollama model's KV-cache dimensions (`/api/show`).
+/// `None` when Ollama is unreachable or any dimension key is missing — callers
+/// (e.g. the readiness VRAM-fit check) then treat the fit as unmeasured rather
+/// than guess. The home of the dims logic, reused so it isn't re-implemented.
+pub async fn fetch_dims(model: &str) -> Option<ModelDims> {
+    let r = show_model(endpoint::OLLAMA, model).await.ok()?;
+    dims_from_model_info(&r.model_info)
+}
+
 /// Estimate the f16 KV-cache size (bytes) for a model's dimensions at a given
 /// context length. Thin wrapper over the canonical formula so the frontend has
 /// one source of truth (the dims come from `inspect_model`).

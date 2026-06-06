@@ -75,9 +75,9 @@ export function CollectionEditor({ onClose }: { onClose: () => void }) {
   return (
     <div style={{ display: "flex", flexDirection: "column", gap: 12 }} data-testid="collection-editor">
       <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between" }}>
-        <span style={{ fontSize: 12, color: "#94a3b8", fontFamily: "Inter, sans-serif" }}>
+        <span style={{ fontSize: 12, color: "#64748b", fontFamily: "Inter, sans-serif" }}>
           Editing:{" "}
-          <strong style={{ color: "#e2e8f0" }}>{selected === NEW_COLLECTION ? "(new collection)" : selected}</strong>
+          <strong style={{ color: "#0f172a" }}>{selected === NEW_COLLECTION ? "(new collection)" : selected}</strong>
           {isPreset(selected) && <span style={{ color: "#64748b" }}> — preset, saves a copy</span>}
         </span>
         <button type="button" onClick={onClose} style={doneBtn} data-testid="editor-done">
@@ -88,7 +88,7 @@ export function CollectionEditor({ onClose }: { onClose: () => void }) {
       {open ? (
         <TaskSandboxConfigurator draft={open} onChange={changeDraft} onRemove={() => setConfirmKey(open.key)} onBack={() => setOpenKey(null)} />
       ) : (
-        <div className="rounded-xl overflow-hidden border border-white/10" style={listPanel}>
+        <div className="rounded-xl overflow-hidden border border-slate-200" style={listPanel}>
           <TaskListView
             drafts={drafts}
             results={{}}
@@ -105,7 +105,7 @@ export function CollectionEditor({ onClose }: { onClose: () => void }) {
 
       {status && (
         <div
-          style={{ fontSize: 12, color: status.startsWith("Saved") ? "#4ade80" : "#f87171", fontFamily: "Inter, sans-serif" }}
+          style={{ fontSize: 12, color: status.startsWith("Saved") ? "#166534" : "#b91c1c", fontFamily: "Inter, sans-serif" }}
           data-testid="editor-status"
         >
           {status}
@@ -137,9 +137,9 @@ export function CollectionEditor({ onClose }: { onClose: () => void }) {
 const doneBtn: React.CSSProperties = {
   padding: "5px 14px",
   borderRadius: 7,
-  border: "1px solid rgba(34,197,94,0.3)",
-  background: "rgba(34,197,94,0.15)",
-  color: "#4ade80",
+  border: "1px solid #bbf7d0",
+  background: "#dcfce7",
+  color: "#166534",
   fontSize: 12,
   fontWeight: 600,
   fontFamily: "Inter, sans-serif",
@@ -147,7 +147,7 @@ const doneBtn: React.CSSProperties = {
 };
 
 const listPanel: React.CSSProperties = {
-  background: "linear-gradient(145deg, #1a1f2e 0%, #161b27 100%)",
+  background: "#ffffff",
   minHeight: 360,
   display: "flex",
   flexDirection: "column",

@@ -12,7 +12,9 @@ export const EVENT_BATCH_COMPLETE = "batch-complete";
 
 export const StepKindSchema = z.enum([
   "tool_call",
+  "tool_error",
   "unknown_tool",
+  "schema_error",
   "malformed_json",
   "hallucinated_completion",
   "end_state_reached",
@@ -29,14 +31,22 @@ export const TrajectoryStepSchema = z.object({
 });
 export type TrajectoryStep = z.infer<typeof TrajectoryStepSchema>;
 
-export const TopErrorSchema = z.enum(["none", "infinite_loop", "hallucinated", "malformed_json"]);
+export const TopErrorSchema = z.enum([
+  "none",
+  "infinite_loop",
+  "hallucinated",
+  "malformed_json",
+  "malformed_schema",
+]);
 export type TopError = z.infer<typeof TopErrorSchema>;
 
 export const FailureTrackerSchema = z.object({
   infinite_loop_hits: z.number().int(),
   hallucinated_completions: z.number().int(),
   malformed_json_calls: z.number().int(),
+  schema_unrecovered_calls: z.number().int(),
 });
+export type FailureTracker = z.infer<typeof FailureTrackerSchema>;
 
 export const AgenticReportSchema = z.object({
   passes: z.number().int(),
@@ -45,17 +55,28 @@ export const AgenticReportSchema = z.object({
   avg_output_tokens_success: z.number().nullable(),
   avg_steps: z.number().nullable(),
   top_error: TopErrorSchema,
+  schema_resilience: z.number().nullable(),
 });
 export type AgenticReport = z.infer<typeof AgenticReportSchema>;
 
 /// Per-model aggregate across the collection's agentic tasks. Null metrics render
-/// "N/A" — never a fabricated number.
+/// "N/A"/"—" — never a fabricated number.
 export const AggAgenticSchema = z.object({
   passes: z.number().int(),
   total_runs: z.number().int(),
   avg_steps: z.number().nullable(),
   avg_output_tokens_success: z.number().nullable(),
+  schema_resilience: z.number().nullable(),
   top_error: TopErrorSchema,
+  // Summed failure breakdown — the readiness verdict gates on the exact loop /
+  // hallucination counts, which `top_error` alone would hide. `.default` mirrors
+  // the Rust `#[serde(default)]` so pre-Phase-7 reports still parse.
+  failures: FailureTrackerSchema.default({
+    infinite_loop_hits: 0,
+    hallucinated_completions: 0,
+    malformed_json_calls: 0,
+    schema_unrecovered_calls: 0,
+  }),
 });
 export type AggAgentic = z.infer<typeof AggAgenticSchema>;
 
@@ -64,6 +85,9 @@ export const BatchColumnSchema = z.object({
   backend: BackendKindSchema,
   toolcall: ToolCallReportSchema.nullable(),
   agentic: AggAgenticSchema.nullable(),
+  // Phase 7.2: parallel native function-calling aggregate (Ollama /api/chat
+  // tool_calls), when measured. Nullish so pre-7.2 reports still parse.
+  agentic_native_fc: AggAgenticSchema.nullish(),
   error: z.string().nullable(),
 });
 export type BatchColumn = z.infer<typeof BatchColumnSchema>;
@@ -71,6 +95,9 @@ export type BatchColumn = z.infer<typeof BatchColumnSchema>;
 export const BatchReportSchema = z.object({
   collection_id: z.string(),
   columns: z.array(BatchColumnSchema),
+  // The run's context length, when set — basis for the readiness VRAM-fit KV-cache
+  // estimate. Nullish so reports saved before Phase 7.4 still parse.
+  num_ctx: z.number().int().nullish(),
 });
 export type BatchReport = z.infer<typeof BatchReportSchema>;
 
@@ -117,9 +144,10 @@ export async function runBatchEval(
   maxSteps?: number,
   params?: InferenceParams,
   keepAlive?: number,
+  runNativeFc?: boolean,
 ): Promise<BatchReport> {
   return BatchReportSchema.parse(
-    await invoke("run_batch_eval", { collectionId, targets, tasks, k, maxSteps, params, keepAlive }),
+    await invoke("run_batch_eval", { collectionId, targets, tasks, k, maxSteps, params, keepAlive, runNativeFc }),
   );
 }
 

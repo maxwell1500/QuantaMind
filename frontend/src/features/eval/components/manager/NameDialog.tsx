@@ -36,9 +36,9 @@ export function NameDialog({
         aria-modal="true"
         aria-label="Name your collection"
         onClick={(e) => e.stopPropagation()}
-        className="bg-surface rounded-lg shadow-xl w-80 max-w-[90vw] p-5 space-y-3"
+        className="bg-surface rounded-lg shadow-xl w-80 max-w-[90vw] p-5 space-y-3 border border-gray-100"
       >
-        <h3 className="text-sm font-semibold text-slate-200">New collection</h3>
+        <h3 className="text-sm font-semibold text-gray-900">New collection</h3>
         <input
           autoFocus
           value={name}
@@ -48,14 +48,14 @@ export function NameDialog({
           }}
           placeholder="Collection name"
           data-testid="eval-name-input"
-          className="w-full rounded-md bg-white/5 border border-white/10 px-3 py-2 text-sm text-slate-200 outline-none"
+          className="w-full rounded-md bg-white border border-gray-300 focus:border-blue-600 focus:ring-1 focus:ring-blue-600 px-3 py-2 text-sm text-gray-900 outline-none transition-colors"
         />
         <div className="flex justify-end gap-2">
           <button
             type="button"
             onClick={onClose}
             data-testid="eval-name-cancel"
-            className="px-3 py-1.5 rounded-md text-sm text-slate-400 hover:bg-white/5"
+            className="px-3 py-1.5 rounded-md text-sm text-gray-500 hover:bg-gray-100 transition-colors"
           >
             Cancel
           </button>

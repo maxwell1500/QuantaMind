@@ -1,6 +1,13 @@
 use super::*;
 use mockito::Server;
 
+#[test]
+fn supports_tools_reads_the_capability_list() {
+    assert!(supports_tools(&["completion".into(), "tools".into()]));
+    assert!(!supports_tools(&["completion".into()]));
+    assert!(!supports_tools(&[]));
+}
+
 /// A trimmed but real-shaped `/api/show` body for an instruct model.
 const SHOW_INSTRUCT: &str = r#"{
   "template": "{{- if .System }}<|start_header_id|>system<|end_header_id|>\n{{ .System }}{{- end }}<|start_header_id|>user<|end_header_id|>\n{{ .Prompt }}<|start_header_id|>assistant<|end_header_id|>\n",

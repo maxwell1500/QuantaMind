@@ -4,8 +4,9 @@ use crate::inference::eval::toolcall::eval::ToolCallReport;
 use crate::persistence::eval_history::RunSummary;
 use serde::{Deserialize, Serialize};
 
-/// One model+backend to run a collection against (sent by the frontend).
-#[derive(Deserialize, Clone, Debug, PartialEq)]
+/// One model+backend to run a collection against (sent by the frontend; also
+/// persisted in the resumable job-queue header, hence `Serialize`).
+#[derive(Serialize, Deserialize, Clone, Debug, PartialEq)]
 pub struct ModelTarget {
     pub model: String,
     pub backend: BackendKind,

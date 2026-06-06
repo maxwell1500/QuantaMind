@@ -71,6 +71,18 @@ fn oversize_file_is_capped() {
 }
 
 #[test]
+fn read_text_capped_returns_exact_text_and_caps_oversize() {
+    let dir = tempdir().unwrap();
+    let small = dir.path().join("a.csv");
+    std::fs::write(&small, "id,prompt\n1,hello\n").unwrap();
+    assert_eq!(read_text_capped(&small).unwrap(), "id,prompt\n1,hello\n");
+
+    let big = dir.path().join("big.csv");
+    std::fs::write(&big, vec![b'x'; (MAX_BYTES + 1) as usize]).unwrap();
+    assert!(matches!(read_text_capped(&big), Err(AppError::Validation(_))));
+}
+
+#[test]
 fn save_invalid_tasks_rejected() {
     let dir = tempdir().unwrap();
     assert!(matches!(save(dir.path(), "empty", &[]), Err(AppError::InvalidTaskSchema(_))));

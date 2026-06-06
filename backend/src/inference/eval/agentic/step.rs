@@ -7,9 +7,17 @@ use serde::Serialize;
 pub enum StepKind {
     /// A valid call the sandbox recognized and answered.
     ToolCall,
+    /// A recognized call the sandbox deliberately failed (Driver-B fault trap): an
+    /// HTTP-style error is injected and the loop continues so a robust agent can
+    /// retry (transient) or report the failure (persistent).
+    ToolError,
     /// A parsed call the sandbox has no mock for (unknown tool or wrong args) — an
     /// error is injected and the loop continues.
     UnknownTool,
+    /// Driver D: a schema-invalid call (missing required param / wrong type /
+    /// unknown tool). A precise semantic correction is injected for recovery; the
+    /// terminal SchemaError turn (no injection) means the recovery budget ran out.
+    SchemaError,
     /// The model yielded with broken JSON where a call was attempted.
     MalformedJson,
     /// The model yielded (no call) without satisfying the EndStateRule — a fake

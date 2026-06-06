@@ -1,5 +1,5 @@
 import { describe, it, expect, vi, beforeEach } from "vitest";
-import { render, screen, fireEvent, waitFor } from "@testing-library/react";
+import { render, screen, fireEvent, waitFor, act } from "@testing-library/react";
 
 vi.mock("@tauri-apps/api/core", () => ({ invoke: vi.fn() }));
 vi.mock("../../../shared/ipc/eval/toolcall", () => ({ runToolcallEval: vi.fn() }));
@@ -159,5 +159,35 @@ describe("ContextCliffPanel", () => {
     render(<ContextCliffPanel />);
     await waitFor(() => expect(getBuiltinCollection).toHaveBeenCalled());
     await waitFor(() => expect(screen.getByTestId("cliff-max-tokens")).toHaveAttribute("max", "8192"));
+  });
+
+  it("pre-fills model + collection + max tokens + steps from a Matrix request and does NOT auto-run", async () => {
+    const { useCliffStore } = await import("../state/cliffStore");
+    // The Matrix sets this before navigating to Audit.
+    useCliffStore.setState({ request: { model: "m2", backend: "ollama", collectionId: "curated", maxTokens: 8192, steps: 7 } });
+    vi.mocked(runToolcallEval).mockResolvedValue(report(1.0, 5000) as never);
+
+    render(<ContextCliffPanel />);
+    await waitFor(() => expect(getBuiltinCollection).toHaveBeenCalledWith("curated"));
+
+    // All four fields land pre-selected (the override model, not the header "m").
+    expect((screen.getByTestId("cliff-model-select") as HTMLSelectElement).value).toBe("m2");
+    expect((screen.getByTestId("cliff-max-tokens") as HTMLInputElement).value).toBe("8192");
+    expect((screen.getByTestId("cliff-test-steps") as HTMLInputElement).value).toBe("7");
+    // Request is one-shot.
+    expect(useCliffStore.getState().request).toBeNull();
+    // GUARDRAIL 1: pre-fill only — the probe never starts on navigation.
+    expect(runToolcallEval).not.toHaveBeenCalled();
+  });
+
+  it("re-pre-fills when a NEW request arrives after mount (always-mounted Audit panel)", async () => {
+    const { useCliffStore } = await import("../state/cliffStore");
+    render(<ContextCliffPanel />);
+    await waitFor(() => expect(getBuiltinCollection).toHaveBeenCalled());
+    // No request at mount → header model. Then the user clicks Run probe on the Matrix:
+    act(() => useCliffStore.setState({ request: { model: "m3", backend: "ollama", collectionId: "curated", maxTokens: 4096, steps: 3 } }));
+    await waitFor(() => expect((screen.getByTestId("cliff-model-select") as HTMLSelectElement).value).toBe("m3"));
+    expect((screen.getByTestId("cliff-test-steps") as HTMLInputElement).value).toBe("3");
+    expect(useCliffStore.getState().request).toBeNull(); // consumed
   });
 });

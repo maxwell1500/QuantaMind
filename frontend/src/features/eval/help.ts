@@ -33,6 +33,10 @@ export const TOOL_HELP = {
     title: "Context-Cliff Diagnostic Probe",
     body: "Runs the chosen dataset at growing prompt lengths and graphs where tool-call accuracy collapses — the 'context cliff'. Use it to find a model's usable context window for tool use. Padding is approximate (≈tokens), so the depth is indicative, not a tokenizer count.",
   },
+  iterations: {
+    title: "Iterations (k)",
+    body: "How many times each Multi-Step (agentic) task is re-run — the k in Pass^k. A real agent loops many steps where small failures compound, so passing once isn't enough: with k=5 a task runs 5× and the model only counts as reliable if it passes consistently (shown as passes/total, e.g. 4/5). Higher k = a stricter reliability bar (and longer runs); k=1 = run once, no consistency check. No effect on single-turn tasks (they always run once).",
+  },
 } satisfies Record<string, Help>;
 
 /// How each metric is computed. Used both in InfoButtons and as native title=
@@ -52,7 +56,15 @@ export const METRIC_HELP = {
   },
   topError: {
     title: "Top error",
-    body: "The model's dominant agentic failure mode across the collection: Loop Cap (hit the step limit), Fake Done (claimed success without the end-state), or Malformed (unparseable tool JSON). 'None' means no failures dominated.",
+    body: "The model's dominant agentic failure mode across the collection: Loop Cap (hit the step limit), Fake Done (claimed success without the end-state), Bad Schema (burned its recovery budget on schema-invalid calls), or Malformed (unparseable tool JSON). 'None' means no failures dominated. Hover the ⓘ next to the badge for the full count of all four modes.",
+  },
+  schemaResil: {
+    title: "Schema resilience",
+    body: "Of the runs that hit a semantic schema error (missing/typed-wrong param), the share that recovered — emitted a valid call after the injected correction. '—' means no run ever hit one, so the metric didn't apply.",
+  },
+  cliffDepth: {
+    title: "Cliff depth",
+    body: "The measured context length (real prompt tokens) at which this model's accuracy collapses, from the Context-Cliff probe in the Audit tab. It feeds the Agent-Readiness verdict (a model that breaks down before your app's context needs is downgraded). 'Run probe ↗' until measured; '✓ no cliff' means it was probed and accuracy held the whole tested range.",
   },
   passRate: {
     title: "Pass rate",

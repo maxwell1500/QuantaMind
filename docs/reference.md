@@ -182,6 +182,16 @@ running you'll see "Ollama isn't running".
 - On Windows/Linux, launch the Ollama app/service manually — in-app start is
   macOS-only in this release.
 
+### Backend server down — batch pre-flight {#batch-preflight}
+
+Every backend's server health is polled into the header dots every 5s — Ollama, MLX,
+and (new) **llama.cpp** (`check_llama_health`); a dot that was green goes grey within
+~5s of the server dying, so the indicator never lies. An Eval **batch run pre-flights
+every backend it targets** before starting: if any selected backend's server isn't
+reachable it aborts immediately with *"&lt;Backend&gt; server isn't reachable — start it
+from the Workspace status bar, then re-run"* — instead of hanging mid-run. Start the
+named server from the header, then re-run.
+
 ### Model not installed {#model-not-found}
 
 "That model isn't installed" means Ollama doesn't have the model you asked to
@@ -329,7 +339,29 @@ Error), with a click-through Trace Debugger. See [the workspace](#eval-runner).
   isolation between runs. The `AgenticReport` carries `passes/total_runs`, a
   `FailureTracker` with **distinct** tallies (`infinite_loop_hits` = hit the step
   cap, `hallucinated_completions` = fake done, `malformed_json_calls` = broken
-  JSON), and a `top_error` headline.
+  JSON, `schema_unrecovered_calls` = exhausted the recovery budget), and a
+  `top_error` headline.
+- **Lazy-agent traps (Driver B fault injection).** A task may attach `faults` —
+  per-call `TransientError { status_code, clears_after }` or
+  `PersistentError { status_code }`, keyed by the same canonical call form as the
+  mocks. The sandbox checks a fault **before** advancing the checkpoint (so a
+  trapped final call can never be a fake pass) and injects an `HTTP …` error as the
+  tool result (a `ToolError` step). A transient clears after `clears_after`
+  attempts — a robust agent retries through it to success; a persistent one never
+  clears — a robust agent reports the failure (a graceful `Hallucinated` halt)
+  rather than looping to the step cap. Attempt counters are **per-run** and
+  **per-call**, so multi-tool tasks trap independently and run *k* is never poisoned
+  by run *k-1*.
+- **Schema resilience (Driver D semantic recovery).** When the task declares tool
+  schemas, every parsed call is **semantically validated** (`validate_call`: known
+  tool, all `required` params present, primitive types match) — distinct from "did
+  it parse" and from "is it the right call". An invalid call injects a precise
+  `[Schema error: key \`x\` required]` correction (a `SchemaError` step) and spends
+  one of `max_recovery` (default 2) tries; producing a valid call after an error is
+  a **recovery**, exhausting the budget ends the run as `MalformedSchema`. The
+  report's `schema_resilience` is recovered ÷ runs-that-hit-an-error — **n/a** (UI
+  "—") when no run ever hit one, never a fabricated 0. Constrained-decoding paths
+  can't emit syntactically-broken calls, so this targets **semantic** faults.
 - **Relative effort, not absolute joules.** `avg_output_tokens_success` is the mean
   output-token count (`eval_count`) over the **successful** runs only — **n/a**
   when there are zero successes, never a divide-by-zero. Prompt tokens are
@@ -337,6 +369,23 @@ Error), with a click-through Trace Debugger. See [the workspace](#eval-runner).
   reuse). A Q4 model that wanders 1,500 tokens to a result a Q8 finishes in 300 is
   the signal this exposes — the "faster" quant burning more compute for the same
   outcome.
+- **The Matrix columns.** Per model: **Pass^k · Avg Steps · Effort · Schema Resil.
+  · Cliff Depth · Top Error**. `Schema Resil.` is the Driver-D metric above;
+  `Cliff Depth` is the measured context-cliff depth from the Audit probe (real
+  `prompt_eval_count` at the accuracy collapse), read from the backend per
+  (collection, model); unmeasured cells show **"Run probe ↗"** which pre-fills the
+  Audit probe for that model (model + collection + context length + steps — see
+  [#context-cliff](#context-cliff)), a live run shows **"probing…"**, and a probe that
+  found no collapse shows **"✓ no cliff"** (probed, accuracy held — not the same as
+  unmeasured). An always-visible legend under the table explains the column + payoff.
+  `Top Error` shows the dominant failure mode; when a model had
+  any agentic failure an **ⓘ** sits next to the badge — hovering it reveals the full
+  count of all four modes (Loop Cap · Fake Done · Bad Schema · Malformed), including
+  the two the headline badge hides. It's a native tooltip (the Matrix card is
+  overflow-clipped, so an absolute popup would be cut off).
+  Faults and the recovery budget are authored in the Task & Sandbox Configurator
+  (the **Fault Injection** box and **Max Recovery** field); single-turn tasks and
+  fault-free agentic tasks omit both and round-trip byte-identical.
 
 ## Custom-eval collections {#custom-evals}
 
@@ -350,8 +399,25 @@ small name dialog, then an empty task list. **+ Add Task** opens a task in its
 the list. Click any task row to reopen its detail. Validation is friendly and
 inline — an empty prompt or id shows "Prompt: required" / "Task ID: required",
 never a raw error. **Save** persists the collection (it then appears, selected, in
-the sidebar). You can also **Import** an existing file (read by path, capped at
-1 MiB, validated). CRUD = create / edit / delete (✕ on a custom collection).
+the sidebar). You can also **Import** an existing `.json` file (read by path, capped
+at 1 MiB, validated). CRUD = create / edit / delete (✕ on a custom collection).
+
+**Import CSV (bulk single-turn).** Next to Import .json, **Import CSV** opens a
+modal that turns a flat spreadsheet into a custom collection — the on-ramp for
+teams who keep test cases in a spreadsheet, not in `ToolTask` JSON. The strict
+format is exactly four columns in order: `id,prompt,expected_tool,expected_args`
+(one row per task; `expected_args` is a JSON object; an empty `expected_tool`
+column means an **abstain** task). Tool schemas are supplied **once** in the modal's
+**Tools schema** box and apply to every row, so the CSV stays flat. Scope is
+**single-turn only** — `parallel`/`select`/`agentic` don't flatten cleanly and stay
+on the JSON/configurator path. The file is read in Rust (`read_text_capped`, same
+1 MiB cap; the frontend never reads files); the modal then parses + validates live:
+a header in the wrong order is flagged with the exact column, every row gets a
+green ✓ or a located red error (bad-JSON args, a tool not in the schema box, a
+duplicate id, a missing field), and **Import stays disabled until the whole CSV is
+clean** — a partly-broken CSV is never imported. Assembly reuses the same
+`validateDrafts` gate as the form editor, and the save re-validates server-side.
+(Format reference: Help → "CSV import".)
 
 Any selection is editable — including a built-in preset; editing a preset and
 saving writes a new custom copy (the bundled preset is read-only and stays a seed).
@@ -540,6 +606,20 @@ cliff is the first rung whose composite drops **≥ 20pp** below the unpadded ba
 rung's measured token depth; if it never collapses the read-out shows **"Accuracy maintained up to
 ≈N tokens"**. ↺ clears the results. Single-turn, greedy — a failed rung is a gap, never a fabricated score.
 
+**The probe is part of the pipeline, not a dead-end.** The journey is Eval → Audit → Agent Report.
+On the **Performance Matrix**, an unmeasured *Cliff Depth* cell shows **"Run probe ↗"** which
+**pre-fills** the probe for that model + the current collection + a context length and switches to the
+Audit tab — it **never auto-runs** (a misclick must not lock the GPU on a long sweep); you click
+**Execute**. The run lives in a store, so it **survives tab navigation** (a progress bar shows rung
+X/N at ~N tokens; **Stop** cancels). On completion the cliff is saved to the backend **per
+(collection, model)** — `~/.config/quantamind/cliff/<collection>.json`, written atomically
+(temp-file + rename) with the **raw** model name as the key (colons intact). The Matrix then shows the
+real **N tok** (read from the backend, not browser storage), and `assess_readiness` feeds each model's
+cliff into the verdict: the Agent Report **displays** the Cliff depth, and the context gate **blocks**
+(*"reasoning cliff at X < Y needed"*) only when a profile **opts in** via `min_context_tokens` (now
+editable in the profile modal). The gate is off by default, so an un-probed model is never silently
+failed for context.
+
 ## Comparing across models/quants needs Ollama {#multi-model-ollama-only}
 
 Anything that runs *several models* in one go — the **Quant** tab's quality and
@@ -559,3 +639,138 @@ ignoring the requested name. So on those backends:
 
 This is a property of those servers, not a QuantaMind limitation; auto-restarting
 a single-model server per model is a deferred future option.
+
+## Local Agent Readiness {#agent-readiness}
+
+The **Agent Report** tab turns a collection's last batch run into a transparent
+per-model verdict answering *"is this local model ready to replace my cloud
+agent?"*. It adds no new measurement — it synthesizes the Phase-6 agentic metrics
+([Agentic reliability eval](#agentic-eval)) against a **profile** and shows the
+exact reasons. Pick a target collection + a profile, click **Run readiness**.
+
+**The verdict.** Each model gets one of three statuses, never a black-box number:
+
+- 🟢 **Ready** — meets every gate in the profile.
+- 🟡 **Conditional** — passes the hard gates but trips a *soft target* (e.g. slow,
+  or inefficient step count). The reason carries the interpolated math, e.g.
+  `slow: 8400ms/step > 5000ms target`.
+- 🔴 **NotReady** — trips a *hard gate*. Reasons are explicit, e.g.
+  `pass^k 0.40 < 0.80 required`, `loops on some runs`, or `run error: …` for a
+  column that failed to produce data.
+
+**Blocking vs conditions.** Hard gates push to `blocking[]` (→ NotReady); soft
+targets push to `conditions[]` (→ Conditional). Status = NotReady if any blocking,
+else Conditional if any conditions, else Ready.
+
+**Never fabricated.** A metric the engine didn't measure is N/A, never a guessed
+pass. If a profile *requires* a metric that wasn't measured (e.g. `require_full_vram`
+with no VRAM-fit measurement, or `min_context_tokens` with no cliff probe), that is
+**blocking** — ignorance is not a pass; the report tells you to run the missing
+diagnostic. The `pass^k` core gate likewise blocks when no agentic run was recorded.
+Float comparisons are epsilon-guarded (`1e-6`) so a true `0.80` can't false-block.
+
+**Profiles** are flat JSON files under the OS app-config dir (`readiness/`),
+editable by power users and seeded on first run with three built-ins:
+
+| Profile | Min Pass^k | Forbid loops | Forbid fake-done | Full VRAM | Soft targets |
+| --- | --- | --- | --- | --- | --- |
+| Coding agent | 80% | yes | yes | **yes** | ≤8 steps · ≤5000 ms/step |
+| RAG assistant | 70% | yes | yes | no | ≤5 steps · ≤8000 ms/step |
+| General agent | 60% | yes | no | no | — |
+
+Built-ins gate on the metrics the engine measures: since Phase 7.4 wired VRAM fit,
+**Coding agent** turns `require_full_vram` on (a model that spills past the cap is
+NotReady). The `min_context_tokens` and native-FC hard gates stay **off** in
+built-ins — those measurements aren't wired yet, and with strict null-gating an
+unmeasured requirement would mark every model NotReady for infra reasons. Author a
+custom profile to switch any gate on and get exactly that strict behaviour.
+Long/nested profile ids are safe: the file is keyed by a 40-char slug plus an
+8-hex hash of the full id, so two ids sharing a prefix never collide.
+
+**VRAM fit (Hardware Telemetry).** The Host Hardware Profile panel shows the detected
+architecture (Apple unified memory / NVIDIA discrete / CPU) and an allocation-cap
+dropdown defaulting to your VRAM (unified RAM on Apple), overridable in-session
+(never persisted). For each **Ollama** model the verdict measures the footprint —
+exact on-disk weights + the real f16 KV cache (the canonical `vram_math` formula) at
+the run's `num_ctx` — against the cap: `fits` when total ≤ cap, a soft **high VRAM
+pressure** condition at ≥85% of the cap, **won't fit** otherwise (which, under
+`require_full_vram`, blocks). The per-model line reads `VRAM: 6.0 GB (5.0 model +
+1.0 cache) < 24 GB cap · fits`. Single-model backends (llama.cpp / MLX) where precise
+dims aren't available show **N/A (single-model backend)** — never an approximated fit;
+under `require_full_vram` that N/A blocks (ignorance is not a pass). Lower the cap and
+a fitting model flips to NotReady deterministically — model the exact hardware you're
+buying for.
+
+**Prompt-based vs native path.** Two ways a model can do tool-calling, measured and
+labelled **separately** so they're never conflated. The **prompt-based** proxy injects
+the tool schemas into the system prompt and parses the text JSON the model emits — the
+only cross-backend-fair method. The **native** path (Phase 7.2) runs the *same* agentic
+tasks through the model's real `tool_calls` API — the path a production agent actually
+uses.
+
+- **Measuring native.** Tick **Measure native tool-calling (Ollama)** on the Eval run.
+  For each **Ollama** model that reports the `tools` capability (`/api/show`), QuantaMind
+  runs a parallel pass via `/api/chat` with a native `tools` array, parses the real
+  `tool_calls`, and shows a **Native FC pass^k** column in the Matrix (behind a toggle).
+  Only the call *extraction* differs — the deterministic sandbox, scoring, and failure
+  taxonomy are identical, so the two columns are comparable. An empty/abstaining
+  `tool_calls` is scored as a correct no-call; parallel `tool_calls` are processed
+  one-per-step (the sandbox is sequential). **Ollama-only** today: llama.cpp / MLX show
+  **N/A**, never a guessed score — hovering an N/A native cell explains why ("non-Ollama
+  backend, or the model has no tools capability"), so following the *enable native* nudge
+  never dead-ends at a silent N/A. (The **RUN BATCH** button likewise explains any disabled
+  state on hover — "Select at least one model" / "This collection has no tasks".)
+- **In the verdict.** When native was measured for a model, the readiness verdict
+  **prefers it** — the core Pass^k gate and the loop/hallucination gates use the native
+  result, and the row is labelled **(Native FC)**. Models without a native measurement
+  fall back to the prompt-based proxy, labelled **(Prompt-Based)**. So a model that passes
+  the prompt proxy but fails the native path reads **NotReady** on the path your app
+  actually uses — the honest gap, made visible.
+
+**Source of truth.** `run_batch_eval` persists the full report per collection; the
+`assess_readiness` command loads it and calls the one pure scoring function
+(`readiness::assess`) — the same function a future headless CLI will link, so GUI
+and CLI verdicts can never diverge. The frontend stores no verdicts; it renders what
+Rust returns. **Export shareable report (.HTML)** emits a self-contained, offline
+one-pager (escaped, utf-8) to email a verdict to a CTO.
+
+**The recommendation (the one-line answer).** `assess_readiness` returns the verdicts
+**ranked best-first** (`readiness::recommend::rank`, also CLI-shareable) so the page
+opens with a leaderboard and a **Recommendation banner**: *"Recommended for {profile}
+on your hardware: **{model}** (Ready)."* The ranking key is **tier** (Ready >
+Conditional > NotReady), then **effort** (`avg_output_tokens_success`, fewer tokens =
+better), then **avg_steps** (fewer = better) — sourced **native-first**, the exact
+aggregate the verdict gated on. It is float-safe by construction (`f64::total_cmp`,
+unmeasured metrics map to `f64::MAX` and sink — never a `NaN` panic, never floating
+above a measured model). When nothing qualifies the banner says **"No model is ready
+for {profile} — closest: {model} ({reason})"** — never a fabricated Ready. (Latency,
+`ms_per_step`, slots ahead of effort once the per-step timing is wired.)
+
+## Resumable evaluation & VRAM isolation {#resumable-queue}
+
+A multi-model sweep can run for hours; a sleep, an Ollama crash, or a force-quit must
+not vaporize it, and two models must never stack in VRAM and OOM-lock the machine.
+Phase 7.5 makes a batch **crash-resumable** and inserts a **hardware-enforced VRAM
+gate**.
+
+**The job log.** Every run writes an append-only `~/.config/quantamind/jobs/<collection>.jsonl`
+— a header line (the full run config: targets, tasks, params) then one line per finished
+`(model, task)` unit, appended atomically (`O(1)`, not a read-modify-write). The **native-FC
+pass is a first-class citizen** (units tagged `is_native: true`), so an interrupted native
+pass resumes too. The order is idempotent — *run → stream → append the outcome line* — so a
+crash before the append just re-runs that one unit. A truncated final line (a hard crash
+mid-write) is **healed**: the loader discards the unparseable tail rather than panic.
+
+**VRAM isolation (assert-and-fail).** Between models, QuantaMind sends Ollama
+`keep_alive: 0` to the previous model and **polls `/api/ps` until its `size_vram` is 0**
+before loading the next. If the VRAM doesn't release within 30 s the run **halts** (the job
+log stays intact for a later resume) — it never loads onto dirty VRAM, which is the exact
+OOM it prevents. (Multi-model batches are Ollama-only; llama.cpp/MLX single-model servers
+already reap deterministically via `kill` + `wait`.)
+
+**Recovery.** On the Eval tab, if an interrupted run is found you're prompted to **Resume**
+or **Discard**. Resume rebuilds the completed units into **one** partial report that paints
+the Matrix instantly (no per-task event flood), then continues the live run, skipping
+completed units. On a clean finish the report is **transactionally** persisted — saved,
+verified on disk, and only **then** is the job log deleted — so a crash between the two can
+never lose the run. At most the one in-flight `(model, task)` re-runs.

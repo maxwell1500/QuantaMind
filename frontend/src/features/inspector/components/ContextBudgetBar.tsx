@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useCliffStore } from "../../eval/state/cliffStore";
 
 /// How much of the model's context window the prompt consumed — the exact
 /// server-reported `prompt_eval_count` over the model's `context_length`.
@@ -12,22 +12,12 @@ export function ContextBudgetBar({
   promptTokens: number | null;
   contextLength: number | null;
 }) {
-  const [cliffPoint, setCliffPoint] = useState<number | null>(null);
-
-  useEffect(() => {
-    if (modelName && typeof localStorage !== "undefined") {
-      try {
-        const val = localStorage.getItem(`quantamind-cliff-${modelName}`);
-        if (val) {
-          setCliffPoint(parseInt(val, 10));
-          return;
-        }
-      } catch (e) {
-        // ignore
-      }
-    }
-    setCliffPoint(null);
-  }, [modelName]);
+  // The cliff edge comes from the backend-hydrated cliff store (source of truth),
+  // NOT a browser-local cache. The Inspector has a model but no collection, so we
+  // take the deepest measured cliff for this model across collections. In-memory:
+  // shows a cliff probed/hydrated this session; cross-session persistence for the
+  // Inspector (which has no collection to hydrate) is a separate follow-up.
+  const cliffPoint = useCliffStore((s) => s.cliffForModel(modelName));
 
   if (promptTokens == null || !contextLength) {
     return (

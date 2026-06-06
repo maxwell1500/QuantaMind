@@ -38,11 +38,23 @@ export const EndStateRuleSchema = z.union([
   z.literal("expect_abstaining_text"),
 ]);
 
+/// Mirrors the externally-tagged Rust `FaultInjection` (Driver B): a transient
+/// error that clears after N attempts, or a fatal one that never clears.
+export const FaultInjectionSchema = z.union([
+  z.object({ transient_error: z.object({ status_code: z.number().int(), clears_after: z.number().int().nonnegative() }) }),
+  z.object({ persistent_error: z.object({ status_code: z.number().int() }) }),
+]);
+const FaultRuleSchema = z.object({ call: CallSchema, fault: FaultInjectionSchema });
+
 export const AgenticSpecSchema = z.object({
   mocks: z.array(MockResponseSchema),
   end_state: EndStateRuleSchema,
   k: z.number().int().positive().optional(),
   max_steps: z.number().int().positive().optional(),
+  /// Driver B lazy-agent traps; omitted/empty for a fault-free task.
+  faults: z.array(FaultRuleSchema).optional(),
+  /// Driver D semantic-recovery budget; omitted to use the engine default.
+  max_recovery: z.number().int().nonnegative().optional(),
 });
 export type AgenticSpec = z.infer<typeof AgenticSpecSchema>;
 
@@ -104,4 +116,10 @@ export async function deleteCustomCollection(name: string): Promise<void> {
 /// frontend never loads file contents. Returns the new collection name.
 export async function importCustomCollection(sourcePath: string): Promise<string> {
   return z.string().parse(await invoke("import_custom_collection", { sourcePath }));
+}
+
+/// Read a picked text file (e.g. a CSV) by PATH — Rust reads + size-caps it; the
+/// frontend parses/validates the returned text (used by the CSV importer).
+export async function readTextCapped(sourcePath: string): Promise<string> {
+  return z.string().parse(await invoke("read_text_capped", { sourcePath }));
 }

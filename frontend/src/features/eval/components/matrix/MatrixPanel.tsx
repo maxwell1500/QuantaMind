@@ -39,7 +39,7 @@ export function MatrixPanel({
   const targets = list.filter((m) => selected.has(m.name)).map((m) => ({ model: m.name, backend: m.backend }));
 
   useEffect(() => {
-    void init().catch(() => {});
+    void init().catch((e) => console.error("eval registry init failed (MatrixPanel):", e));
   }, [init]);
 
   // Load the active collection's tasks + history once presets are known.

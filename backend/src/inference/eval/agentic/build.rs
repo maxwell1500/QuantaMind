@@ -31,14 +31,27 @@ pub fn sandbox_for(task: &ToolTask) -> AppResult<(DeterministicSandbox, AgenticC
             )));
         }
     }
+    for f in &spec.faults {
+        if !known(&f.call.name) {
+            return Err(AppError::InvalidTaskSchema(format!(
+                "task '{}' fault references unknown tool '{}'",
+                task.id, f.call.name
+            )));
+        }
+    }
     let sandbox = DeterministicSandbox::new(
         task.prompt.clone(),
         task.tools.clone(),
         spec.mocks.clone(),
         spec.end_state.clone(),
-    );
+    )
+    .with_faults(spec.faults.clone());
     let d = AgenticConfig::default();
-    let cfg = AgenticConfig { k: spec.k.unwrap_or(d.k), max_steps: spec.max_steps.unwrap_or(d.max_steps) };
+    let cfg = AgenticConfig {
+        k: spec.k.unwrap_or(d.k),
+        max_steps: spec.max_steps.unwrap_or(d.max_steps),
+        max_recovery: spec.max_recovery.unwrap_or(d.max_recovery),
+    };
     Ok((sandbox, cfg))
 }
 
@@ -76,6 +89,8 @@ mod tests {
                 }]),
                 k: None,
                 max_steps: Some(7),
+                faults: vec![],
+                max_recovery: None,
             }),
         }
     }

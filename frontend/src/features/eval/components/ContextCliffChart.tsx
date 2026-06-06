@@ -11,7 +11,7 @@ const M = { top: 20, right: 24, bottom: 42, left: 52 };
 
 const GRID_Y_TICKS = [0, 20, 40, 60, 80, 100];
 
-/// Dark-themed chart matching the Context-Cliff Diagnostic Probe design.
+/// Light-themed chart matching the Context-Cliff Diagnostic Probe design.
 /// Renders accuracy (%) vs prompt-token depth with a cliff threshold line.
 export function ContextCliffChart({
   points,
@@ -69,7 +69,7 @@ export function ContextCliffChart({
               x2={iw}
               y1={y(tick)}
               y2={y(tick)}
-              stroke="rgba(255,255,255,0.08)"
+              stroke="rgba(0,0,0,0.06)"
               strokeWidth={1}
             />
             <text
@@ -78,7 +78,7 @@ export function ContextCliffChart({
               dy="0.35em"
               textAnchor="end"
               fontSize={10}
-              fill="#9ca3af"
+              fill="#64748b"
               fontFamily="Inter, ui-sans-serif, system-ui, sans-serif"
             >
               {tick}
@@ -91,7 +91,7 @@ export function ContextCliffChart({
           transform={`translate(${-38}, ${ih / 2}) rotate(-90)`}
           textAnchor="middle"
           fontSize={10}
-          fill="#9ca3af"
+          fill="#64748b"
           fontFamily="Inter, ui-sans-serif, system-ui, sans-serif"
         >
           Accuracy (%) ↑
@@ -105,7 +105,7 @@ export function ContextCliffChart({
               x2={cliffX}
               y1={0}
               y2={ih}
-              stroke="#ef4444"
+              stroke="#dc2626"
               strokeWidth={1.5}
               strokeDasharray="5,4"
             />
@@ -113,7 +113,7 @@ export function ContextCliffChart({
               x={cliffX + 6}
               y={8}
               fontSize={9}
-              fill="#ef4444"
+              fill="#dc2626"
               fontFamily="Inter, ui-sans-serif, system-ui, sans-serif"
               fontWeight={600}
             >
@@ -127,7 +127,7 @@ export function ContextCliffChart({
           <polygon
             points={`${x(pts[0].promptTokens)},${ih} ${linePoints} ${x(pts[pts.length - 1].promptTokens)},${ih}`}
             fill="url(#cliffGradient)"
-            opacity={0.35}
+            opacity={0.15}
           />
         )}
 
@@ -136,7 +136,7 @@ export function ContextCliffChart({
           <polyline
             points={linePoints}
             fill="none"
-            stroke="#93c5fd"
+            stroke="#2563eb"
             strokeWidth={2}
             strokeLinejoin="round"
             strokeLinecap="round"
@@ -153,8 +153,8 @@ export function ContextCliffChart({
               cx={x(p.promptTokens)}
               cy={y(p.composite * 100)}
               r={4}
-              fill={isCliff ? "#ef4444" : "#93c5fd"}
-              stroke={isCliff ? "#fca5a5" : "#bfdbfe"}
+              fill={isCliff ? "#dc2626" : "#2563eb"}
+              stroke={isCliff ? "#fca5a5" : "#93c5fd"}
               strokeWidth={1.5}
               data-testid={`cliff-pt-${p.promptTokens}`}
             />
@@ -184,8 +184,8 @@ export function ContextCliffChart({
           const ttY = Math.max(0, y(hover.composite * 100) - TT_H - 6);
           return (
             <g pointerEvents="none" data-testid="cliff-tooltip">
-              <rect x={ttX} y={ttY} width={TT_W} height={TT_H} rx={6} fill="#0f1320" stroke="rgba(255,255,255,0.15)" />
-              <text x={ttX + 9} y={ttY + 15} fill="#cbd5e1" fontSize={10} fontWeight={600} fontFamily="Inter, ui-sans-serif, system-ui, sans-serif">
+              <rect x={ttX} y={ttY} width={TT_W} height={TT_H} rx={6} fill="#1e293b" stroke="rgba(0,0,0,0.1)" />
+              <text x={ttX + 9} y={ttY + 15} fill="#f8fafc" fontSize={10} fontWeight={600} fontFamily="Inter, ui-sans-serif, system-ui, sans-serif">
                 ≈{hover.promptTokens.toLocaleString()} ctx tokens
               </text>
               <text x={ttX + 9} y={ttY + 28} fill={past ? "#fca5a5" : "#93c5fd"} fontSize={10} fontFamily="Inter, ui-sans-serif, system-ui, sans-serif">
@@ -203,14 +203,14 @@ export function ContextCliffChart({
               x2={x(v)}
               y1={ih}
               y2={ih + 4}
-              stroke="rgba(255,255,255,0.2)"
+              stroke="rgba(0,0,0,0.12)"
             />
             <text
               x={x(v)}
               y={ih + 14}
               textAnchor="middle"
               fontSize={10}
-              fill="#9ca3af"
+              fill="#64748b"
               fontFamily="Inter, ui-sans-serif, system-ui, sans-serif"
             >
               {formatX(v)}
@@ -224,7 +224,7 @@ export function ContextCliffChart({
           y={ih + 32}
           textAnchor="end"
           fontSize={10}
-          fill="#9ca3af"
+          fill="#64748b"
           fontFamily="Inter, ui-sans-serif, system-ui, sans-serif"
         >
           Prompt Token Depth →
@@ -233,7 +233,7 @@ export function ContextCliffChart({
         {/* Gradient definition */}
         <defs>
           <linearGradient id="cliffGradient" x1="0" y1="0" x2="0" y2="1">
-            <stop offset="0%" stopColor="#3b82f6" stopOpacity={0.5} />
+            <stop offset="0%" stopColor="#3b82f6" stopOpacity={0.2} />
             <stop offset="100%" stopColor="#3b82f6" stopOpacity={0} />
           </linearGradient>
         </defs>
@@ -241,3 +241,4 @@ export function ContextCliffChart({
     </svg>
   );
 }
+

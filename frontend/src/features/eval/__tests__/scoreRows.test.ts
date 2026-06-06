@@ -19,14 +19,14 @@ describe("toScoreRows", () => {
           model: "qwen",
           backend: "ollama",
           toolcall: null,
-          agentic: { passes: 3, total_runs: 5, avg_steps: 2.44, avg_output_tokens_success: 119.6, top_error: "hallucinated" },
+          agentic: { passes: 3, total_runs: 5, avg_steps: 2.44, avg_output_tokens_success: 119.6, schema_resilience: null, top_error: "hallucinated", failures: { infinite_loop_hits: 0, hallucinated_completions: 2, malformed_json_calls: 0, schema_unrecovered_calls: 0 } },
           error: null,
         },
         {
           model: "loopy",
           backend: "ollama",
           toolcall: null,
-          agentic: { passes: 0, total_runs: 5, avg_steps: null, avg_output_tokens_success: null, top_error: "infinite_loop" },
+          agentic: { passes: 0, total_runs: 5, avg_steps: null, avg_output_tokens_success: null, schema_resilience: null, top_error: "infinite_loop", failures: { infinite_loop_hits: 5, hallucinated_completions: 0, malformed_json_calls: 0, schema_unrecovered_calls: 0 } },
           error: null,
         },
       ],
@@ -36,6 +36,31 @@ describe("toScoreRows", () => {
     expect(rows[0]).toMatchObject({ label: "qwen", quant: "Q4_K_M", passK: "3/5", avgSteps: "2.4", effort: "120 tok", topError: "Fake Done" });
     // Unknown model → quant falls back to "—"; null agentic metrics → "N/A".
     expect(rows[1]).toMatchObject({ quant: "—", passK: "0/5", avgSteps: "N/A", effort: "N/A", topError: "Loop Cap" });
+  });
+
+  it("maps schema resilience as a percent (— when null) and the top error label", () => {
+    const report: BatchReport = {
+      collection_id: "c",
+      columns: [
+        {
+          model: "qwen", // a measured resilience + a schema top error
+          backend: "ollama",
+          toolcall: null,
+          agentic: { passes: 4, total_runs: 5, avg_steps: 2, avg_output_tokens_success: 100, schema_resilience: 0.5, top_error: "malformed_schema", failures: { infinite_loop_hits: 0, hallucinated_completions: 0, malformed_json_calls: 0, schema_unrecovered_calls: 1 } },
+          error: null,
+        },
+        {
+          model: "clean", // no schema errors seen
+          backend: "ollama",
+          toolcall: null,
+          agentic: { passes: 5, total_runs: 5, avg_steps: 1, avg_output_tokens_success: 80, schema_resilience: null, top_error: "none", failures: { infinite_loop_hits: 0, hallucinated_completions: 0, malformed_json_calls: 0, schema_unrecovered_calls: 0 } },
+          error: null,
+        },
+      ],
+    };
+    const rows = toScoreRows(report, []);
+    expect(rows[0]).toMatchObject({ schemaResil: "50%", topError: "Bad Schema" });
+    expect(rows[1]).toMatchObject({ schemaResil: "—" });
   });
 
   it("shows — for steps/effort when the column has no agentic tasks", () => {

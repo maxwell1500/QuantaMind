@@ -1,8 +1,10 @@
+import { useState } from "react";
 import { useEvalRegistryStore } from "../../state/evalRegistryStore";
 import { useInstalledModelsStore } from "../../../models/state/installedModelsStore";
 import { useBatchStore, cellKey } from "../../state/batchStore";
 import { modelLabel } from "../../../../shared/models/modelLabel";
 import { InfoButton } from "../../../../shared/ui/InfoButton";
+import { Spinner } from "../../../../shared/ui/Spinner";
 import { TOOL_HELP, metricTitle } from "../../help";
 
 interface MatrixScoreboardProps {
@@ -18,6 +20,7 @@ export function MatrixScoreboard({
   focusedTaskId,
   setFocusedTaskId,
 }: MatrixScoreboardProps) {
+  const [collapsed, setCollapsed] = useState(false);
   const { tasks } = useEvalRegistryStore();
   const list = useInstalledModelsStore((s) => s.list);
   const running = useBatchStore((s) => s.running);
@@ -73,37 +76,59 @@ export function MatrixScoreboard({
 
   return (
     <div
-      className="rounded-xl overflow-hidden border border-white/10"
+      className="rounded-xl overflow-hidden border border-slate-200 shadow-sm"
       style={panelStyle}
       data-testid="matrix-scoreboard"
     >
-      {/* Header */}
+      {/* Header — the chevron + title is one big toggle button (clear hit target). */}
       <div style={headerStyle}>
-        <span style={{ fontSize: 15, fontWeight: 700, color: "#f8fafc", fontFamily: "Inter, sans-serif" }}>
-          2. THE SIMULATOR (Batch Scoreboard)
-        </span>
-        <span style={{ fontSize: 13, color: "#93c5fd", fontFamily: "'JetBrains Mono', monospace", fontWeight: 500 }}>
+        <button
+          type="button"
+          onClick={() => setCollapsed((c) => !c)}
+          aria-expanded={!collapsed}
+          data-testid="simulator-collapse"
+          title={collapsed ? "Expand the Simulator" : "Collapse"}
+          style={collapseToggleStyle}
+        >
+          <span style={chevronStyle} aria-hidden>{collapsed ? "▸" : "▾"}</span>
+          <span style={{ fontSize: 15, fontWeight: 700, color: "#0f172a", fontFamily: "Inter, sans-serif" }}>
+            2. THE SIMULATOR (Batch Scoreboard)
+          </span>
+        </button>
+        <span style={{ fontSize: 13, color: "#2563eb", fontFamily: "'JetBrains Mono', monospace", fontWeight: 650 }}>
           &nbsp;- [ Target: {modelTargetLabel} ]
         </span>
+        {collapsed && (
+          <span data-testid="simulator-collapsed-summary" style={{ marginLeft: 10, fontSize: 12, color: "#64748b", fontFamily: "Inter, sans-serif" }}>
+            · {totalRuns > 0 ? `${passRate}% pass` : "no run yet"} · click to expand
+          </span>
+        )}
+        {running && (
+          <span style={{ display: "inline-flex", alignItems: "center", gap: 6, marginLeft: 10, fontSize: 12, color: "#2563eb", fontFamily: "Inter, sans-serif", fontWeight: 600 }} data-testid="simulator-running">
+            <Spinner /> Running…
+          </span>
+        )}
         <span style={{ marginLeft: "auto" }}>
           <InfoButton {...TOOL_HELP.simulator} testId="simulator" />
         </span>
       </div>
 
+      {collapsed ? null : (
+      <>
       {error && (
-        <div style={{ padding: "10px 16px", color: "#fca5a5", fontSize: 12, fontFamily: "Inter, sans-serif" }} data-testid="scoreboard-error">
+        <div style={{ padding: "10px 16px", color: "#dc2626", fontSize: 12, fontFamily: "Inter, sans-serif" }} data-testid="scoreboard-error">
           {error}
         </div>
       )}
 
       {/* Progress Bar (Visible during batch evaluation) */}
       {running && (
-        <div style={{ padding: "10px 16px", borderBottom: "1px solid rgba(255,255,255,0.05)" }} data-testid="scoreboard-progress">
-          <div style={{ fontSize: 11, color: "#94a3b8", fontFamily: "Inter,sans-serif", marginBottom: 6 }}>
+        <div style={{ padding: "10px 16px", borderBottom: "1px solid #e2e8f0" }} data-testid="scoreboard-progress">
+          <div style={{ fontSize: 11, color: "#64748b", fontFamily: "Inter,sans-serif", marginBottom: 6 }}>
             Running batch evaluation… {progress.done}/{progress.total || "?"}
           </div>
-          <div style={{ height: 4, background: "rgba(255,255,255,0.06)", borderRadius: 2 }}>
-            <div style={{ height: 4, width: `${pct}%`, background: "#3b82f6", borderRadius: 2, transition: "width 120ms" }} />
+          <div style={{ height: 4, background: "#f1f5f9", borderRadius: 2 }}>
+            <div style={{ height: 4, width: `${pct}%`, background: "#2563eb", borderRadius: 2, transition: "width 120ms" }} />
           </div>
         </div>
       )}
@@ -114,7 +139,7 @@ export function MatrixScoreboard({
         <div style={aggregateBoxStyle}>
           {totalRuns > 0 ? (
             <span>
-              AGGREGATE: <strong style={{ color: "#4ade80" }} title={metricTitle("passRate")}>{passRate}% Pass Rate</strong> ({totalPasses}/{totalRuns}) | <span title={metricTitle("avgSteps")}>Avg Steps:</span> <strong>{avgStepsVal}</strong> | <span title={metricTitle("effort")}>Effort:</span> <strong>{effortVal}</strong> tokens
+              AGGREGATE: <strong style={{ color: "#166534" }} title={metricTitle("passRate")}>{passRate}% Pass Rate</strong> ({totalPasses}/{totalRuns}) | <span title={metricTitle("avgSteps")}>Avg Steps:</span> <strong>{avgStepsVal}</strong> | <span title={metricTitle("effort")}>Effort:</span> <strong>{effortVal}</strong> tokens
             </span>
           ) : (
             <span style={{ color: "#64748b" }}>
@@ -132,7 +157,7 @@ export function MatrixScoreboard({
           <div style={{ overflowX: "auto" }}>
             <table style={{ width: "100%", borderCollapse: "collapse", minWidth: 600 }} data-testid="scoreboard-table">
               <thead>
-                <tr style={{ borderBottom: "1px solid rgba(255,255,255,0.08)" }}>
+                <tr style={{ borderBottom: "1px solid #e2e8f0" }}>
                   <th style={thStyle}>Task ID</th>
                   <th style={thStyle}>Category</th>
                   <th style={thStyle}>Target Tool</th>
@@ -177,19 +202,27 @@ export function MatrixScoreboard({
                   if (outcome) {
                     if (outcome.kind === "single") {
                       resultEl = outcome.passed ? (
-                        <span style={passBadgeStyle}>🟢 PASS</span>
+                        <span style={passBadgeStyle}>Pass</span>
                       ) : (
-                        <span style={failBadgeStyle}>🔴 FAIL</span>
+                        <span style={failBadgeStyle}>Fail</span>
                       );
                     } else if (outcome.kind === "agentic") {
-                      const allPassed = outcome.report.passes === outcome.report.total_runs;
-                      resultEl = allPassed ? (
-                        <span style={passBadgeStyle}>🟢 PASS</span>
-                      ) : (
-                        <span style={failBadgeStyle}>🔴 FAIL</span>
-                      );
+                      // Pass^k over k runs: all-pass = Pass, none = Fail, but a
+                      // PARTIAL pass (e.g. 3/5) is "Unreliable", not a flat Fail —
+                      // shown as an amber badge that matches the Matrix fraction.
+                      const { passes, total_runs } = outcome.report;
+                      resultEl =
+                        passes === total_runs ? (
+                          <span style={passBadgeStyle} data-testid={`result-${t.id}`}>Pass</span>
+                        ) : passes === 0 ? (
+                          <span style={failBadgeStyle} data-testid={`result-${t.id}`}>Fail</span>
+                        ) : (
+                          <span style={partialBadgeStyle} data-testid={`result-${t.id}`} title={`${passes}/${total_runs} runs passed — unreliable, not a clean pass`}>
+                            Partial {passes}/{total_runs}
+                          </span>
+                        );
                     } else if (outcome.kind === "error") {
-                      resultEl = <span style={failBadgeStyle}>🔴 ERROR</span>;
+                      resultEl = <span style={failBadgeStyle}>Error</span>;
                     }
                   }
 
@@ -202,16 +235,16 @@ export function MatrixScoreboard({
                       style={{
                         ...trStyle,
                         cursor: "pointer",
-                        background: isActive ? "rgba(59, 130, 246, 0.04)" : "transparent",
+                        background: isActive ? "#eff6ff" : "transparent",
                       }}
                       data-testid={`scoreboard-row-${t.id}`}
                       title="Click to inspect this task in the Evaluator below"
                     >
-                      <td style={{ ...tdStyle, fontFamily: "'JetBrains Mono', monospace", color: isActive ? "#93c5fd" : "#cbd5e1" }}>
+                      <td style={{ ...tdStyle, fontFamily: "'JetBrains Mono', monospace", color: isActive ? "#2563eb" : "#0f172a" }}>
                         {t.id}
                       </td>
                       <td style={tdStyle}>{categoryLabel}</td>
-                      <td style={{ ...tdStyle, fontFamily: "'JetBrains Mono', monospace", color: "#94a3b8", fontSize: 12 }}>
+                      <td style={{ ...tdStyle, fontFamily: "'JetBrains Mono', monospace", color: "#64748b", fontSize: 12 }}>
                         {targetTool}
                       </td>
                       <td style={tdStyle}>{stepsStr}</td>
@@ -223,13 +256,13 @@ export function MatrixScoreboard({
                             onClick={() => setFocusedTaskId(t.id)}
                             style={{
                               ...actionBtnStyle,
-                              color: isActive ? "#93c5fd" : "#3b82f6",
+                              color: "#2563eb",
                               fontWeight: isActive ? 600 : 400,
                             }}
                           >
                             [ View Trace ]
                           </button>
-                          {isActive && <span style={{ color: "#3b82f6", fontSize: 14 }}>◄</span>}
+                          {isActive && <span style={{ color: "#2563eb", fontSize: 14 }}>◄</span>}
                         </div>
                       </td>
                     </tr>
@@ -244,6 +277,8 @@ export function MatrixScoreboard({
           K runs. Set the Task Type to “Multi-Step Agent” in the configurator to test a sandbox loop.
         </div>
       </div>
+      </>
+      )}
     </div>
   );
 }
@@ -251,25 +286,56 @@ export function MatrixScoreboard({
 // ── Styles ──────────────────────────────────────────────────────────────────
 
 const panelStyle: React.CSSProperties = {
-  background: "linear-gradient(145deg, #121620 0%, #0d0f15 100%)",
-  boxShadow: "0 8px 32px rgba(0,0,0,0.5), inset 0 1px 0 rgba(255,255,255,0.03)",
+  background: "#ffffff",
+  border: "1px solid #e2e8f0",
+  borderRadius: "16px",
+  boxShadow: "0 1px 3px 0 rgba(0, 0, 0, 0.05)",
 };
 
 const headerStyle: React.CSSProperties = {
-  padding: "12px 16px",
-  borderBottom: "1px solid rgba(255,255,255,0.06)",
+  padding: "16px 20px",
+  borderBottom: "1px solid #e2e8f0",
   display: "flex",
   alignItems: "center",
   flexWrap: "wrap",
+  background: "#fafafa",
+};
+
+const collapseToggleStyle: React.CSSProperties = {
+  display: "inline-flex",
+  alignItems: "center",
+  gap: 10,
+  background: "transparent",
+  border: "none",
+  cursor: "pointer",
+  padding: 0,
+  textAlign: "left",
+};
+
+/// The visible disclosure chevron — a 22px rounded chip so it reads as a control,
+/// not a stray glyph. Shared shape across the Simulator/Evaluator headers.
+const chevronStyle: React.CSSProperties = {
+  display: "inline-flex",
+  alignItems: "center",
+  justifyContent: "center",
+  width: 22,
+  height: 22,
+  borderRadius: 6,
+  background: "#e2e8f0",
+  color: "#334155",
+  fontSize: 12,
+  fontWeight: 800,
+  lineHeight: 1,
+  flexShrink: 0,
 };
 
 const aggregateBoxStyle: React.CSSProperties = {
-  background: "rgba(255,255,255,0.02)",
-  border: "1px solid rgba(255,255,255,0.05)",
+  background: "#f8fafc",
+  border: "1px solid #e2e8f0",
   borderRadius: 8,
   padding: "10px 16px",
   fontSize: 13,
-  color: "#cbd5e1",
+  color: "#334155",
   fontFamily: "Inter, sans-serif",
   marginBottom: 16,
   letterSpacing: "-0.01em",
@@ -277,38 +343,66 @@ const aggregateBoxStyle: React.CSSProperties = {
 
 const thStyle: React.CSSProperties = {
   textAlign: "left",
-  fontSize: 11,
-  fontWeight: 700,
-  color: "#475569",
+  fontSize: 10,
+  fontWeight: 800,
+  color: "#64748b",
   textTransform: "uppercase",
-  letterSpacing: "0.05em",
-  padding: "8px 12px",
+  letterSpacing: "0.06em",
+  padding: "10px 12px",
   fontFamily: "Inter, sans-serif",
 };
 
 const tdStyle: React.CSSProperties = {
   fontSize: 13,
-  color: "#e2e8f0",
+  color: "#334155",
   padding: "10px 12px",
   fontFamily: "Inter, sans-serif",
 };
 
 const trStyle: React.CSSProperties = {
-  borderBottom: "1px solid rgba(255,255,255,0.04)",
+  borderBottom: "1px solid #e2e8f0",
   transition: "background 0.15s ease",
 };
 
 const passBadgeStyle: React.CSSProperties = {
-  color: "#4ade80",
-  fontWeight: 600,
+  display: "inline-flex",
+  alignItems: "center",
+  gap: 5,
+  background: "#dcfce7",
+  border: "1px solid #bbf7d0",
+  color: "#166534",
+  borderRadius: 6,
+  padding: "2px 8px",
   fontSize: 12,
+  fontWeight: 600,
+  fontFamily: "Inter, sans-serif",
+};
+
+const partialBadgeStyle: React.CSSProperties = {
+  display: "inline-flex",
+  alignItems: "center",
+  gap: 5,
+  background: "#fef3c7",
+  border: "1px solid #fcd34d",
+  color: "#92400e",
+  borderRadius: 6,
+  padding: "2px 8px",
+  fontSize: 12,
+  fontWeight: 600,
   fontFamily: "Inter, sans-serif",
 };
 
 const failBadgeStyle: React.CSSProperties = {
-  color: "#f87171",
-  fontWeight: 600,
+  display: "inline-flex",
+  alignItems: "center",
+  gap: 5,
+  background: "#fee2e2",
+  border: "1px solid #fca5a5",
+  color: "#991b1b",
+  borderRadius: 6,
+  padding: "2px 8px",
   fontSize: 12,
+  fontWeight: 600,
   fontFamily: "Inter, sans-serif",
 };
 

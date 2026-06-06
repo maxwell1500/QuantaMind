@@ -12,6 +12,7 @@ import { EvalPage } from "../components/EvalPage";
 import { useEvalRegistryStore } from "../state/evalRegistryStore";
 import { useInstalledModelsStore } from "../../models/state/installedModelsStore";
 import { useBatchStore } from "../state/batchStore";
+import { useCliffStore } from "../state/cliffStore";
 import { useBackendStore } from "../../../shared/state/backendStore";
 
 const init = vi.fn().mockResolvedValue(undefined);
@@ -59,5 +60,38 @@ describe("EvalPage (3-pane workspace)", () => {
     expect(useBatchStore.getState().report).not.toBeNull();
     act(() => useBackendStore.setState({ selectedBackend: "llama_cpp" }));
     expect(useBatchStore.getState().report).toBeNull();
+  });
+
+  it("clears the last run's results when the COLLECTION changes (no stale Pass/Fail leak)", () => {
+    render(<EvalPage />);
+    act(() =>
+      useBatchStore.setState({
+        report: { collection_id: "curated", columns: [{ model: "llama3.2:1b", backend: "ollama", toolcall: null, agentic: null, error: null }] },
+        outcomeByKey: { "llama3.2:1b weather": { kind: "single", passed: true, trace: {} } } as never,
+      }),
+    );
+    expect(useBatchStore.getState().report).not.toBeNull();
+    // Switching to another collection must wipe the previous collection's outcomes.
+    act(() => useEvalRegistryStore.setState({ selected: "finance" }));
+    expect(useBatchStore.getState().report).toBeNull();
+    expect(useBatchStore.getState().outcomeByKey).toEqual({});
+  });
+
+  it("halts an in-flight Context-Cliff probe when the collection changes (context-shift law)", () => {
+    render(<EvalPage />);
+    // Simulate a probe running (started from the Audit tab) for the old collection.
+    act(() => useCliffStore.setState({ running: true, runningModel: "llama3.2:1b" }));
+    expect(useCliffStore.getState().running).toBe(true);
+    // A collection switch must stop it (cliffStore.stop) — not leave the GPU grinding.
+    act(() => useEvalRegistryStore.setState({ selected: "finance" }));
+    expect(useCliffStore.getState().running).toBe(false);
+    expect(useCliffStore.getState().runningModel).toBeNull();
+  });
+
+  it("halts an in-flight Context-Cliff probe when the backend changes", () => {
+    render(<EvalPage />);
+    act(() => useCliffStore.setState({ running: true, runningModel: "llama3.2:1b" }));
+    act(() => useBackendStore.setState({ selectedBackend: "llama_cpp" }));
+    expect(useCliffStore.getState().running).toBe(false);
   });
 });

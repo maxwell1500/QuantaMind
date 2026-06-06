@@ -8,6 +8,7 @@ import { DownloadsPage } from "./features/models/components/DownloadsPage";
 import { EvalPage } from "./features/eval/components/EvalPage";
 import { AuditPage } from "./features/audit/components/AuditPage";
 import { QuantPage } from "./features/quant/components/QuantPage";
+import { AgentReportPage } from "./features/agentReport/components/AgentReportPage";
 import { startInstalledModelsBus } from "./features/models/state/installedModelsBus";
 import { useModelSettingsStore } from "./features/models/state/modelSettingsStore";
 import { FeedbackButton } from "./features/feedback/components/FeedbackButton";
@@ -32,14 +33,15 @@ const TABS: { id: TopView; label: string }[] = [
   { id: "eval", label: "Eval" },
   { id: "audit", label: "Audit" },
   { id: "quant", label: "Quant" },
+  { id: "agentReport", label: "Agent Report" },
   { id: "settings", label: "Settings" },
   { id: "help", label: "Help" },
 ];
 
 const tabClass = (active: boolean) =>
   active
-    ? "border-b-2 border-blue-600 px-3 py-1 text-sm font-medium"
-    : "px-3 py-1 text-sm text-gray-600 hover:text-ink";
+    ? "bg-white text-slate-900 shadow-sm border border-slate-200/60 px-4 py-1.5 text-sm font-semibold rounded-lg transition-all"
+    : "px-4 py-1.5 text-sm font-medium text-slate-600 hover:text-slate-900 hover:bg-white/40 rounded-lg transition-all";
 
 export default function App() {
   const view = useNavStore((s) => s.topView);
@@ -53,10 +55,11 @@ export default function App() {
   useAutoSave();
   useGlobalHotkeys();
   return (
-    <main className="min-h-screen p-6 pb-14 font-sans space-y-3">
+    <main className="min-h-screen max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8 font-sans space-y-6">
       <AppHeader />
       <OnboardingCoach />
-      <nav className="flex gap-1 border-b" role="tablist">
+      <nav className="flex items-center gap-1.5 bg-slate-100/70 p-1.5 rounded-xl border border-slate-200/40 w-fit max-w-full overflow-x-auto scrollbar-none" role="tablist">
+
         {TABS.map((t) => (
           <button
             key={t.id}
@@ -84,6 +87,7 @@ export default function App() {
       <div hidden={view !== "eval"} data-testid="view-eval"><EvalPage /></div>
       <div hidden={view !== "audit"} data-testid="view-audit"><AuditPage /></div>
       <div hidden={view !== "quant"} data-testid="view-quant"><QuantPage /></div>
+      <div hidden={view !== "agentReport"} data-testid="view-agentReport"><AgentReportPage /></div>
       <div hidden={view !== "settings"} data-testid="view-settings"><SettingsPage /></div>
       <div hidden={view !== "help"} data-testid="view-help"><HelpPage /></div>
       <FeedbackButton />

@@ -2,7 +2,9 @@ import type { StepKind, TrajectoryStep } from "../../../../shared/ipc/eval/batch
 
 const KIND_META: Record<StepKind, { label: string; color: string }> = {
   tool_call: { label: "Tool Call", color: "#93c5fd" },
+  tool_error: { label: "Tool Error (injected)", color: "#fca5a5" },
   unknown_tool: { label: "Unknown Tool", color: "#fca5a5" },
+  schema_error: { label: "Schema Error", color: "#fbbf24" },
   malformed_json: { label: "Malformed JSON", color: "#fca5a5" },
   hallucinated_completion: { label: "Hallucinated Done", color: "#fca5a5" },
   end_state_reached: { label: "End State Reached", color: "#4ade80" },

@@ -78,16 +78,16 @@ export function HistoryTimeline({ history }: { history: RunSummary[] }) {
         {/* gridlines + y ticks */}
         {[0, 0.5, 1].map((g) => (
           <g key={g}>
-            <line x1={ML} y1={yFor(g)} x2={W - MR} y2={yFor(g)} stroke="rgba(255,255,255,0.07)" />
+            <line x1={ML} y1={yFor(g)} x2={W - MR} y2={yFor(g)} stroke="rgba(0,0,0,0.06)" />
             <text x={ML - 6} y={yFor(g) + 3} textAnchor="end" fill="#64748b" fontSize={9} fontFamily="Inter,sans-serif">{Math.round(g * 100)}%</text>
           </g>
         ))}
 
         {/* axis labels (what the axes mean) */}
-        <text transform={`translate(12 ${MT + PH / 2}) rotate(-90)`} textAnchor="middle" fill="#94a3b8" fontSize={10} fontFamily="Inter,sans-serif">
+        <text transform={`translate(12 ${MT + PH / 2}) rotate(-90)`} textAnchor="middle" fill="#64748b" fontSize={10} fontFamily="Inter,sans-serif">
           Score (%) — composite or Pass^k
         </text>
-        <text x={ML + PW / 2} y={H - 8} textAnchor="middle" fill="#94a3b8" fontSize={10} fontFamily="Inter,sans-serif">
+        <text x={ML + PW / 2} y={H - 8} textAnchor="middle" fill="#64748b" fontSize={10} fontFamily="Inter,sans-serif">
           Run # — oldest → newest
         </text>
 
@@ -117,9 +117,9 @@ export function HistoryTimeline({ history }: { history: RunSummary[] }) {
         {/* hover crosshair + tooltip */}
         {hover && (
           <g pointerEvents="none">
-            <line x1={hover.x} y1={MT} x2={hover.x} y2={MT + PH} stroke="rgba(255,255,255,0.15)" strokeDasharray="3 3" />
-            <rect x={ttX} y={ttY} width={TT_W} height={TT_H} rx={6} fill="#0f1320" stroke="rgba(255,255,255,0.15)" />
-            <text x={ttX + 9} y={ttY + 15} fill="#cbd5e1" fontSize={10} fontWeight={600} fontFamily="Inter,sans-serif">{hover.model}</text>
+            <line x1={hover.x} y1={MT} x2={hover.x} y2={MT + PH} stroke="rgba(0,0,0,0.12)" strokeDasharray="3 3" />
+            <rect x={ttX} y={ttY} width={TT_W} height={TT_H} rx={6} fill="#1e293b" stroke="rgba(0,0,0,0.1)" />
+            <text x={ttX + 9} y={ttY + 15} fill="#f8fafc" fontSize={10} fontWeight={600} fontFamily="Inter,sans-serif">{hover.model}</text>
             <text x={ttX + 9} y={ttY + 29} fill="#93c5fd" fontSize={10} fontFamily="Inter,sans-serif">
               Run {hover.i + 1}: {Math.round(hover.v * 100)}% {hover.kind}
             </text>
@@ -132,10 +132,11 @@ export function HistoryTimeline({ history }: { history: RunSummary[] }) {
         {series.map((s, si) => (
           <div key={s.model} style={{ display: "flex", alignItems: "center", gap: 6 }}>
             <span style={{ width: 10, height: 10, borderRadius: 2, background: COLORS[si % COLORS.length], display: "inline-block" }} />
-            <span style={{ fontSize: 11, color: "#94a3b8", fontFamily: "Inter,sans-serif" }}>{s.model}</span>
+            <span style={{ fontSize: 11, color: "#475569", fontFamily: "Inter,sans-serif" }}>{s.model}</span>
           </div>
         ))}
       </div>
     </div>
   );
 }
+

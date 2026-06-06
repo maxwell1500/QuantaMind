@@ -57,6 +57,18 @@ pub async fn show_model(endpoint: &str, model: &str) -> AppResult<ShowResponse> 
     resp.json().await.map_err(|e| AppError::Inference(format!("show body: {e}")))
 }
 
+/// Whether a model's reported `/api/show` capabilities include native tool-calling.
+pub fn supports_tools(caps: &[String]) -> bool {
+    caps.iter().any(|c| c == "tools")
+}
+
+/// Best-effort probe: does this Ollama model support native tool-calling? Any
+/// error (model gone, Ollama down) → `false`, so the native-FC pass simply skips
+/// it (rendered N/A) rather than fabricating a result.
+pub async fn probe_supports_tools(endpoint: &str, model: &str) -> bool {
+    show_model(endpoint, model).await.map(|r| supports_tools(&r.capabilities)).unwrap_or(false)
+}
+
 #[cfg(test)]
 #[path = "ollama_show_tests.rs"]
 mod tests;

@@ -8,7 +8,7 @@ export function ConfigPhase({ task }: { task: ToolTask }) {
     <div style={{ display: "flex", flexDirection: "column", gap: 12 }} data-testid="pipeline-config">
       <div style={panelBox}>
         <div style={panelLabel}>User Prompt</div>
-        <div style={{ fontSize: 13, color: "#cbd5e1", fontFamily: "Inter,sans-serif" }}>{task.prompt}</div>
+        <div style={{ fontSize: 13, color: "#334155", fontFamily: "Inter,sans-serif" }}>{task.prompt}</div>
       </div>
       <div style={panelBox}>
         <div style={panelLabel}>Tool Definition (JSON Schema)</div>

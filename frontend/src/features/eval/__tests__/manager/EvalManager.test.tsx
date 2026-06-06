@@ -11,6 +11,11 @@ vi.mock("../../../../shared/ipc/eval/batch", () => ({
   EVENT_AGENTIC_STEP: "agentic-step",
   EVENT_BATCH_COMPLETE: "batch-complete",
 }));
+// The batch run pre-flights the backend's health; treat it as up here so the run
+// proceeds (the pre-flight itself is tested in useBatchRun.test).
+vi.mock("../../../../shared/ipc/core/client", () => ({
+  healthFor: vi.fn().mockResolvedValue({ available: true, version: null }),
+}));
 
 import { EvalManager } from "../../components/manager/EvalManager";
 import { useEvalRegistryStore } from "../../state/evalRegistryStore";
@@ -63,6 +68,51 @@ describe("EvalManager Sidebar Controls", () => {
     fireEvent.click(screen.getByTestId("eval-model-dropdown"));
     expect(screen.getByTestId("eval-model-toggle-qwen.gguf")).toBeInTheDocument();
     expect(screen.queryByTestId("eval-model-toggle-llama3.2:1b")).toBeNull();
+  });
+
+  it("de-dupes Ollama tag duplicates (same digest) so a model isn't listed several times", () => {
+    useBackendStore.setState({ selectedBackend: "ollama" });
+    useInstalledModelsStore.setState({
+      list: [
+        // The same blob under two Ollama tags (identical digest) — e.g. gemma.
+        { name: "gemma_q3_k_l:latest", digest: "3d3dcc", size_bytes: 1, modified_at: "", family: "", parameter_size: "", quantization: "Q3_K_L", backend: "ollama" },
+        { name: "gemma:q3_k_l", digest: "3d3dcc", size_bytes: 1, modified_at: "", family: "", parameter_size: "", quantization: "Q3_K_L", backend: "ollama" },
+        { name: "qwen3.5:9b", digest: "6488c9", size_bytes: 1, modified_at: "", family: "", parameter_size: "", quantization: "Q4_K_M", backend: "ollama" },
+      ],
+      status: "ready", error: null, lastRefreshedAt: 1,
+    });
+    render(<EvalManager targets={[]} setTargets={() => {}} k={1} setK={() => {}} maxSteps={8} setMaxSteps={() => {}} />);
+    fireEvent.click(screen.getByTestId("eval-model-dropdown"));
+    // First occurrence of the shared digest wins; the duplicate tag is collapsed.
+    expect(screen.getByTestId("eval-model-toggle-gemma_q3_k_l:latest")).toBeInTheDocument();
+    expect(screen.queryByTestId("eval-model-toggle-gemma:q3_k_l")).toBeNull();
+    expect(screen.getByTestId("eval-model-toggle-qwen3.5:9b")).toBeInTheDocument();
+  });
+
+  it("offers an ⓘ next to Iterations (k) explaining Pass^k", () => {
+    render(<EvalManager targets={[]} setTargets={() => {}} k={1} setK={() => {}} maxSteps={8} setMaxSteps={() => {}} />);
+    const info = screen.getByTestId("info-iterations");
+    fireEvent.mouseEnter(info.parentElement as HTMLElement);
+    expect(screen.getByTestId("info-popup-iterations")).toHaveTextContent(/Pass\^k/);
+  });
+
+  it("explains WHY the RUN BATCH button is disabled (no models vs no tasks)", () => {
+    // No models selected (targets = []) → the button says select a model.
+    const { rerender } = render(<EvalManager targets={[]} setTargets={() => {}} k={1} setK={() => {}} maxSteps={8} setMaxSteps={() => {}} />);
+    expect(screen.getByTestId("eval-run-all")).toHaveAttribute("title", "Select at least one model");
+    // Models present but the collection has no tasks → the button says no tasks.
+    useEvalRegistryStore.setState({ tasks: [] });
+    rerender(<EvalManager targets={["llama3.2:1b"]} setTargets={() => {}} k={1} setK={() => {}} maxSteps={8} setMaxSteps={() => {}} />);
+    expect(screen.getByTestId("eval-run-all")).toHaveAttribute("title", "This collection has no tasks");
+  });
+
+  it("nudges to enable native tool-calling while it's off, and hides the nudge once enabled", () => {
+    render(<EvalManager targets={["llama3.2:1b"]} setTargets={() => {}} k={1} setK={() => {}} maxSteps={8} setMaxSteps={() => {}} />);
+    // Prompt-based is the default → the honesty hint is shown.
+    expect(screen.getByTestId("native-fc-hint")).toHaveTextContent(/underrepresent native tool-calling/i);
+    // Enabling native FC means they've opted into strict fidelity → hint goes away.
+    fireEvent.click(screen.getByTestId("eval-native-fc"));
+    expect(screen.queryByTestId("native-fc-hint")).toBeNull();
   });
 
   it("renders the headers and Data Source radio controls", () => {
@@ -155,7 +205,8 @@ describe("EvalManager Sidebar Controls", () => {
         1,
         8,
         { temperature: 0.2 },
-        undefined
+        undefined,
+        false, // runNativeFc — the "Measure native tool-calling" checkbox (Phase 7.2), off by default
       );
     });
   });

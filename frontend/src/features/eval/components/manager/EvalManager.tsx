@@ -8,10 +8,15 @@ import { TOOL_HELP } from "../../help";
 import { useBatchStore } from "../../state/batchStore";
 import { useBatchRun } from "../../hooks/useBatchRun";
 import { formatIpcError } from "../../../../shared/ipc/core/error";
+import { useToast } from "../../../../shared/ui/Toast";
+import type { ToolTask } from "../../../../shared/ipc/eval/registry";
 import { batchToCsv, download } from "../../exportBatch";
 import { ModelDropdown } from "../matrix/ModelDropdown";
+import { dedupeByDigest } from "../../../../shared/models/dedupeDigest";
 import { ConfirmDialog } from "./ConfirmDialog";
+import { CsvImportModal } from "./CsvImportModal";
 import { KebabMenu } from "./KebabMenu";
+import { Spinner } from "../../../../shared/ui/Spinner";
 
 interface EvalManagerProps {
   targets: string[];
@@ -34,13 +39,18 @@ export function EvalManager({
   onNewCollection = () => {},
   onEditCollection = () => {},
 }: Partial<EvalManagerProps> = {}) {
-  const { presets, collections, selected, tasks, init, select, isPreset, importFile, remove, hidePreset } =
+  const { presets, collections, selected, tasks, init, select, isPreset, importFile, save, remove, hidePreset } =
     useEvalRegistryStore();
+  const showToast = useToast();
   const list = useInstalledModelsStore((s) => s.list);
   const selectedBackend = useBackendStore((s) => s.selectedBackend);
   // Only the selected backend's models can be evaluated (a model is bound to its
-  // backend's weight format) — the dropdown and run targets are scoped to it.
-  const backendModels = list.filter((m) => m.backend === selectedBackend);
+  // backend's weight format) — the dropdown and run targets are scoped to it. Then
+  // de-dupe by content digest: Ollama lists the same blob once per tag (e.g.
+  // `gemma_q3_k_l:latest` and `gemma:q3_k_l`), which would otherwise show the same
+  // model several times. Mirrors the global header picker. (llama.cpp/MLX have no
+  // digest, so they're always kept.)
+  const backendModels = dedupeByDigest(list.filter((m) => m.backend === selectedBackend));
   const running = useBatchStore((s) => s.running);
   const report = useBatchStore((s) => s.report);
   const { run, stop } = useBatchRun();
@@ -48,13 +58,21 @@ export function EvalManager({
   const [collectionsExpanded, setCollectionsExpanded] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [deleteTarget, setDeleteTarget] = useState<string | null>(null);
+  const [csvOpen, setCsvOpen] = useState(false);
+  // Phase 7.2: also measure each Ollama model's NATIVE tool-calling path.
+  const [nativeFc, setNativeFc] = useState(false);
+
+  const handleCsvImport = async (name: string, csvTasks: ToolTask[]) => {
+    await save(name, csvTasks);
+    showToast(`CSV imported: ${csvTasks.length} task${csvTasks.length > 1 ? "s" : ""} ✓`);
+  };
 
   // Determine dataSource based on the active selection
   const dataSource = isPreset(selected) ? "builtin" : "custom";
 
   // Init on mount.
   useEffect(() => {
-    void init().catch(() => {});
+    void init().catch((e) => console.error("eval registry init failed (EvalManager):", e));
   }, [init]);
 
   // Drop targets that aren't on the active backend (handles a backend switch).
@@ -128,24 +146,33 @@ export function EvalManager({
     }
     const ts = backendModels.filter((m) => targets.includes(m.name)).map((m) => ({ model: m.name, backend: m.backend }));
     if (ts.length === 0 || tasks.length === 0) return;
-    void run(selected, ts, tasks, k, maxSteps);
+    void run(selected, ts, tasks, k, maxSteps, nativeFc);
   };
 
   const toggleTarget = (name: string) =>
     setTargets(targets.includes(name) ? targets.filter((t) => t !== name) : [...targets, name]);
 
   const runDisabled = targets.length === 0 || tasks.length === 0;
+  // Explain WHY RUN BATCH is disabled instead of leaving a greyed-out dead button.
+  const runDisabledReason =
+    targets.length === 0 && tasks.length === 0
+      ? "Select at least one model and a collection with tasks"
+      : targets.length === 0
+        ? "Select at least one model"
+        : tasks.length === 0
+          ? "This collection has no tasks"
+          : undefined;
 
   return (
     <div
-      className="rounded-xl overflow-hidden border border-white/10"
+      className="rounded-xl overflow-hidden border border-slate-200"
       style={panelStyle}
       data-testid="eval-manager"
     >
       {/* Title Header */}
       <div style={headerStyle}>
         <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
-          <div style={{ fontSize: 16, fontWeight: 700, color: "#f8fafc", fontFamily: "Inter, sans-serif" }}>
+          <div style={{ fontSize: 16, fontWeight: 700, color: "#0f172a", fontFamily: "Inter, sans-serif" }}>
             1. EVAL MANAGER
           </div>
           <span style={{ marginLeft: "auto" }}>
@@ -178,7 +205,7 @@ export function EvalManager({
                 onChange={() => void handleDataSourceChange("custom")}
                 style={radioInputStyle}
               />
-              <span style={{ fontSize: 13, color: dataSource === "custom" ? "#e2e8f0" : "#94a3b8" }}>
+              <span style={{ fontSize: 13, color: dataSource === "custom" ? "#0f172a" : "#64748b" }}>
                 {dataSource === "custom" ? "◉" : "◯"} Custom JSON
               </span>
             </label>
@@ -190,7 +217,7 @@ export function EvalManager({
                 onChange={() => void handleDataSourceChange("builtin")}
                 style={radioInputStyle}
               />
-              <span style={{ fontSize: 13, color: dataSource === "builtin" ? "#e2e8f0" : "#94a3b8" }}>
+              <span style={{ fontSize: 13, color: dataSource === "builtin" ? "#0f172a" : "#64748b" }}>
                 {dataSource === "builtin" ? "◉" : "◯"} Built-in
               </span>
             </label>
@@ -212,7 +239,7 @@ export function EvalManager({
               <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
                 {dataSource === "custom" ? (
                   collections.length === 0 ? (
-                    <div style={{ color: "#475569", fontSize: 12, fontStyle: "italic", paddingLeft: 8 }}>
+                    <div style={{ color: "#64748b", fontSize: 12, fontStyle: "italic", paddingLeft: 8 }}>
                       No custom JSONs
                     </div>
                   ) : (
@@ -222,7 +249,7 @@ export function EvalManager({
                         style={{
                           ...collectionItemStyle,
                           justifyContent: "space-between",
-                          color: selected === c ? "#3b82f6" : "#94a3b8",
+                          color: selected === c ? "#2563eb" : "#475569",
                           fontWeight: selected === c ? 600 : 400,
                         }}
                       >
@@ -248,7 +275,7 @@ export function EvalManager({
                       style={{
                         ...collectionItemStyle,
                         justifyContent: "space-between",
-                        color: selected === p.id ? "#3b82f6" : "#94a3b8",
+                        color: selected === p.id ? "#2563eb" : "#475569",
                         fontWeight: selected === p.id ? 600 : 400,
                       }}
                     >
@@ -294,8 +321,9 @@ export function EvalManager({
 
             {/* Iterations Selector — Pass^k repeats; only affects Multi-Step tasks */}
             <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between" }}>
-              <span style={controlLabelStyle} title="Repeat each Multi-Step (agentic) task k times — Pass^k consistency. No effect on single-turn tasks.">
+              <span style={{ ...controlLabelStyle, display: "inline-flex", alignItems: "center", gap: 6 }}>
                 Iterations (k):
+                <InfoButton {...TOOL_HELP.iterations} align="left" testId="iterations" />
               </span>
               <input
                 type="number"
@@ -322,34 +350,85 @@ export function EvalManager({
               />
             </div>
 
+            {/* Native function-calling (Phase 7.2) — measure the Ollama tool_calls
+                path alongside the prompt-based proxy. */}
+            <label
+              style={{ ...controlLabelStyle, display: "flex", alignItems: "center", gap: 8, cursor: "pointer" }}
+              title="Also run each Ollama model through its native /api/chat tool_calls API and compare. llama.cpp / MLX show N/A."
+            >
+              <input
+                type="checkbox"
+                checked={nativeFc}
+                onChange={(e) => setNativeFc(e.target.checked)}
+                data-testid="eval-native-fc"
+              />
+              Measure native tool-calling (Ollama)
+            </label>
+
+            {/* Honesty nudge: when the native path is OFF, the batch is the
+                prompt-based proxy — a tool-tuned model that answers in prose is
+                scored Fail though its native API would pass. Point the blame at the
+                model's architecture + teach the toggle, so the gap isn't read as a
+                tool bug. Hidden once native is on (they've already opted in). */}
+            {!nativeFc && (
+              <div
+                data-testid="native-fc-hint"
+                style={{
+                  fontSize: 11,
+                  lineHeight: 1.5,
+                  color: "#64748b",
+                  background: "#f8fafc",
+                  border: "1px solid #e2e8f0",
+                  borderRadius: 6,
+                  padding: "7px 9px",
+                  fontFamily: "Inter, sans-serif",
+                }}
+              >
+                Prompt-based results may underrepresent native tool-calling capability. Enable{" "}
+                <strong style={{ color: "#475569" }}>Measure native tool-calling</strong> for strict API fidelity.
+              </div>
+            )}
+
             {/* RUN BATCH Button */}
             <button
               type="button"
               onClick={() => void handleRunBatch()}
               disabled={runDisabled}
+              title={running ? undefined : runDisabledReason}
               style={{
                 ...runBatchBtnStyle,
                 background: running
-                  ? "rgba(239, 68, 68, 0.2)"
+                  ? "#fee2e2"
                   : runDisabled
-                    ? "rgba(255, 255, 255, 0.03)"
-                    : "rgba(34, 197, 94, 0.18)",
+                    ? "#f1f5f9"
+                    : "#dcfce7",
                 color: running
-                  ? "#f87171"
+                  ? "#991b1b"
                   : runDisabled
-                    ? "#475569"
-                    : "#4ade80",
+                    ? "#94a3b8"
+                    : "#166534",
                 borderColor: running
-                  ? "rgba(239, 68, 68, 0.3)"
+                  ? "#fca5a5"
                   : runDisabled
-                    ? "rgba(255, 255, 255, 0.06)"
-                    : "rgba(34, 197, 94, 0.3)",
+                    ? "#e2e8f0"
+                    : "#bbf7d0",
                 cursor: runDisabled ? "not-allowed" : "pointer",
               }}
               data-testid="eval-run-all"
             >
-              {running ? "■ STOP BATCH" : "▶ RUN BATCH"}
+              {running ? (
+                <span style={{ display: "inline-flex", alignItems: "center", justifyContent: "center", gap: 8 }}>
+                  <Spinner color="#991b1b" /> ■ STOP BATCH
+                </span>
+              ) : (
+                "▶ RUN BATCH"
+              )}
             </button>
+            {running && (
+              <div style={{ fontSize: 11, color: "#64748b", fontFamily: "Inter, sans-serif", textAlign: "center", marginTop: -6 }}>
+                Evaluating… click to cancel.
+              </div>
+            )}
 
             {/* Import & Export Links */}
             <div style={{ display: "flex", flexDirection: "column", gap: 6, marginTop: 8 }}>
@@ -360,6 +439,14 @@ export function EvalManager({
                 data-testid="eval-manager-import"
               >
                 [↓] Import .json
+              </button>
+              <button
+                type="button"
+                onClick={() => setCsvOpen(true)}
+                style={actionBtnStyle}
+                data-testid="eval-manager-import-csv"
+              >
+                [↓] Import CSV
               </button>
               <button
                 type="button"
@@ -394,6 +481,7 @@ export function EvalManager({
           onClose={() => setDeleteTarget(null)}
         />
       )}
+      {csvOpen && <CsvImportModal onImport={handleCsvImport} onClose={() => setCsvOpen(false)} />}
     </div>
   );
 }
@@ -401,8 +489,10 @@ export function EvalManager({
 // ── Styles ──────────────────────────────────────────────────────────────────
 
 const panelStyle: React.CSSProperties = {
-  background: "linear-gradient(145deg, #121620 0%, #0d0f15 100%)",
-  boxShadow: "0 8px 32px rgba(0,0,0,0.5), inset 0 1px 0 rgba(255,255,255,0.03)",
+  background: "#ffffff",
+  border: "1px solid #e2e8f0",
+  borderRadius: "16px",
+  boxShadow: "0 1px 3px 0 rgba(0, 0, 0, 0.05)",
   display: "flex",
   flexDirection: "column",
   minHeight: 520,
@@ -410,13 +500,14 @@ const panelStyle: React.CSSProperties = {
 
 const headerStyle: React.CSSProperties = {
   padding: "16px 20px 14px",
-  borderBottom: "1px solid rgba(255,255,255,0.06)",
+  borderBottom: "1px solid #e2e8f0",
+  background: "#fafafa",
 };
 
 const sectionHeaderStyle: React.CSSProperties = {
   fontSize: 11,
-  fontWeight: 700,
-  color: "#475569",
+  fontWeight: 800,
+  color: "#64748b",
   letterSpacing: "0.06em",
   fontFamily: "Inter, sans-serif",
   userSelect: "none",
@@ -446,21 +537,21 @@ const collectionItemStyle: React.CSSProperties = {
 
 const controlLabelStyle: React.CSSProperties = {
   fontSize: 12,
-  color: "#94a3b8",
+  color: "#475569",
   fontFamily: "Inter, sans-serif",
 };
 
 
 const numberInputStyle: React.CSSProperties = {
-  background: "rgba(255,255,255,0.04)",
-  border: "1px solid rgba(255,255,255,0.08)",
+  background: "#ffffff",
+  border: "1px solid #cbd5e1",
   borderRadius: 6,
-  color: "#e2e8f0",
+  color: "#0f172a",
   fontSize: 12,
   fontFamily: "Inter, sans-serif",
   padding: "4px 8px",
   outline: "none",
-  width: 50,
+  width: 55,
   textAlign: "center",
 };
 
@@ -481,7 +572,7 @@ const runBatchBtnStyle: React.CSSProperties = {
 const actionBtnStyle: React.CSSProperties = {
   background: "transparent",
   border: "none",
-  color: "#3b82f6",
+  color: "#2563eb",
   fontSize: 13,
   fontFamily: "Inter, sans-serif",
   cursor: "pointer",
@@ -493,10 +584,10 @@ const actionBtnStyle: React.CSSProperties = {
 
 const errorTextStyle: React.CSSProperties = {
   fontSize: 11,
-  color: "#f87171",
+  color: "#b91c1c",
   fontFamily: "Inter, sans-serif",
-  background: "rgba(239,68,68,0.08)",
-  border: "1px solid rgba(239,68,68,0.15)",
+  background: "#fef2f2",
+  border: "1px solid #fee2e2",
   borderRadius: 5,
   padding: "5px 10px",
   margin: 0,
