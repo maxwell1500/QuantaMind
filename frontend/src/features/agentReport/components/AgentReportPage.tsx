@@ -6,6 +6,7 @@ import { ProfileSelector } from "./ProfileSelector";
 import { VerdictTable } from "./VerdictTable";
 import { RecommendationBanner } from "./RecommendationBanner";
 import { ExportMenu } from "./ExportMenu";
+import { PublishButton } from "../../publish/PublishButton";
 import { useNavStore } from "../../../shared/state/navStore";
 import { InfoButton } from "../../../shared/ui/InfoButton";
 import { READINESS_HELP } from "../readinessHelp";
@@ -228,13 +229,16 @@ export function AgentReportPage() {
         </button>
 
         {verdicts.length > 0 && activeProfile && (
-          <ExportMenu
-            verdicts={verdicts}
-            profile={activeProfile}
-            collectionId={selected}
-            hardware={hardware}
-            cardRef={cardRef}
-          />
+          <div className="flex items-center gap-2">
+            <ExportMenu
+              verdicts={verdicts}
+              profile={activeProfile}
+              collectionId={selected}
+              hardware={hardware}
+              cardRef={cardRef}
+            />
+            <PublishButton verdicts={verdicts} />
+          </div>
         )}
       </footer>
     </div>

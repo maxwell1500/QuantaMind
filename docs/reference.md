@@ -786,6 +786,22 @@ without it. ⚠ The `cohort_key` taxonomy is **v1 pending backend sign-off** —
 server's bucketing must match it exactly or dedup `UNIQUE(user, model, quant,
 cohort_key)` breaks.
 
+*Auth + send.* Sign-in is OAuth **PKCE** (no client secret): the app opens the
+browser to `/authorize`, catches the loopback redirect, and exchanges the code at
+`/token`. The **refresh token** is stored in the OS keychain (`keyring`), degrading
+to an in-memory session token when no secret service is present (headless Linux); a
+short-lived **access token** is cached in memory and silently refreshed (rotating the
+refresh token). Publishing is **one batch = one request**: GET a fresh `/publish/nonce`,
+recompute the canonical hash, POST `/publish` with the bearer token — a fresh nonce per
+attempt (the server burns it on a 422). Every status maps to a typed outcome the UI
+handles without freezing: `200`→toast + open board, `401`→re-auth, `422`→show the failing
+row index, `426`→"please update", `429`→"try again shortly". An optional **write-up
+link** may accompany a result but is restricted to an allow-list of dev/social hosts
+(github.com, x.com, dev.to, reddit.com, medium.com, youtube.com, huggingface.co) to
+keep the board from becoming a link farm. The whole auth/publish surface **compiles out
+of enterprise/air-gapped builds** (cargo `enterprise` feature); the offline export does
+not.
+
 **The recommendation (the one-line answer).** `assess_readiness` returns the verdicts
 **ranked best-first** (`readiness::recommend::rank`, also CLI-shareable) so the page
 opens with a leaderboard and a **Recommendation banner**: *"Recommended for {profile}
