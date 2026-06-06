@@ -89,6 +89,13 @@ describe("EvalManager Sidebar Controls", () => {
     expect(screen.getByTestId("eval-model-toggle-qwen3.5:9b")).toBeInTheDocument();
   });
 
+  it("offers an ⓘ next to Iterations (k) explaining Pass^k", () => {
+    render(<EvalManager targets={[]} setTargets={() => {}} k={1} setK={() => {}} maxSteps={8} setMaxSteps={() => {}} />);
+    const info = screen.getByTestId("info-iterations");
+    fireEvent.mouseEnter(info.parentElement as HTMLElement);
+    expect(screen.getByTestId("info-popup-iterations")).toHaveTextContent(/Pass\^k/);
+  });
+
   it("explains WHY the RUN BATCH button is disabled (no models vs no tasks)", () => {
     // No models selected (targets = []) → the button says select a model.
     const { rerender } = render(<EvalManager targets={[]} setTargets={() => {}} k={1} setK={() => {}} maxSteps={8} setMaxSteps={() => {}} />);

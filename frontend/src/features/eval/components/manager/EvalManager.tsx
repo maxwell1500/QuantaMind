@@ -321,8 +321,9 @@ export function EvalManager({
 
             {/* Iterations Selector — Pass^k repeats; only affects Multi-Step tasks */}
             <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between" }}>
-              <span style={controlLabelStyle} title="Repeat each Multi-Step (agentic) task k times — Pass^k consistency. No effect on single-turn tasks.">
+              <span style={{ ...controlLabelStyle, display: "inline-flex", alignItems: "center", gap: 6 }}>
                 Iterations (k):
+                <InfoButton {...TOOL_HELP.iterations} align="left" testId="iterations" />
               </span>
               <input
                 type="number"

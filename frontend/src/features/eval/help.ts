@@ -33,6 +33,10 @@ export const TOOL_HELP = {
     title: "Context-Cliff Diagnostic Probe",
     body: "Runs the chosen dataset at growing prompt lengths and graphs where tool-call accuracy collapses — the 'context cliff'. Use it to find a model's usable context window for tool use. Padding is approximate (≈tokens), so the depth is indicative, not a tokenizer count.",
   },
+  iterations: {
+    title: "Iterations (k)",
+    body: "How many times each Multi-Step (agentic) task is re-run — the k in Pass^k. A real agent loops many steps where small failures compound, so passing once isn't enough: with k=5 a task runs 5× and the model only counts as reliable if it passes consistently (shown as passes/total, e.g. 4/5). Higher k = a stricter reliability bar (and longer runs); k=1 = run once, no consistency check. No effect on single-turn tasks (they always run once).",
+  },
 } satisfies Record<string, Help>;
 
 /// How each metric is computed. Used both in InfoButtons and as native title=
