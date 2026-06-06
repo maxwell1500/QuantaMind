@@ -6,10 +6,11 @@
 
 Built with Tauri, Rust, React, and Ollama. Local-first. No telemetry. No cloud.
 
-<sub>Workspace · Model Management · Compare · all in one ~30 MB binary</sub>
+<sub>Workspace · Analysis · Inspector · Models · Eval · Quant · Agent Readiness · one ~30 MB binary</sub>
 
 <br/>
 
+![Version](https://img.shields.io/badge/version-0.2.0-blue)
 ![Platform](https://img.shields.io/badge/platform-macOS-blue)
 ![Tauri](https://img.shields.io/badge/Tauri-2.x-FFC131?logo=tauri&logoColor=black)
 ![Rust](https://img.shields.io/badge/Rust-1.75%2B-orange?logo=rust&logoColor=white)
@@ -52,15 +53,19 @@ Built with Tauri, Rust, React, and Ollama. Local-first. No telemetry. No cloud.
 
 ## Overview
 
-**QuantaMind** is a native desktop application that turns your computer into a serious workbench for local language models. Instead of juggling terminal commands, half-finished scripts, and three different chat UIs, QuantaMind gives you one focused window with three tools:
+**QuantaMind** is a native desktop application that turns your computer into a serious workbench for local language models. What began as three tools (Workspace, Model Management, Compare) now spans the whole local-agent workflow — from a single prompt to a hardware-aware, go/no-go readiness verdict:
 
 | Tool | What it does |
 |---|---|
 | **Workspace** | Write a prompt, pick a model, stream the answer back with timing metrics, save/load the prompt as YAML. |
+| **Analysis** (Compare) | Run the same prompt through multiple models side-by-side, with a hardware feasibility check up front and Markdown/JSON export. |
+| **Inspector** | Per-token timing forensics for a run — TTFT phase breakdown, a per-token latency timeline, and an inter-token latency histogram. |
 | **Model Management** | Install, inspect, and uninstall models from three sources — Ollama library, Hugging Face GGUF, local files — without touching a terminal. |
-| **Compare** | Run the same prompt through multiple models side-by-side, with a hardware feasibility check up front and Markdown/JSON export. |
+| **Eval** | Score models on single-turn tool-calling and multi-step agentic tasks (Pass^k, schema resilience, context-cliff), with custom collections + CSV import. |
+| **Quant** | Compare quantizations of one model family — size vs quality vs whether it fits in memory. |
+| **Agent Report** | Turn the measurements into a per-model **Ready / Conditional / Not Ready** verdict against a chosen readiness profile and your hardware. |
 
-Under the hood: a 30 MB Tauri binary — a native shell wrapped around a Rust backend and a React/TypeScript frontend, talking to a locally running Ollama server over HTTP.
+Under the hood: a ~30 MB Tauri binary — a native shell wrapped around a Rust backend and a React/TypeScript frontend, talking to local model servers over HTTP: **Ollama**, **llama.cpp** (`llama-server`), and **MLX** (`mlx_lm`, Apple Silicon) behind a single `InferenceBackend` trait.
 
 > [!IMPORTANT]
 > Everything runs on your machine. There is no QuantaMind cloud, no account, no telemetry. Your prompts and your model outputs never leave your hardware.
@@ -107,12 +112,43 @@ Three design commitments shape every decision:
 - One-click Uninstall guarded by an `alertdialog` confirmation
 - Storage path section that shows current `OLLAMA_MODELS` and *honestly* helps you change it
 
-### Compare
+### Compare (Analysis tab)
 - Top-level tab parallel to Workspace
 - Multi-select installed models, one prompt, three strategies
 - Hardware feasibility verdict: `ok` / `risky` / `wont_fit` — computed at click time
 - Per-model streaming column with its own metrics row
+- Throughput + TTFT comparison chart; word-level output diff
 - Export full run as Markdown or JSON via save dialog
+
+### Backends
+- One `InferenceBackend` trait, three runtimes: **Ollama**, **llama.cpp** (`llama-server`), **MLX** (`mlx_lm`, Apple Silicon only)
+- The backend is bound to the model's weight format — auto-picked, never a silent fallback
+- Each external server is launched stream-aware (no blind timeout), reaped on app exit, and bound to a dynamically chosen free port
+
+### Inspector
+- Per-token timing forensics for the last run
+- TTFT breakdown: model-load vs prompt-prefill vs generation, as a stacked phase bar
+- Per-token latency timeline (visx) with outlier highlighting and phase boundaries
+- Inter-token latency histogram, VRAM bar, context-budget bar
+- Cold- vs warm-start comparison, memory-leak heuristic, regression alerts, HTML report export
+
+### Eval
+- Score models on **single-turn tool-calling** and **multi-step agentic** tasks
+- Deterministic, sandbox-free scoring: composite tool-call accuracy (parse · tool · args · abstain), **Pass^k** reliability, avg steps, effort, **schema resilience**, dominant failure mode
+- **Context-cliff** probe — finds the prompt length where tool-call accuracy collapses (real measured prompt tokens, never an estimate)
+- Author custom collections by hand or bulk-load single-turn tasks via CSV import
+- Optional native function-calling path (Ollama `/api/chat` `tools`) alongside the prompt-based proxy
+
+### Quant
+- Compare a model family's installed quantizations side by side
+- Size · hardware fit (OOM risk) · quality (eval pass-rate) · tool-call composite
+- Recommends the best size↔quality↔fit trade-off for your use case and context length
+
+### Agent Report
+- Per-model **Ready / Conditional / Not Ready** verdict with the exact blocking + conditional reasons
+- Hardware-aware: VRAM fit (exact weights + KV cache vs an allocation cap, with a pressure flag)
+- Configurable readiness profiles (min Pass^k, forbid loops/false-done, require full VRAM, min context, require native FC)
+- Export the verdict table as a standalone HTML report
 
 ---
 
@@ -143,7 +179,7 @@ Three design commitments shape every decision:
 <details>
 <summary><b>What is deliberately NOT installed (yet)</b></summary>
 
-- No logging library — `println!` / `console.log` until persistence arrives in Phase 2
+- No logging library — `println!` / `console.log`; structured persistence is deliberately deferred
 - No state-machine library — Zustand is enough
 - No UI component library — Tailwind utilities only
 - No form library — there are no real forms yet
@@ -191,8 +227,8 @@ Every dependency is a maintenance debt. Resist additions.
 | Frontend | `shared/ipc/` | **Only** place that calls Tauri `invoke`. Typed wrappers + zod schemas. |
 | Frontend | `shared/components/` | Primitives reused by 2+ features. |
 | Backend | `commands/` | IPC entry points. Thin: validate, call domain, return. |
-| Backend | `inference/` | Backend adapters behind `InferenceBackend` trait (Ollama today). |
-| Backend | `metrics/` | TTFT, tokens/sec, VRAM (Phase 4). |
+| Backend | `inference/` | Backend adapters behind the `InferenceBackend` trait — Ollama, llama.cpp, MLX — plus the eval/readiness scoring engines. |
+| Backend | `metrics/` | TTFT, tokens/sec, per-token timeline, VRAM. |
 | Backend | `persistence/` | YAML/JSON read+write for prompts and history. |
 | Backend | `validation/` | Schemas shared by commands and persistence. |
 | Backend | `errors.rs` | Single `AppError` enum. **No `unwrap()` outside tests.** |
@@ -205,12 +241,14 @@ The two halves talk JSON over Tauri's IPC. Contracts are explicit in `shared/ipc
 
 ### Prerequisites
 
-| Tool | Version |
-|---|---|
-| **Rust** | 1.75+ |
-| **Node** | 20+ |
-| **pnpm** | 9+ |
-| **Ollama** | latest |
+| Tool | Version | Notes |
+|---|---|---|
+| **Rust** | 1.75+ | |
+| **Node** | 20+ | |
+| **pnpm** | 9+ | |
+| **Ollama** | latest | Primary backend |
+| **llama.cpp** (`llama-server`) | optional | Run GGUF models directly |
+| **MLX** (`pip install mlx-lm`) | optional | Apple Silicon only |
 
 ### Install
 
@@ -334,7 +372,7 @@ QuantaMind/
 ```
 
 > [!NOTE]
-> **Every source file is < 100 lines.** Hard limit. Splits are by concern, not by line count. See [Engineering principles](#engineering-principles).
+> **Every source file is single-concern.** Split a file when it starts doing *two things*, not when it crosses a line count. See [Engineering principles](#engineering-principles).
 
 ---
 
@@ -559,7 +597,7 @@ All backend HTTP clients set `User-Agent: quantamind/<version>`. HF behind Cloud
 
 1. **One step at a time.** Don't start step N+1 until step N is implemented, its test passes, *and* its output is verified.
 2. **Test pass ≠ data quality pass.** A green test proves the code ran the path you asked it to. The *output* must also match expected shape and values.
-3. **Every file < 100 lines.** Hard limit. Source, tests, configs, docs. Splits are by concern, not line count.
+3. **Single-concern files.** Split a file when it starts doing two things — by responsibility, not by line count. (Folder taxonomy: ≤ 10 files per folder.)
 4. **Separation of concerns.** Each file does one thing. No `utils.ts`, `helpers/`, `common/`, or `misc/`.
 5. **Documentation ships with the change.** Same commit.
 6. **Locked tech stack.** Substitutions require explicit review.
@@ -676,7 +714,7 @@ Contributions welcome. Before you open a PR:
 1. **Read [`CLAUDE.md`](./CLAUDE.md)** — the engineering principles are non-negotiable.
 2. **Read [`docs/process.md#workflow`](./docs/process.md#workflow)** — the one-step-at-a-time loop.
 3. **Read [`docs/process.md#conventions`](./docs/process.md#conventions)** — naming, commits, branches.
-4. **Stay under 100 lines per file.** No exceptions for source/test/config.
+4. **Keep each file single-concern.** Split by responsibility when it starts doing two things — not by a line count.
 5. **Tests pass AND outputs are verified.** A green CI run is necessary, not sufficient.
 
 ### Branch naming
@@ -687,7 +725,7 @@ Contributions welcome. Before you open a PR:
 - [ ] Tests added/updated and passing
 - [ ] Output verified — actually look at what the code produced
 - [ ] Docs in `docs/` updated in the same PR
-- [ ] No files exceed 100 lines
+- [ ] Each file stays single-concern (split by responsibility, not line count)
 - [ ] No `unwrap()` outside tests
 - [ ] Commit messages follow Conventional Commits
 
@@ -718,7 +756,7 @@ Please open a [private security advisory](https://github.com/QuantaMinds/QuantaM
 <details>
 <summary><b>Is QuantaMind a chat app?</b></summary>
 
-No. QuantaMind is a workbench. Each run is a single prompt → single completion. If you want chat UI on top of Ollama, look elsewhere — though Phase 2 will add run history.
+No. QuantaMind is a workbench. Each Workspace run is a single prompt → single completion (run history is available via the History panel). The multi-step **agentic** loops live in the Eval engine, not a chat UI — if you want a chat front-end on top of Ollama, look elsewhere.
 
 </details>
 
@@ -732,14 +770,14 @@ No. QuantaMind consumes pre-trained models. Training is out of scope.
 <details>
 <summary><b>Why Ollama and not llama.cpp directly?</b></summary>
 
-Ollama gives us a clean HTTP API, a stable model storage convention, and handles a lot of platform-specific GPU plumbing. A direct `llama_cpp` adapter is planned for Phase 3 and an MLX adapter for Phase 5, so the inference layer is already structured behind an `InferenceBackend` trait.
+Ollama gives us a clean HTTP API, a stable model storage convention, and handles a lot of platform-specific GPU plumbing. It's no longer the only backend, though: a llama.cpp (`llama-server`) adapter and an MLX (`mlx_lm`, Apple Silicon) adapter now ship alongside it, all behind a single `InferenceBackend` trait.
 
 </details>
 
 <details>
-<summary><b>Why are files capped at 100 lines?</b></summary>
+<summary><b>Why keep files single-concern?</b></summary>
 
-Long files hide their dependencies, smuggle in second concerns, and make every reviewer scroll. The cap is a forcing function for separation of concerns.
+Long files hide their dependencies, smuggle in second concerns, and make every reviewer scroll. We split by responsibility — when a file starts doing two things — rather than enforce an arbitrary line count.
 
 </details>
 
