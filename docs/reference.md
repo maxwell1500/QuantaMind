@@ -603,7 +603,10 @@ shows **"Not available"** and is dropped from the chart rather than placed at a 
 The probe owns its own **Active Collection** picker (independent of the EvalManager editor), so it
 always has a real dataset to run. The **Max Tokens** control sets the padding target (how much filler
 to add) and is capped at the model's reported **context window** when known (Ollama `/api/show` dims),
-falling back to a fixed ceiling otherwise.
+falling back to a fixed ceiling otherwise. A **Greedy (temp 0)** toggle (default **on**) forces
+deterministic decoding so the verdict reproduces for a given (collection, model); a cliff is a
+*diagnostic*, so the greedy path is the canonical benchmark. Turning it off samples at the **global
+temperature** instead (useful to eyeball run-to-run variance, never the recorded baseline).
 A run that errors surfaces a **"Not available — …"** banner rather than a silent blank chart.
 
 **How each rung's "Accuracy" is scored.** Each rung re-runs the dataset and reports the **composite
@@ -644,7 +647,10 @@ profiles, so cliff stays informational unless a custom profile opts in.
 On the **Performance Matrix**, an unmeasured *Cliff Depth* cell shows **"Run probe ↗"** which
 **pre-fills** the probe for that model + the current collection + a context length and switches to the
 Audit tab — it **never auto-runs** (a misclick must not lock the GPU on a long sweep); you click
-**Execute**. The run lives in a store, so it **survives tab navigation** (a progress bar shows rung
+**Execute**. An *already-measured* cell instead shows a small **"↻"** re-probe control beside its depth
+badge that takes the same pre-fill-and-open-Audit path (also never auto-running) — the workflow for
+**re-validating** a model after a runtime/driver change rather than trusting a stale measurement.
+The run lives in a store, so it **survives tab navigation** (a progress bar shows rung
 X/N at ~N tokens; **Stop** cancels). On completion the cliff is saved to the backend **per
 (collection, model)** — `~/.config/quantamind/cliff/<collection>.json`, written atomically
 (temp-file + rename) with the **raw** model name as the key (colons intact). The Matrix then shows the
