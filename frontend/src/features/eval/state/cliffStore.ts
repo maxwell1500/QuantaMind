@@ -44,6 +44,9 @@ interface CliffStore {
   consumeRequest: () => CliffRequest | null;
   hydrate: (collectionId: string) => Promise<void>;
   cliffFor: (collectionId: string, model: string) => number | null;
+  /// The deepest measured cliff for a model across ALL collections — for the
+  /// Inspector gauge, which has a model but no collection in scope.
+  cliffForModel: (model: string) => number | null;
   runProbe: (args: RunProbeArgs) => Promise<void>;
   stop: () => void;
   reset: () => void;
@@ -73,12 +76,19 @@ export const useCliffStore = create<CliffStore>((set, get) => ({
     try {
       const map = await getCliffResults(collectionId);
       set((s) => ({ results: { ...s.results, [collectionId]: map } }));
-    } catch {
-      /* best-effort — a missing/unreadable store just leaves the cell N/A */
+    } catch (e) {
+      // best-effort — a missing/unreadable store just leaves the cell N/A — but log it.
+      console.error("cliff hydrate failed:", e);
     }
   },
 
   cliffFor: (collectionId, model) => get().results[collectionId]?.[model] ?? null,
+  cliffForModel: (model) => {
+    const found = Object.values(get().results)
+      .map((byModel) => byModel[model])
+      .filter((v): v is number => v != null);
+    return found.length ? Math.max(...found) : null;
+  },
 
   runProbe: async ({ model, backend, collectionId, tasks, maxTokens, steps, params }) => {
     // GUARDRAIL 2: clear all prior state BEFORE dispatching — never append to a

@@ -85,4 +85,10 @@ describe("cliffStore", () => {
     await useCliffStore.getState().hydrate("finance");
     expect(useCliffStore.getState().cliffFor("finance", "qwen2.5-coder:7b")).toBe(12000);
   });
+
+  it("cliffForModel returns the DEEPEST cliff across all collections (Inspector has no collection)", () => {
+    useCliffStore.setState({ results: { finance: { "m:1b": 6000 }, ops: { "m:1b": 9000 }, misc: { other: 1 } } });
+    expect(useCliffStore.getState().cliffForModel("m:1b")).toBe(9000); // max(6000, 9000)
+    expect(useCliffStore.getState().cliffForModel("never-probed")).toBeNull();
+  });
 });
