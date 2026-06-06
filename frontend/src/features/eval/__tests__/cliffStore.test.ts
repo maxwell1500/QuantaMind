@@ -130,6 +130,20 @@ describe("cliffStore", () => {
     expect(s.hasBrokenBaseline("finance", "broke:7b")).toBe(true); // broken survives the reload
   });
 
+  it("greedy pins temperature 0 in the probe params (reproducible diagnostic)", async () => {
+    vi.mocked(runToolcallEval).mockResolvedValue({ composite: 1.0, prompt_tokens: 1000 } as never);
+    await useCliffStore.getState().runProbe(args({ steps: 1, greedy: true }));
+    const probeParams = vi.mocked(runToolcallEval).mock.calls[0][4] as { temperature?: number };
+    expect(probeParams.temperature).toBe(0);
+  });
+
+  it("non-greedy keeps the global temperature (samples as configured)", async () => {
+    vi.mocked(runToolcallEval).mockResolvedValue({ composite: 1.0, prompt_tokens: 1000 } as never);
+    await useCliffStore.getState().runProbe(args({ steps: 1, greedy: false, params: { temperature: 0.7 } }));
+    const probeParams = vi.mocked(runToolcallEval).mock.calls[0][4] as { temperature?: number };
+    expect(probeParams.temperature).toBe(0.7);
+  });
+
   it("cliffForModel returns the DEEPEST cliff across all collections (Inspector has no collection)", () => {
     useCliffStore.setState({ results: { finance: { "m:1b": 6000 }, ops: { "m:1b": 9000 }, misc: { other: 1 } } });
     expect(useCliffStore.getState().cliffForModel("m:1b")).toBe(9000); // max(6000, 9000)

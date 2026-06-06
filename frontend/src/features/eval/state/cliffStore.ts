@@ -27,6 +27,10 @@ export interface RunProbeArgs {
   maxTokens: number;
   steps: number;
   params?: InferenceParams;
+  /// Pin temperature 0 (greedy) so the verdict is REPRODUCIBLE for a given (model,
+  /// collection) — a diagnostic must not flip run-to-run. Off → sample at the global
+  /// temperature. Everything else still comes from `params`.
+  greedy?: boolean;
 }
 
 interface CliffStore {
@@ -126,7 +130,7 @@ export const useCliffStore = create<CliffStore>((set, get) => ({
   wasProbed: (collectionId, model) => get().probed[collectionId]?.[model] === true,
   hasBrokenBaseline: (collectionId, model) => get().brokenBaseline[collectionId]?.[model] === true,
 
-  runProbe: async ({ model, backend, collectionId, tasks, maxTokens, steps, params }) => {
+  runProbe: async ({ model, backend, collectionId, tasks, maxTokens, steps, params, greedy }) => {
     // GUARDRAIL 2: clear all prior state BEFORE dispatching — never append to a
     // stale series (that corrupts the chart and the persisted cliff).
     const myRun = ++activeRun;
@@ -135,7 +139,13 @@ export const useCliffStore = create<CliffStore>((set, get) => ({
 
     // The probe IS about context depth — give Ollama a window for the largest rung
     // (+ headroom), respecting a higher user num_ctx. No-op for llama.cpp/MLX.
-    const probeParams = { ...params, num_ctx: Math.max(params?.num_ctx ?? 0, maxTokens + 2048) };
+    const probeParams = {
+      ...params,
+      num_ctx: Math.max(params?.num_ctx ?? 0, maxTokens + 2048),
+      // Greedy → reproducible: pin temp 0 so the same (model, collection) yields the
+      // same verdict on a re-run. Off → keep the global temperature.
+      ...(greedy ? { temperature: 0 } : {}),
+    };
     try {
       for (const padUnits of ladder) {
         if (activeRun !== myRun) return; // stopped or superseded

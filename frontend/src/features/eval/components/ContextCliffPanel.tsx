@@ -29,6 +29,9 @@ export function ContextCliffPanel() {
   const [tasks, setTasks] = useState<ToolTask[]>([]);
   const [maxTokens, setMaxTokens] = useState(16384);
   const [testSteps, setTestSteps] = useState(5);
+  // Greedy (temp 0) by default → a probe is a DIAGNOSTIC and must reproduce for a given
+  // (model, collection). Off to sample at the global temperature.
+  const [greedy, setGreedy] = useState(true);
   // The probe runs ONE of the global header models + global params. With 2+
   // selected (Ollama), a small dropdown picks which one; default the first. A
   // pre-fill request from the Matrix can OVERRIDE that with any batch-target model.
@@ -133,6 +136,7 @@ export function ContextCliffPanel() {
       maxTokens,
       steps: testSteps,
       params: globalParams,
+      greedy,
     });
   };
   const handleStop = () => stopProbe();
@@ -493,6 +497,21 @@ export function ContextCliffPanel() {
             {testSteps}
           </span>
         </div>
+
+        {/* Greedy (reproducible) toggle — a diagnostic should repeat for a given run. */}
+        <label
+          style={{ display: "flex", alignItems: "center", gap: 8, marginTop: 14, fontSize: 12, color: "#475569", cursor: "pointer", fontFamily: "Inter, ui-sans-serif, system-ui, sans-serif" }}
+          title="Greedy decoding (temperature 0) makes the cliff verdict reproducible for the same model + collection. Turn off to sample at your global temperature."
+        >
+          <input
+            type="checkbox"
+            data-testid="cliff-greedy"
+            checked={greedy}
+            onChange={(e) => setGreedy(e.target.checked)}
+            style={{ cursor: "pointer" }}
+          />
+          Greedy (temp 0 — reproducible)
+        </label>
       </div>
 
       {/* ── Progress + Execute / Stop ── */}
