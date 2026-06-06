@@ -65,6 +65,16 @@ describe("PerformanceMatrix", () => {
     expect(screen.queryByTestId("cliff-run-qwen")).toBeNull(); // measured → no link
   });
 
+  it("a measured cell offers a re-probe (↻) that pre-fills + opens Audit", async () => {
+    const { useNavStore } = await import("../../../shared/state/navStore");
+    useBatchStore.setState({ report });
+    useCliffStore.setState({ results: { c: { qwen: 12000 } } }); // already measured
+    render(<PerformanceMatrix focusedModel="qwen" onFocusModel={() => {}} />);
+    fireEvent.click(screen.getByTestId("cliff-reprobe-qwen"));
+    expect(useCliffStore.getState().request).toMatchObject({ model: "qwen", collectionId: "c", steps: 5 });
+    expect(useNavStore.getState().topView).toBe("audit");
+  });
+
   it("shows '✓ no cliff' for a model that was probed but found no cliff (not a misleading Run-probe)", () => {
     useBatchStore.setState({ report });
     useCliffStore.setState({ probed: { c: { qwen: true } } }); // probed, accuracy held
