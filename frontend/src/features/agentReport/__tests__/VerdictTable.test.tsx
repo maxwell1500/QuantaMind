@@ -102,7 +102,7 @@ describe("VerdictTable", () => {
         avg_steps: 1.0,
         effort: 29,
         quantization: "Q4_K_M", // real backend value
-        cliff_tokens: 12000, // measured by the Context-Cliff probe
+        cliff: { status: "Collapsed", depth: 12000 }, // measured by the Context-Cliff probe
         memory: null, // VRAM not measured (no cap)
       },
       {
@@ -118,7 +118,7 @@ describe("VerdictTable", () => {
     expect(within(ready).getByTestId("metric-passk")).toHaveTextContent("100%");
     expect(within(ready).getByTestId("metric-steps")).toHaveTextContent("1.0");
     expect(within(ready).getByTestId("metric-effort")).toHaveTextContent("29 tok");
-    expect(within(ready).getByTestId("metric-cliff")).toHaveTextContent("12,000 tok"); // measured cliff
+    expect(within(ready).getByTestId("metric-cliff")).toHaveTextContent("Collapsed at 12,000 tok"); // measured collapse
     expect(ready).toHaveTextContent("Q4_K_M"); // real quant, not a per-family guess
     // VRAM was NOT measured → must NOT claim it fits.
     expect(ready).not.toHaveTextContent("Fits completely in VRAM");
@@ -128,6 +128,22 @@ describe("VerdictTable", () => {
     expect(within(weak).getByTestId("metric-steps")).toHaveTextContent("N/A");
     expect(within(weak).getByTestId("metric-effort")).toHaveTextContent("N/A");
     expect(within(weak).getByTestId("metric-cliff")).toHaveTextContent("N/A"); // no probe → N/A, not fabricated
+  });
+
+  it("renders a probed-but-no-cliff result as '✓ No cliff (≥tested)', not N/A", () => {
+    const held: ModelVerdict[] = [
+      {
+        model: "qwen3.5:9b",
+        backend: "ollama",
+        verdict: { status: "ready", blocking: [], conditions: [], path: "native_fc" },
+        pass_k: 1.0,
+        cliff: { status: "NoCliff", tested: 4000 },
+      },
+    ];
+    render(<VerdictTable verdicts={held} />);
+    expect(within(screen.getByTestId("readiness-row-qwen3.5:9b")).getByTestId("metric-cliff")).toHaveTextContent(
+      "✓ No cliff (≥4,000 tok)",
+    );
   });
 
   it("never guesses a quant — an unknown name renders a dash, not a family default", () => {

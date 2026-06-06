@@ -1,5 +1,5 @@
 use super::super::profile::{builtins, ReadinessProfile};
-use super::super::types::{NativeFcStatus, Readiness, ReadinessInputs};
+use super::super::types::{CliffStatus, NativeFcStatus, Readiness, ReadinessInputs};
 use super::assess;
 
 /// A lenient profile: only the Pass^k core gate is active, everything else off.
@@ -24,7 +24,7 @@ fn clean_inputs() -> ReadinessInputs {
         pass_k: Some(0.95),
         avg_steps: Some(2.0),
         ms_per_step: Some(800),
-        cliff_tokens: Some(16_384),
+        cliff: CliffStatus::NoCliff { tested: 16_384 },
         fits_in_vram: Some(true),
         vram_pressure: false,
         loops: 0,
@@ -117,7 +117,7 @@ fn required_context_but_unmeasured_blocks() {
     let mut p = lenient();
     p.min_context_tokens = Some(8192);
     let mut i = clean_inputs();
-    i.cliff_tokens = None;
+    i.cliff = CliffStatus::NotProbed;
     let v = assess(&i, &p);
     assert_eq!(v.status, Readiness::NotReady);
     assert!(v.blocking.iter().any(|b| b.contains("context headroom required (8192 tok)")));
@@ -128,9 +128,29 @@ fn measured_cliff_below_requirement_blocks_with_math() {
     let mut p = lenient();
     p.min_context_tokens = Some(8192);
     let mut i = clean_inputs();
-    i.cliff_tokens = Some(4096);
+    i.cliff = CliffStatus::Collapsed { depth: 4096 };
     let v = assess(&i, &p);
     assert!(v.blocking.contains(&"reasoning cliff at 4096 < 8192 needed".to_string()));
+}
+
+#[test]
+fn no_cliff_tested_to_the_requirement_passes() {
+    let mut p = lenient();
+    p.min_context_tokens = Some(2048);
+    let mut i = clean_inputs();
+    i.cliff = CliffStatus::NoCliff { tested: 4096 }; // held past the requirement
+    assert_eq!(assess(&i, &p).status, Readiness::Ready);
+}
+
+#[test]
+fn no_cliff_probed_short_of_the_requirement_blocks() {
+    let mut p = lenient();
+    p.min_context_tokens = Some(2048);
+    let mut i = clean_inputs();
+    i.cliff = CliffStatus::NoCliff { tested: 1024 }; // an incomplete probe is not a pass
+    let v = assess(&i, &p);
+    assert_eq!(v.status, Readiness::NotReady);
+    assert!(v.blocking.iter().any(|b| b.contains("only probed to 1024 tok < 2048 needed")));
 }
 
 #[test]

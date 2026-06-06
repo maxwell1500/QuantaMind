@@ -1,5 +1,5 @@
 use super::profile::ReadinessProfile;
-use super::types::{AgentPath, ModelVerdict, NativeFcStatus, Readiness, ReadinessInputs, ReadinessVerdict};
+use super::types::{AgentPath, CliffStatus, ModelVerdict, NativeFcStatus, Readiness, ReadinessInputs, ReadinessVerdict};
 use super::verdict::assess;
 use crate::inference::eval::batch::{BatchColumn, BatchReport};
 
@@ -12,7 +12,7 @@ pub fn from_column(
     col: &BatchColumn,
     fits_in_vram: Option<bool>,
     vram_pressure: bool,
-    cliff_tokens: Option<u32>,
+    cliff: CliffStatus,
 ) -> ReadinessInputs {
     // Prefer the NATIVE aggregate when it was measured — that's the path a
     // production agent actually uses. Native present → source the gated metrics
@@ -30,7 +30,7 @@ pub fn from_column(
         pass_k,
         avg_steps: source.and_then(|a| a.avg_steps),
         ms_per_step: None, // Phase 7.4: route the StepEconomy per-step duration here
-        cliff_tokens,      // measured context-cliff depth (the command threads it in; None on the no-hardware path)
+        cliff,             // context-cliff status (the command threads it in; NotProbed on the no-hardware path)
         fits_in_vram,
         vram_pressure,
         loops,
@@ -48,7 +48,7 @@ pub fn verdict_for(
     col: &BatchColumn,
     fits_in_vram: Option<bool>,
     vram_pressure: bool,
-    cliff_tokens: Option<u32>,
+    cliff: CliffStatus,
     profile: &ReadinessProfile,
 ) -> ReadinessVerdict {
     match &col.error {
@@ -58,7 +58,7 @@ pub fn verdict_for(
             conditions: Vec::new(),
             path: AgentPath::PromptBased,
         },
-        None => assess(&from_column(col, fits_in_vram, vram_pressure, cliff_tokens), profile),
+        None => assess(&from_column(col, fits_in_vram, vram_pressure, cliff), profile),
     }
 }
 
@@ -99,13 +99,13 @@ pub fn assess_report(report: &BatchReport, profile: &ReadinessProfile) -> Vec<Mo
             ModelVerdict {
                 model: col.model.clone(),
                 backend: col.backend,
-                verdict: verdict_for(col, None, false, None, profile),
+                verdict: verdict_for(col, None, false, CliffStatus::NotProbed, profile),
                 memory: None,
                 avg_steps,
                 effort,
                 pass_k: pass_k_of(col),
                 quantization: None, // the no-hardware path has no registry to read the real quant
-                cliff_tokens: None, // the no-hardware/CLI path has no cliff store to read
+                cliff: CliffStatus::NotProbed, // the no-hardware/CLI path has no cliff store to read
             }
         })
         .collect()

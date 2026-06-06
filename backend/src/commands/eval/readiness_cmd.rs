@@ -140,13 +140,8 @@ pub async fn assess_readiness(
         };
         let fits_in_vram = memory.as_ref().map(|m| m.fits);
         let vram_pressure = memory.as_ref().map(|m| m.pressure).unwrap_or(false);
-        // Transitional (M2.1): the store is now `CliffStatus`, but the verdict still
-        // takes `Option<u32>` until M2.2 — map Collapsed→depth, NoCliff/absent→None.
-        let cliff_tokens = match registry_get(&cliffs, &col.model) {
-            Some(CliffStatus::Collapsed { depth }) => Some(*depth),
-            _ => None,
-        };
-        let verdict = verdict_for(col, fits_in_vram, vram_pressure, cliff_tokens, &profile);
+        let cliff = registry_get(&cliffs, &col.model).copied().unwrap_or_default();
+        let verdict = verdict_for(col, fits_in_vram, vram_pressure, cliff, &profile);
         let (avg_steps, effort) = agentic_metrics(col);
         out.push(ModelVerdict {
             model: col.model.clone(),
@@ -157,7 +152,7 @@ pub async fn assess_readiness(
             effort,
             pass_k: pass_k_of(col),
             quantization: registry_get(&quants, &col.model).cloned(),
-            cliff_tokens,
+            cliff,
         });
     }
     // Phase 7.3: rank best-first (Ready > Conditional > NotReady, ties by effort

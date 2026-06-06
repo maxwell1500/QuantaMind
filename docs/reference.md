@@ -627,8 +627,18 @@ persisted depth and the displayed verdict can never disagree):
 
 The **broken-baseline** case is the important guardrail: a model stuck at 0% on every rung has no
 healthy plateau to "fall off", so it is **never** dressed up as "✓ no cliff" — it's flagged red as a
-tool-call failure (not a context-length limit), and no cliff depth is persisted. ↺ clears the results.
-Single-turn, greedy — a failed rung is a gap, never a fabricated score.
+tool-call failure (not a context-length limit). Single-turn, greedy — a failed rung is a gap, never a
+fabricated score.
+
+**Persistence + the Agent Report (three-state cliff).** Every terminal probe outcome is now persisted
+(not just a found collapse): the store holds a `CliffStatus` per (collection, model) —
+`NoCliff { tested }` (held to that depth), `Collapsed { depth }`, or (broken-baseline) `Collapsed` at
+the first rung; an unprobed model is `NotProbed`. So `assess_readiness` reflects the probe: a held probe
+reads **"✓ No cliff (≥tested tok)"**, a collapse **"Collapsed at depth tok"**, unprobed **"N/A"** — no
+longer a misleading "N/A" after a successful probe. The legacy bare-`u32` store migrates to `Collapsed`.
+The `min_context_tokens` hard gate is **strict**: `Collapsed` passes iff `depth ≥ min`, and `NoCliff`
+passes iff `tested ≥ min` (an incomplete probe is not a pass); `NotProbed` blocks. Off in the built-in
+profiles, so cliff stays informational unless a custom profile opts in.
 
 **The probe is part of the pipeline, not a dead-end.** The journey is Eval → Audit → Agent Report.
 On the **Performance Matrix**, an unmeasured *Cliff Depth* cell shows **"Run probe ↗"** which

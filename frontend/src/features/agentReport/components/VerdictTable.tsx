@@ -46,8 +46,8 @@ function MetricsLine({ v }: { v: ModelVerdict }) {
       </span>
       <span>
         <span className="font-semibold text-slate-500">Cliff:</span>{" "}
-        <span data-testid="metric-cliff" className="font-bold text-slate-800">
-          {v.cliff_tokens == null ? "N/A" : `${v.cliff_tokens.toLocaleString()} tok`}
+        <span data-testid="metric-cliff" className={`font-bold ${cliffColor(v.cliff)}`}>
+          {cliffLabel(v.cliff)}
         </span>
       </span>
     </div>
@@ -88,6 +88,16 @@ function classifyReason(reason: string): { category: string; text: string } {
 // The context the KV-cache figure assumes (the run's num_ctx, else a capped 8k
 // default) — surfaced so a "won't fit" is interpretable, not a mystery 134 GB.
 const ctxLabel = (n: number) => (n >= 1024 ? `${Math.round(n / 1024)}k` : `${n}`);
+
+// Three-state context-cliff label: probed-and-held vs collapsed vs never probed.
+function cliffLabel(c: ModelVerdict["cliff"]): string {
+  if (!c || c.status === "NotProbed") return "N/A";
+  return c.status === "NoCliff" ? `✓ No cliff (≥${c.tested.toLocaleString()} tok)` : `Collapsed at ${c.depth.toLocaleString()} tok`;
+}
+function cliffColor(c: ModelVerdict["cliff"]): string {
+  if (!c || c.status === "NotProbed") return "text-slate-800";
+  return c.status === "NoCliff" ? "text-emerald-600" : "text-rose-600";
+}
 
 function MemoryLine({ m, backend }: { m: MemoryProfile | null | undefined; backend: BackendKind }) {
   // Original string expected by the tests

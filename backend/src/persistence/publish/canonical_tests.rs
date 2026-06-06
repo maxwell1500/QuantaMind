@@ -1,6 +1,6 @@
 use super::*;
 use crate::inference::backend::backend_kind::BackendKind;
-use crate::inference::eval::readiness::types::{AgentPath, ModelVerdict, Readiness, ReadinessVerdict};
+use crate::inference::eval::readiness::types::{AgentPath, CliffStatus, ModelVerdict, Readiness, ReadinessVerdict};
 use crate::persistence::publish::row::PublishRow;
 
 fn verdict(model: &str, pass_k: Option<f64>, quant: Option<&str>) -> ModelVerdict {
@@ -18,7 +18,7 @@ fn verdict(model: &str, pass_k: Option<f64>, quant: Option<&str>) -> ModelVerdic
         effort: Some(1.2),
         pass_k,
         quantization: quant.map(|s| s.to_string()),
-        cliff_tokens: None,
+        cliff: CliffStatus::NotProbed,
     }
 }
 

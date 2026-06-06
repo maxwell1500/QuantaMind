@@ -1,5 +1,5 @@
 use super::super::profile::{builtins, ReadinessProfile};
-use super::super::types::{AgentPath, NativeFcStatus, Readiness};
+use super::super::types::{AgentPath, CliffStatus, NativeFcStatus, Readiness};
 use super::{agentic_metrics, assess_report, from_column, pass_k_of, verdict_for};
 use crate::inference::eval::batch::BatchReport;
 use crate::inference::backend::backend_kind::BackendKind;
@@ -32,7 +32,7 @@ fn col(passes: u32, total: u32, loops: u32, hall: u32, steps: Option<f64>) -> Ba
 
 #[test]
 fn agentic_column_maps_pass_k_steps_and_failure_counts() {
-    let i = from_column(&col(4, 5, 1, 2, Some(3.0)), None, false, None);
+    let i = from_column(&col(4, 5, 1, 2, Some(3.0)), None, false, CliffStatus::NotProbed);
     assert_eq!(i.pass_k, Some(0.8));
     assert_eq!(i.avg_steps, Some(3.0));
     assert_eq!(i.loops, 1);
@@ -41,9 +41,9 @@ fn agentic_column_maps_pass_k_steps_and_failure_counts() {
 
 #[test]
 fn deferred_metrics_are_not_measured_never_fabricated() {
-    let i = from_column(&col(5, 5, 0, 0, Some(2.0)), None, false, None);
+    let i = from_column(&col(5, 5, 0, 0, Some(2.0)), None, false, CliffStatus::NotProbed);
     assert_eq!(i.ms_per_step, None);
-    assert_eq!(i.cliff_tokens, None);
+    assert_eq!(i.cliff, CliffStatus::NotProbed);
     assert_eq!(i.fits_in_vram, None);
     assert_eq!(i.native_fc, NativeFcStatus::NotSupported);
 }
@@ -58,14 +58,14 @@ fn no_agentic_column_yields_unmeasured_pass_k_core_gate() {
         agentic_native_fc: None,
         error: None,
     };
-    let i = from_column(&c, None, false, None);
+    let i = from_column(&c, None, false, CliffStatus::NotProbed);
     assert_eq!(i.pass_k, None);
     assert_eq!(i.loops, 0);
 }
 
 #[test]
 fn zero_total_runs_is_unmeasured_not_a_fabricated_zero() {
-    let i = from_column(&col(0, 0, 0, 0, None), None, false, None);
+    let i = from_column(&col(0, 0, 0, 0, None), None, false, CliffStatus::NotProbed);
     assert_eq!(i.pass_k, None); // None, not Some(0.0) — never a guessed failing score
 }
 
@@ -89,20 +89,20 @@ fn context_cliff_gate_is_opt_in_and_blocks_only_below_or_unmeasured() {
     let c = col(9, 10, 0, 0, Some(2.0)); // pass^k 0.9 clears the 0.5 bar
 
     // Gate OFF (None): the cliff is carried but never blocks → Ready.
-    assert_eq!(verdict_for(&c, None, false, Some(8000), &ctx_profile(None)).status, Readiness::Ready);
+    assert_eq!(verdict_for(&c, None, false, CliffStatus::Collapsed { depth: 8000 }, &ctx_profile(None)).status, Readiness::Ready);
 
     // Gate ON, cliff BELOW the floor → NotReady with the interpolated reason.
-    let below = verdict_for(&c, None, false, Some(8000), &ctx_profile(Some(16000)));
+    let below = verdict_for(&c, None, false, CliffStatus::Collapsed { depth: 8000 }, &ctx_profile(Some(16000)));
     assert_eq!(below.status, Readiness::NotReady);
     assert!(below.blocking.iter().any(|b| b.contains("8000") && b.contains("16000")), "{:?}", below.blocking);
 
     // Gate ON, cliff UNMEASURED → NotReady "not measured" (never a guessed pass).
-    let unmeasured = verdict_for(&c, None, false, None, &ctx_profile(Some(16000)));
+    let unmeasured = verdict_for(&c, None, false, CliffStatus::NotProbed, &ctx_profile(Some(16000)));
     assert_eq!(unmeasured.status, Readiness::NotReady);
     assert!(unmeasured.blocking.iter().any(|b| b.to_lowercase().contains("measured")), "{:?}", unmeasured.blocking);
 
     // Gate ON, cliff ABOVE the floor → passes (Ready).
-    assert_eq!(verdict_for(&c, None, false, Some(32000), &ctx_profile(Some(16000))).status, Readiness::Ready);
+    assert_eq!(verdict_for(&c, None, false, CliffStatus::Collapsed { depth: 32000 }, &ctx_profile(Some(16000))).status, Readiness::Ready);
 }
 
 fn agg(passes: u32, total: u32, loops: u32) -> AggAgentic {
@@ -126,7 +126,7 @@ fn agg(passes: u32, total: u32, loops: u32) -> AggAgentic {
 fn prefers_the_native_aggregate_when_native_fc_was_measured() {
     let mut c = col(9, 10, 0, 0, Some(2.0)); // prompt-based pass^k 0.9
     c.agentic_native_fc = Some(agg(2, 10, 1)); // native pass^k 0.2, with a loop
-    let i = from_column(&c, None, false, None);
+    let i = from_column(&c, None, false, CliffStatus::NotProbed);
     assert_eq!(i.pass_k, Some(0.2)); // the native result, NOT the 0.9 prompt proxy
     assert_eq!(i.loops, 1); // native failure breakdown
     assert_eq!(i.native_fc, NativeFcStatus::Tested { pass_k: 0.2 });
@@ -134,7 +134,7 @@ fn prefers_the_native_aggregate_when_native_fc_was_measured() {
 
 #[test]
 fn falls_back_to_prompt_based_when_native_was_not_measured() {
-    let i = from_column(&col(8, 10, 0, 0, Some(2.0)), None, false, None);
+    let i = from_column(&col(8, 10, 0, 0, Some(2.0)), None, false, CliffStatus::NotProbed);
     assert_eq!(i.pass_k, Some(0.8));
     assert_eq!(i.native_fc, NativeFcStatus::NotSupported);
 }
@@ -144,7 +144,7 @@ fn a_prompt_passing_model_that_fails_native_is_not_ready_on_the_native_path() {
     let coding = builtins().into_iter().find(|p| p.id == "coding-agent").unwrap();
     let mut c = col(9, 10, 0, 0, Some(2.0)); // prompt 0.9 would pass coding-agent's 0.80
     c.agentic_native_fc = Some(agg(2, 10, 0)); // native 0.2 fails it
-    let v = verdict_for(&c, Some(true), false, None, &coding); // fits VRAM (coding requires it)
+    let v = verdict_for(&c, Some(true), false, CliffStatus::NotProbed, &coding); // fits VRAM (coding requires it)
     assert_eq!(v.status, Readiness::NotReady);
     assert_eq!(v.path, AgentPath::NativeFc); // the report states the native path
     assert!(v.blocking.iter().any(|b| b.contains("pass^k 0.20 < 0.80 required")));

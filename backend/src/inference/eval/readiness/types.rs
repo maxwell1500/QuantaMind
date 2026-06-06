@@ -46,7 +46,7 @@ pub struct ReadinessInputs {
     pub pass_k: Option<f64>,
     pub avg_steps: Option<f64>,
     pub ms_per_step: Option<u64>,
-    pub cliff_tokens: Option<u32>,
+    pub cliff: CliffStatus,
     pub fits_in_vram: Option<bool>,
     /// Fits, but sits near the allocation ceiling → a soft Conditional note.
     pub vram_pressure: bool,
@@ -99,10 +99,10 @@ pub struct ModelVerdict {
     /// registry — never guessed. `None` when the backend didn't report one.
     #[serde(default)]
     pub quantization: Option<String>,
-    /// The model's measured context-cliff depth (tokens) for this collection, from
-    /// the cliff store — the headroom before tool-call accuracy collapses. `None`
-    /// when no probe has run (rendered "N/A"; the gate only blocks when a profile
-    /// opts in via `min_context_tokens`).
+    /// The model's context-cliff outcome for this collection, from the cliff store:
+    /// NotProbed (rendered "N/A"), NoCliff{tested} ("✓ No cliff (≥tested)"), or
+    /// Collapsed{depth} ("Collapsed at depth"). The gate only blocks when a profile
+    /// opts in via `min_context_tokens` (strict: NoCliff passes iff tested ≥ min).
     #[serde(default)]
-    pub cliff_tokens: Option<u32>,
+    pub cliff: CliffStatus,
 }
