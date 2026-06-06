@@ -88,11 +88,18 @@ describe("MatrixScoreboard (Simulator) data flow", () => {
     expect(result).not.toHaveTextContent("Fail");
   });
 
-  it("collapses and expands the card", () => {
+  it("collapses and expands the card, showing a 'click to expand' summary instead of blank", () => {
     render(<MatrixScoreboard model={MODEL} k={1} maxSteps={8} focusedTaskId={null} setFocusedTaskId={() => {}} />);
-    // Body (the task table area / footnote) visible by default.
+    // Body (the task table area / footnote) visible by default; no collapsed summary.
     expect(screen.getByTestId("matrix-scoreboard")).toHaveTextContent("AGGREGATE");
+    expect(screen.queryByTestId("simulator-collapsed-summary")).toBeNull();
+
     fireEvent.click(screen.getByTestId("simulator-collapse"));
+    // Body gone, but the header now shows a summary + an expand cue (never blank).
     expect(screen.getByTestId("matrix-scoreboard")).not.toHaveTextContent("AGGREGATE");
+    expect(screen.getByTestId("simulator-collapsed-summary")).toHaveTextContent("click to expand");
+
+    fireEvent.click(screen.getByTestId("simulator-collapse"));
+    expect(screen.getByTestId("matrix-scoreboard")).toHaveTextContent("AGGREGATE"); // expands back
   });
 });

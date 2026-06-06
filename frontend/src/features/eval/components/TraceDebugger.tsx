@@ -234,30 +234,35 @@ export function TraceDebugger({
   return (
     <div
       className="rounded-2xl overflow-hidden border border-slate-200 shadow-sm transition-all duration-300"
-      style={panelStyle}
+      // Drop the 300px floor when collapsed so the panel shrinks to its header instead
+      // of leaving a tall blank white box.
+      style={{ ...panelStyle, minHeight: collapsed ? undefined : panelStyle.minHeight }}
       data-testid="trace-debugger"
     >
-      {/* Header */}
+      {/* Header — the chevron + title is one big toggle button (clear hit target). */}
       <div style={headerStyle}>
         <button
           type="button"
           onClick={() => setCollapsed((c) => !c)}
           aria-expanded={!collapsed}
           data-testid="evaluator-collapse"
-          title={collapsed ? "Expand" : "Collapse"}
-          style={{ background: "transparent", border: "none", cursor: "pointer", fontSize: 13, color: "#475569", marginRight: 8, padding: 0, lineHeight: 1 }}
+          title={collapsed ? "Expand the Evaluator" : "Collapse"}
+          style={collapseToggleStyle}
         >
-          {collapsed ? "▸" : "▾"}
-        </button>
-        <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
+          <span style={chevronStyle} aria-hidden>{collapsed ? "▸" : "▾"}</span>
           <span className="flex h-2.5 w-2.5 rounded-full bg-blue-500" />
           <span style={{ fontSize: 14, fontWeight: 700, color: "#0f172a", fontFamily: "Inter, sans-serif", letterSpacing: "0.03em" }}>
             3. THE EVALUATOR (Single-Task Pipeline Debugger)
           </span>
-        </div>
+        </button>
         <span style={{ fontSize: 12, color: "#475569", background: "#f1f5f9", padding: "2px 8px", borderRadius: 6, fontFamily: "'JetBrains Mono', monospace", fontWeight: 600, marginLeft: 8 }}>
           {taskId}
         </span>
+        {collapsed && (
+          <span data-testid="evaluator-collapsed-summary" style={{ marginLeft: 10, fontSize: 12, color: "#64748b", fontFamily: "Inter, sans-serif" }}>
+            · click to expand
+          </span>
+        )}
         {running && (
           <span style={{ display: "inline-flex", alignItems: "center", gap: 6, marginLeft: 10, fontSize: 12, color: "#2563eb", fontFamily: "Inter, sans-serif", fontWeight: 600 }} data-testid="evaluator-running">
             <Spinner /> Running…
@@ -519,7 +524,36 @@ const headerStyle: React.CSSProperties = {
   borderBottom: "1px solid #e2e8f0",
   display: "flex",
   alignItems: "center",
+  flexWrap: "wrap",
   background: "#fafafa",
+};
+
+const collapseToggleStyle: React.CSSProperties = {
+  display: "inline-flex",
+  alignItems: "center",
+  gap: 8,
+  background: "transparent",
+  border: "none",
+  cursor: "pointer",
+  padding: 0,
+  textAlign: "left",
+};
+
+/// The visible disclosure chevron — a 22px rounded chip so it reads as a control,
+/// not a stray glyph (mirrors the Simulator header).
+const chevronStyle: React.CSSProperties = {
+  display: "inline-flex",
+  alignItems: "center",
+  justifyContent: "center",
+  width: 22,
+  height: 22,
+  borderRadius: 6,
+  background: "#e2e8f0",
+  color: "#334155",
+  fontSize: 12,
+  fontWeight: 800,
+  lineHeight: 1,
+  flexShrink: 0,
 };
 
 const tabsContainerStyle: React.CSSProperties = {

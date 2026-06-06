@@ -80,24 +80,29 @@ export function MatrixScoreboard({
       style={panelStyle}
       data-testid="matrix-scoreboard"
     >
-      {/* Header */}
+      {/* Header — the chevron + title is one big toggle button (clear hit target). */}
       <div style={headerStyle}>
         <button
           type="button"
           onClick={() => setCollapsed((c) => !c)}
           aria-expanded={!collapsed}
           data-testid="simulator-collapse"
-          title={collapsed ? "Expand" : "Collapse"}
-          style={collapseBtnStyle}
+          title={collapsed ? "Expand the Simulator" : "Collapse"}
+          style={collapseToggleStyle}
         >
-          {collapsed ? "▸" : "▾"}
+          <span style={chevronStyle} aria-hidden>{collapsed ? "▸" : "▾"}</span>
+          <span style={{ fontSize: 15, fontWeight: 700, color: "#0f172a", fontFamily: "Inter, sans-serif" }}>
+            2. THE SIMULATOR (Batch Scoreboard)
+          </span>
         </button>
-        <span style={{ fontSize: 15, fontWeight: 700, color: "#0f172a", fontFamily: "Inter, sans-serif" }}>
-          2. THE SIMULATOR (Batch Scoreboard)
-        </span>
         <span style={{ fontSize: 13, color: "#2563eb", fontFamily: "'JetBrains Mono', monospace", fontWeight: 650 }}>
           &nbsp;- [ Target: {modelTargetLabel} ]
         </span>
+        {collapsed && (
+          <span data-testid="simulator-collapsed-summary" style={{ marginLeft: 10, fontSize: 12, color: "#64748b", fontFamily: "Inter, sans-serif" }}>
+            · {totalRuns > 0 ? `${passRate}% pass` : "no run yet"} · click to expand
+          </span>
+        )}
         {running && (
           <span style={{ display: "inline-flex", alignItems: "center", gap: 6, marginLeft: 10, fontSize: 12, color: "#2563eb", fontFamily: "Inter, sans-serif", fontWeight: 600 }} data-testid="simulator-running">
             <Spinner /> Running…
@@ -296,15 +301,32 @@ const headerStyle: React.CSSProperties = {
   background: "#fafafa",
 };
 
-const collapseBtnStyle: React.CSSProperties = {
+const collapseToggleStyle: React.CSSProperties = {
+  display: "inline-flex",
+  alignItems: "center",
+  gap: 10,
   background: "transparent",
   border: "none",
   cursor: "pointer",
-  fontSize: 13,
-  color: "#475569",
-  marginRight: 8,
   padding: 0,
+  textAlign: "left",
+};
+
+/// The visible disclosure chevron — a 22px rounded chip so it reads as a control,
+/// not a stray glyph. Shared shape across the Simulator/Evaluator headers.
+const chevronStyle: React.CSSProperties = {
+  display: "inline-flex",
+  alignItems: "center",
+  justifyContent: "center",
+  width: 22,
+  height: 22,
+  borderRadius: 6,
+  background: "#e2e8f0",
+  color: "#334155",
+  fontSize: 12,
+  fontWeight: 800,
   lineHeight: 1,
+  flexShrink: 0,
 };
 
 const aggregateBoxStyle: React.CSSProperties = {
