@@ -182,6 +182,16 @@ running you'll see "Ollama isn't running".
 - On Windows/Linux, launch the Ollama app/service manually — in-app start is
   macOS-only in this release.
 
+### Backend server down — batch pre-flight {#batch-preflight}
+
+Every backend's server health is polled into the header dots every 5s — Ollama, MLX,
+and (new) **llama.cpp** (`check_llama_health`); a dot that was green goes grey within
+~5s of the server dying, so the indicator never lies. An Eval **batch run pre-flights
+every backend it targets** before starting: if any selected backend's server isn't
+reachable it aborts immediately with *"&lt;Backend&gt; server isn't reachable — start it
+from the Workspace status bar, then re-run"* — instead of hanging mid-run. Start the
+named server from the header, then re-run.
+
 ### Model not installed {#model-not-found}
 
 "That model isn't installed" means Ollama doesn't have the model you asked to

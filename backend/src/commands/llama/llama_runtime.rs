@@ -12,6 +12,17 @@ pub const READY_TIMEOUT_SECS: u64 = 30;
 pub const POLL_INTERVAL_MS: u64 = 500;
 pub const PROBE_TIMEOUT_MS: u64 = 1000;
 
+/// Health probe for the llama.cpp sidecar, in the shared `HealthStatus` shape the
+/// Ollama/MLX probes return so the frontend can poll all three uniformly. No
+/// version string (llama-server's `/health` reports none) → `version: None`.
+#[tauri::command]
+pub async fn check_llama_health() -> crate::commands::system::health::HealthStatus {
+    crate::commands::system::health::HealthStatus {
+        available: is_reachable(PROBE_TIMEOUT_MS).await,
+        version: None,
+    }
+}
+
 /// Probe the sidecar's `/health` endpoint.
 pub async fn is_reachable(timeout_ms: u64) -> bool {
     let client = match Client::builder().timeout(Duration::from_millis(timeout_ms)).build() {

@@ -1,6 +1,7 @@
 import type { BackendKind } from "./shared/ipc/models/storage";
 import { useBackendStore } from "./shared/state/backendStore";
 import { useMlxBackend } from "./features/workspace/hooks/useMlxBackend";
+import { useLlamaBackend } from "./features/workspace/hooks/useLlamaBackend";
 
 const BASE_BACKENDS: { id: BackendKind; label: string }[] = [
   { id: "ollama", label: "Ollama" },
@@ -35,10 +36,12 @@ function BackendButton({ id, label }: { id: BackendKind; label: string }) {
 
 /// The global backend picker in the header. The whole app scopes its model list
 /// and runs to the selected backend (architecture.md rule 7). MLX shows only on
-/// Apple Silicon, where mlx_lm.server can run; useMlxBackend also polls MLX
-/// health into backendStore.
+/// Apple Silicon, where mlx_lm.server can run; useMlxBackend polls MLX health and
+/// useLlamaBackend polls llama.cpp health into backendStore (Ollama is polled by
+/// the StatusBar) so all three header dots stay live.
 export function BackendSelector() {
   const { appleSilicon } = useMlxBackend();
+  useLlamaBackend();
   const backends = appleSilicon
     ? [...BASE_BACKENDS, { id: "mlx" as BackendKind, label: "MLX" }]
     : BASE_BACKENDS;

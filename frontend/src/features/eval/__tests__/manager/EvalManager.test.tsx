@@ -11,6 +11,11 @@ vi.mock("../../../../shared/ipc/eval/batch", () => ({
   EVENT_AGENTIC_STEP: "agentic-step",
   EVENT_BATCH_COMPLETE: "batch-complete",
 }));
+// The batch run pre-flights the backend's health; treat it as up here so the run
+// proceeds (the pre-flight itself is tested in useBatchRun.test).
+vi.mock("../../../../shared/ipc/core/client", () => ({
+  healthFor: vi.fn().mockResolvedValue({ available: true, version: null }),
+}));
 
 import { EvalManager } from "../../components/manager/EvalManager";
 import { useEvalRegistryStore } from "../../state/evalRegistryStore";

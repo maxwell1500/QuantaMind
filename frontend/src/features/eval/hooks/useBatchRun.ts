@@ -11,6 +11,7 @@ import {
   stopBatchEval,
 } from "../../../shared/ipc/eval/batch";
 import { formatIpcError } from "../../../shared/ipc/core/error";
+import { healthFor } from "../../../shared/ipc/core/client";
 import type { ModelTarget } from "../../../shared/ipc/eval/matrix";
 import type { ToolTask } from "../../../shared/ipc/eval/registry";
 import { useInstalledModelsStore } from "../../models/state/installedModelsStore";
@@ -80,6 +81,27 @@ export function useBatchRun() {
       maxSteps?: number,
       runNativeFc?: boolean,
     ) => {
+      // Pre-flight: actively probe EVERY backend this run uses (a run can mix
+      // backends), so a down server fails fast with a clear message instead of
+      // hanging mid-run. Active probe, not the cached store value, so it's correct
+      // even before the 5s poll first ticks.
+      const backends = Array.from(new Set(targets.map((t) => t.backend)));
+      for (const backend of backends) {
+        let available = false;
+        try {
+          available = (await healthFor(backend)).available;
+        } catch {
+          available = false;
+        }
+        if (!available) {
+          const label = backend === "llama_cpp" ? "llama.cpp" : backend === "mlx" ? "MLX" : "Ollama";
+          useBatchStore
+            .getState()
+            .setError(`${label} server isn't reachable — start it from the Workspace status bar, then re-run.`);
+          return;
+        }
+      }
+
       useBatchStore.getState().startRun();
       try {
         const { globalParams, keepLoaded } = useParamsStore.getState();
