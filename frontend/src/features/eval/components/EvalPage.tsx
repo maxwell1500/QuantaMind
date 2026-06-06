@@ -1,6 +1,5 @@
 import { useEffect, useRef, useState } from "react";
 import { useEvalRegistryStore } from "../state/evalRegistryStore";
-import { useInstalledModelsStore } from "../../models/state/installedModelsStore";
 import { useSelectedModelStore } from "../../../shared/state/selectedModelStore";
 import { useBackendStore } from "../../../shared/state/backendStore";
 import { useBatchStore } from "../state/batchStore";
@@ -22,12 +21,12 @@ export function EvalPage() {
   const initRegistry = useEvalRegistryStore((s) => s.init);
   const startNew = useEvalRegistryStore((s) => s.startNew);
   const selectedCollection = useEvalRegistryStore((s) => s.selected);
-  const allModels = useInstalledModelsStore((s) => s.list);
   const selectedBackend = useBackendStore((s) => s.selectedBackend);
-  const models = allModels.filter((m) => m.backend === selectedBackend);
-  const globalModel = useSelectedModelStore((s) => s.selectedModels[0] ?? null);
+  const selectedModels = useSelectedModelStore((s) => s.selectedModels);
 
-  const [targets, setTargets] = useState<string[]>([]);
+  // The eval runs ONE model, chosen from the global selection (single source of truth) —
+  // no per-page picker. EvalManager's dropdown sets this.
+  const [evalModel, setEvalModel] = useState<string>("");
   const [focusedModel, setFocusedModel] = useState<string>("");
   const [focusedTaskId, setFocusedTaskId] = useState<string | null>(null);
   // The per-model detail panels live above the Performance Matrix; a row click
@@ -62,7 +61,6 @@ export function EvalPage() {
   // backend's models — halt + clear, then targets re-seed from the new backend below.
   useEffect(() => {
     haltOldContext();
-    setTargets([]);
     setFocusedModel("");
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [selectedBackend]);
@@ -77,34 +75,17 @@ export function EvalPage() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [selectedCollection]);
 
-  // Default one target once the model list loads — the global header model if
-  // it's installed, else the first installed model.
+  // Keep the eval model a valid member of the GLOBAL selection — default the first;
+  // reset if it leaves (a backend switch trims the selection to the new backend).
   useEffect(() => {
-    if (targets.length > 0) return;
-    const seed = (globalModel && models.some((m) => m.name === globalModel.name))
-      ? globalModel.name
-      : models[0]?.name;
-    if (seed) setTargets([seed]);
-  }, [models, targets.length, globalModel]);
+    if (selectedModels.some((m) => m.name === evalModel)) return;
+    setEvalModel(selectedModels[0]?.name ?? "");
+  }, [selectedModels, evalModel]);
 
-  // Keep the focused model (shown in the Simulator/Evaluator) inside the targets.
+  // The detail panels (Simulator/Evaluator/Trace) show the single eval model.
   useEffect(() => {
-    if (targets.length > 0 && !targets.includes(focusedModel)) {
-      setFocusedModel(targets[0]);
-    }
-  }, [targets, focusedModel]);
-
-  // Robustness: once a run produces per-(model,task) outcomes, make sure the
-  // focused model is one that actually has results — otherwise the Simulator /
-  // Evaluator would read an empty key and show blank Steps/Result even though the
-  // batch completed.
-  const tasksByModel = useBatchStore((s) => s.tasksByModel);
-  useEffect(() => {
-    const withData = Object.keys(tasksByModel);
-    if (withData.length > 0 && !withData.includes(focusedModel)) {
-      setFocusedModel(withData[0]);
-    }
-  }, [tasksByModel, focusedModel]);
+    if (evalModel) setFocusedModel(evalModel);
+  }, [evalModel]);
 
   return (
     <div className="grid gap-4" style={{ gridTemplateColumns: "360px 1fr" }} data-testid="eval-page">
@@ -117,8 +98,8 @@ export function EvalPage() {
         />
       )}
       <EvalManager
-        targets={targets}
-        setTargets={setTargets}
+        model={evalModel}
+        setModel={setEvalModel}
         k={iterationsK}
         setK={setIterationsK}
         maxSteps={maxSteps}
