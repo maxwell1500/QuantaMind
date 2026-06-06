@@ -34,6 +34,7 @@ pub fn run() {
             commands::compare::compare::run_compare,
             commands::compare::compare::stop_compare,
             commands::compare::compare_export::save_compare_report,
+            commands::publish::export_cmd::save_readiness_image,
             commands::gguf::gguf_cmd::install_local_gguf,
             commands::hf::hf_browse::hf_search,
             commands::hf::hf_browse::hf_repo_files,
