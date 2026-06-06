@@ -12,6 +12,7 @@ import { useToast } from "../../../../shared/ui/Toast";
 import type { ToolTask } from "../../../../shared/ipc/eval/registry";
 import { batchToCsv, download } from "../../exportBatch";
 import { ModelDropdown } from "../matrix/ModelDropdown";
+import { dedupeByDigest } from "../../../../shared/models/dedupeDigest";
 import { ConfirmDialog } from "./ConfirmDialog";
 import { CsvImportModal } from "./CsvImportModal";
 import { KebabMenu } from "./KebabMenu";
@@ -44,8 +45,12 @@ export function EvalManager({
   const list = useInstalledModelsStore((s) => s.list);
   const selectedBackend = useBackendStore((s) => s.selectedBackend);
   // Only the selected backend's models can be evaluated (a model is bound to its
-  // backend's weight format) — the dropdown and run targets are scoped to it.
-  const backendModels = list.filter((m) => m.backend === selectedBackend);
+  // backend's weight format) — the dropdown and run targets are scoped to it. Then
+  // de-dupe by content digest: Ollama lists the same blob once per tag (e.g.
+  // `gemma_q3_k_l:latest` and `gemma:q3_k_l`), which would otherwise show the same
+  // model several times. Mirrors the global header picker. (llama.cpp/MLX have no
+  // digest, so they're always kept.)
+  const backendModels = dedupeByDigest(list.filter((m) => m.backend === selectedBackend));
   const running = useBatchStore((s) => s.running);
   const report = useBatchStore((s) => s.report);
   const { run, stop } = useBatchRun();

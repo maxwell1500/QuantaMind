@@ -65,6 +65,25 @@ describe("EvalManager Sidebar Controls", () => {
     expect(screen.queryByTestId("eval-model-toggle-llama3.2:1b")).toBeNull();
   });
 
+  it("de-dupes Ollama tag duplicates (same digest) so a model isn't listed several times", () => {
+    useBackendStore.setState({ selectedBackend: "ollama" });
+    useInstalledModelsStore.setState({
+      list: [
+        // The same blob under two Ollama tags (identical digest) — e.g. gemma.
+        { name: "gemma_q3_k_l:latest", digest: "3d3dcc", size_bytes: 1, modified_at: "", family: "", parameter_size: "", quantization: "Q3_K_L", backend: "ollama" },
+        { name: "gemma:q3_k_l", digest: "3d3dcc", size_bytes: 1, modified_at: "", family: "", parameter_size: "", quantization: "Q3_K_L", backend: "ollama" },
+        { name: "qwen3.5:9b", digest: "6488c9", size_bytes: 1, modified_at: "", family: "", parameter_size: "", quantization: "Q4_K_M", backend: "ollama" },
+      ],
+      status: "ready", error: null, lastRefreshedAt: 1,
+    });
+    render(<EvalManager targets={[]} setTargets={() => {}} k={1} setK={() => {}} maxSteps={8} setMaxSteps={() => {}} />);
+    fireEvent.click(screen.getByTestId("eval-model-dropdown"));
+    // First occurrence of the shared digest wins; the duplicate tag is collapsed.
+    expect(screen.getByTestId("eval-model-toggle-gemma_q3_k_l:latest")).toBeInTheDocument();
+    expect(screen.queryByTestId("eval-model-toggle-gemma:q3_k_l")).toBeNull();
+    expect(screen.getByTestId("eval-model-toggle-qwen3.5:9b")).toBeInTheDocument();
+  });
+
   it("renders the headers and Data Source radio controls", () => {
     render(<EvalManager targets={["llama3.2:1b"]} setTargets={() => {}} k={1} setK={() => {}} maxSteps={8} setMaxSteps={() => {}} />);
     expect(screen.getByText("1. EVAL MANAGER")).toBeInTheDocument();
