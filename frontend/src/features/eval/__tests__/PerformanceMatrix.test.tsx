@@ -21,7 +21,7 @@ beforeEach(() => {
   vi.clearAllMocks();
   useBatchStore.getState().reset();
   useCliffStore.getState().reset();
-  useCliffStore.setState({ results: {}, request: null });
+  useCliffStore.setState({ results: {}, probed: {}, request: null });
   useInstalledModelsStore.setState({ list: [], status: "ready", error: null, lastRefreshedAt: 1 });
 });
 
@@ -63,6 +63,22 @@ describe("PerformanceMatrix", () => {
     render(<PerformanceMatrix focusedModel="qwen" onFocusModel={() => {}} />);
     expect(screen.getByTestId("cliff-value-qwen")).toHaveTextContent("12,000 tok");
     expect(screen.queryByTestId("cliff-run-qwen")).toBeNull(); // measured → no link
+  });
+
+  it("shows '✓ no cliff' for a model that was probed but found no cliff (not a misleading Run-probe)", () => {
+    useBatchStore.setState({ report });
+    useCliffStore.setState({ probed: { c: { qwen: true } } }); // probed, accuracy held
+    render(<PerformanceMatrix focusedModel="qwen" onFocusModel={() => {}} />);
+    expect(screen.getByTestId("cliff-nocliff-qwen")).toHaveTextContent("no cliff");
+    expect(screen.queryByTestId("cliff-run-qwen")).toBeNull(); // probed → no "Run probe" link
+  });
+
+  it("renders an always-visible legend explaining Cliff Depth + the probe payoff", () => {
+    useBatchStore.setState({ report });
+    render(<PerformanceMatrix focusedModel="qwen" onFocusModel={() => {}} />);
+    const legend = screen.getByTestId("matrix-legend");
+    expect(legend).toHaveTextContent(/Cliff Depth/);
+    expect(legend).toHaveTextContent(/Agent-Readiness verdict/);
   });
 
   it("prompts to run when there is no report yet", () => {

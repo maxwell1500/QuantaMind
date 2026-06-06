@@ -42,6 +42,10 @@ interface CliffStore {
   error: string | null;
   /// Backend-hydrated cliff depths: collection → model (verbatim key) → tokens.
   results: Record<string, Record<string, number>>;
+  /// (collection → model) probes that COMPLETED this session, including ones that found
+  /// no cliff (so the Matrix can distinguish "probed, healthy" from "not probed"). Held
+  /// in-session only — cross-session persistence of the no-cliff case is a follow-up.
+  probed: Record<string, Record<string, boolean>>;
 
   setRequest: (req: CliffRequest) => void;
   consumeRequest: () => CliffRequest | null;
@@ -50,6 +54,9 @@ interface CliffStore {
   /// The deepest measured cliff for a model across ALL collections — for the
   /// Inspector gauge, which has a model but no collection in scope.
   cliffForModel: (model: string) => number | null;
+  /// Did a probe complete this session for (collection, model)? True even when no cliff
+  /// was found — so the Matrix shows "✓ no cliff" rather than "Run probe ↗".
+  wasProbed: (collectionId: string, model: string) => boolean;
   runProbe: (args: RunProbeArgs) => Promise<void>;
   stop: () => void;
   reset: () => void;
@@ -67,6 +74,7 @@ export const useCliffStore = create<CliffStore>((set, get) => ({
   progress: { done: 0, total: 0 },
   error: null,
   results: {},
+  probed: {},
 
   setRequest: (req) => set({ request: req }),
   consumeRequest: () => {
@@ -92,6 +100,7 @@ export const useCliffStore = create<CliffStore>((set, get) => ({
       .filter((v): v is number => v != null);
     return found.length ? Math.max(...found) : null;
   },
+  wasProbed: (collectionId, model) => get().probed[collectionId]?.[model] === true,
 
   runProbe: async ({ model, backend, collectionId, tasks, maxTokens, steps, params }) => {
     // GUARDRAIL 2: clear all prior state BEFORE dispatching — never append to a
@@ -127,6 +136,10 @@ export const useCliffStore = create<CliffStore>((set, get) => ({
       // and here must abandon the run WITHOUT persisting a partial cliff.
       if (activeRun !== myRun) return;
       const cliff = cliffPoint(get().points);
+      // Mark this (collection, model) as probed REGARDLESS of whether a cliff was found,
+      // so the Matrix shows "✓ no cliff" (probed, accuracy held) instead of an unmeasured
+      // "Run probe ↗" when accuracy never collapsed.
+      set((s) => ({ probed: { ...s.probed, [collectionId]: { ...(s.probed[collectionId] ?? {}), [model]: true } } }));
       if (cliff != null) {
         try {
           await saveCliffResult(collectionId, model, cliff);

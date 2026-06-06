@@ -374,8 +374,11 @@ Error), with a click-through Trace Debugger. See [the workspace](#eval-runner).
   `Cliff Depth` is the measured context-cliff depth from the Audit probe (real
   `prompt_eval_count` at the accuracy collapse), read from the backend per
   (collection, model); unmeasured cells show **"Run probe ↗"** which pre-fills the
-  Audit probe for that model (see [#context-cliff](#context-cliff)), and a live run
-  shows **"probing…"**. `Top Error` shows the dominant failure mode; when a model had
+  Audit probe for that model (model + collection + context length + steps — see
+  [#context-cliff](#context-cliff)), a live run shows **"probing…"**, and a probe that
+  found no collapse shows **"✓ no cliff"** (probed, accuracy held — not the same as
+  unmeasured). An always-visible legend under the table explains the column + payoff.
+  `Top Error` shows the dominant failure mode; when a model had
   any agentic failure an **ⓘ** sits next to the badge — hovering it reveals the full
   count of all four modes (Loop Cap · Fake Done · Bad Schema · Malformed), including
   the two the headline badge hides. It's a native tooltip (the Matrix card is

@@ -56,6 +56,15 @@ describe("cliffStore", () => {
     expect(useCliffStore.getState().points).toHaveLength(2); // 2, not 4 — cleared first
   });
 
+  it("marks (collection, model) probed even when NO cliff is found — without persisting a value", async () => {
+    // Accuracy never collapses → cliffPoint is null → no save, but it WAS probed.
+    vi.mocked(runToolcallEval).mockResolvedValue({ composite: 1.0, prompt_tokens: 1000 } as never);
+    await useCliffStore.getState().runProbe(args({ steps: 3 }));
+    expect(useCliffStore.getState().wasProbed("finance", "qwen2.5-coder:7b")).toBe(true);
+    expect(saveCliffResult).not.toHaveBeenCalled(); // no cliff → nothing persisted
+    expect(useCliffStore.getState().cliffFor("finance", "qwen2.5-coder:7b")).toBeNull();
+  });
+
   it("stop halts an in-flight run before it persists", async () => {
     let n = 0;
     let resolveRung2: (v: unknown) => void = () => {};

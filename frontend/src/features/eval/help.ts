@@ -60,7 +60,7 @@ export const METRIC_HELP = {
   },
   cliffDepth: {
     title: "Cliff depth",
-    body: "The measured context length (real prompt tokens) at which this model's accuracy collapses, from the Context-Cliff probe in the Audit tab. '—' until you run the probe for this model.",
+    body: "The measured context length (real prompt tokens) at which this model's accuracy collapses, from the Context-Cliff probe in the Audit tab. It feeds the Agent-Readiness verdict (a model that breaks down before your app's context needs is downgraded). 'Run probe ↗' until measured; '✓ no cliff' means it was probed and accuracy held the whole tested range.",
   },
   passRate: {
     title: "Pass rate",

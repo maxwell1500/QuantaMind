@@ -124,6 +124,7 @@ export function PerformanceMatrix({
   // hydrated on mount — not browser localStorage.
   const collectionId = report?.collection_id;
   const cliffResults = useCliffStore((s) => (collectionId ? s.results[collectionId] : undefined));
+  const cliffProbed = useCliffStore((s) => (collectionId ? s.probed[collectionId] : undefined));
   const cliffRunning = useCliffStore((s) => s.running);
   const cliffRunningModel = useCliffStore((s) => s.runningModel);
   const setCliffRequest = useCliffStore((s) => s.setRequest);
@@ -250,6 +251,16 @@ export function PerformanceMatrix({
                         <span style={{ ...badgeStyle, background: "#f1f5f9", border: "1px solid #e2e8f0", color: "#334155", textTransform: "none" }} data-testid={`cliff-value-${r.model}`}>
                           {cliffResults[r.model].toLocaleString()} tok
                         </span>
+                      ) : cliffProbed?.[r.model] ? (
+                        // Probed this session but accuracy never collapsed — a GOOD result.
+                        // Show it as measured-and-healthy, not an unmeasured "Run probe".
+                        <span
+                          style={{ ...badgeStyle, background: "#dcfce7", border: "1px solid #bbf7d0", color: "#166534", textTransform: "none" }}
+                          data-testid={`cliff-nocliff-${r.model}`}
+                          title="Probed — accuracy held across the tested context range (no cliff found)"
+                        >
+                          ✓ no cliff
+                        </span>
                       ) : (
                         <button
                           type="button"
@@ -299,9 +310,26 @@ export function PerformanceMatrix({
           </table>
         </div>
       )}
+      {rows.length > 0 && (
+        <div style={legendStyle} data-testid="matrix-legend">
+          <strong style={{ color: "#475569" }}>Cliff Depth</strong> — the context length where a model's
+          tool-call accuracy starts to collapse. Click <strong style={{ color: "#2563eb" }}>Run probe ↗</strong> to
+          measure it (runs in the Audit tab); the result feeds the model's Agent-Readiness verdict.{" "}
+          <span style={{ color: "#166534", fontWeight: 600 }}>✓ no cliff</span> = probed, accuracy held the whole range.
+        </div>
+      )}
     </div>
   );
 }
+
+const legendStyle: React.CSSProperties = {
+  padding: "10px 16px",
+  borderTop: "1px solid #f1f5f9",
+  fontSize: 11,
+  lineHeight: 1.5,
+  color: "#64748b",
+  fontFamily: "Inter, sans-serif",
+};
 
 const panel: React.CSSProperties = {
   background: "#ffffff",
