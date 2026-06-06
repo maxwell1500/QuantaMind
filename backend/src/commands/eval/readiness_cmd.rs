@@ -6,7 +6,7 @@ use crate::inference::backend::endpoint;
 use crate::inference::eval::readiness::inputs::{agentic_metrics, pass_k_of, verdict_for};
 use crate::inference::eval::readiness::recommend;
 use crate::inference::eval::readiness::profile::ReadinessProfile;
-use crate::inference::eval::readiness::types::ModelVerdict;
+use crate::inference::eval::readiness::types::{CliffStatus, ModelVerdict};
 use crate::inference::eval::readiness::vram_fit::{try_profile, Dims};
 use crate::persistence::readiness::{cliff, profiles, reports};
 use std::collections::HashMap;
@@ -39,16 +39,36 @@ fn cliff_dir(app: &AppHandle) -> Result<PathBuf, AppError> {
     Ok(dir.join("cliff"))
 }
 
-/// The probe writes one model's measured cliff depth for a collection (atomic).
+/// The probe writes one model's cliff outcome for a collection (atomic). `depth`
+/// `Some` ⇒ collapsed at that depth; `None` ⇒ no cliff, accuracy held through
+/// `tested` tokens. (NotProbed is never written — it's the absence of a record.)
 #[tauri::command]
-pub fn save_cliff_result(app: AppHandle, collection_id: String, model: String, cliff_tokens: u32) -> Result<(), AppError> {
-    cliff::save(&cliff_dir(&app)?, &collection_id, &model, cliff_tokens)
+pub fn save_cliff_result(
+    app: AppHandle,
+    collection_id: String,
+    model: String,
+    depth: Option<u32>,
+    tested: u32,
+) -> Result<(), AppError> {
+    let status = match depth {
+        Some(d) => CliffStatus::Collapsed { depth: d },
+        None => CliffStatus::NoCliff { tested },
+    };
+    cliff::save(&cliff_dir(&app)?, &collection_id, &model, status)
 }
 
-/// The Matrix / readiness page reads the collection's measured cliff depths.
+/// The Matrix reads the collection's measured COLLAPSE depths (it shows "no cliff"
+/// from its own session state), so this stays a `{ model: depth }` map — only
+/// `Collapsed` entries are surfaced; `NoCliff` is consumed by the verdict, not here.
 #[tauri::command]
 pub fn get_cliff_results(app: AppHandle, collection_id: String) -> Result<HashMap<String, u32>, AppError> {
-    cliff::load(&cliff_dir(&app)?, &collection_id)
+    Ok(cliff::load(&cliff_dir(&app)?, &collection_id)?
+        .into_iter()
+        .filter_map(|(m, s)| match s {
+            CliffStatus::Collapsed { depth } => Some((m, depth)),
+            _ => None,
+        })
+        .collect())
 }
 
 #[tauri::command]
@@ -120,7 +140,12 @@ pub async fn assess_readiness(
         };
         let fits_in_vram = memory.as_ref().map(|m| m.fits);
         let vram_pressure = memory.as_ref().map(|m| m.pressure).unwrap_or(false);
-        let cliff_tokens = registry_get(&cliffs, &col.model).copied();
+        // Transitional (M2.1): the store is now `CliffStatus`, but the verdict still
+        // takes `Option<u32>` until M2.2 — map Collapsed→depth, NoCliff/absent→None.
+        let cliff_tokens = match registry_get(&cliffs, &col.model) {
+            Some(CliffStatus::Collapsed { depth }) => Some(*depth),
+            _ => None,
+        };
         let verdict = verdict_for(col, fits_in_vram, vram_pressure, cliff_tokens, &profile);
         let (avg_steps, effort) = agentic_metrics(col);
         out.push(ModelVerdict {

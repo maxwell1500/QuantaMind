@@ -1,10 +1,22 @@
 import { invoke } from "@tauri-apps/api/core";
 import { z } from "zod";
 
-/// Record one model's measured context-cliff depth for a collection. The backend
-/// stores keys verbatim (Ollama names carry colons) and writes atomically.
-export async function saveCliffResult(collectionId: string, model: string, cliffTokens: number): Promise<void> {
-  await invoke("save_cliff_result", { collectionId, model, cliffTokens: Math.round(cliffTokens) });
+/// Record one model's context-cliff outcome for a collection. `depth` = the collapse
+/// depth (tokens) when a cliff was found, or `null` when accuracy held — in which case
+/// `tested` is how far the probe reached ("✓ No cliff (≥tested)"). The backend stores
+/// keys verbatim (Ollama names carry colons) and writes atomically.
+export async function saveCliffResult(
+  collectionId: string,
+  model: string,
+  depth: number | null,
+  tested: number,
+): Promise<void> {
+  await invoke("save_cliff_result", {
+    collectionId,
+    model,
+    depth: depth == null ? null : Math.round(depth),
+    tested: Math.round(tested),
+  });
 }
 
 /// The collection's measured cliff depths, keyed by the RAW model name. Zod

@@ -154,12 +154,27 @@ export const useCliffStore = create<CliffStore>((set, get) => ({
         probed: { ...s.probed, [collectionId]: { ...(s.probed[collectionId] ?? {}), [model]: true } },
         brokenBaseline: { ...s.brokenBaseline, [collectionId]: { ...(s.brokenBaseline[collectionId] ?? {}), [model]: broken } },
       }));
-      if (verdict.kind === "cliff" && verdict.depth != null) {
+      // Persist the outcome so the Agent Report (and a reloaded Matrix) reflect it,
+      // not just this session. depth=null ⇒ NoCliff (held up to `tested`); a number ⇒
+      // Collapsed at that depth. broken-baseline = fails at the first rung. no-baseline
+      // (nothing scored) isn't persisted (stays "not probed").
+      const points = get().points;
+      const tested = Math.max(0, ...points.map((p) => p.promptTokens ?? 0));
+      let depth: number | null | undefined; // undefined ⇒ do not persist
+      if (verdict.kind === "cliff") depth = verdict.depth ?? tested;
+      else if (verdict.kind === "no-cliff") depth = null;
+      else if (verdict.kind === "broken-baseline") depth = points[0]?.promptTokens ?? 0;
+      if (depth !== undefined && tested > 0) {
         try {
-          await saveCliffResult(collectionId, model, verdict.depth);
-          set((s) => ({
-            results: { ...s.results, [collectionId]: { ...(s.results[collectionId] ?? {}), [model]: verdict.depth as number } },
-          }));
+          await saveCliffResult(collectionId, model, depth, tested);
+          // `results` holds COLLAPSE depths only (the Matrix's source): set it for a
+          // cliff, clear any stale entry on a now-healthy "no cliff" re-run.
+          set((s) => {
+            const col = { ...(s.results[collectionId] ?? {}) };
+            if (depth == null) delete col[model];
+            else col[model] = depth;
+            return { results: { ...s.results, [collectionId]: col } };
+          });
         } catch (e) {
           set((s) => ({ error: s.error ?? formatIpcError(e) }));
         }

@@ -44,7 +44,7 @@ describe("cliffStore", () => {
     expect(s.points).toHaveLength(3);
     expect(s.running).toBe(false);
     expect(s.progress).toEqual({ done: 3, total: 3 });
-    expect(saveCliffResult).toHaveBeenCalledWith("finance", "qwen2.5-coder:7b", 8000);
+    expect(saveCliffResult).toHaveBeenCalledWith("finance", "qwen2.5-coder:7b", 8000, 8000); // depth, tested
     expect(s.cliffFor("finance", "qwen2.5-coder:7b")).toBe(8000); // colon key preserved
   });
 
@@ -56,26 +56,28 @@ describe("cliffStore", () => {
     expect(useCliffStore.getState().points).toHaveLength(2); // 2, not 4 — cleared first
   });
 
-  it("marks (collection, model) probed even when NO cliff is found — without persisting a value", async () => {
-    // Accuracy never collapses → cliffPoint is null → no save, but it WAS probed.
+  it("persists a NO-cliff result (held up to the tested depth) and marks it probed", async () => {
+    // Accuracy never collapses → NoCliff{tested}: persisted as depth=null so the
+    // Agent Report can show "✓ No cliff (≥tested)" instead of a misleading "N/A".
     vi.mocked(runToolcallEval).mockResolvedValue({ composite: 1.0, prompt_tokens: 1000 } as never);
     await useCliffStore.getState().runProbe(args({ steps: 3 }));
     expect(useCliffStore.getState().wasProbed("finance", "qwen2.5-coder:7b")).toBe(true);
     expect(useCliffStore.getState().hasBrokenBaseline("finance", "qwen2.5-coder:7b")).toBe(false);
-    expect(saveCliffResult).not.toHaveBeenCalled(); // no cliff → nothing persisted
-    expect(useCliffStore.getState().cliffFor("finance", "qwen2.5-coder:7b")).toBeNull();
+    expect(saveCliffResult).toHaveBeenCalledWith("finance", "qwen2.5-coder:7b", null, 1000); // depth=null ⇒ NoCliff{1000}
+    expect(useCliffStore.getState().cliffFor("finance", "qwen2.5-coder:7b")).toBeNull(); // no collapse depth
   });
 
-  it("flags a broken baseline (every rung at 0%) instead of falsely reporting '✓ no cliff'", async () => {
-    // The reported bug: 0% at the unpadded baseline → the model is broken from the
-    // start, NOT a healthy plateau. Probed=true, brokenBaseline=true, nothing persisted.
+  it("flags a broken baseline (every rung at 0%) and persists it as a collapse at the baseline", async () => {
+    // 0% at the unpadded baseline → broken from the start (NOT a healthy plateau).
+    // Probed=true, brokenBaseline=true, persisted as Collapsed at the first rung so a
+    // min-context gate blocks it and it never reads as "✓ no cliff".
     vi.mocked(runToolcallEval).mockResolvedValue({ composite: 0.0, prompt_tokens: 388 } as never);
     await useCliffStore.getState().runProbe(args({ steps: 2 }));
     const s = useCliffStore.getState();
     expect(s.wasProbed("finance", "qwen2.5-coder:7b")).toBe(true);
     expect(s.hasBrokenBaseline("finance", "qwen2.5-coder:7b")).toBe(true);
-    expect(saveCliffResult).not.toHaveBeenCalled();
-    expect(s.cliffFor("finance", "qwen2.5-coder:7b")).toBeNull();
+    expect(saveCliffResult).toHaveBeenCalledWith("finance", "qwen2.5-coder:7b", 388, 388); // collapse at the first rung
+    expect(s.cliffFor("finance", "qwen2.5-coder:7b")).toBe(388);
   });
 
   it("a healthy re-run clears a stale broken-baseline flag", async () => {
