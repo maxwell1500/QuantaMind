@@ -52,7 +52,7 @@ export const METRIC_HELP = {
   },
   topError: {
     title: "Top error",
-    body: "The model's dominant agentic failure mode across the collection: Loop Cap (hit the step limit), Fake Done (claimed success without the end-state), Bad Schema (burned its recovery budget on schema-invalid calls), or Malformed (unparseable tool JSON). 'None' means no failures dominated.",
+    body: "The model's dominant agentic failure mode across the collection: Loop Cap (hit the step limit), Fake Done (claimed success without the end-state), Bad Schema (burned its recovery budget on schema-invalid calls), or Malformed (unparseable tool JSON). 'None' means no failures dominated. Hover the ⓘ next to the badge for the full count of all four modes.",
   },
   schemaResil: {
     title: "Schema resilience",

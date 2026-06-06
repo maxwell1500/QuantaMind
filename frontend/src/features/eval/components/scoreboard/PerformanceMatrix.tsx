@@ -6,6 +6,7 @@ import { useCliffStore } from "../../state/cliffStore";
 import { toScoreRows } from "./scoreRows";
 import { InfoButton } from "../../../../shared/ui/InfoButton";
 import { TOOL_HELP, metricTitle } from "../../help";
+import type { FailureTracker } from "../../../../shared/ipc/eval/batch";
 
 /// A sensible top-of-ladder default for the probe pre-fill — the Audit panel clamps
 /// it to the model's real context window.
@@ -90,6 +91,19 @@ function getTopErrorBadge(val: string) {
     return <span style={{ color: "#94a3b8" }}>—</span>;
   }
   return <span style={{ ...badgeStyle, background: "#f1f5f9", border: "1px solid #e2e8f0", color: "#475569" }}>{val}</span>;
+}
+
+/// The full failure breakdown behind `top_error` — all four counts including the two
+/// the cell otherwise hides (Fake Done / Bad Schema). `total` gates whether to show
+/// the ⓘ at all. Labels mirror TOP_ERROR_LABEL.
+function failureBreakdown(f: FailureTracker): { total: number; text: string } {
+  const total =
+    f.infinite_loop_hits + f.hallucinated_completions + f.schema_unrecovered_calls + f.malformed_json_calls;
+  const text =
+    `Loop Cap ${f.infinite_loop_hits} · Fake Done ${f.hallucinated_completions} · ` +
+    `Bad Schema ${f.schema_unrecovered_calls} · Malformed ${f.malformed_json_calls}` +
+    ` — Top Error is the dominant mode`;
+  return { total, text };
 }
 
 export function PerformanceMatrix({
@@ -245,7 +259,26 @@ export function PerformanceMatrix({
                         </button>
                       )}
                     </td>
-                    <td style={td}>{getTopErrorBadge(r.topError)}</td>
+                    <td style={td}>
+                      {getTopErrorBadge(r.topError)}
+                      {(() => {
+                        // Native title (not an absolute popup) — the table card is
+                        // overflow-hidden, which would clip an InfoButton popup; a
+                        // native tooltip is OS-rendered and never clips.
+                        if (!r.failures) return null;
+                        const fb = failureBreakdown(r.failures);
+                        if (fb.total === 0) return null;
+                        return (
+                          <span
+                            title={fb.text}
+                            data-testid={`failbreak-${r.model}`}
+                            style={{ marginLeft: 5, cursor: "help", color: "#94a3b8", fontSize: 10, fontWeight: 700 }}
+                          >
+                            ⓘ
+                          </span>
+                        );
+                      })()}
+                    </td>
                   </tr>
                 );
               })}

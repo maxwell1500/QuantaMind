@@ -46,6 +46,7 @@ export const FailureTrackerSchema = z.object({
   malformed_json_calls: z.number().int(),
   schema_unrecovered_calls: z.number().int(),
 });
+export type FailureTracker = z.infer<typeof FailureTrackerSchema>;
 
 export const AgenticReportSchema = z.object({
   passes: z.number().int(),

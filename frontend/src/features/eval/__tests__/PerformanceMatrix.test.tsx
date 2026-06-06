@@ -71,6 +71,21 @@ describe("PerformanceMatrix", () => {
     expect(screen.getByText(/Run Batch to compare/i)).toBeInTheDocument();
   });
 
+  it("surfaces the full failure breakdown (incl. the 2 previously-hidden counts) on the Top Error cell", () => {
+    useBatchStore.setState({ report });
+    render(<PerformanceMatrix focusedModel="qwen" onFocusModel={() => {}} />);
+    // loopy hit the loop cap 4×, so the ⓘ exposes ALL four counts in its native
+    // (clip-proof) title — including Fake Done / Bad Schema, which the badge hides.
+    const info = screen.getByTestId("failbreak-loopy");
+    const title = info.getAttribute("title") ?? "";
+    expect(title).toMatch(/Loop Cap 4/);
+    expect(title).toMatch(/Fake Done 0/);
+    expect(title).toMatch(/Bad Schema 0/);
+    expect(title).toMatch(/Malformed 0/);
+    // qwen had zero failures → no breakdown affordance.
+    expect(screen.queryByTestId("failbreak-qwen")).toBeNull();
+  });
+
   const failures = { infinite_loop_hits: 0, hallucinated_completions: 0, malformed_json_calls: 0, schema_unrecovered_calls: 0 };
   const nativeReport: BatchReport = {
     collection_id: "c",

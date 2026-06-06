@@ -1,4 +1,4 @@
-import type { BatchReport, TopError } from "../../../../shared/ipc/eval/batch";
+import type { BatchReport, FailureTracker, TopError } from "../../../../shared/ipc/eval/batch";
 import type { InstalledModelInfo } from "../../../../shared/ipc/models/storage";
 import { modelLabel } from "../../../../shared/models/modelLabel";
 
@@ -25,6 +25,10 @@ export interface ScoreRow {
   effort: string;
   schemaResil: string;
   topError: string;
+  /// The full agentic failure breakdown (all 4 counts) behind `topError`, so the UI
+  /// can surface the two it hides (Fake Done / Bad Schema). `null` for single-turn
+  /// or errored columns (no agentic run).
+  failures: FailureTracker | null;
   composite: string;
 }
 
@@ -60,6 +64,7 @@ export function toScoreRows(report: BatchReport | null, models: InstalledModelIn
       // Schema resilience is agentic-only; null (no run hit a schema error) → "—".
       schemaResil: ag ? fmtPct(ag.schema_resilience) : "—",
       topError: c.error ? "Error" : ag ? TOP_ERROR_LABEL[ag.top_error] : "—",
+      failures: ag?.failures ?? null,
       composite: fmtPct(c.toolcall?.composite),
     };
   });

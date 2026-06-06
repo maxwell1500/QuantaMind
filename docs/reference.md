@@ -375,7 +375,11 @@ Error), with a click-through Trace Debugger. See [the workspace](#eval-runner).
   `prompt_eval_count` at the accuracy collapse), read from the backend per
   (collection, model); unmeasured cells show **"Run probe ↗"** which pre-fills the
   Audit probe for that model (see [#context-cliff](#context-cliff)), and a live run
-  shows **"probing…"**.
+  shows **"probing…"**. `Top Error` shows the dominant failure mode; when a model had
+  any agentic failure an **ⓘ** sits next to the badge — hovering it reveals the full
+  count of all four modes (Loop Cap · Fake Done · Bad Schema · Malformed), including
+  the two the headline badge hides. It's a native tooltip (the Matrix card is
+  overflow-clipped, so an absolute popup would be cut off).
   Faults and the recovery budget are authored in the Task & Sandbox Configurator
   (the **Fault Injection** box and **Max Recovery** field); single-turn tasks and
   fault-free agentic tasks omit both and round-trip byte-identical.
