@@ -5,3 +5,4 @@
 // needs `HardwareSnapshot`; this module stays a dependency leaf.
 pub mod canonical;
 pub mod row;
+pub mod validate;
