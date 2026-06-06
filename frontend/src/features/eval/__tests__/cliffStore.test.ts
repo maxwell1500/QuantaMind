@@ -74,7 +74,7 @@ describe("cliffStore", () => {
   });
 
   it("setRequest / consumeRequest is one-shot (pre-fill carried once)", () => {
-    useCliffStore.getState().setRequest({ model: "m", backend: "ollama", collectionId: "c", maxTokens: 8000 });
+    useCliffStore.getState().setRequest({ model: "m", backend: "ollama", collectionId: "c", maxTokens: 8000, steps: 5 });
     expect(useCliffStore.getState().consumeRequest()?.model).toBe("m");
     expect(useCliffStore.getState().request).toBeNull();
     expect(useCliffStore.getState().consumeRequest()).toBeNull();

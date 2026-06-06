@@ -58,19 +58,23 @@ export function ContextCliffPanel() {
   const runProbe = useCliffStore((s) => s.runProbe);
   const stopProbe = useCliffStore((s) => s.stop);
   const resetProbe = useCliffStore((s) => s.reset);
+  const request = useCliffStore((s) => s.request);
   const consumeRequest = useCliffStore((s) => s.consumeRequest);
 
-  // Consume a Matrix pre-fill ONCE on mount: pre-select model + collection + max
-  // tokens, but NEVER auto-run (guardrail 1) — the user clicks Execute.
+  // Consume a Matrix pre-fill REACTIVELY (keyed on `request`), not once-on-mount: the
+  // Audit page is always-mounted-and-hidden, so a mount-only effect would fire once at
+  // app load (request null) and never again. Watching `request` means a "Run probe"
+  // click ALWAYS lands the panel pre-filled with model + collection + max-tokens +
+  // steps. consumeRequest() nulls it → this re-runs with null and no-ops (no loop).
+  // NEVER auto-runs (guardrail 1) — the user clicks Execute.
   useEffect(() => {
-    const req = consumeRequest();
-    if (req) {
-      setOverride({ name: req.model, backend: req.backend });
-      setActive(req.collectionId);
-      setMaxTokens(req.maxTokens);
-    }
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []);
+    if (!request) return;
+    setOverride({ name: request.model, backend: request.backend });
+    setActive(request.collectionId);
+    setMaxTokens(request.maxTokens);
+    setTestSteps(request.steps);
+    consumeRequest();
+  }, [request, consumeRequest]);
 
   const isPreset = (id: string) => presets.some((p) => p.id === id);
 
@@ -467,6 +471,7 @@ export function ContextCliffPanel() {
             step={1}
             value={testSteps}
             onChange={(e) => setTestSteps(Number(e.target.value))}
+            data-testid="cliff-test-steps"
             style={sliderStyle}
           />
           <span

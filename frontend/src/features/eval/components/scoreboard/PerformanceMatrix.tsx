@@ -11,6 +11,8 @@ import type { FailureTracker } from "../../../../shared/ipc/eval/batch";
 /// A sensible top-of-ladder default for the probe pre-fill — the Audit panel clamps
 /// it to the model's real context window.
 const PREFILL_MAX_TOKENS = 16384;
+/// Default ladder depth (Test Steps) carried into the pre-fill — the panel's own default.
+const PREFILL_STEPS = 5;
 
 /// Native title= tooltip for each metric column header (Model/Quant get none).
 const COLUMN_HELP: Record<string, string | undefined> = {
@@ -257,7 +259,7 @@ export function PerformanceMatrix({
                             // then switch tabs. NEVER auto-run (guardrail 1).
                             const backend = report?.columns.find((c) => c.model === r.model)?.backend ?? "ollama";
                             if (collectionId) {
-                              setCliffRequest({ model: r.model, backend, collectionId, maxTokens: PREFILL_MAX_TOKENS });
+                              setCliffRequest({ model: r.model, backend, collectionId, maxTokens: PREFILL_MAX_TOKENS, steps: PREFILL_STEPS });
                             }
                             goAudit("audit");
                           }}

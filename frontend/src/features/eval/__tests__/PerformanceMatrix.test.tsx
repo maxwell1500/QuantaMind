@@ -53,7 +53,7 @@ describe("PerformanceMatrix", () => {
 
     // The probe is PRE-FILLED for this model + the report's collection, then we
     // switch tabs — the panel waits for an explicit Run (guardrail 1).
-    expect(useCliffStore.getState().request).toMatchObject({ model: "qwen", backend: "ollama", collectionId: "c" });
+    expect(useCliffStore.getState().request).toMatchObject({ model: "qwen", backend: "ollama", collectionId: "c", steps: 5 });
     expect(useNavStore.getState().topView).toBe("audit");
   });
 

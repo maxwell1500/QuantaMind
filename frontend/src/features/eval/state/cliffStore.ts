@@ -14,6 +14,9 @@ export interface CliffRequest {
   backend: BackendKind;
   collectionId: string;
   maxTokens: number;
+  /// Pre-filled ladder depth (Test Steps) so the panel lands fully ready — the user
+  /// can still adjust it before clicking Execute.
+  steps: number;
 }
 
 export interface RunProbeArgs {
