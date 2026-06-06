@@ -4,6 +4,7 @@ import { useInstalledModelsStore } from "../../models/state/installedModelsStore
 import { useSelectedModelStore } from "../../../shared/state/selectedModelStore";
 import { useBackendStore } from "../../../shared/state/backendStore";
 import { useBatchStore } from "../state/batchStore";
+import { useCliffStore } from "../state/cliffStore";
 import { stopBatchEval } from "../../../shared/ipc/eval/batch";
 import { EvalManager } from "./manager/EvalManager";
 import { CollectionEditor } from "./manager/CollectionEditor";
@@ -38,28 +39,35 @@ export function EvalPage() {
     void initRegistry().catch(() => {});
   }, [initRegistry]);
 
-  // On a backend switch, the last run's results + the chosen targets belong to the
-  // PREVIOUS backend's models. A batch in flight is for the OLD backend, so actively
-  // CANCEL it (a switch must not leave the old run streaming) before clearing —
-  // `reset()` closes the store's event gate so any in-flight event is dropped, not
-  // re-applied. Targets then re-seed from the new backend below.
-  useEffect(() => {
+  // Context-shift cancellation law: a backend OR collection switch invalidates the
+  // target of every long-running process, so ALL compute for the old context halts.
+  // The cliff probe (which survives plain tab navigation by design) is stopped here
+  // too — not just the batch — so a switch never leaves the GPU grinding an
+  // abandoned ladder. `cliffStore.stop()` bumps its generation token, so no further
+  // rungs dispatch and the abandoned run never persists.
+  const haltOldContext = () => {
     if (useBatchStore.getState().running) void stopBatchEval();
     useBatchStore.getState().reset();
+    useCliffStore.getState().stop();
+  };
+
+  // On a backend switch the last run's results + chosen targets belong to the OLD
+  // backend's models — halt + clear, then targets re-seed from the new backend below.
+  useEffect(() => {
+    haltOldContext();
     setTargets([]);
     setFocusedModel("");
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [selectedBackend]);
 
-  // On a COLLECTION switch, the previous collection's per-(model,task) outcomes are
-  // stale — a task id present in both collections would otherwise show the OLD
-  // collection's Pass/Fail until a new batch runs. A batch in flight is scoring the
-  // OLD collection, so cancel it too; `reset()` then closes the event gate so the
-  // old run's late `task_done`/`batch-complete` events can't re-pollute the cleared
-  // store under the new collection. Keep the targets (models are collection-free).
+  // On a collection switch the previous collection's per-(model,task) outcomes are
+  // stale — a shared task id would otherwise show the OLD collection's Pass/Fail
+  // until a new batch runs. Halt + clear (the event gate drops any late events);
+  // keep the targets (models are collection-free).
   useEffect(() => {
-    if (useBatchStore.getState().running) void stopBatchEval();
-    useBatchStore.getState().reset();
+    haltOldContext();
     setFocusedTaskId(null);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [selectedCollection]);
 
   // Default one target once the model list loads — the global header model if

@@ -109,7 +109,10 @@ export const useCliffStore = create<CliffStore>((set, get) => ({
           }));
         }
       }
-      // Completed (not cancelled): compute + persist the cliff depth.
+      // Completed (not cancelled): compute + persist the cliff depth. Re-check the
+      // generation token first — a stop() in the micro-window between the last rung
+      // and here must abandon the run WITHOUT persisting a partial cliff.
+      if (activeRun !== myRun) return;
       const cliff = cliffPoint(get().points);
       if (cliff != null) {
         try {

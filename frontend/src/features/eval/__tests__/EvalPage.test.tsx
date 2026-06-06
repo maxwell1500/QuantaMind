@@ -12,6 +12,7 @@ import { EvalPage } from "../components/EvalPage";
 import { useEvalRegistryStore } from "../state/evalRegistryStore";
 import { useInstalledModelsStore } from "../../models/state/installedModelsStore";
 import { useBatchStore } from "../state/batchStore";
+import { useCliffStore } from "../state/cliffStore";
 import { useBackendStore } from "../../../shared/state/backendStore";
 
 const init = vi.fn().mockResolvedValue(undefined);
@@ -74,5 +75,23 @@ describe("EvalPage (3-pane workspace)", () => {
     act(() => useEvalRegistryStore.setState({ selected: "finance" }));
     expect(useBatchStore.getState().report).toBeNull();
     expect(useBatchStore.getState().outcomeByKey).toEqual({});
+  });
+
+  it("halts an in-flight Context-Cliff probe when the collection changes (context-shift law)", () => {
+    render(<EvalPage />);
+    // Simulate a probe running (started from the Audit tab) for the old collection.
+    act(() => useCliffStore.setState({ running: true, runningModel: "llama3.2:1b" }));
+    expect(useCliffStore.getState().running).toBe(true);
+    // A collection switch must stop it (cliffStore.stop) — not leave the GPU grinding.
+    act(() => useEvalRegistryStore.setState({ selected: "finance" }));
+    expect(useCliffStore.getState().running).toBe(false);
+    expect(useCliffStore.getState().runningModel).toBeNull();
+  });
+
+  it("halts an in-flight Context-Cliff probe when the backend changes", () => {
+    render(<EvalPage />);
+    act(() => useCliffStore.setState({ running: true, runningModel: "llama3.2:1b" }));
+    act(() => useBackendStore.setState({ selectedBackend: "llama_cpp" }));
+    expect(useCliffStore.getState().running).toBe(false);
   });
 });
