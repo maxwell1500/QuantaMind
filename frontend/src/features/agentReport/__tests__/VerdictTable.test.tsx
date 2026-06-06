@@ -69,7 +69,7 @@ describe("VerdictTable", () => {
     render(<VerdictTable verdicts={VERDICTS} />);
     // Ollama with a measured profile → weights + cache vs cap, "fits".
     expect(screen.getByTestId("readiness-row-qwen2.5-coder")).toHaveTextContent(
-      "VRAM: 6.0 GB (5.0 model + 1.0 cache) < 24.0 GB cap · fits",
+      "VRAM: 6.0 GB (5.0 model + 1.0 cache @ 8k ctx) < 24.0 GB cap · fits",
     );
     // llama.cpp (no memory profile) → honest N/A, never a guessed fit.
     expect(screen.getByTestId("readiness-row-mistral-nemo")).toHaveTextContent("VRAM fit: N/A (single-model backend)");

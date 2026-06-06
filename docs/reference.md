@@ -716,7 +716,9 @@ architecture (Apple unified memory / NVIDIA discrete / CPU) and an allocation-ca
 dropdown defaulting to your VRAM (unified RAM on Apple), overridable in-session
 (never persisted). For each **Ollama** model the verdict measures the footprint —
 exact on-disk weights + the real f16 KV cache (the canonical `vram_math` formula) at
-the run's `num_ctx` — against the cap: `fits` when total ≤ cap, a soft **high VRAM
+the run's `num_ctx` (falling back to a capped **8 k** dev window — `DEFAULT_FALLBACK_CTX`,
+bounded by the model max — never the model's full 262 k context, which would balloon the
+cache past any real workload; the line shows the assumed context as `@ 8k ctx`) — against the cap: `fits` when total ≤ cap, a soft **high VRAM
 pressure** condition at ≥85% of the cap, **won't fit** otherwise (which, under
 `require_full_vram`, blocks). The per-model line reads `VRAM: 6.0 GB (5.0 model +
 1.0 cache) < 24 GB cap · fits`. Single-model backends (llama.cpp / MLX) where precise

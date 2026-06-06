@@ -85,6 +85,10 @@ function classifyReason(reason: string): { category: string; text: string } {
   return { category, text: reason };
 }
 
+// The context the KV-cache figure assumes (the run's num_ctx, else a capped 8k
+// default) — surfaced so a "won't fit" is interpretable, not a mystery 134 GB.
+const ctxLabel = (n: number) => (n >= 1024 ? `${Math.round(n / 1024)}k` : `${n}`);
+
 function MemoryLine({ m, backend }: { m: MemoryProfile | null | undefined; backend: BackendKind }) {
   // Original string expected by the tests
   const getExpectedText = () => {
@@ -96,7 +100,7 @@ function MemoryLine({ m, backend }: { m: MemoryProfile | null | undefined; backe
     }
     const note = !m.fits ? "won't fit" : m.pressure ? "high VRAM pressure" : "fits";
     const est = m.estimated ? " · est." : "";
-    return `VRAM: ${gb(m.total_bytes)} GB (${gb(m.weights_bytes)} model + ${gb(m.kv_cache_bytes)} cache) ${m.fits ? "<" : ">"} ${gb(m.cap_bytes)} GB cap · ${note}${est}`;
+    return `VRAM: ${gb(m.total_bytes)} GB (${gb(m.weights_bytes)} model + ${gb(m.kv_cache_bytes)} cache @ ${ctxLabel(m.context_length)} ctx) ${m.fits ? "<" : ">"} ${gb(m.cap_bytes)} GB cap · ${note}${est}`;
   };
 
   const expectedText = getExpectedText();
@@ -121,7 +125,7 @@ function MemoryLine({ m, backend }: { m: MemoryProfile | null | undefined; backe
     <div className="flex flex-col gap-1 text-slate-700 text-xs mb-2">
       <span className="hidden">{expectedText}</span>
       <div className={color}>
-        VRAM: {gb(m.total_bytes)} GB used ({gb(m.weights_bytes)}GB model + {gb(m.kv_cache_bytes)}GB cache) {m.fits ? "<" : ">"} {gb(m.cap_bytes)}GB cap
+        VRAM: {gb(m.total_bytes)} GB used ({gb(m.weights_bytes)}GB model + {gb(m.kv_cache_bytes)}GB cache @ {ctxLabel(m.context_length)} ctx) {m.fits ? "<" : ">"} {gb(m.cap_bytes)}GB cap
       </div>
       {m.estimated && (
         <div data-testid="vram-estimated" className="text-[11px] text-slate-400">
