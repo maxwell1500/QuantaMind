@@ -248,20 +248,21 @@ export function PerformanceMatrix({
                         <span data-testid={`cliff-probing-${r.model}`} style={{ color: "#2563eb", fontSize: 12, fontWeight: 600, fontFamily: "Inter, sans-serif" }}>
                           probing…
                         </span>
-                      ) : cliffResults?.[r.model] != null ? (
-                        <span style={{ ...badgeStyle, background: "#f1f5f9", border: "1px solid #e2e8f0", color: "#334155", textTransform: "none" }} data-testid={`cliff-value-${r.model}`}>
-                          {cliffResults[r.model].toLocaleString()} tok
-                        </span>
                       ) : cliffBroken?.[r.model] ? (
-                        // Probed, but the model failed at the SMALLEST context (baseline below the
-                        // pass bar). There's no healthy plateau to fall off — reporting "no cliff"
-                        // here would dress up a total failure as a pass. Show it red.
+                        // Checked BEFORE a persisted depth: a broken baseline failed at the
+                        // SMALLEST context (no healthy plateau to fall off). Even though the
+                        // backend persists it as a collapse depth (for the Agent Report gate),
+                        // the Matrix must show the red failure, never dress it up as a cliff.
                         <span
                           style={{ ...badgeStyle, background: "#fee2e2", border: "1px solid #fca5a5", color: "#991b1b", textTransform: "none" }}
                           data-testid={`cliff-broken-${r.model}`}
                           title="Probed — accuracy was already failing at the smallest context (broken baseline), so no usable context window could be measured. This is a tool-call failure, not a context-length limit."
                         >
                           fails from start
+                        </span>
+                      ) : cliffResults?.[r.model] != null ? (
+                        <span style={{ ...badgeStyle, background: "#f1f5f9", border: "1px solid #e2e8f0", color: "#334155", textTransform: "none" }} data-testid={`cliff-value-${r.model}`}>
+                          {cliffResults[r.model].toLocaleString()} tok
                         </span>
                       ) : cliffProbed?.[r.model] ? (
                         // Probed this session, accuracy held across the range from a HEALTHY

@@ -84,6 +84,17 @@ describe("PerformanceMatrix", () => {
     expect(screen.queryByTestId("cliff-run-qwen")).toBeNull();
   });
 
+  it("broken baseline wins over a persisted depth — 'fails from start', not the number", () => {
+    useBatchStore.setState({ report });
+    // The backend persists broken-baseline as a collapse depth (for the Agent Report
+    // gate), so results AND brokenBaseline can both be set — the cell must prioritize
+    // the red failure, never render the misleading depth.
+    useCliffStore.setState({ results: { c: { qwen: 388 } }, probed: { c: { qwen: true } }, brokenBaseline: { c: { qwen: true } } });
+    render(<PerformanceMatrix focusedModel="qwen" onFocusModel={() => {}} />);
+    expect(screen.getByTestId("cliff-broken-qwen")).toHaveTextContent("fails from start");
+    expect(screen.queryByTestId("cliff-value-qwen")).toBeNull(); // the "388 tok" depth is suppressed
+  });
+
   it("renders an always-visible legend explaining Cliff Depth + the probe payoff", () => {
     useBatchStore.setState({ report });
     render(<PerformanceMatrix focusedModel="qwen" onFocusModel={() => {}} />);

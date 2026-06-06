@@ -167,12 +167,14 @@ export const useCliffStore = create<CliffStore>((set, get) => ({
       if (depth !== undefined && tested > 0) {
         try {
           await saveCliffResult(collectionId, model, depth, tested);
-          // `results` holds COLLAPSE depths only (the Matrix's source): set it for a
-          // cliff, clear any stale entry on a now-healthy "no cliff" re-run.
+          // `results` is the Matrix's GENUINE-cliff source: write it ONLY for a real
+          // cliff. broken-baseline is still persisted to the backend (for the Agent
+          // Report gate) but kept OUT of `results` so the Matrix shows "fails from
+          // start" via `brokenBaseline`, not a misleading depth; no-cliff clears it.
           set((s) => {
             const col = { ...(s.results[collectionId] ?? {}) };
-            if (depth == null) delete col[model];
-            else col[model] = depth;
+            if (verdict.kind === "cliff" && depth != null) col[model] = depth;
+            else delete col[model];
             return { results: { ...s.results, [collectionId]: col } };
           });
         } catch (e) {

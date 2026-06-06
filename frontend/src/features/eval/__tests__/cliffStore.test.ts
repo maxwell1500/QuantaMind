@@ -76,8 +76,10 @@ describe("cliffStore", () => {
     const s = useCliffStore.getState();
     expect(s.wasProbed("finance", "qwen2.5-coder:7b")).toBe(true);
     expect(s.hasBrokenBaseline("finance", "qwen2.5-coder:7b")).toBe(true);
-    expect(saveCliffResult).toHaveBeenCalledWith("finance", "qwen2.5-coder:7b", 388, 388); // collapse at the first rung
-    expect(s.cliffFor("finance", "qwen2.5-coder:7b")).toBe(388);
+    expect(saveCliffResult).toHaveBeenCalledWith("finance", "qwen2.5-coder:7b", 388, 388); // persisted to backend
+    // ...but NOT surfaced in the Matrix `results` map — the Matrix shows "fails from
+    // start" via the brokenBaseline flag, never a misleading depth.
+    expect(s.cliffFor("finance", "qwen2.5-coder:7b")).toBeNull();
   });
 
   it("a healthy re-run clears a stale broken-baseline flag", async () => {
