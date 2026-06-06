@@ -10,6 +10,7 @@ Built with Tauri, Rust, React, and Ollama. Local-first. No telemetry. No cloud.
 
 <br/>
 
+![Version](https://img.shields.io/badge/version-0.2.0-blue)
 ![Platform](https://img.shields.io/badge/platform-macOS-blue)
 ![Tauri](https://img.shields.io/badge/Tauri-2.x-FFC131?logo=tauri&logoColor=black)
 ![Rust](https://img.shields.io/badge/Rust-1.75%2B-orange?logo=rust&logoColor=white)
