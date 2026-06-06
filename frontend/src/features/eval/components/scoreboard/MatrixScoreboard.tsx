@@ -202,12 +202,20 @@ export function MatrixScoreboard({
                         <span style={failBadgeStyle}>Fail</span>
                       );
                     } else if (outcome.kind === "agentic") {
-                      const allPassed = outcome.report.passes === outcome.report.total_runs;
-                      resultEl = allPassed ? (
-                        <span style={passBadgeStyle}>Pass</span>
-                      ) : (
-                        <span style={failBadgeStyle}>Fail</span>
-                      );
+                      // Pass^k over k runs: all-pass = Pass, none = Fail, but a
+                      // PARTIAL pass (e.g. 3/5) is "Unreliable", not a flat Fail —
+                      // shown as an amber badge that matches the Matrix fraction.
+                      const { passes, total_runs } = outcome.report;
+                      resultEl =
+                        passes === total_runs ? (
+                          <span style={passBadgeStyle} data-testid={`result-${t.id}`}>Pass</span>
+                        ) : passes === 0 ? (
+                          <span style={failBadgeStyle} data-testid={`result-${t.id}`}>Fail</span>
+                        ) : (
+                          <span style={partialBadgeStyle} data-testid={`result-${t.id}`} title={`${passes}/${total_runs} runs passed — unreliable, not a clean pass`}>
+                            Partial {passes}/{total_runs}
+                          </span>
+                        );
                     } else if (outcome.kind === "error") {
                       resultEl = <span style={failBadgeStyle}>Error</span>;
                     }
@@ -341,6 +349,20 @@ const passBadgeStyle: React.CSSProperties = {
   background: "#dcfce7",
   border: "1px solid #bbf7d0",
   color: "#166534",
+  borderRadius: 6,
+  padding: "2px 8px",
+  fontSize: 12,
+  fontWeight: 600,
+  fontFamily: "Inter, sans-serif",
+};
+
+const partialBadgeStyle: React.CSSProperties = {
+  display: "inline-flex",
+  alignItems: "center",
+  gap: 5,
+  background: "#fef3c7",
+  border: "1px solid #fcd34d",
+  color: "#92400e",
   borderRadius: 6,
   padding: "2px 8px",
   fontSize: 12,

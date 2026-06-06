@@ -50,11 +50,11 @@ export function TaskListView({
           alignItems: "center",
           gap: 8,
           padding: "10px 20px",
-          borderBottom: "1px solid rgba(255,255,255,0.07)",
+          borderBottom: "1px solid #e2e8f0",
           flexShrink: 0,
         }}
       >
-        <span style={{ fontSize: 11, color: "#475569", fontFamily: "Inter,sans-serif", flex: 1 }}>
+        <span style={{ fontSize: 11, color: "#64748b", fontFamily: "Inter,sans-serif", flex: 1 }}>
           {drafts.length} task{drafts.length !== 1 ? "s" : ""}
         </span>
         <button type="button" onClick={onAddTask} data-testid="eval-add-task" style={toolbarBtn(false)}>
@@ -65,7 +65,7 @@ export function TaskListView({
         </button>
         {onRunAll && (
           <button type="button" onClick={onRunAll} disabled={runAllDisabled} data-testid="eval-run-all" title={runAllTitle} style={toolbarBtn(true, runAllDisabled)}>
-            {running ? "Running…" : "▶ Run all"}
+            {running ? "Running…" : "Run all"}
           </button>
         )}
       </div>
@@ -74,8 +74,10 @@ export function TaskListView({
       <div style={{ flex: 1, overflowY: "auto", minHeight: 0, padding: "10px 16px" }}>
         {drafts.length === 0 ? (
           <div style={{ display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center", height: 200, gap: 12 }}>
-            <div style={{ fontSize: 32, opacity: 0.2 }}>📋</div>
-            <p style={{ fontSize: 13, color: "#475569", fontFamily: "Inter,sans-serif" }}>No tasks yet</p>
+            <svg style={{ width: 40, height: 40, color: "#cbd5e1" }} fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.5}>
+              <path strokeLinecap="round" strokeLinejoin="round" d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2m-3 7h3m-3 4h3m-6-4h.01M9 16h.01" />
+            </svg>
+            <p style={{ fontSize: 13, color: "#64748b", fontFamily: "Inter,sans-serif" }}>No tasks yet</p>
             <button type="button" onClick={onAddTask} data-testid="eval-add-task-empty" style={toolbarBtn(true)}>
               + Add Task
             </button>
@@ -97,27 +99,27 @@ export function TaskListView({
                     alignItems: "center",
                     gap: 12,
                     textAlign: "left",
-                    background: "rgba(255,255,255,0.03)",
-                    border: `1px solid ${draft.error ? "rgba(239,68,68,0.4)" : "rgba(255,255,255,0.08)"}`,
+                    background: "#ffffff",
+                    border: `1px solid ${draft.error ? "#fca5a5" : "#e2e8f0"}`,
                     borderRadius: 9,
                     padding: "10px 14px",
                     cursor: "pointer",
                   }}
                 >
-                  <span style={{ fontSize: 11, color: "#475569", fontFamily: "Inter,sans-serif", width: 24, flexShrink: 0 }}>
+                  <span style={{ fontSize: 11, color: "#64748b", fontFamily: "Inter,sans-serif", width: 24, flexShrink: 0 }}>
                     {i + 1}
                   </span>
-                  <span style={{ fontSize: 13, color: "#e2e8f0", fontFamily: "'JetBrains Mono', monospace", width: 150, flexShrink: 0, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
+                  <span style={{ fontSize: 13, color: "#0f172a", fontFamily: "'JetBrains Mono', monospace", width: 150, flexShrink: 0, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
                     {draft.id || "(unnamed)"}
                   </span>
                   <span style={categoryBadge}>{draft.category}</span>
-                  <span style={{ fontSize: 12, color: "#94a3b8", fontFamily: "Inter,sans-serif", flex: 1, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
+                  <span style={{ fontSize: 12, color: "#475569", fontFamily: "Inter,sans-serif", flex: 1, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
                     {draft.prompt || "—"}
                   </span>
                   {passed != null && (
                     <span style={passed ? passedBadge : failedBadge}>{passed ? "Pass" : "Fail"}</span>
                   )}
-                  <span style={{ fontSize: 14, color: "#475569", flexShrink: 0 }}>›</span>
+                  <span style={{ fontSize: 14, color: "#94a3b8", flexShrink: 0 }}>›</span>
                 </button>
                 {onDeleteTask && (
                   <KebabMenu
@@ -136,10 +138,10 @@ export function TaskListView({
 
 const categoryBadge: React.CSSProperties = {
   fontSize: 10,
-  color: "#64748b",
+  color: "#475569",
   fontFamily: "Inter,sans-serif",
-  background: "rgba(255,255,255,0.05)",
-  border: "1px solid rgba(255,255,255,0.08)",
+  background: "#f1f5f9",
+  border: "1px solid #e2e8f0",
   borderRadius: 5,
   padding: "1px 7px",
   flexShrink: 0,
@@ -149,13 +151,13 @@ function toolbarBtn(primary: boolean, disabled = false): React.CSSProperties {
   return {
     padding: "6px 12px",
     borderRadius: 7,
-    border: "1px solid rgba(255,255,255,0.1)",
+    border: `1px solid ${disabled ? "#e2e8f0" : primary ? "#bfdbfe" : "#cbd5e1"}`,
     background: disabled
-      ? "rgba(255,255,255,0.04)"
+      ? "#f1f5f9"
       : primary
-        ? "rgba(59,130,246,0.18)"
-        : "rgba(255,255,255,0.06)",
-    color: disabled ? "#334155" : primary ? "#93c5fd" : "#94a3b8",
+        ? "#eff6ff"
+        : "#ffffff",
+    color: disabled ? "#94a3b8" : primary ? "#2563eb" : "#334155",
     fontSize: 12,
     fontWeight: 500,
     fontFamily: "Inter,sans-serif",

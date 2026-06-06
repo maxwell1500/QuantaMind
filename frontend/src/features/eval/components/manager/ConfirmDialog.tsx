@@ -35,16 +35,16 @@ export function ConfirmDialog({
         aria-modal="true"
         aria-label={title}
         onClick={(e) => e.stopPropagation()}
-        className="bg-surface rounded-lg shadow-xl w-80 max-w-[90vw] p-5 space-y-3"
+        className="bg-surface rounded-lg shadow-xl w-80 max-w-[90vw] p-5 space-y-3 border border-gray-100"
       >
-        <h3 className="text-sm font-semibold text-slate-200">{title}</h3>
-        <p className="text-sm text-slate-400">{message}</p>
+        <h3 className="text-sm font-semibold text-gray-900">{title}</h3>
+        <p className="text-sm text-gray-600">{message}</p>
         <div className="flex justify-end gap-2">
           <button
             type="button"
             onClick={onClose}
             data-testid="confirm-cancel"
-            className="px-3 py-1.5 rounded-md text-sm text-slate-400 hover:bg-white/5"
+            className="px-3 py-1.5 rounded-md text-sm text-gray-500 hover:bg-gray-100 transition-colors"
           >
             Cancel
           </button>

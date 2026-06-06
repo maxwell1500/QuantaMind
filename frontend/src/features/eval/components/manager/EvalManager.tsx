@@ -355,6 +355,30 @@ export function EvalManager({
               Measure native tool-calling (Ollama)
             </label>
 
+            {/* Honesty nudge: when the native path is OFF, the batch is the
+                prompt-based proxy — a tool-tuned model that answers in prose is
+                scored Fail though its native API would pass. Point the blame at the
+                model's architecture + teach the toggle, so the gap isn't read as a
+                tool bug. Hidden once native is on (they've already opted in). */}
+            {!nativeFc && (
+              <div
+                data-testid="native-fc-hint"
+                style={{
+                  fontSize: 11,
+                  lineHeight: 1.5,
+                  color: "#64748b",
+                  background: "#f8fafc",
+                  border: "1px solid #e2e8f0",
+                  borderRadius: 6,
+                  padding: "7px 9px",
+                  fontFamily: "Inter, sans-serif",
+                }}
+              >
+                Prompt-based results may underrepresent native tool-calling capability. Enable{" "}
+                <strong style={{ color: "#475569" }}>Measure native tool-calling</strong> for strict API fidelity.
+              </div>
+            )}
+
             {/* RUN BATCH Button */}
             <button
               type="button"

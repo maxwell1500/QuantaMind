@@ -105,45 +105,45 @@ export function CsvImportModal({
         aria-modal="true"
         aria-label="Import tasks from CSV"
         onClick={(e) => e.stopPropagation()}
-        className="bg-surface rounded-xl shadow-2xl w-[760px] max-w-[94vw] max-h-[88vh] overflow-y-auto p-6 space-y-5 border border-white/10"
+        className="bg-surface rounded-xl shadow-2xl w-[760px] max-w-[94vw] max-h-[88vh] overflow-y-auto p-6 space-y-5 border border-gray-200"
       >
         {/* Title */}
         <div>
-          <h2 className="text-base font-bold text-slate-100">Import tasks from CSV</h2>
-          <p className="text-xs text-slate-400 mt-1">
+          <h2 className="text-base font-bold text-gray-900">Import tasks from CSV</h2>
+          <p className="text-xs text-gray-500 mt-1">
             Bulk-load single-turn tool-call tasks from a spreadsheet. Tool schemas are defined once below and
-            apply to every row. Parallel / agentic tasks → use <span className="text-slate-300">Import .json</span>.
+            apply to every row. Parallel / agentic tasks → use <span className="text-gray-700 font-semibold">Import .json</span>.
           </p>
         </div>
 
         {/* Format guide */}
         <div className="space-y-2">
-          <div className="text-[11px] font-bold uppercase tracking-wide text-slate-500">Expected format</div>
-          <div className="rounded-lg border border-white/10 overflow-hidden">
+          <div className="text-[11px] font-bold uppercase tracking-wide text-gray-500">Expected format</div>
+          <div className="rounded-lg border border-gray-200 overflow-hidden">
             <table className="w-full text-xs" data-testid="csv-import-example">
               <thead>
-                <tr className="bg-white/[0.04] text-slate-400">
+                <tr className="bg-gray-50 text-gray-500">
                   {EXPECTED_HEADER.map((h) => (
                     <th key={h} className="text-left font-semibold px-3 py-2 font-mono">{h}</th>
                   ))}
                 </tr>
               </thead>
-              <tbody className="font-mono text-slate-300">
+              <tbody className="font-mono text-gray-700">
                 {EXAMPLE_ROWS.map((r) => (
-                  <tr key={r.id} className="border-t border-white/5">
+                  <tr key={r.id} className="border-t border-gray-100">
                     <td className="px-3 py-1.5">{r.id}</td>
                     <td className="px-3 py-1.5">{r.prompt}</td>
-                    <td className="px-3 py-1.5 text-slate-400">{r.tool}</td>
-                    <td className="px-3 py-1.5 text-slate-400">{r.args}</td>
+                    <td className="px-3 py-1.5 text-gray-500">{r.tool}</td>
+                    <td className="px-3 py-1.5 text-gray-500">{r.args}</td>
                   </tr>
                 ))}
               </tbody>
             </table>
           </div>
-          <pre className="text-[11px] bg-black/30 rounded-md p-3 text-slate-400 overflow-x-auto font-mono">{RAW_EXAMPLE}</pre>
-          <p className="text-[11px] text-slate-500">
-            Empty <span className="font-mono text-slate-400">expected_tool</span> = an abstain task (the model should
-            make no tool call). <button type="button" onClick={learnMore} data-testid="csv-import-learnmore" className="text-blue-400 underline underline-offset-2">Learn more ↗</button>
+          <pre className="text-[11px] bg-gray-50 border border-gray-200 rounded-md p-3 text-gray-600 overflow-x-auto font-mono">{RAW_EXAMPLE}</pre>
+          <p className="text-[11px] text-gray-500">
+            Empty <span className="font-mono text-gray-700">expected_tool</span> = an abstain task (the model should
+            make no tool call). <button type="button" onClick={learnMore} data-testid="csv-import-learnmore" className="text-blue-600 hover:text-blue-700 underline underline-offset-2 transition-colors">Learn more ↗</button>
           </p>
         </div>
 
@@ -154,20 +154,20 @@ export function CsvImportModal({
             onChange={(e) => setToolsJson(e.target.value)}
             rows={6}
             data-testid="csv-import-tools"
-            className="w-full rounded-md bg-white/5 border border-white/10 px-3 py-2 text-xs text-slate-200 font-mono outline-none resize-y"
+            className="w-full rounded-md bg-white border border-gray-300 focus:border-blue-600 focus:ring-1 focus:ring-blue-600 px-3 py-2 text-xs text-gray-900 font-mono outline-none resize-y transition-colors"
           />
           {result.toolsError && (
-            <div className="text-xs text-red-400" data-testid="csv-import-tools-error">{result.toolsError}</div>
+            <div className="text-xs text-red-500 mt-1 font-semibold" data-testid="csv-import-tools-error">{result.toolsError}</div>
           )}
         </Field>
 
         {/* CSV input */}
         <Field label="CSV data">
           <div className="flex items-center gap-2">
-            <button type="button" onClick={() => void pickFile()} data-testid="csv-import-file" className="px-3 py-1.5 rounded-md text-xs text-slate-200 bg-white/5 border border-white/10 hover:bg-white/10">
+            <button type="button" onClick={() => void pickFile()} data-testid="csv-import-file" className="px-3 py-1.5 rounded-md text-xs text-gray-700 bg-white border border-gray-300 hover:bg-gray-50 transition-colors">
               Choose .csv file…
             </button>
-            <span className="text-[11px] text-slate-500">or paste below</span>
+            <span className="text-[11px] text-gray-500">or paste below</span>
           </div>
           <textarea
             value={csvText}
@@ -175,7 +175,7 @@ export function CsvImportModal({
             rows={6}
             placeholder={RAW_EXAMPLE}
             data-testid="csv-import-paste"
-            className="w-full rounded-md bg-white/5 border border-white/10 px-3 py-2 text-xs text-slate-200 font-mono outline-none resize-y"
+            className="w-full rounded-md bg-white border border-gray-300 focus:border-blue-600 focus:ring-1 focus:ring-blue-600 px-3 py-2 text-xs text-gray-900 font-mono outline-none resize-y transition-colors"
           />
         </Field>
 
@@ -186,7 +186,7 @@ export function CsvImportModal({
             onChange={(e) => setName(e.target.value)}
             placeholder="my-test-cases"
             data-testid="csv-import-name"
-            className="w-full rounded-md bg-white/5 border border-white/10 px-3 py-2 text-sm text-slate-200 outline-none"
+            className="w-full rounded-md bg-white border border-gray-300 focus:border-blue-600 focus:ring-1 focus:ring-blue-600 px-3 py-2 text-sm text-gray-900 outline-none transition-colors"
           />
         </Field>
 
@@ -195,27 +195,27 @@ export function CsvImportModal({
         {csvText.trim() && (
           <div className="space-y-2" data-testid="csv-import-preview">
             {result.headerError && (
-              <div className="text-xs text-red-400 bg-red-500/10 border border-red-500/20 rounded-md px-3 py-2" data-testid="csv-import-header-error">
+              <div className="text-xs text-red-600 bg-red-50 border border-red-200 rounded-md px-3 py-2" data-testid="csv-import-header-error">
                 Header error — {result.headerError}
               </div>
             )}
             {!result.headerError && result.rows.length === 0 && (
-              <div className="text-xs text-amber-400 bg-amber-500/10 border border-amber-500/20 rounded-md px-3 py-2" data-testid="csv-import-norows">
+              <div className="text-xs text-amber-600 bg-amber-50 border border-amber-200 rounded-md px-3 py-2" data-testid="csv-import-norows">
                 No data rows found — add at least one task row below the header.
               </div>
             )}
             {!result.headerError && result.rows.length > 0 && (
               <>
-                <div className="text-[11px] text-slate-400">
-                  <span className="text-green-400">{validCount} valid</span>
-                  {errorCount > 0 && <span className="text-red-400"> · {errorCount} error{errorCount > 1 ? "s" : ""}</span>}
+                <div className="text-[11px] text-gray-500">
+                  <span className="text-green-600 font-semibold">{validCount} valid</span>
+                  {errorCount > 0 && <span className="text-red-500 font-semibold"> · {errorCount} error{errorCount > 1 ? "s" : ""}</span>}
                 </div>
-                <div className="max-h-44 overflow-y-auto rounded-md border border-white/5 divide-y divide-white/5">
+                <div className="max-h-44 overflow-y-auto rounded-md border border-gray-200 divide-y divide-gray-100">
                   {result.rows.map((r) => (
                     <div key={r.row} className="flex items-start gap-2 px-3 py-1.5 text-xs" data-testid={`csv-row-${r.ok ? "ok" : "err"}-${r.row}`}>
-                      <span className={r.ok ? "text-green-400" : "text-red-400"}>{r.ok ? "✓" : "✗"}</span>
-                      <span className="text-slate-400 font-mono">Row {r.row}{r.id ? ` (${r.id})` : ""}</span>
-                      {!r.ok && <span className="text-red-300">— {r.message}</span>}
+                      <span className={r.ok ? "text-green-500 font-bold" : "text-red-500 font-bold"}>{r.ok ? "✓" : "✗"}</span>
+                      <span className="text-gray-500 font-mono font-medium">Row {r.row}{r.id ? ` (${r.id})` : ""}</span>
+                      {!r.ok && <span className="text-red-500 font-semibold">— {r.message}</span>}
                     </div>
                   ))}
                 </div>
@@ -224,11 +224,11 @@ export function CsvImportModal({
           </div>
         )}
 
-        {fileError && <div className="text-xs text-red-400" data-testid="csv-import-file-error">{fileError}</div>}
+        {fileError && <div className="text-xs text-red-500 mt-1 font-semibold" data-testid="csv-import-file-error">{fileError}</div>}
 
         {/* Footer */}
         <div className="flex items-center justify-end gap-2 pt-1">
-          <button type="button" onClick={onClose} data-testid="csv-import-cancel" className="px-3 py-1.5 rounded-md text-sm text-slate-400 hover:bg-white/5">
+          <button type="button" onClick={onClose} data-testid="csv-import-cancel" className="px-3 py-1.5 rounded-md text-sm text-gray-500 hover:bg-gray-100 transition-colors">
             Cancel
           </button>
           <button
@@ -236,7 +236,7 @@ export function CsvImportModal({
             disabled={!canImport}
             onClick={() => void submit()}
             data-testid="csv-import-submit"
-            className="px-4 py-1.5 rounded-md text-sm text-white bg-blue-600 disabled:opacity-40 disabled:cursor-not-allowed"
+            className="px-4 py-1.5 rounded-md text-sm text-white bg-blue-600 hover:bg-blue-700 disabled:opacity-40 disabled:cursor-not-allowed transition-colors"
           >
             Import {result.tasks ? `${result.tasks.length} task${result.tasks.length > 1 ? "s" : ""}` : ""}
           </button>
@@ -249,7 +249,7 @@ export function CsvImportModal({
 function Field({ label, children }: { label: string; children: React.ReactNode }) {
   return (
     <div className="space-y-1.5">
-      <div className="text-[11px] font-bold uppercase tracking-wide text-slate-500">{label}</div>
+      <div className="text-[11px] font-bold uppercase tracking-wide text-gray-500">{label}</div>
       {children}
     </div>
   );

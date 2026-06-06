@@ -58,6 +58,36 @@ describe("MatrixScoreboard (Simulator) data flow", () => {
     expect(screen.getByTestId("matrix-scoreboard")).toHaveTextContent("100% Pass Rate");
   });
 
+  it("shows an amber Partial badge for a k>1 agentic outcome that passed some-but-not-all runs", () => {
+    const s = useBatchStore.getState();
+    s.startRun();
+    s.ingestProgress({ phase: "started", model: MODEL, task_id: "weather", index: 0, total: 1, category: "agentic" } as BatchProgress);
+    s.ingestProgress({
+      phase: "done",
+      model: MODEL,
+      task_id: "weather",
+      outcome: {
+        kind: "agentic",
+        report: {
+          passes: 3,
+          total_runs: 5,
+          avg_steps: 2.0,
+          avg_output_tokens_success: 80,
+          schema_resilience: null,
+          top_error: "none",
+          failures: { infinite_loop_hits: 0, hallucinated_completions: 0, malformed_json_calls: 0, schema_unrecovered_calls: 0 },
+        },
+      },
+    } as BatchProgress);
+    flushBatchBufferForTests();
+
+    render(<MatrixScoreboard model={MODEL} k={5} maxSteps={8} focusedTaskId={"weather"} setFocusedTaskId={() => {}} />);
+    const result = screen.getByTestId("result-weather");
+    // 3/5 is "Unreliable", not a flat Fail — aligns the badge with the Pass^k fraction.
+    expect(result).toHaveTextContent("Partial 3/5");
+    expect(result).not.toHaveTextContent("Fail");
+  });
+
   it("collapses and expands the card", () => {
     render(<MatrixScoreboard model={MODEL} k={1} maxSteps={8} focusedTaskId={null} setFocusedTaskId={() => {}} />);
     // Body (the task table area / footnote) visible by default.

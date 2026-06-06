@@ -4,6 +4,7 @@ import { useInstalledModelsStore } from "../../models/state/installedModelsStore
 import { useSelectedModelStore } from "../../../shared/state/selectedModelStore";
 import { useBackendStore } from "../../../shared/state/backendStore";
 import { useBatchStore } from "../state/batchStore";
+import { stopBatchEval } from "../../../shared/ipc/eval/batch";
 import { EvalManager } from "./manager/EvalManager";
 import { CollectionEditor } from "./manager/CollectionEditor";
 import { MatrixScoreboard } from "./scoreboard/MatrixScoreboard";
@@ -38,21 +39,25 @@ export function EvalPage() {
   }, [initRegistry]);
 
   // On a backend switch, the last run's results + the chosen targets belong to the
-  // PREVIOUS backend's models — clear them so the Simulator/Matrix don't keep
-  // showing stale models. Targets then re-seed from the new backend below.
+  // PREVIOUS backend's models. A batch in flight is for the OLD backend, so actively
+  // CANCEL it (a switch must not leave the old run streaming) before clearing —
+  // `reset()` closes the store's event gate so any in-flight event is dropped, not
+  // re-applied. Targets then re-seed from the new backend below.
   useEffect(() => {
-    if (useBatchStore.getState().running) return;
+    if (useBatchStore.getState().running) void stopBatchEval();
     useBatchStore.getState().reset();
     setTargets([]);
     setFocusedModel("");
   }, [selectedBackend]);
 
   // On a COLLECTION switch, the previous collection's per-(model,task) outcomes are
-  // stale — a task id that exists in both collections would otherwise show the OLD
-  // collection's Pass/Fail in the Simulator until a new batch runs. Clear them (but
-  // keep the targets — models are collection-independent).
+  // stale — a task id present in both collections would otherwise show the OLD
+  // collection's Pass/Fail until a new batch runs. A batch in flight is scoring the
+  // OLD collection, so cancel it too; `reset()` then closes the event gate so the
+  // old run's late `task_done`/`batch-complete` events can't re-pollute the cleared
+  // store under the new collection. Keep the targets (models are collection-free).
   useEffect(() => {
-    if (useBatchStore.getState().running) return;
+    if (useBatchStore.getState().running) void stopBatchEval();
     useBatchStore.getState().reset();
     setFocusedTaskId(null);
   }, [selectedCollection]);

@@ -72,4 +72,44 @@ describe("batchStore (rAF-buffered)", () => {
     expect(get().report?.columns[0].agentic?.avg_output_tokens_success).toBeNull();
     expect(get().report?.columns[0].agentic?.avg_steps).toBeNull();
   });
+
+  // The QA scenario: a batch for collection A is in flight; the user switches to
+  // collection B (EvalPage calls reset()). A's late `task_done`/`batch-complete`
+  // events must NOT re-populate the cleared store under B.
+  it("drops late events from an abandoned run after reset (no cross-collection re-pollution)", () => {
+    get().startRun();
+    const started: BatchProgress = { phase: "started", model: "m1", task_id: "a1", index: 0, total: 3, category: "single" };
+    get().ingestProgress(started);
+    // User switches collection mid-run → the store is reset (event gate closes).
+    get().reset();
+    // A's late in-flight events arrive a moment later — must be ignored.
+    const done: BatchProgress = { phase: "done", model: "m1", task_id: "a1", outcome: { kind: "single", passed: true, trace: { system_message: "", user_prompt: "", raw_output: "", verdict: { parsed: true, tool_match: true, args_match: true, abstain_correct: null } } } };
+    get().ingestProgress(done);
+    get().ingestStep(step("m1", "a1", 0));
+    flushBatchBufferForTests();
+    expect(get().progress).toEqual({ done: 0, total: 0 });
+    expect(get().outcomeByKey).toEqual({});
+    expect(get().stepsByKey).toEqual({});
+  });
+
+  it("drops a batch-complete from an abandoned run (cancelled on switch)", () => {
+    get().startRun();
+    get().reset(); // abandoned before the report arrived
+    const report: BatchReport = { collection_id: "a", columns: [{ model: "m1", backend: "ollama", toolcall: null, agentic: null, error: null }] };
+    get().complete(report);
+    expect(get().report).toBeNull(); // the stale report never lands
+  });
+
+  // A resume legitimately keeps streaming AFTER its partial `complete` (which flips
+  // running=false) — the gate must stay open across that, unlike a guard on `running`.
+  it("keeps applying live-tail events after a partial complete (resume flow)", () => {
+    get().startRun();
+    const partial: BatchReport = { collection_id: "a", columns: [{ model: "m1", backend: "ollama", toolcall: null, agentic: null, error: null }] };
+    get().complete(partial); // partial paint → running=false, but the run continues
+    expect(get().running).toBe(false);
+    const done: BatchProgress = { phase: "done", model: "m1", task_id: "a1", outcome: { kind: "single", passed: true, trace: { system_message: "", user_prompt: "", raw_output: "", verdict: { parsed: true, tool_match: true, args_match: true, abstain_correct: null } } } };
+    get().ingestProgress(done);
+    flushBatchBufferForTests();
+    expect(get().outcomeByKey[cellKey("m1", "a1")]?.kind).toBe("single"); // tail still landed
+  });
 });

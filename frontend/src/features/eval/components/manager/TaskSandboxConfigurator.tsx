@@ -15,7 +15,7 @@ export function TaskSandboxConfigurator({ draft, onChange, onRemove, onBack }: P
 
   return (
     <div
-      className="rounded-2xl overflow-hidden border border-blue-500/20 shadow-2xl transition-all duration-300"
+      className="rounded-2xl overflow-hidden border border-slate-200 shadow-sm transition-all duration-300"
       style={panel}
       data-testid="task-configurator"
     >
@@ -23,8 +23,8 @@ export function TaskSandboxConfigurator({ draft, onChange, onRemove, onBack }: P
       <div style={header}>
         <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 12 }}>
           <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
-            <span className="flex h-2.5 w-2.5 rounded-full bg-blue-400 animate-pulse" />
-            <span style={{ fontSize: 14, fontWeight: 800, color: "#f8fafc", fontFamily: "Inter, sans-serif", letterSpacing: "0.03em" }}>
+            <span className="flex h-2.5 w-2.5 rounded-full bg-blue-500 animate-pulse" />
+            <span style={{ fontSize: 14, fontWeight: 700, color: "#0f172a", fontFamily: "Inter, sans-serif", letterSpacing: "0.03em" }}>
               TASK &amp; SANDBOX CONFIGURATOR
             </span>
           </div>
@@ -32,7 +32,7 @@ export function TaskSandboxConfigurator({ draft, onChange, onRemove, onBack }: P
             <button
               type="button"
               onClick={onBack}
-              className="px-3 py-1 text-xs font-semibold rounded-lg bg-blue-500/10 hover:bg-blue-500/20 text-blue-300 hover:text-blue-200 transition-all cursor-pointer"
+              className="px-3 py-1 text-xs font-semibold rounded-lg bg-blue-50 hover:bg-blue-100 border border-blue-200 text-blue-600 hover:text-blue-700 transition-all cursor-pointer"
               data-testid="configurator-back"
             >
               ‹ Back
@@ -40,7 +40,7 @@ export function TaskSandboxConfigurator({ draft, onChange, onRemove, onBack }: P
             <button
               type="button"
               onClick={onRemove}
-              className="px-3 py-1 text-xs font-semibold rounded-lg bg-red-500/10 hover:bg-red-500/20 text-red-400 hover:text-red-300 transition-all cursor-pointer"
+              className="px-3 py-1 text-xs font-semibold rounded-lg bg-red-50 hover:bg-red-100 border border-red-200 text-red-600 hover:text-red-700 transition-all cursor-pointer"
               data-testid="configurator-remove"
             >
               Delete
@@ -61,7 +61,7 @@ export function TaskSandboxConfigurator({ draft, onChange, onRemove, onBack }: P
                 value={draft.id}
                 onChange={(e) => patch({ id: e.target.value })}
                 placeholder="e.g. finance-transfer"
-                className="transition-all duration-200 focus:outline-none focus:ring-2 focus:ring-blue-500/40 focus:border-blue-400"
+                className="transition-all duration-200 focus:outline-none focus:ring-2 focus:ring-blue-500/20 focus:border-blue-400"
                 style={input}
                 data-testid="configurator-id"
               />
@@ -82,7 +82,7 @@ export function TaskSandboxConfigurator({ draft, onChange, onRemove, onBack }: P
                 onChange={(e) => patch({ prompt: e.target.value })}
                 placeholder="You are a privacy-safe agentic ledger. Use tools to validate accounts before transfers."
                 rows={3}
-                className="transition-all duration-200 focus:outline-none focus:ring-2 focus:ring-blue-500/40 focus:border-blue-400"
+                className="transition-all duration-200 focus:outline-none focus:ring-2 focus:ring-blue-500/20 focus:border-blue-400"
                 style={area}
                 data-testid="configurator-prompt"
               />
@@ -100,7 +100,7 @@ export function TaskSandboxConfigurator({ draft, onChange, onRemove, onBack }: P
                 value={draft.toolsJson}
                 onChange={(e) => patch({ toolsJson: e.target.value })}
                 rows={5}
-                className="transition-all duration-200 focus:outline-none focus:ring-2 focus:ring-blue-500/40 focus:border-blue-400"
+                className="transition-all duration-200 focus:outline-none focus:ring-2 focus:ring-blue-500/20 focus:border-blue-400"
                 style={{ ...area, fontFamily: "'JetBrains Mono', monospace" }}
                 data-testid="configurator-tools"
               />
@@ -115,7 +115,7 @@ export function TaskSandboxConfigurator({ draft, onChange, onRemove, onBack }: P
                     onChange={(e) => patch({ mocksJson: e.target.value })}
                     rows={5}
                     placeholder='[ { "call": { "name": "check_balance", "args": { "account_id": "ACC-123" } }, "response": "{\"balance\":450}" } ]'
-                    className="transition-all duration-200 focus:outline-none focus:ring-2 focus:ring-blue-500/40 focus:border-blue-400"
+                    className="transition-all duration-200 focus:outline-none focus:ring-2 focus:ring-blue-500/20 focus:border-blue-400"
                     style={{ ...area, fontFamily: "'JetBrains Mono', monospace" }}
                     data-testid="configurator-mocks"
                   />
@@ -128,7 +128,7 @@ export function TaskSandboxConfigurator({ draft, onChange, onRemove, onBack }: P
                     onChange={(e) => patch({ endStateJson: e.target.value })}
                     rows={5}
                     placeholder='{ "require_sequence": [ { "tool": "check_balance", "args": {…} }, { "tool": "transfer", "args": { "amount": 450 } } ] }'
-                    className="transition-all duration-200 focus:outline-none focus:ring-2 focus:ring-blue-500/40 focus:border-blue-400"
+                    className="transition-all duration-200 focus:outline-none focus:ring-2 focus:ring-blue-500/20 focus:border-blue-400"
                     style={{ ...area, fontFamily: "'JetBrains Mono', monospace" }}
                     data-testid="configurator-endstate"
                   />
@@ -141,7 +141,7 @@ export function TaskSandboxConfigurator({ draft, onChange, onRemove, onBack }: P
                   <select
                     value={draft.category}
                     onChange={(e) => patch({ category: e.target.value as TaskDraft["category"] })}
-                    className="transition-all duration-200 focus:outline-none focus:ring-2 focus:ring-blue-500/40 focus:border-blue-400"
+                    className="transition-all duration-200 focus:outline-none focus:ring-2 focus:ring-blue-500/20 focus:border-blue-400"
                     style={input}
                     data-testid="configurator-category"
                   >
@@ -155,7 +155,7 @@ export function TaskSandboxConfigurator({ draft, onChange, onRemove, onBack }: P
                     value={draft.expectedJson}
                     onChange={(e) => patch({ expectedJson: e.target.value })}
                     rows={4}
-                    className="transition-all duration-200 focus:outline-none focus:ring-2 focus:ring-blue-500/40 focus:border-blue-400"
+                    className="transition-all duration-200 focus:outline-none focus:ring-2 focus:ring-blue-500/20 focus:border-blue-400"
                     style={{ ...area, fontFamily: "'JetBrains Mono', monospace" }}
                     data-testid="configurator-expected"
                   />
@@ -173,10 +173,10 @@ export function TaskSandboxConfigurator({ draft, onChange, onRemove, onBack }: P
             <div style={{ display: "flex", flexDirection: "column", gap: 16 }}>
               {/* Driver B info banner */}
               <div style={infoBannerB}>
-                <div style={{ fontWeight: 700, fontSize: 11, marginBottom: 3, display: "flex", alignItems: "center", gap: 4 }}>
-                  <span>🛡️</span> DRIVER B: FAULT INJECTION (LAZY-AGENT TRAPS)
+                <div style={{ fontWeight: 700, fontSize: 11, marginBottom: 3, display: "flex", alignItems: "center", gap: 4, color: "#1e40af" }}>
+                  DRIVER B: FAULT INJECTION (LAZY-AGENT TRAPS)
                 </div>
-                <div style={{ fontSize: 11, lineHeight: 1.4, color: "#94a3b8" }}>
+                <div style={{ fontSize: 11, lineHeight: 1.4, color: "#475569" }}>
                   Inject errors (e.g. transient 503 HTTP or persistent 500) to check if the model retries robustly or halts honestly. Leaving empty disables traps.
                 </div>
               </div>
@@ -188,7 +188,7 @@ export function TaskSandboxConfigurator({ draft, onChange, onRemove, onBack }: P
                   onChange={(e) => patch({ faultsJson: e.target.value })}
                   rows={4}
                   placeholder='[ { "call": { "name": "transfer", "args": { "amount": 450 } }, "fault": { "transient_error": { "status_code": 503, "clears_after": 1 } } } ]'
-                  className="transition-all duration-200 focus:outline-none focus:ring-2 focus:ring-blue-500/40 focus:border-blue-400"
+                  className="transition-all duration-200 focus:outline-none focus:ring-2 focus:ring-blue-500/20 focus:border-blue-400"
                   style={{ ...area, fontFamily: "'JetBrains Mono', monospace" }}
                   data-testid="configurator-faults"
                 />
@@ -196,10 +196,10 @@ export function TaskSandboxConfigurator({ draft, onChange, onRemove, onBack }: P
 
               {/* Driver D info banner */}
               <div style={infoBannerD}>
-                <div style={{ fontWeight: 700, fontSize: 11, marginBottom: 3, display: "flex", alignItems: "center", gap: 4 }}>
-                  <span>🔄</span> DRIVER D: SEMANTIC RECOVERY BUDGET
+                <div style={{ fontWeight: 700, fontSize: 11, marginBottom: 3, display: "flex", alignItems: "center", gap: 4, color: "#854d0e" }}>
+                  DRIVER D: SEMANTIC RECOVERY BUDGET
                 </div>
-                <div style={{ fontSize: 11, lineHeight: 1.4, color: "#94a3b8" }}>
+                <div style={{ fontSize: 11, lineHeight: 1.4, color: "#475569" }}>
                   Controls the budget for schema error self-correction runs. Omission defaults to 2 retries.
                 </div>
               </div>
@@ -211,7 +211,7 @@ export function TaskSandboxConfigurator({ draft, onChange, onRemove, onBack }: P
                   onChange={(e) => patch({ maxRecovery: e.target.value })}
                   placeholder="default 2"
                   inputMode="numeric"
-                  className="transition-all duration-200 focus:outline-none focus:ring-2 focus:ring-blue-500/40 focus:border-blue-400"
+                  className="transition-all duration-200 focus:outline-none focus:ring-2 focus:ring-blue-500/20 focus:border-blue-400"
                   style={input}
                   data-testid="configurator-max-recovery"
                 />
@@ -248,14 +248,13 @@ function TypeBtn({ active, label, onClick, testid }: { active: boolean; label: s
         flex: 1,
         padding: "8px 12px",
         borderRadius: 8,
-        border: `1px solid ${active ? "rgba(59,130,246,0.5)" : "rgba(255,255,255,0.06)"}`,
-        background: active ? "linear-gradient(135deg, rgba(59,130,246,0.2) 0%, rgba(37,99,235,0.1) 100%)" : "rgba(255,255,255,0.02)",
-        color: active ? "#a5f3fc" : "#94a3b8",
+        border: `1px solid ${active ? "#bfdbfe" : "#cbd5e1"}`,
+        background: active ? "#eff6ff" : "#ffffff",
+        color: active ? "#1d4ed8" : "#475569",
         fontSize: 12,
         fontWeight: active ? 700 : 500,
         fontFamily: "Inter, sans-serif",
         cursor: "pointer",
-        boxShadow: active ? "0 4px 12px rgba(59,130,246,0.15)" : "none",
         transition: "all 0.2s ease",
       }}
     >
@@ -265,21 +264,23 @@ function TypeBtn({ active, label, onClick, testid }: { active: boolean; label: s
 }
 
 const panel: React.CSSProperties = {
-  background: "linear-gradient(160deg, #161b26 0%, #0c0f17 100%)",
-  boxShadow: "0 20px 50px rgba(0,0,0,0.5), inset 0 1px 0 rgba(255,255,255,0.05)",
+  background: "#ffffff",
+  border: "1px solid #e2e8f0",
+  borderRadius: "16px",
+  boxShadow: "0 1px 3px 0 rgba(0, 0, 0, 0.05)",
   display: "flex",
   flexDirection: "column",
 };
 const header: React.CSSProperties = {
   padding: "16px 20px",
-  borderBottom: "1px solid rgba(255,255,255,0.08)",
-  background: "rgba(0,0,0,0.15)",
+  borderBottom: "1px solid #e2e8f0",
+  background: "#fafafa",
 };
 const input: React.CSSProperties = {
-  background: "rgba(255,255,255,0.03)",
-  border: "1px solid rgba(255,255,255,0.08)",
+  background: "#ffffff",
+  border: "1px solid #cbd5e1",
   borderRadius: 8,
-  color: "#f1f5f9",
+  color: "#0f172a",
   fontSize: 13,
   fontFamily: "Inter, sans-serif",
   padding: "8px 12px",
@@ -294,16 +295,16 @@ const area: React.CSSProperties = {
 };
 const errorBox: React.CSSProperties = {
   fontSize: 12,
-  color: "#f87171",
-  background: "rgba(239,68,68,0.1)",
-  border: "1px solid rgba(239,68,68,0.25)",
+  color: "#b91c1c",
+  background: "#fef2f2",
+  border: "1px solid #fee2e2",
   borderRadius: 8,
   padding: "10px 14px",
   fontFamily: "Inter, sans-serif",
 };
 const sectionGroup: React.CSSProperties = {
-  background: "rgba(255,255,255,0.01)",
-  border: "1px solid rgba(255,255,255,0.04)",
+  background: "#f8fafc",
+  border: "1px solid #e2e8f0",
   borderRadius: 12,
   padding: "16px 14px",
   display: "flex",
@@ -314,23 +315,23 @@ const sectionTitle: React.CSSProperties = {
   fontSize: 12,
   fontWeight: 800,
   textTransform: "uppercase",
-  color: "#3b82f6",
+  color: "#2563eb",
   letterSpacing: "0.06em",
   fontFamily: "Inter, sans-serif",
-  borderBottom: "1px solid rgba(59,130,246,0.2)",
+  borderBottom: "1px solid #cbd5e1",
   paddingBottom: 4,
   marginBottom: 8,
 };
 const infoBannerB: React.CSSProperties = {
-  background: "rgba(147,197,253,0.06)",
-  border: "1px solid rgba(147,197,253,0.15)",
+  background: "#eff6ff",
+  border: "1px solid #bfdbfe",
   borderRadius: 8,
   padding: "10px 12px",
   fontFamily: "Inter, sans-serif",
 };
 const infoBannerD: React.CSSProperties = {
-  background: "rgba(253,186,116,0.05)",
-  border: "1px solid rgba(253,186,116,0.12)",
+  background: "#fffbeb",
+  border: "1px solid #fde68a",
   borderRadius: 8,
   padding: "10px 12px",
   fontFamily: "Inter, sans-serif",

@@ -3,7 +3,7 @@ import { buildHistogram } from "../histogram";
 import type { LatencyBar } from "../timeline";
 
 const bar = (latencyMs: number, kind: LatencyBar["kind"] = "normal", index = 1): LatencyBar =>
-  ({ index, token: "t", latencyMs, kind });
+  ({ index, token: "t", latencyMs, kind, tMs: latencyMs });
 
 describe("buildHistogram", () => {
   it("returns [] for fewer than 2 gaps (TTFT excluded)", () => {

@@ -84,6 +84,15 @@ describe("EvalManager Sidebar Controls", () => {
     expect(screen.getByTestId("eval-model-toggle-qwen3.5:9b")).toBeInTheDocument();
   });
 
+  it("nudges to enable native tool-calling while it's off, and hides the nudge once enabled", () => {
+    render(<EvalManager targets={["llama3.2:1b"]} setTargets={() => {}} k={1} setK={() => {}} maxSteps={8} setMaxSteps={() => {}} />);
+    // Prompt-based is the default → the honesty hint is shown.
+    expect(screen.getByTestId("native-fc-hint")).toHaveTextContent(/underrepresent native tool-calling/i);
+    // Enabling native FC means they've opted into strict fidelity → hint goes away.
+    fireEvent.click(screen.getByTestId("eval-native-fc"));
+    expect(screen.queryByTestId("native-fc-hint")).toBeNull();
+  });
+
   it("renders the headers and Data Source radio controls", () => {
     render(<EvalManager targets={["llama3.2:1b"]} setTargets={() => {}} k={1} setK={() => {}} maxSteps={8} setMaxSteps={() => {}} />);
     expect(screen.getByText("1. EVAL MANAGER")).toBeInTheDocument();

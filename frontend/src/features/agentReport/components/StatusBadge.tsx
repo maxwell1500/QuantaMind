@@ -1,33 +1,39 @@
-import type { CSSProperties } from "react";
 import type { Readiness } from "../../../shared/ipc/eval/readiness";
 
-/// Verdict pill — green Ready / amber Conditional / red NotReady. Colours match
-/// the eval feature's pass/fail palette so the report reads consistently.
-const STYLES: Record<Readiness, { label: string; icon: string; bg: string; border: string; color: string }> = {
-  ready: { label: "READY", icon: "🟢", bg: "rgba(34,197,94,0.12)", border: "rgba(34,197,94,0.3)", color: "#16a34a" },
-  conditional: { label: "CONDITIONAL", icon: "🟡", bg: "rgba(250,204,21,0.14)", border: "rgba(250,204,21,0.35)", color: "#b45309" },
-  not_ready: { label: "NOT READY", icon: "🔴", bg: "rgba(239,68,68,0.1)", border: "rgba(239,68,68,0.28)", color: "#dc2626" },
+const CONFIG: Record<Readiness, { label: string; bg: string; text: string; border: string; dot: string }> = {
+  ready: {
+    label: "READY",
+    bg: "bg-emerald-50/60",
+    text: "text-emerald-700",
+    border: "border-emerald-255/30",
+    dot: "bg-emerald-500",
+  },
+  conditional: {
+    label: "CONDITIONAL",
+    bg: "bg-amber-50/60",
+    text: "text-amber-700",
+    border: "border-amber-255/35",
+    dot: "bg-amber-500",
+  },
+  not_ready: {
+    label: "NOT READY",
+    bg: "bg-rose-50/60",
+    text: "text-rose-700",
+    border: "border-rose-255/30",
+    dot: "bg-rose-500",
+  },
 };
 
 export function StatusBadge({ status }: { status: Readiness }) {
-  const s = STYLES[status];
-  const style: CSSProperties = {
-    display: "inline-flex",
-    alignItems: "center",
-    gap: 6,
-    padding: "3px 10px",
-    borderRadius: 6,
-    fontSize: 12,
-    fontWeight: 700,
-    whiteSpace: "nowrap",
-    background: s.bg,
-    border: `1px solid ${s.border}`,
-    color: s.color,
-  };
+  const c = CONFIG[status];
   return (
-    <span data-testid={`readiness-badge-${status}`} style={style}>
-      <span aria-hidden>{s.icon}</span>
-      {s.label}
+    <span
+      data-testid={`readiness-badge-${status}`}
+      className={`inline-flex items-center gap-1.5 px-2.5 py-1 border rounded-full text-[10px] font-bold tracking-wider leading-none shadow-sm/5 transition-all select-none ${c.bg} ${c.text} ${c.border}`}
+    >
+      <span className={`h-1.5 w-1.5 rounded-full shrink-0 ${c.dot}`} aria-hidden />
+      {c.label}
     </span>
   );
 }
+

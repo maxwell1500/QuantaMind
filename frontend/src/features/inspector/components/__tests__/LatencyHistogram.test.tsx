@@ -5,7 +5,7 @@ import { buildHistogram } from "../../format/histogram";
 import type { LatencyBar } from "../../format/timeline";
 
 const bar = (latencyMs: number, kind: LatencyBar["kind"] = "normal", index = 1): LatencyBar =>
-  ({ index, token: "t", latencyMs, kind });
+  ({ index, token: "t", latencyMs, kind, tMs: latencyMs });
 
 describe("LatencyHistogram", () => {
   it("renders nothing for an empty distribution", () => {
