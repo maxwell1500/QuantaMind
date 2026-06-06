@@ -41,7 +41,7 @@ pub fn run() {
             #[cfg(not(feature = "enterprise"))]
             commands::publish::publish_cmd::publish_to_board,
             #[cfg(not(feature = "enterprise"))]
-            commands::publish::login_cmd::start_login,
+            commands::publish::identity::login_cmd::start_login,
             commands::gguf::gguf_cmd::install_local_gguf,
             commands::hf::hf_browse::hf_search,
             commands::hf::hf_browse::hf_repo_files,

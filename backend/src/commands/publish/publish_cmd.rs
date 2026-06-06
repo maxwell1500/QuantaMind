@@ -1,7 +1,7 @@
 use crate::commands::publish::cohort::cohort_key;
 use crate::commands::publish::preview_cmd::build_preview;
 use crate::commands::publish::auth_state::AuthState;
-use crate::commands::publish::token::access_token;
+use crate::commands::publish::identity::token::access_token;
 use crate::commands::system::hardware::snapshot;
 use crate::errors::{AppError, AppResult};
 use crate::inference::eval::readiness::types::ModelVerdict;

@@ -5,17 +5,13 @@
 pub mod auth_state;
 pub mod export_cmd;
 
+// Identity/auth (PKCE + token vault + sign-in) lives in its own concern subfolder
+// to stay under the folder-taxonomy limit; the send/payload commands stay here.
 #[cfg(not(feature = "enterprise"))]
-pub mod auth;
+pub mod identity;
 #[cfg(not(feature = "enterprise"))]
 pub mod cohort;
-#[cfg(not(feature = "enterprise"))]
-pub mod login_cmd;
-#[cfg(not(feature = "enterprise"))]
-pub mod pkce;
 #[cfg(not(feature = "enterprise"))]
 pub mod preview_cmd;
 #[cfg(not(feature = "enterprise"))]
 pub mod publish_cmd;
-#[cfg(not(feature = "enterprise"))]
-pub mod token;

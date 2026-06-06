@@ -1,4 +1,4 @@
-use crate::commands::publish::auth::{get_refresh_token, store_refresh_token};
+use super::auth::{get_refresh_token, store_refresh_token};
 use crate::commands::publish::auth_state::AuthState;
 use crate::errors::{AppError, AppResult};
 use crate::inference::http::http::{body_or_note, probe_client};

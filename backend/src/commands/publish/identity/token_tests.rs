@@ -1,5 +1,5 @@
 use super::*;
-use crate::commands::publish::auth::{clear_refresh_token, vault_test_lock};
+use crate::commands::publish::identity::auth::{clear_refresh_token, vault_test_lock};
 
 const TOKENS_JSON: &str = r#"{"access_token":"at_new","refresh_token":"rt_rotated","expires_in":900}"#;
 
