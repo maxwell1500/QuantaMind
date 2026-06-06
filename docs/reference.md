@@ -765,6 +765,27 @@ and the original self-contained **HTML** one-pager (escaped, utf-8) to email a v
 to a CTO. The image/Markdown builders are pure; the PNG path is the Phase 8 offline
 share lever (see `process.md#phase-roadmap`, step 8.B4).
 
+**Publishing to the community board (Phase 8 — privacy contract).** Separate from the
+offline export, an *opt-in* publish path can contribute a verdict to a shared
+leaderboard. What's sent is **metrics-only**: a `PublishRow` per measured model —
+`model`, `quant`, a **hardware `cohort_key`** (`{platform}/{accel}/{mem_tier}`, e.g.
+`apple-silicon/m3-pro/32-64gb`), `tool_version`, and the metrics bag (`pass_k`,
+`effort?`, `avg_steps?`). **Never sent:** task content, prompts, file names, raw model
+output, or any identity beyond the GitHub handle. The payload is built in Rust
+(`persistence/publish/` + `commands/publish/`), serialized to **deterministic
+canonical JSON** (object keys sorted at every depth) and hashed (SHA-256) so transit
+tampering is detectable; unmeasured/unquantized rows are dropped (never sent as a null
+that would skew server baselines), and the same plausibility checks the server runs are
+applied locally first (`pre_validate`). The `PublishDialog` shows the **exact raw
+payload** and the shared/never-shared breakdown behind a **default-OFF opt-in** before
+anything leaves the machine. Results are **community-reported** — self-fabrication is
+deterred (validation, outliers, GitHub identity, report/remove), not cryptographically
+prevented. The closed backend (token authority, validation, dedup, leaderboard,
+baselines) is a separate hosted repo; the desktop app is fully functional offline
+without it. ⚠ The `cohort_key` taxonomy is **v1 pending backend sign-off** — the
+server's bucketing must match it exactly or dedup `UNIQUE(user, model, quant,
+cohort_key)` breaks.
+
 **The recommendation (the one-line answer).** `assess_readiness` returns the verdicts
 **ranked best-first** (`readiness::recommend::rank`, also CLI-shareable) so the page
 opens with a leaderboard and a **Recommendation banner**: *"Recommended for {profile}

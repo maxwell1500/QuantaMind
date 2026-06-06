@@ -649,7 +649,7 @@ here. The app stays 100% functional offline — a publish/auth failure never tou
 | # | Step | Status |
 | --- | --- | --- |
 | 8.B4 | **Offline share export** — fully offline, no auth, no backend. Pure `buildReadinessMarkdown` (GFM table + per-model reasons, "N/A" never fabricated); `snapshotPng` rasterizes the report card via `html-to-image` (embedded fonts + warm-up render; hardcoded white background); a thin `save_readiness_image` Rust sink writes the PNG bytes (path via OS dialog). The Agent Report's **Export Report** menu offers Image / Copy Markdown / HTML | done |
-| 8.B2 | Canonical record (`persistence/result_canonical.rs`, pure: sorted-key deterministic JSON + SHA-256 hash + local pre-validation) + privacy gate (`PublishDialog`: shows the raw payload, default opt-out) | planned |
+| 8.B2 | Canonical record (`persistence/publish/`, pure: metrics-only `PublishRow`, sorted-key deterministic JSON + SHA-256 hash + local `pre_validate`) + `commands/publish/cohort.rs` (v1 hardware cohort key) + `preview_publish_payload` + privacy gate (`PublishDialog`: shows the exact raw payload, default opt-out) | done |
 | 8.B1 | PKCE keychain auth (`commands/publish/auth.rs`, `keyring`; in-memory fallback when no secret service; device-code for headless) — behind the `enterprise` feature gate | planned |
 | 8.B3 | Send pipeline (`publish_cmd.rs`: nonce → batch POST; handles 200/401/422-with-index/426/429; **always re-fetch a nonce before retry**) — `enterprise`-gated | planned |
 
