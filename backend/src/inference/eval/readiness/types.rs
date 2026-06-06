@@ -19,6 +19,11 @@ pub enum CliffStatus {
     NotProbed,
     NoCliff { tested: u32 },
     Collapsed { depth: u32 },
+    /// Tool-call accuracy was already failing at the SMALLEST tested context (a broken
+    /// baseline) — there is no usable context window, distinct from a collapse partway
+    /// through. `tested` = the deepest rung reached. Renders red "fails from start" and
+    /// blocks any context-headroom gate.
+    Broken { tested: u32 },
 }
 
 /// Which measurement path produced the verdict — stated explicitly so a "Ready"

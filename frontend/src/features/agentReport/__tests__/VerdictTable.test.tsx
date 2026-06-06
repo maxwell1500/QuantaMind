@@ -130,6 +130,22 @@ describe("VerdictTable", () => {
     expect(within(weak).getByTestId("metric-cliff")).toHaveTextContent("N/A"); // no probe → N/A, not fabricated
   });
 
+  it("renders a broken baseline as 'fails from start', never a depth", () => {
+    const broke: ModelVerdict[] = [
+      {
+        model: "broke:9b",
+        backend: "ollama",
+        verdict: { status: "not_ready", blocking: [], conditions: [], path: "native_fc" },
+        pass_k: 1.0,
+        cliff: { status: "Broken", tested: 388 },
+      },
+    ];
+    render(<VerdictTable verdicts={broke} />);
+    const cell = within(screen.getByTestId("readiness-row-broke:9b")).getByTestId("metric-cliff");
+    expect(cell).toHaveTextContent("fails from start");
+    expect(cell).not.toHaveTextContent("388");
+  });
+
   it("renders a probed-but-no-cliff result as '✓ No cliff (≥tested)', not N/A", () => {
     const held: ModelVerdict[] = [
       {

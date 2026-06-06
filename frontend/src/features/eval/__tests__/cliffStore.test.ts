@@ -44,7 +44,7 @@ describe("cliffStore", () => {
     expect(s.points).toHaveLength(3);
     expect(s.running).toBe(false);
     expect(s.progress).toEqual({ done: 3, total: 3 });
-    expect(saveCliffResult).toHaveBeenCalledWith("finance", "qwen2.5-coder:7b", 8000, 8000); // depth, tested
+    expect(saveCliffResult).toHaveBeenCalledWith("finance", "qwen2.5-coder:7b", 8000, 8000, false); // depth, tested, not broken
     expect(s.cliffFor("finance", "qwen2.5-coder:7b")).toBe(8000); // colon key preserved
   });
 
@@ -63,7 +63,7 @@ describe("cliffStore", () => {
     await useCliffStore.getState().runProbe(args({ steps: 3 }));
     expect(useCliffStore.getState().wasProbed("finance", "qwen2.5-coder:7b")).toBe(true);
     expect(useCliffStore.getState().hasBrokenBaseline("finance", "qwen2.5-coder:7b")).toBe(false);
-    expect(saveCliffResult).toHaveBeenCalledWith("finance", "qwen2.5-coder:7b", null, 1000); // depth=null ⇒ NoCliff{1000}
+    expect(saveCliffResult).toHaveBeenCalledWith("finance", "qwen2.5-coder:7b", null, 1000, false); // NoCliff{1000}
     expect(useCliffStore.getState().cliffFor("finance", "qwen2.5-coder:7b")).toBeNull(); // no collapse depth
   });
 
@@ -76,7 +76,7 @@ describe("cliffStore", () => {
     const s = useCliffStore.getState();
     expect(s.wasProbed("finance", "qwen2.5-coder:7b")).toBe(true);
     expect(s.hasBrokenBaseline("finance", "qwen2.5-coder:7b")).toBe(true);
-    expect(saveCliffResult).toHaveBeenCalledWith("finance", "qwen2.5-coder:7b", 388, 388); // persisted to backend
+    expect(saveCliffResult).toHaveBeenCalledWith("finance", "qwen2.5-coder:7b", null, 388, true); // persisted as Broken
     // ...but NOT surfaced in the Matrix `results` map — the Matrix shows "fails from
     // start" via the brokenBaseline flag, never a misleading depth.
     expect(s.cliffFor("finance", "qwen2.5-coder:7b")).toBeNull();
@@ -115,10 +115,19 @@ describe("cliffStore", () => {
     expect(useCliffStore.getState().consumeRequest()).toBeNull();
   });
 
-  it("hydrate loads backend results with verbatim colon keys", async () => {
-    vi.mocked(getCliffResults).mockResolvedValue({ "qwen2.5-coder:7b": 12000 });
+  it("hydrate restores every cliff state (depth/no-cliff/broken) across a reload", async () => {
+    vi.mocked(getCliffResults).mockResolvedValue({
+      "qwen2.5-coder:7b": { status: "Collapsed", depth: 12000 }, // verbatim colon key
+      "held:7b": { status: "NoCliff", tested: 4000 },
+      "broke:7b": { status: "Broken", tested: 388 },
+    });
     await useCliffStore.getState().hydrate("finance");
-    expect(useCliffStore.getState().cliffFor("finance", "qwen2.5-coder:7b")).toBe(12000);
+    const s = useCliffStore.getState();
+    expect(s.cliffFor("finance", "qwen2.5-coder:7b")).toBe(12000); // collapse depth in results
+    expect(s.cliffFor("finance", "held:7b")).toBeNull(); // no-cliff has no depth
+    expect(s.wasProbed("finance", "held:7b")).toBe(true); // ...but it survives as "probed"
+    expect(s.wasProbed("finance", "broke:7b")).toBe(true);
+    expect(s.hasBrokenBaseline("finance", "broke:7b")).toBe(true); // broken survives the reload
   });
 
   it("cliffForModel returns the DEEPEST cliff across all collections (Inspector has no collection)", () => {

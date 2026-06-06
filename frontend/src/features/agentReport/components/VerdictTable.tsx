@@ -92,11 +92,13 @@ const ctxLabel = (n: number) => (n >= 1024 ? `${Math.round(n / 1024)}k` : `${n}`
 // Three-state context-cliff label: probed-and-held vs collapsed vs never probed.
 function cliffLabel(c: ModelVerdict["cliff"]): string {
   if (!c || c.status === "NotProbed") return "N/A";
-  return c.status === "NoCliff" ? `✓ No cliff (≥${c.tested.toLocaleString()} tok)` : `Collapsed at ${c.depth.toLocaleString()} tok`;
+  if (c.status === "NoCliff") return `✓ No cliff (≥${c.tested.toLocaleString()} tok)`;
+  if (c.status === "Broken") return "fails from start";
+  return `Collapsed at ${c.depth.toLocaleString()} tok`;
 }
 function cliffColor(c: ModelVerdict["cliff"]): string {
   if (!c || c.status === "NotProbed") return "text-slate-800";
-  return c.status === "NoCliff" ? "text-emerald-600" : "text-rose-600";
+  return c.status === "NoCliff" ? "text-emerald-600" : "text-rose-600"; // Collapsed + Broken → red
 }
 
 function MemoryLine({ m, backend }: { m: MemoryProfile | null | undefined; backend: BackendKind }) {

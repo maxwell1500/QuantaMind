@@ -154,6 +154,17 @@ fn no_cliff_probed_short_of_the_requirement_blocks() {
 }
 
 #[test]
+fn broken_baseline_blocks_a_context_gate() {
+    let mut p = lenient();
+    p.min_context_tokens = Some(2048);
+    let mut i = clean_inputs();
+    i.cliff = CliffStatus::Broken { tested: 388 }; // fails at the smallest context
+    let v = assess(&i, &p);
+    assert_eq!(v.status, Readiness::NotReady);
+    assert!(v.blocking.iter().any(|b| b.contains("broken") && b.contains("no usable context window")));
+}
+
+#[test]
 fn slow_latency_is_conditional_not_blocking() {
     let mut p = lenient();
     p.max_ms_per_step = Some(5000);

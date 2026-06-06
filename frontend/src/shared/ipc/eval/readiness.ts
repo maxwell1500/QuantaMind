@@ -55,6 +55,7 @@ export const CliffStatusSchema = z.discriminatedUnion("status", [
   z.object({ status: z.literal("NotProbed") }),
   z.object({ status: z.literal("NoCliff"), tested: z.number() }),
   z.object({ status: z.literal("Collapsed"), depth: z.number() }),
+  z.object({ status: z.literal("Broken"), tested: z.number() }),
 ]);
 export type CliffStatus = z.infer<typeof CliffStatusSchema>;
 

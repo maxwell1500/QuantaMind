@@ -39,9 +39,10 @@ fn cliff_dir(app: &AppHandle) -> Result<PathBuf, AppError> {
     Ok(dir.join("cliff"))
 }
 
-/// The probe writes one model's cliff outcome for a collection (atomic). `depth`
-/// `Some` ⇒ collapsed at that depth; `None` ⇒ no cliff, accuracy held through
-/// `tested` tokens. (NotProbed is never written — it's the absence of a record.)
+/// The probe writes one model's cliff outcome for a collection (atomic). `broken` ⇒
+/// fails at the baseline; else `depth` `Some` ⇒ collapsed at that depth, `None` ⇒ no
+/// cliff (held through `tested`). (NotProbed is never written — it's the absence of a
+/// record.)
 #[tauri::command]
 pub fn save_cliff_result(
     app: AppHandle,
@@ -49,26 +50,25 @@ pub fn save_cliff_result(
     model: String,
     depth: Option<u32>,
     tested: u32,
+    broken: bool,
 ) -> Result<(), AppError> {
-    let status = match depth {
-        Some(d) => CliffStatus::Collapsed { depth: d },
-        None => CliffStatus::NoCliff { tested },
+    let status = if broken {
+        CliffStatus::Broken { tested }
+    } else {
+        match depth {
+            Some(d) => CliffStatus::Collapsed { depth: d },
+            None => CliffStatus::NoCliff { tested },
+        }
     };
     cliff::save(&cliff_dir(&app)?, &collection_id, &model, status)
 }
 
-/// The Matrix reads the collection's measured COLLAPSE depths (it shows "no cliff"
-/// from its own session state), so this stays a `{ model: depth }` map — only
-/// `Collapsed` entries are surfaced; `NoCliff` is consumed by the verdict, not here.
+/// The full per-model cliff status for a collection — the Matrix hydrates every state
+/// (collapse depth, no-cliff, broken) from this so they survive a reload, not just
+/// collapse depths.
 #[tauri::command]
-pub fn get_cliff_results(app: AppHandle, collection_id: String) -> Result<HashMap<String, u32>, AppError> {
-    Ok(cliff::load(&cliff_dir(&app)?, &collection_id)?
-        .into_iter()
-        .filter_map(|(m, s)| match s {
-            CliffStatus::Collapsed { depth } => Some((m, depth)),
-            _ => None,
-        })
-        .collect())
+pub fn get_cliff_results(app: AppHandle, collection_id: String) -> Result<HashMap<String, CliffStatus>, AppError> {
+    cliff::load(&cliff_dir(&app)?, &collection_id)
 }
 
 #[tauri::command]

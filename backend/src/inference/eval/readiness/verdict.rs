@@ -52,6 +52,9 @@ pub fn assess(i: &ReadinessInputs, p: &ReadinessProfile) -> ReadinessVerdict {
             CliffStatus::NoCliff { tested } if tested < min_tok => {
                 blocking.push(format!("only probed to {} tok < {} needed (no cliff, but headroom unproven)", tested, min_tok));
             }
+            CliffStatus::Broken { .. } => {
+                blocking.push("tool-call accuracy fails at the baseline (broken) — no usable context window".to_string());
+            }
             CliffStatus::NotProbed => {
                 blocking.push(format!("context headroom required ({} tok) but not measured", min_tok));
             }

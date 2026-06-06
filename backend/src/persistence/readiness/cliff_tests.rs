@@ -22,6 +22,13 @@ fn no_cliff_status_round_trips() {
 }
 
 #[test]
+fn broken_status_round_trips() {
+    let dir = tempdir().unwrap();
+    save(dir.path(), "c", "m", CliffStatus::Broken { tested: 388 }).unwrap();
+    assert_eq!(load(dir.path(), "c").unwrap().get("m"), Some(&CliffStatus::Broken { tested: 388 }));
+}
+
+#[test]
 fn second_save_merges_and_does_not_clobber_other_models() {
     let dir = tempdir().unwrap();
     save(dir.path(), "finance", "a:1", collapsed(1000)).unwrap();

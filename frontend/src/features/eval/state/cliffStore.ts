@@ -93,8 +93,23 @@ export const useCliffStore = create<CliffStore>((set, get) => ({
 
   hydrate: async (collectionId) => {
     try {
-      const map = await getCliffResults(collectionId);
-      set((s) => ({ results: { ...s.results, [collectionId]: map } }));
+      const map = await getCliffResults(collectionId); // model → CliffStatus
+      // Restore ALL states so broken/no-cliff survive a reload, not just collapse depths:
+      // results = collapse depths; probed = any probed state; brokenBaseline = Broken.
+      const results: Record<string, number> = {};
+      const probed: Record<string, boolean> = {};
+      const broken: Record<string, boolean> = {};
+      for (const [m, st] of Object.entries(map)) {
+        if (st.status === "NotProbed") continue;
+        probed[m] = true;
+        if (st.status === "Collapsed") results[m] = st.depth;
+        else if (st.status === "Broken") broken[m] = true;
+      }
+      set((s) => ({
+        results: { ...s.results, [collectionId]: results },
+        probed: { ...s.probed, [collectionId]: probed },
+        brokenBaseline: { ...s.brokenBaseline, [collectionId]: broken },
+      }));
     } catch (e) {
       // best-effort — a missing/unreadable store just leaves the cell N/A — but log it.
       console.error("cliff hydrate failed:", e);
@@ -154,26 +169,25 @@ export const useCliffStore = create<CliffStore>((set, get) => ({
         probed: { ...s.probed, [collectionId]: { ...(s.probed[collectionId] ?? {}), [model]: true } },
         brokenBaseline: { ...s.brokenBaseline, [collectionId]: { ...(s.brokenBaseline[collectionId] ?? {}), [model]: broken } },
       }));
-      // Persist the outcome so the Agent Report (and a reloaded Matrix) reflect it,
-      // not just this session. depth=null ⇒ NoCliff (held up to `tested`); a number ⇒
-      // Collapsed at that depth. broken-baseline = fails at the first rung. no-baseline
-      // (nothing scored) isn't persisted (stays "not probed").
-      const points = get().points;
-      const tested = Math.max(0, ...points.map((p) => p.promptTokens ?? 0));
-      let depth: number | null | undefined; // undefined ⇒ do not persist
-      if (verdict.kind === "cliff") depth = verdict.depth ?? tested;
-      else if (verdict.kind === "no-cliff") depth = null;
-      else if (verdict.kind === "broken-baseline") depth = points[0]?.promptTokens ?? 0;
-      if (depth !== undefined && tested > 0) {
+      // Persist the outcome so the Agent Report + a reloaded Matrix reflect it, not just
+      // this session: cliff → Collapsed{depth}; no-cliff → NoCliff{tested}; broken →
+      // Broken{tested} (a distinct state, never a fake depth); no-baseline → not
+      // persisted (stays NotProbed).
+      const tested = Math.max(0, ...get().points.map((pt) => pt.promptTokens ?? 0));
+      let out: { depth: number | null; broken: boolean } | undefined; // undefined ⇒ skip
+      if (verdict.kind === "cliff") out = { depth: verdict.depth ?? tested, broken: false };
+      else if (verdict.kind === "no-cliff") out = { depth: null, broken: false };
+      else if (verdict.kind === "broken-baseline") out = { depth: null, broken: true };
+      if (out && tested > 0) {
+        const persisted = out;
         try {
-          await saveCliffResult(collectionId, model, depth, tested);
-          // `results` is the Matrix's GENUINE-cliff source: write it ONLY for a real
-          // cliff. broken-baseline is still persisted to the backend (for the Agent
-          // Report gate) but kept OUT of `results` so the Matrix shows "fails from
-          // start" via `brokenBaseline`, not a misleading depth; no-cliff clears it.
+          await saveCliffResult(collectionId, model, persisted.depth, tested, persisted.broken);
+          // `results` holds GENUINE collapse depths only (the Matrix's numeric source):
+          // set it for a real cliff, clear it otherwise (no-cliff / broken render via
+          // their own flags, never a misleading number).
           set((s) => {
             const col = { ...(s.results[collectionId] ?? {}) };
-            if (verdict.kind === "cliff" && depth != null) col[model] = depth;
+            if (verdict.kind === "cliff" && persisted.depth != null) col[model] = persisted.depth;
             else delete col[model];
             return { results: { ...s.results, [collectionId]: col } };
           });
