@@ -39,6 +39,14 @@ pub fn clear_refresh_token() {
     *mem().lock_recover() = None;
 }
 
+/// Serializes the few tests that mutate the process-global vault (here + in
+/// `token.rs`) so their parallel runs don't clobber each other's state.
+#[cfg(test)]
+pub(crate) fn vault_test_lock() -> std::sync::MutexGuard<'static, ()> {
+    static LOCK: OnceLock<Mutex<()>> = OnceLock::new();
+    LOCK.get_or_init(|| Mutex::new(())).lock_recover()
+}
+
 #[cfg(test)]
 #[path = "auth_tests.rs"]
 mod tests;

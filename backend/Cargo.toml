@@ -40,6 +40,8 @@ bytes = "1"
 # refresh token. Native backends only — Linux without a secret service falls
 # back to an in-memory session token (see commands/publish/auth.rs).
 keyring = { version = "3", features = ["apple-native", "windows-native"] }
+# PKCE S256 challenge encoding (publish auth; out of enterprise builds).
+base64 = "0.22"
 
 [dev-dependencies]
 mockito = "1"

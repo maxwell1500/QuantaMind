@@ -9,4 +9,8 @@ pub mod auth;
 #[cfg(not(feature = "enterprise"))]
 pub mod cohort;
 #[cfg(not(feature = "enterprise"))]
+pub mod pkce;
+#[cfg(not(feature = "enterprise"))]
 pub mod preview_cmd;
+#[cfg(not(feature = "enterprise"))]
+pub mod token;

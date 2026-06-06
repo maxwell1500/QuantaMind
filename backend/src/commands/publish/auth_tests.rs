@@ -4,6 +4,7 @@ use super::*;
 /// process-global static, so splitting across parallel tests would race.
 #[test]
 fn get_falls_back_to_in_memory_when_secure_store_has_no_entry() {
+    let _guard = vault_test_lock();
     // Start clean: no secure-store entry, no in-memory token. (delete of a
     // nonexistent entry is a no-op; we never write to the real keychain here.)
     clear_refresh_token();
