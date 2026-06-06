@@ -56,6 +56,29 @@ describe("PublishDialog", () => {
     expect(onPublish.mock.calls[0][0].hash).toBe("abc123");
   });
 
+  it("disables Publish on a disallowed write-up link, re-enables when cleared", async () => {
+    vi.mocked(previewPublishPayload).mockResolvedValue(preview());
+    render(<PublishDialog verdicts={VERDICTS} onClose={noop} onPublish={noop} />);
+    fireEvent.click(await screen.findByTestId("publish-optin"));
+    const confirm = screen.getByTestId("publish-confirm");
+    expect(confirm).toBeEnabled();
+    fireEvent.change(screen.getByTestId("publish-link"), { target: { value: "https://evil.com/x" } });
+    expect(confirm).toBeDisabled();
+    expect(screen.getByTestId("publish-link-hint")).toBeInTheDocument();
+    fireEvent.change(screen.getByTestId("publish-link"), { target: { value: "https://github.com/me/repo" } });
+    expect(confirm).toBeEnabled();
+  });
+
+  it("passes the allow-listed link to onPublish", async () => {
+    const onPublish = vi.fn();
+    vi.mocked(previewPublishPayload).mockResolvedValue(preview());
+    render(<PublishDialog verdicts={VERDICTS} onClose={noop} onPublish={onPublish} />);
+    fireEvent.click(await screen.findByTestId("publish-optin"));
+    fireEvent.change(screen.getByTestId("publish-link"), { target: { value: "https://dev.to/me/post" } });
+    fireEvent.click(screen.getByTestId("publish-confirm"));
+    expect(onPublish).toHaveBeenCalledWith(expect.objectContaining({ hash: "abc123" }), "https://dev.to/me/post");
+  });
+
   it("keeps Publish disabled when a row fails local validation", async () => {
     vi.mocked(previewPublishPayload).mockResolvedValue(preview({ invalid: { index: 0, reason: "pass_k 1.5 out of range 0..=1" } }));
     render(<PublishDialog verdicts={VERDICTS} onClose={noop} onPublish={noop} />);

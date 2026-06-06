@@ -3,12 +3,13 @@ import { formatIpcError } from "../../shared/ipc/core/error";
 import { previewPublishPayload, type PublishPreview } from "../../shared/ipc/publish/preview";
 import type { ModelVerdict } from "../../shared/ipc/eval/readiness";
 import { WhatsSharedPanel } from "./WhatsSharedPanel";
+import { isAllowedWriteupLink } from "./writeupLink";
 
 interface Props {
   verdicts: ModelVerdict[];
   onClose: () => void;
-  /// Invoked with the agreed-upon preview — the actual POST is wired in B3.
-  onPublish: (preview: PublishPreview) => void;
+  /// Invoked with the agreed preview + the (optional, allow-listed) write-up link.
+  onPublish: (preview: PublishPreview, link: string) => void;
 }
 
 /// The privacy gate: build the exact payload preview in Rust, show the user what
@@ -18,6 +19,8 @@ export function PublishDialog({ verdicts, onClose, onPublish }: Props) {
   const [preview, setPreview] = useState<PublishPreview | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [agreed, setAgreed] = useState(false);
+  const [link, setLink] = useState("");
+  const linkOk = isAllowedWriteupLink(link);
 
   useEffect(() => {
     let live = true;
@@ -35,7 +38,7 @@ export function PublishDialog({ verdicts, onClose, onPublish }: Props) {
     return () => document.removeEventListener("keydown", onKey);
   }, [onClose]);
 
-  const canPublish = !!preview && preview.rows.length > 0 && !preview.invalid && agreed;
+  const canPublish = !!preview && preview.rows.length > 0 && !preview.invalid && agreed && linkOk;
 
   return (
     <div role="presentation" onClick={onClose} data-testid="publish-dialog" className="fixed inset-0 z-50 bg-black/40 flex items-center justify-center p-4">
@@ -66,6 +69,18 @@ export function PublishDialog({ verdicts, onClose, onPublish }: Props) {
                 {preview.canonical_json}
               </pre>
             </div>
+            <label className="flex flex-col gap-1 text-xs text-slate-700">
+              <span className="font-semibold">Link to your write-up <span className="font-normal text-slate-400">(optional)</span></span>
+              <input
+                type="url"
+                data-testid="publish-link"
+                value={link}
+                onChange={(e) => setLink(e.target.value)}
+                placeholder="https://github.com/… · x.com · dev.to · reddit.com · …"
+                className={`bg-white border rounded-md px-2 py-1 text-slate-900 outline-none ${linkOk ? "border-slate-300 focus:border-slate-400" : "border-red-400"}`}
+              />
+              {!linkOk && <span data-testid="publish-link-hint" className="text-red-600">Only https links to github.com, x.com, dev.to, reddit.com, medium.com, youtube.com, or huggingface.co are allowed.</span>}
+            </label>
             <label className="flex items-start gap-2 text-xs text-slate-700 cursor-pointer">
               <input type="checkbox" data-testid="publish-optin" checked={agreed} onChange={(e) => setAgreed(e.target.checked)} className="mt-0.5 cursor-pointer" />
               <span>I understand exactly what's shared above and opt in to publishing it.</span>
@@ -79,7 +94,7 @@ export function PublishDialog({ verdicts, onClose, onPublish }: Props) {
           <button type="button" onClick={onClose} data-testid="publish-cancel" className="px-3 py-1.5 rounded-md text-sm text-slate-600 hover:bg-slate-100 transition-colors">
             Cancel
           </button>
-          <button type="button" disabled={!canPublish} data-testid="publish-confirm" onClick={() => preview && onPublish(preview)} className="px-3 py-1.5 rounded-md text-sm font-semibold text-white bg-slate-900 hover:bg-slate-800 disabled:opacity-50">
+          <button type="button" disabled={!canPublish} data-testid="publish-confirm" onClick={() => preview && onPublish(preview, link.trim())} className="px-3 py-1.5 rounded-md text-sm font-semibold text-white bg-slate-900 hover:bg-slate-800 disabled:opacity-50">
             Publish
           </button>
         </div>
