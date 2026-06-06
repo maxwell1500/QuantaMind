@@ -91,7 +91,7 @@ export function CsvImportModal({
     }
   };
 
-  const learnMore = () => { goHelp("help"); setTimeout(() => { location.hash = "#help-csv-import"; }, 0); };
+  const learnMore = () => { goHelp("doc"); setTimeout(() => { location.hash = "#doc-eval-csv-import"; }, 0); };
 
   return (
     <div

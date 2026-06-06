@@ -16,7 +16,7 @@ export type TopView =
   | "quant"
   | "agentReport"
   | "settings"
-  | "help";
+  | "doc";
 
 interface NavStore {
   topView: TopView;
