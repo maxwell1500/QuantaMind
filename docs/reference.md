@@ -755,8 +755,15 @@ uses.
 `assess_readiness` command loads it and calls the one pure scoring function
 (`readiness::assess`) — the same function a future headless CLI will link, so GUI
 and CLI verdicts can never diverge. The frontend stores no verdicts; it renders what
-Rust returns. **Export shareable report (.HTML)** emits a self-contained, offline
-one-pager (escaped, utf-8) to email a verdict to a CTO.
+Rust returns. The **Export Report** menu emits three fully-offline (no network, no
+auth) share artifacts of the verdict: a **PNG card** (`snapshot.ts` rasterizes the
+banner + table via `html-to-image` — fonts embedded + a warm-up render so the export
+keeps Inter, white background hardcoded so it's never invisible; bytes written by the
+`save_readiness_image` Rust sink), a **Markdown** summary copied to the clipboard
+(`export/markdown.ts`, GFM table, "N/A" for unmeasured metrics — never fabricated),
+and the original self-contained **HTML** one-pager (escaped, utf-8) to email a verdict
+to a CTO. The image/Markdown builders are pure; the PNG path is the Phase 8 offline
+share lever (see `process.md#phase-roadmap`, step 8.B4).
 
 **The recommendation (the one-line answer).** `assess_readiness` returns the verdicts
 **ranked best-first** (`readiness::recommend::rank`, also CLI-shareable) so the page

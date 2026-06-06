@@ -53,6 +53,10 @@ HTTP to a local Ollama server.
   core. The **only** layer that names `tauri::` types. See [Layering](#layering).
   `run_prompt` is backend-aware (dispatches to Ollama or the `llama-server`
   sidecar per the request's `backend`); the workspace sidebar's backend list picks it.
+  `commands/publish/` (Phase 8) holds the share/publish commands: `export_cmd` is a
+  thin offline PNG sink (ships in every build); the auth + send commands land behind
+  the `enterprise` feature gate (compiled OUT of enterprise/air-gapped builds), with
+  their pure canonical/hash logic in `persistence/result_canonical.rs`.
 - `inference/` — backend adapters behind the `InferenceBackend` trait
   (`backend.rs`). `OllamaBackend`, `LlamaCppBackend` (a `llama-server` sidecar),
   and `MlxBackend` (`mlx_lm.server`, Apple Silicon) today; callers build one by

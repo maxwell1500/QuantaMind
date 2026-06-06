@@ -638,7 +638,30 @@ turns it on) so an un-probed model is never silently failed. VRAM fit is **Ollam
 cap is auto-detected and overridable in-session (not persisted). The verdict scoring
 is **one function** (`assess`) so GUI and the future CLI can never diverge.
 
-### Phase 7+
+### Phase 8 — Publish & Community (OSS client, PART B)
+
+Turns a local readiness verdict into a shareable asset and (opt-in) aggregate data
+for the recommender. Phase 8 spans two systems: a **closed backend** (separate
+private, hosted repo — token authority, publish API, validation, dedup, leaderboard,
+baselines, moderation; out of scope for this open repo) and the **OSS client** flow
+here. The app stays 100% functional offline — a publish/auth failure never touches it.
+
+| # | Step | Status |
+| --- | --- | --- |
+| 8.B4 | **Offline share export** — fully offline, no auth, no backend. Pure `buildReadinessMarkdown` (GFM table + per-model reasons, "N/A" never fabricated); `snapshotPng` rasterizes the report card via `html-to-image` (embedded fonts + warm-up render; hardcoded white background); a thin `save_readiness_image` Rust sink writes the PNG bytes (path via OS dialog). The Agent Report's **Export Report** menu offers Image / Copy Markdown / HTML | done |
+| 8.B2 | Canonical record (`persistence/result_canonical.rs`, pure: sorted-key deterministic JSON + SHA-256 hash + local pre-validation) + privacy gate (`PublishDialog`: shows the raw payload, default opt-out) | planned |
+| 8.B1 | PKCE keychain auth (`commands/publish/auth.rs`, `keyring`; in-memory fallback when no secret service; device-code for headless) — behind the `enterprise` feature gate | planned |
+| 8.B3 | Send pipeline (`publish_cmd.rs`: nonce → batch POST; handles 200/401/422-with-index/426/429; **always re-fetch a nonce before retry**) — `enterprise`-gated | planned |
+
+Locked decisions: **server-side everything** (the open client is untrusted; the
+backend enforces rate limits, validation, dedup, anti-replay); **no client secret**
+(PKCE); **privacy gate** sends metrics + cohort tags + signature only, never task
+content/prompts/file names, default opt-out, disabled in enterprise builds; results
+are labelled **"community-reported"** (self-fabrication is deterred via validation +
+outliers + GitHub identity + report/remove, never cryptographically prevented). The
+**export (B4) is ungated** — it ships in every build, including enterprise.
+
+### Phase 8+
 
 Owners flesh out the next phase's section here when the current lands.
 
