@@ -221,7 +221,18 @@ export function PerformanceMatrix({
                     <td style={{ ...td, color: "#64748b", fontFamily: "'JetBrains Mono', monospace", fontSize: 12 }}>{r.quant}</td>
                     <td style={{ ...td, fontWeight: 700 }}>{getPassKBadge(r.passK)}</td>
                     {showNative && (
-                      <td style={{ ...td, fontWeight: 700 }} data-testid={`matrix-native-${r.model}`}>
+                      <td
+                        style={{ ...td, fontWeight: 700 }}
+                        data-testid={`matrix-native-${r.model}`}
+                        // The column only appears because native WAS measured this run, so an
+                        // N/A here means this model was skipped — explain why rather than leave
+                        // a developer who followed the "enable native FC" nudge at a silent wall.
+                        title={
+                          r.passKNative === "N/A"
+                            ? "Native tool-calling not measured for this model — non-Ollama backend, or the model has no tools capability."
+                            : undefined
+                        }
+                      >
                         {getPassKBadge(r.passKNative)}
                       </td>
                     )}

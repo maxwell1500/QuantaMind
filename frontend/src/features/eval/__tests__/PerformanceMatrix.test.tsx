@@ -117,6 +117,23 @@ describe("PerformanceMatrix", () => {
     expect(screen.queryByRole("columnheader", { name: "Native FC" })).toBeNull(); // toggled back off
   });
 
+  it("explains an N/A Native-FC cell instead of leaving a silent wall", () => {
+    // qwen has native; a llama.cpp model was skipped → its native cell is N/A.
+    const mixed: BatchReport = {
+      collection_id: "c",
+      columns: [
+        nativeReport.columns[0],
+        { model: "tinyllama.gguf", backend: "llama_cpp", toolcall: null, agentic: { passes: 3, total_runs: 5, avg_steps: 2, avg_output_tokens_success: 80, schema_resilience: null, top_error: "none", failures }, agentic_native_fc: null, error: null },
+      ],
+    };
+    useBatchStore.setState({ report: mixed });
+    render(<PerformanceMatrix focusedModel="qwen" onFocusModel={() => {}} />);
+    fireEvent.click(screen.getByTestId("matrix-native-toggle"));
+    const naCell = screen.getByTestId("matrix-native-tinyllama.gguf");
+    expect(naCell).toHaveTextContent("—"); // N/A renders as an em-dash badge
+    expect(naCell.getAttribute("title")).toMatch(/native tool-calling not measured|non-Ollama backend|no tools capability/i);
+  });
+
   it("offers no Native-FC toggle when native was not measured", () => {
     useBatchStore.setState({ report });
     render(<PerformanceMatrix focusedModel="qwen" onFocusModel={() => {}} />);

@@ -153,6 +153,15 @@ export function EvalManager({
     setTargets(targets.includes(name) ? targets.filter((t) => t !== name) : [...targets, name]);
 
   const runDisabled = targets.length === 0 || tasks.length === 0;
+  // Explain WHY RUN BATCH is disabled instead of leaving a greyed-out dead button.
+  const runDisabledReason =
+    targets.length === 0 && tasks.length === 0
+      ? "Select at least one model and a collection with tasks"
+      : targets.length === 0
+        ? "Select at least one model"
+        : tasks.length === 0
+          ? "This collection has no tasks"
+          : undefined;
 
   return (
     <div
@@ -384,6 +393,7 @@ export function EvalManager({
               type="button"
               onClick={() => void handleRunBatch()}
               disabled={runDisabled}
+              title={running ? undefined : runDisabledReason}
               style={{
                 ...runBatchBtnStyle,
                 background: running

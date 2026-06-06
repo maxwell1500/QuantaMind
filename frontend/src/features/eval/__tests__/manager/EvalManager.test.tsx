@@ -89,6 +89,16 @@ describe("EvalManager Sidebar Controls", () => {
     expect(screen.getByTestId("eval-model-toggle-qwen3.5:9b")).toBeInTheDocument();
   });
 
+  it("explains WHY the RUN BATCH button is disabled (no models vs no tasks)", () => {
+    // No models selected (targets = []) → the button says select a model.
+    const { rerender } = render(<EvalManager targets={[]} setTargets={() => {}} k={1} setK={() => {}} maxSteps={8} setMaxSteps={() => {}} />);
+    expect(screen.getByTestId("eval-run-all")).toHaveAttribute("title", "Select at least one model");
+    // Models present but the collection has no tasks → the button says no tasks.
+    useEvalRegistryStore.setState({ tasks: [] });
+    rerender(<EvalManager targets={["llama3.2:1b"]} setTargets={() => {}} k={1} setK={() => {}} maxSteps={8} setMaxSteps={() => {}} />);
+    expect(screen.getByTestId("eval-run-all")).toHaveAttribute("title", "This collection has no tasks");
+  });
+
   it("nudges to enable native tool-calling while it's off, and hides the nudge once enabled", () => {
     render(<EvalManager targets={["llama3.2:1b"]} setTargets={() => {}} k={1} setK={() => {}} maxSteps={8} setMaxSteps={() => {}} />);
     // Prompt-based is the default → the honesty hint is shown.

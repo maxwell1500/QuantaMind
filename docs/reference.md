@@ -713,7 +713,10 @@ uses.
   taxonomy are identical, so the two columns are comparable. An empty/abstaining
   `tool_calls` is scored as a correct no-call; parallel `tool_calls` are processed
   one-per-step (the sandbox is sequential). **Ollama-only** today: llama.cpp / MLX show
-  **N/A**, never a guessed score.
+  **N/A**, never a guessed score — hovering an N/A native cell explains why ("non-Ollama
+  backend, or the model has no tools capability"), so following the *enable native* nudge
+  never dead-ends at a silent N/A. (The **RUN BATCH** button likewise explains any disabled
+  state on hover — "Select at least one model" / "This collection has no tasks".)
 - **In the verdict.** When native was measured for a model, the readiness verdict
   **prefers it** — the core Pass^k gate and the loop/hallucination gates use the native
   result, and the row is labelled **(Native FC)**. Models without a native measurement
