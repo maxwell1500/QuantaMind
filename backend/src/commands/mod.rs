@@ -1,6 +1,5 @@
 // Tauri command handlers, grouped by concern (see docs/architecture.md#folder-taxonomy).
 pub mod app_lifecycle;
-pub mod bench;
 pub mod compare;
 pub mod emit;
 pub mod eval;
