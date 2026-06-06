@@ -375,9 +375,12 @@ Error), with a click-through Trace Debugger. See [the workspace](#eval-runner).
   `prompt_eval_count` at the accuracy collapse), read from the backend per
   (collection, model); unmeasured cells show **"Run probe ↗"** which pre-fills the
   Audit probe for that model (model + collection + context length + steps — see
-  [#context-cliff](#context-cliff)), a live run shows **"probing…"**, and a probe that
-  found no collapse shows **"✓ no cliff"** (probed, accuracy held — not the same as
-  unmeasured). An always-visible legend under the table explains the column + payoff.
+  [#context-cliff](#context-cliff)), a live run shows **"probing…"**, a probe that
+  found no collapse from a healthy baseline shows **"✓ no cliff"** (probed, accuracy
+  held — not the same as unmeasured), and a probe whose baseline was already failing
+  shows **"fails from start"** (red — broken at the smallest context, not a
+  context-length limit; see the verdict table in [#context-cliff](#context-cliff)).
+  An always-visible legend under the table explains the column + payoff.
   `Top Error` shows the dominant failure mode; when a model had
   any agentic failure an **ⓘ** sits next to the badge — hovering it reveals the full
   count of all four modes (Loop Cap · Fake Done · Bad Schema · Malformed), including
@@ -601,10 +604,31 @@ The probe owns its own **Active Collection** picker (independent of the EvalMana
 always has a real dataset to run. The **Max Tokens** control sets the padding target (how much filler
 to add) and is capped at the model's reported **context window** when known (Ollama `/api/show` dims),
 falling back to a fixed ceiling otherwise.
-A run that errors surfaces a **"Not available — …"** banner rather than a silent blank chart. The
-cliff is the first rung whose composite drops **≥ 20pp** below the unpadded baseline, reported at that
-rung's measured token depth; if it never collapses the read-out shows **"Accuracy maintained up to
-≈N tokens"**. ↺ clears the results. Single-turn, greedy — a failed rung is a gap, never a fabricated score.
+A run that errors surfaces a **"Not available — …"** banner rather than a silent blank chart.
+
+**How each rung's "Accuracy" is scored.** Each rung re-runs the dataset and reports the **composite
+tool-call score** (0–100%) — the mean of the available sub-metrics defined in
+[#toolcall-eval](#toolcall-eval): `parse_rate` (emitted a parseable call when one was
+expected), `tool_selection_acc` (right tool name), `arg_acc` (right arguments), `abstain_acc`
+(correctly stayed silent when no call was expected). Each sub-metric uses a **cascaded conditional
+denominator** so a format failure doesn't bleed into the reasoning metrics, and a sub-metric with a
+zero denominator is **n/a (excluded)**, not 0. A per-step status of **Pass / Failure** is just that
+composite vs a **50%** bar.
+
+**The four probe verdicts** (computed in `frontend/src/features/eval/cliff.ts::classifyCliff`, so the
+persisted depth and the displayed verdict can never disagree):
+
+| Verdict | Condition | Matrix cell |
+|---|---|---|
+| **cliff** | Healthy baseline (rung 0 ≥ 50%), then a rung drops **≥ 20pp** below it | **N tok** (that rung's measured depth) |
+| **no-cliff** | Healthy baseline (rung 0 ≥ 50%) that held across the whole range | **✓ no cliff** (green) |
+| **broken-baseline** | Rung 0 itself scored **below 50%** — the model fails at the *smallest* context | **fails from start** (red) |
+| **no-baseline** | Rung 0 errored (no composite) — nothing to compare against | **Run probe ↗** (unmeasured) |
+
+The **broken-baseline** case is the important guardrail: a model stuck at 0% on every rung has no
+healthy plateau to "fall off", so it is **never** dressed up as "✓ no cliff" — it's flagged red as a
+tool-call failure (not a context-length limit), and no cliff depth is persisted. ↺ clears the results.
+Single-turn, greedy — a failed rung is a gap, never a fabricated score.
 
 **The probe is part of the pipeline, not a dead-end.** The journey is Eval → Audit → Agent Report.
 On the **Performance Matrix**, an unmeasured *Cliff Depth* cell shows **"Run probe ↗"** which

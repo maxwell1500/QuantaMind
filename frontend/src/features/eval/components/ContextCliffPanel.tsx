@@ -8,7 +8,7 @@ import { useVramFit } from "../../quant/useVramFit";
 import { useCliffStore } from "../state/cliffStore";
 import { InfoButton } from "../../../shared/ui/InfoButton";
 import { TOOL_HELP } from "../help";
-import { cliffPoint } from "../cliff";
+import { classifyCliff } from "../cliff";
 import { ContextCliffChart } from "./ContextCliffChart";
 import type { BackendKind } from "../../../shared/ipc/models/storage";
 
@@ -107,7 +107,8 @@ export function ContextCliffPanel() {
     setMaxTokens((m) => Math.min(m, sliderMax));
   }, [sliderMax]);
 
-  const cliff = cliffPoint(points);
+  const verdict = classifyCliff(points);
+  const cliff = verdict.kind === "cliff" ? verdict.depth : null;
 
   // Clear a stale chart when the selection changes (and nothing is running), so the
   // graph always reflects the currently-selected model/collection.
@@ -391,11 +392,13 @@ export function ContextCliffPanel() {
               ? "Running…"
               : cliff != null
                 ? `≈${Math.round(cliff / 1000) * 1000} context tokens`
-                : maintainedTo > 0
-                  ? `Accuracy maintained up to ≈${Math.round(maintainedTo / 1000) * 1000} tokens`
-                  : points.length > 0
-                    ? "Ran — context-token depth not reported"
-                    : "Idle"}
+                : verdict.kind === "broken-baseline"
+                  ? "Fails at the smallest tested context — broken baseline (a tool-call failure, not a context-length limit)"
+                  : verdict.kind === "no-cliff" && maintainedTo > 0
+                    ? `Accuracy maintained up to ≈${Math.round(maintainedTo / 1000) * 1000} tokens`
+                    : points.length > 0
+                      ? "Ran — context-token depth not reported"
+                      : "Idle"}
           </div>
         </div>
       </div>

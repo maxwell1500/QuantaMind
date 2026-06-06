@@ -2,7 +2,7 @@ import { create } from "zustand";
 import { runToolcallEval } from "../../../shared/ipc/eval/toolcall";
 import { saveCliffResult, getCliffResults } from "../../../shared/ipc/eval/cliff";
 import { formatIpcError } from "../../../shared/ipc/core/error";
-import { buildLadder, padTask, cliffPoint, type CliffPoint } from "../cliff";
+import { buildLadder, padTask, classifyCliff, type CliffPoint } from "../cliff";
 import type { ToolTask } from "../../../shared/ipc/eval/registry";
 import type { BackendKind } from "../../../shared/ipc/models/storage";
 import type { InferenceParams } from "../../../shared/ipc/workspace/prompts";
@@ -46,6 +46,10 @@ interface CliffStore {
   /// no cliff (so the Matrix can distinguish "probed, healthy" from "not probed"). Held
   /// in-session only — cross-session persistence of the no-cliff case is a follow-up.
   probed: Record<string, Record<string, boolean>>;
+  /// (collection → model) probes whose UNPADDED baseline (rung 0) was already below the
+  /// pass bar — the model fails from the start, so "✓ no cliff" would be a lie. The Matrix
+  /// renders this as a failure state, not a healthy one. In-session only, like `probed`.
+  brokenBaseline: Record<string, Record<string, boolean>>;
 
   setRequest: (req: CliffRequest) => void;
   consumeRequest: () => CliffRequest | null;
@@ -57,6 +61,9 @@ interface CliffStore {
   /// Did a probe complete this session for (collection, model)? True even when no cliff
   /// was found — so the Matrix shows "✓ no cliff" rather than "Run probe ↗".
   wasProbed: (collectionId: string, model: string) => boolean;
+  /// Did the probe's baseline fail (broken from the start)? When true the Matrix must NOT
+  /// claim "✓ no cliff" — the model never had a healthy plateau to fall off.
+  hasBrokenBaseline: (collectionId: string, model: string) => boolean;
   runProbe: (args: RunProbeArgs) => Promise<void>;
   stop: () => void;
   reset: () => void;
@@ -75,6 +82,7 @@ export const useCliffStore = create<CliffStore>((set, get) => ({
   error: null,
   results: {},
   probed: {},
+  brokenBaseline: {},
 
   setRequest: (req) => set({ request: req }),
   consumeRequest: () => {
@@ -101,6 +109,7 @@ export const useCliffStore = create<CliffStore>((set, get) => ({
     return found.length ? Math.max(...found) : null;
   },
   wasProbed: (collectionId, model) => get().probed[collectionId]?.[model] === true,
+  hasBrokenBaseline: (collectionId, model) => get().brokenBaseline[collectionId]?.[model] === true,
 
   runProbe: async ({ model, backend, collectionId, tasks, maxTokens, steps, params }) => {
     // GUARDRAIL 2: clear all prior state BEFORE dispatching — never append to a
@@ -135,16 +144,21 @@ export const useCliffStore = create<CliffStore>((set, get) => ({
       // generation token first — a stop() in the micro-window between the last rung
       // and here must abandon the run WITHOUT persisting a partial cliff.
       if (activeRun !== myRun) return;
-      const cliff = cliffPoint(get().points);
+      const verdict = classifyCliff(get().points);
+      const broken = verdict.kind === "broken-baseline";
       // Mark this (collection, model) as probed REGARDLESS of whether a cliff was found,
       // so the Matrix shows "✓ no cliff" (probed, accuracy held) instead of an unmeasured
-      // "Run probe ↗" when accuracy never collapsed.
-      set((s) => ({ probed: { ...s.probed, [collectionId]: { ...(s.probed[collectionId] ?? {}), [model]: true } } }));
-      if (cliff != null) {
+      // "Run probe ↗" when accuracy never collapsed. Record the broken-baseline verdict
+      // explicitly (true OR false) so a healthy re-run clears a stale broken flag.
+      set((s) => ({
+        probed: { ...s.probed, [collectionId]: { ...(s.probed[collectionId] ?? {}), [model]: true } },
+        brokenBaseline: { ...s.brokenBaseline, [collectionId]: { ...(s.brokenBaseline[collectionId] ?? {}), [model]: broken } },
+      }));
+      if (verdict.kind === "cliff" && verdict.depth != null) {
         try {
-          await saveCliffResult(collectionId, model, cliff);
+          await saveCliffResult(collectionId, model, verdict.depth);
           set((s) => ({
-            results: { ...s.results, [collectionId]: { ...(s.results[collectionId] ?? {}), [model]: cliff } },
+            results: { ...s.results, [collectionId]: { ...(s.results[collectionId] ?? {}), [model]: verdict.depth as number } },
           }));
         } catch (e) {
           set((s) => ({ error: s.error ?? formatIpcError(e) }));

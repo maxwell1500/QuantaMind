@@ -64,7 +64,7 @@ export const METRIC_HELP = {
   },
   cliffDepth: {
     title: "Cliff depth",
-    body: "The measured context length (real prompt tokens) at which this model's accuracy collapses, from the Context-Cliff probe in the Audit tab. It feeds the Agent-Readiness verdict (a model that breaks down before your app's context needs is downgraded). 'Run probe ↗' until measured; '✓ no cliff' means it was probed and accuracy held the whole tested range.",
+    body: "The measured context length (real prompt tokens) at which this model's accuracy collapses, from the Context-Cliff probe in the Audit tab. 'Accuracy' here is the composite tool-call score (parse + tool-selection + argument + abstention), 0–100%, scored at each rung. The cliff is the first rung that drops ≥20pp below the unpadded baseline. It feeds the Agent-Readiness verdict (a model that breaks down before your app's context needs is downgraded). States: 'Run probe ↗' until measured; 'N tok' = a measured cliff depth; '✓ no cliff' = a HEALTHY baseline (≥50%) that held the whole tested range; 'fails from start' = the baseline itself was below 50%, so the model is broken at the smallest context — a tool-call failure, not a context-length limit (not the same as 'no cliff').",
   },
   passRate: {
     title: "Pass rate",

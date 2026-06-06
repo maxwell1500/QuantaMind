@@ -119,6 +119,19 @@ describe("ContextCliffPanel", () => {
     await waitFor(() => expect(screen.getByTestId("cliff-read")).toHaveTextContent(/Accuracy maintained up to/));
   });
 
+  it("reports a broken baseline instead of falsely 'maintaining' 0% accuracy", async () => {
+    // Every rung at 0% (the reported bug): the read-out must NOT claim accuracy was
+    // maintained — it must flag the baseline as broken.
+    vi.mocked(runToolcallEval).mockResolvedValue(report(0.0, 5000) as never);
+    render(<ContextCliffPanel />);
+    await waitFor(() => expect(getBuiltinCollection).toHaveBeenCalled());
+    await waitFor(() => expect(screen.getByTestId("cliff-run")).not.toBeDisabled());
+    fireEvent.click(screen.getByTestId("cliff-run"));
+
+    await waitFor(() => expect(screen.getByTestId("cliff-read")).toHaveTextContent(/broken baseline/i));
+    expect(screen.getByTestId("cliff-read")).not.toHaveTextContent(/maintained/i);
+  });
+
   it("runs the global model with the global params (no local picker)", async () => {
     useParamsStore.setState({ globalParams: { temperature: 0.2 } });
     vi.mocked(runToolcallEval).mockResolvedValue(report(1.0, 5000) as never);

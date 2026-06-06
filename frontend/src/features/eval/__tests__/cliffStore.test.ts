@@ -24,7 +24,7 @@ const flush = () => new Promise((r) => setTimeout(r, 0));
 beforeEach(() => {
   vi.clearAllMocks();
   useCliffStore.getState().reset();
-  useCliffStore.setState({ results: {}, request: null });
+  useCliffStore.setState({ results: {}, request: null, probed: {}, brokenBaseline: {} });
 });
 
 describe("cliffStore", () => {
@@ -61,8 +61,30 @@ describe("cliffStore", () => {
     vi.mocked(runToolcallEval).mockResolvedValue({ composite: 1.0, prompt_tokens: 1000 } as never);
     await useCliffStore.getState().runProbe(args({ steps: 3 }));
     expect(useCliffStore.getState().wasProbed("finance", "qwen2.5-coder:7b")).toBe(true);
+    expect(useCliffStore.getState().hasBrokenBaseline("finance", "qwen2.5-coder:7b")).toBe(false);
     expect(saveCliffResult).not.toHaveBeenCalled(); // no cliff → nothing persisted
     expect(useCliffStore.getState().cliffFor("finance", "qwen2.5-coder:7b")).toBeNull();
+  });
+
+  it("flags a broken baseline (every rung at 0%) instead of falsely reporting '✓ no cliff'", async () => {
+    // The reported bug: 0% at the unpadded baseline → the model is broken from the
+    // start, NOT a healthy plateau. Probed=true, brokenBaseline=true, nothing persisted.
+    vi.mocked(runToolcallEval).mockResolvedValue({ composite: 0.0, prompt_tokens: 388 } as never);
+    await useCliffStore.getState().runProbe(args({ steps: 2 }));
+    const s = useCliffStore.getState();
+    expect(s.wasProbed("finance", "qwen2.5-coder:7b")).toBe(true);
+    expect(s.hasBrokenBaseline("finance", "qwen2.5-coder:7b")).toBe(true);
+    expect(saveCliffResult).not.toHaveBeenCalled();
+    expect(s.cliffFor("finance", "qwen2.5-coder:7b")).toBeNull();
+  });
+
+  it("a healthy re-run clears a stale broken-baseline flag", async () => {
+    vi.mocked(runToolcallEval).mockResolvedValue({ composite: 0.0, prompt_tokens: 388 } as never);
+    await useCliffStore.getState().runProbe(args({ steps: 2 }));
+    expect(useCliffStore.getState().hasBrokenBaseline("finance", "qwen2.5-coder:7b")).toBe(true);
+    vi.mocked(runToolcallEval).mockResolvedValue({ composite: 1.0, prompt_tokens: 388 } as never);
+    await useCliffStore.getState().runProbe(args({ steps: 2 }));
+    expect(useCliffStore.getState().hasBrokenBaseline("finance", "qwen2.5-coder:7b")).toBe(false);
   });
 
   it("stop halts an in-flight run before it persists", async () => {

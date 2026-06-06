@@ -21,7 +21,7 @@ beforeEach(() => {
   vi.clearAllMocks();
   useBatchStore.getState().reset();
   useCliffStore.getState().reset();
-  useCliffStore.setState({ results: {}, probed: {}, request: null });
+  useCliffStore.setState({ results: {}, probed: {}, brokenBaseline: {}, request: null });
   useInstalledModelsStore.setState({ list: [], status: "ready", error: null, lastRefreshedAt: 1 });
 });
 
@@ -71,6 +71,17 @@ describe("PerformanceMatrix", () => {
     render(<PerformanceMatrix focusedModel="qwen" onFocusModel={() => {}} />);
     expect(screen.getByTestId("cliff-nocliff-qwen")).toHaveTextContent("no cliff");
     expect(screen.queryByTestId("cliff-run-qwen")).toBeNull(); // probed → no "Run probe" link
+  });
+
+  it("shows 'fails from start' (not '✓ no cliff') when the probe baseline is broken", () => {
+    useBatchStore.setState({ report });
+    // Probed AND broken baseline (0% at the smallest context) → must be the red failure
+    // state, never the green "✓ no cliff".
+    useCliffStore.setState({ probed: { c: { qwen: true } }, brokenBaseline: { c: { qwen: true } } });
+    render(<PerformanceMatrix focusedModel="qwen" onFocusModel={() => {}} />);
+    expect(screen.getByTestId("cliff-broken-qwen")).toHaveTextContent("fails from start");
+    expect(screen.queryByTestId("cliff-nocliff-qwen")).toBeNull(); // never claim "no cliff" when broken
+    expect(screen.queryByTestId("cliff-run-qwen")).toBeNull();
   });
 
   it("renders an always-visible legend explaining Cliff Depth + the probe payoff", () => {
