@@ -60,4 +60,19 @@ describe("EvalPage (3-pane workspace)", () => {
     act(() => useBackendStore.setState({ selectedBackend: "llama_cpp" }));
     expect(useBatchStore.getState().report).toBeNull();
   });
+
+  it("clears the last run's results when the COLLECTION changes (no stale Pass/Fail leak)", () => {
+    render(<EvalPage />);
+    act(() =>
+      useBatchStore.setState({
+        report: { collection_id: "curated", columns: [{ model: "llama3.2:1b", backend: "ollama", toolcall: null, agentic: null, error: null }] },
+        outcomeByKey: { "llama3.2:1b weather": { kind: "single", passed: true, trace: {} } } as never,
+      }),
+    );
+    expect(useBatchStore.getState().report).not.toBeNull();
+    // Switching to another collection must wipe the previous collection's outcomes.
+    act(() => useEvalRegistryStore.setState({ selected: "finance" }));
+    expect(useBatchStore.getState().report).toBeNull();
+    expect(useBatchStore.getState().outcomeByKey).toEqual({});
+  });
 });

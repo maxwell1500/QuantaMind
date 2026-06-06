@@ -194,6 +194,50 @@ async fn live_ollama_native_passk_drives_verdict_and_recommender() {
     assert!(passes >= 1, "a tool-capable model should pass at least once in {k} tries");
 }
 
+// ── DIAGNOSTIC — per-task Pass/Fail accuracy of the prompt-based scorer ───────
+// Runs the bundled CURATED tool-call tasks against a live model and prints, per
+// task: the verdict booleans + computed pass/fail + the model's RAW output + the
+// expected, so a false Fail (extraction / args strictness / model format) is
+// visible. Run: cargo test --test phase7_live_backends diagnose_scoring -- --ignored --nocapture
+#[tokio::test]
+#[ignore]
+async fn diagnose_prompt_based_scoring_accuracy() {
+    use quantamind_lib::inference::eval::toolcall::eval::run_eval_traced;
+    use quantamind_lib::inference::eval::toolcall::tasks::tasks;
+
+    let model = ollama_tool_model();
+    let all = tasks();
+    let single: Vec<_> = all.into_iter().filter(|t| t.category != "agentic").collect();
+    println!("=== prompt-based scoring of {} single-turn tasks on {model} ===", single.len());
+    let mut pass = 0;
+    for t in &single {
+        let (_r, traces) =
+            run_eval_traced(BackendKind::Ollama, endpoint::OLLAMA, &model, std::slice::from_ref(t), None).await.unwrap();
+        let v = &traces[0].trace.verdict;
+        let passed = match v.abstain_correct {
+            Some(ok) => ok,
+            None => v.parsed && v.tool_match && v.args_match,
+        };
+        if passed {
+            pass += 1;
+        }
+        println!(
+            "\n[{}] cat={} => {}  (parsed={} tool={} args={} abstain={:?})",
+            t.id,
+            t.category,
+            if passed { "PASS" } else { "FAIL" },
+            v.parsed,
+            v.tool_match,
+            v.args_match,
+            v.abstain_correct
+        );
+        println!("    expected: {:?}", t.expected);
+        let raw = traces[0].trace.raw_output.replace('\n', " ");
+        println!("    raw[0..200]: {}", raw.chars().take(200).collect::<String>());
+    }
+    println!("\n=== {pass}/{} passed ===", single.len());
+}
+
 // ── S1+S2+S4+S5+S6 — a REAL agentic multi-model batch → verdicts → recommender ─
 // Runs the app's real engine (run_batch_resumable) over two live Ollama models
 // with the REAL Ollama VRAM-isolation gate and a real job log, then walks the

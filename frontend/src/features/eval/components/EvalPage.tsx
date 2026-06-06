@@ -19,6 +19,7 @@ import { useRunRecovery } from "../hooks/useRunRecovery";
 export function EvalPage() {
   const initRegistry = useEvalRegistryStore((s) => s.init);
   const startNew = useEvalRegistryStore((s) => s.startNew);
+  const selectedCollection = useEvalRegistryStore((s) => s.selected);
   const allModels = useInstalledModelsStore((s) => s.list);
   const selectedBackend = useBackendStore((s) => s.selectedBackend);
   const models = allModels.filter((m) => m.backend === selectedBackend);
@@ -45,6 +46,16 @@ export function EvalPage() {
     setTargets([]);
     setFocusedModel("");
   }, [selectedBackend]);
+
+  // On a COLLECTION switch, the previous collection's per-(model,task) outcomes are
+  // stale — a task id that exists in both collections would otherwise show the OLD
+  // collection's Pass/Fail in the Simulator until a new batch runs. Clear them (but
+  // keep the targets — models are collection-independent).
+  useEffect(() => {
+    if (useBatchStore.getState().running) return;
+    useBatchStore.getState().reset();
+    setFocusedTaskId(null);
+  }, [selectedCollection]);
 
   // Default one target once the model list loads — the global header model if
   // it's installed, else the first installed model.
