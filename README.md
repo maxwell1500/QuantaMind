@@ -372,7 +372,7 @@ QuantaMind/
 ```
 
 > [!NOTE]
-> **Every source file is < 100 lines.** Hard limit. Splits are by concern, not by line count. See [Engineering principles](#engineering-principles).
+> **Every source file is single-concern.** Split a file when it starts doing *two things*, not when it crosses a line count. See [Engineering principles](#engineering-principles).
 
 ---
 
@@ -597,7 +597,7 @@ All backend HTTP clients set `User-Agent: quantamind/<version>`. HF behind Cloud
 
 1. **One step at a time.** Don't start step N+1 until step N is implemented, its test passes, *and* its output is verified.
 2. **Test pass ≠ data quality pass.** A green test proves the code ran the path you asked it to. The *output* must also match expected shape and values.
-3. **Every file < 100 lines.** Hard limit. Source, tests, configs, docs. Splits are by concern, not line count.
+3. **Single-concern files.** Split a file when it starts doing two things — by responsibility, not by line count. (Folder taxonomy: ≤ 10 files per folder.)
 4. **Separation of concerns.** Each file does one thing. No `utils.ts`, `helpers/`, `common/`, or `misc/`.
 5. **Documentation ships with the change.** Same commit.
 6. **Locked tech stack.** Substitutions require explicit review.
@@ -714,7 +714,7 @@ Contributions welcome. Before you open a PR:
 1. **Read [`CLAUDE.md`](./CLAUDE.md)** — the engineering principles are non-negotiable.
 2. **Read [`docs/process.md#workflow`](./docs/process.md#workflow)** — the one-step-at-a-time loop.
 3. **Read [`docs/process.md#conventions`](./docs/process.md#conventions)** — naming, commits, branches.
-4. **Stay under 100 lines per file.** No exceptions for source/test/config.
+4. **Keep each file single-concern.** Split by responsibility when it starts doing two things — not by a line count.
 5. **Tests pass AND outputs are verified.** A green CI run is necessary, not sufficient.
 
 ### Branch naming
@@ -725,7 +725,7 @@ Contributions welcome. Before you open a PR:
 - [ ] Tests added/updated and passing
 - [ ] Output verified — actually look at what the code produced
 - [ ] Docs in `docs/` updated in the same PR
-- [ ] No files exceed 100 lines
+- [ ] Each file stays single-concern (split by responsibility, not line count)
 - [ ] No `unwrap()` outside tests
 - [ ] Commit messages follow Conventional Commits
 
@@ -775,9 +775,9 @@ Ollama gives us a clean HTTP API, a stable model storage convention, and handles
 </details>
 
 <details>
-<summary><b>Why are files capped at 100 lines?</b></summary>
+<summary><b>Why keep files single-concern?</b></summary>
 
-Long files hide their dependencies, smuggle in second concerns, and make every reviewer scroll. The cap is a forcing function for separation of concerns.
+Long files hide their dependencies, smuggle in second concerns, and make every reviewer scroll. We split by responsibility — when a file starts doing two things — rather than enforce an arbitrary line count.
 
 </details>
 
