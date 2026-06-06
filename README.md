@@ -15,7 +15,7 @@ Built with Tauri, Rust, React, and Ollama. Local-first. No telemetry. No cloud.
 ![Rust](https://img.shields.io/badge/Rust-1.75%2B-orange?logo=rust&logoColor=white)
 ![React](https://img.shields.io/badge/React-18-61DAFB?logo=react&logoColor=black)
 ![TypeScript](https://img.shields.io/badge/TypeScript-5-3178C6?logo=typescript&logoColor=white)
-![License](https://img.shields.io/badge/license-MIT-green)
+![License](https://img.shields.io/badge/license-Apache%202.0-green)
 ![Status](https://img.shields.io/badge/status-active%20development-yellow)
 
 [![Repo](https://img.shields.io/badge/GitHub-QuantaMinds%2FQuantaMind-181717?logo=github)](https://github.com/QuantaMinds/QuantaMind)
@@ -775,7 +775,7 @@ None. The only outbound HTTP is to your local Ollama and (when you ask) to Huggi
 
 ## License
 
-MIT — see [`LICENSE`](./LICENSE).
+Apache 2.0 — see [`LICENSE`](./LICENSE).
 
 ---
 
