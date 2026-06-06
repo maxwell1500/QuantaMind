@@ -10,7 +10,7 @@ Built with Tauri, Rust, React, and Ollama. Local-first. No telemetry. No cloud.
 
 <br/>
 
-![Platform](https://img.shields.io/badge/platform-macOS%20%7C%20Windows%20%7C%20Linux-blue)
+![Platform](https://img.shields.io/badge/platform-macOS-blue)
 ![Tauri](https://img.shields.io/badge/Tauri-2.x-FFC131?logo=tauri&logoColor=black)
 ![Rust](https://img.shields.io/badge/Rust-1.75%2B-orange?logo=rust&logoColor=white)
 ![React](https://img.shields.io/badge/React-18-61DAFB?logo=react&logoColor=black)
@@ -215,9 +215,9 @@ The two halves talk JSON over Tauri's IPC. Contracts are explicit in `shared/ipc
 ### Install
 
 ```bash
-# 1) Toolchains (macOS shown; adapt for Linux/Windows)
+# 1) Toolchains (macOS only for now)
 brew install rust node pnpm ollama
-xcode-select --install   # macOS only
+xcode-select --install
 
 # 2) Start Ollama + pull a small model
 ollama serve &
@@ -269,8 +269,8 @@ pnpm tauri build
 
 Outputs land in `backend/target/release/bundle/`:
 - macOS: `.dmg` and `.app`
-- Windows: `.msi` and `.exe`
-- Linux: `.deb`, `.rpm`, `.AppImage`
+
+> **macOS only for now.** Windows and Linux builds are planned but not yet supported.
 
 ### Run the test suites
 

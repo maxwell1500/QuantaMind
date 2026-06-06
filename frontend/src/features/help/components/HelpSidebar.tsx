@@ -1,8 +1,8 @@
-import { DOC_SECTIONS } from "./docSections";
+import { HELP_SECTIONS } from "./helpSections";
 
-/// Left rail of the Doc page: one entry per documented section. Clicking swaps
-/// the center pane (state lives in DocPage). The active entry is highlighted.
-export function DocSidebar({
+/// Left rail of the Help page: one entry per documented section. Clicking swaps
+/// the center pane (state lives in HelpPage). The active entry is highlighted.
+export function HelpSidebar({
   activeId,
   onSelect,
 }: {
@@ -11,19 +11,19 @@ export function DocSidebar({
 }) {
   return (
     <nav
-      aria-label="Documentation sections"
-      data-testid="doc-sidebar"
+      aria-label="Help sections"
+      data-testid="help-sidebar"
       className="w-52 shrink-0 border-r border-slate-200 pr-3 overflow-auto"
     >
       <ul className="flex flex-col gap-0.5">
-        {DOC_SECTIONS.map((s) => {
+        {HELP_SECTIONS.map((s) => {
           const active = s.id === activeId;
           return (
             <li key={s.id}>
               <button
                 type="button"
                 onClick={() => onSelect(s.id)}
-                data-testid={`doc-nav-${s.id}`}
+                data-testid={`help-nav-${s.id}`}
                 aria-current={active ? "page" : undefined}
                 className={
                   active

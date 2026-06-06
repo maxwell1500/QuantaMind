@@ -4,8 +4,8 @@ import type { ReactNode } from "react";
 /// Every block answers the same three questions, so the page reads consistently
 /// no matter which feature it describes. `formula`/`source` are for blocks whose
 /// number is computed (the user can see exactly how it's derived and where).
-export interface DocBlock {
-  /// Anchor within a section (url hash → `#doc-<section>-<id>`).
+export interface HelpBlock {
+  /// Anchor within a section (url hash → `#help-<section>-<id>`).
   id: string;
   heading: string;
   what: ReactNode;
@@ -19,16 +19,16 @@ export interface DocBlock {
 
 /// One page of the app (or a cross-cutting topic), shown as a sidebar entry with
 /// its blocks in the center pane.
-export interface DocSection {
-  /// Sidebar id + url hash (`#doc-<id>`).
+export interface HelpSection {
+  /// Sidebar id + url hash (`#help-<id>`).
   id: string;
   title: string;
   /// One-line summary under the section title.
   blurb: string;
-  blocks: DocBlock[];
+  blocks: HelpBlock[];
 }
 
-export const DOC_SECTIONS: DocSection[] = [
+export const HELP_SECTIONS: HelpSection[] = [
   {
     id: "workspace",
     title: "Workspace",
@@ -474,49 +474,6 @@ export const DOC_SECTIONS: DocSection[] = [
         what: "A read-out of detected hardware (CPU, RAM, GPU) and VRAM status.",
         why: "Several features (Quant fit, Agent Report VRAM gate) reason about your machine; this is the one place to see what the app detected.",
         how: "Hardware is probed at runtime and shown here; the same detection feeds the readiness and fit calculations.",
-      },
-    ],
-  },
-
-  {
-    id: "global",
-    title: "Global controls & updates",
-    blurb: "The status bar, Refresh, Feedback, workspaces, and the in-app updater.",
-    blocks: [
-      {
-        id: "status-bar",
-        heading: "Status bar + Ollama health",
-        what: "The footer shows the selected model, a health dot (green = Ollama connected, red = not running), and the last run’s metrics.",
-        why: "The runtime can be started/stopped outside the app; a persistent indicator means you always know whether a run will even reach a server.",
-        how: "A background health probe polls Ollama on a timer; the dot reflects the latest tick. Stopping the server flips it red at once; starting it goes green on the next tick (or immediately if you hit Refresh).",
-      },
-      {
-        id: "refresh",
-        heading: "Refresh",
-        what: "The top-bar Refresh button re-runs the Ollama health probe and re-fetches the installed-model list.",
-        why: "When you start or stop Ollama (or install a model) from outside QuantaMind, the app shouldn’t make you wait for the next automatic poll to catch up.",
-        how: "It triggers the same probe + model-list fetch the app runs on a timer, on demand.",
-      },
-      {
-        id: "workspaces",
-        heading: "Workspaces (left rail)",
-        what: "The Workspace tab has a left rail of named workspaces; each remembers its own prompts and selection.",
-        why: "You usually juggle several lines of investigation; separate workspaces keep their state from bleeding into each other and auto-save as you go.",
-        how: "Switching workspaces swaps the saved prompt/selection state; edits auto-save so nothing is lost between switches or restarts.",
-      },
-      {
-        id: "feedback",
-        heading: "Feedback button",
-        what: "A bottom-right button opens a modal that drafts an email to the team.",
-        why: "The fastest way to report something wrong in the app — including the context needed to reproduce it — without leaving your flow.",
-        how: "“Open in mail app” launches your default client with a draft to info@quantamind.co. Tick Diagnostics to include app version, OS, and current model in the body.",
-      },
-      {
-        id: "updates",
-        heading: "Updating QuantaMind",
-        what: "The updater card (top of this page) checks for and installs new versions.",
-        why: "Desktop apps don’t auto-update through a store here, so the app checks a release feed itself and can install in place.",
-        how: "“Check for updates” asks quantamind.co/releases/latest.json. If a newer version exists, the dialog shows release notes and a Download-and-install button that fetches the bundle, signature-verifies it, installs, and relaunches. Unsigned macOS builds show a Gatekeeper prompt the first time — right-click → Open.",
       },
     ],
   },

@@ -69,10 +69,10 @@ describe("CsvImportModal", () => {
     expect(screen.getByTestId("csv-import-submit")).toBeDisabled();
   });
 
-  it("Learn more navigates to the Doc view", async () => {
+  it("Learn more navigates to the Help view", async () => {
     const { useNavStore } = await import("../../../shared/state/navStore");
     render(<CsvImportModal onImport={vi.fn()} onClose={vi.fn()} />);
     fireEvent.click(screen.getByTestId("csv-import-learnmore"));
-    expect(useNavStore.getState().topView).toBe("doc");
+    expect(useNavStore.getState().topView).toBe("help");
   });
 });
