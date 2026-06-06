@@ -1,13 +1,20 @@
 import { describe, it, expect, vi, beforeEach } from "vitest";
 import { renderHook, act, waitFor } from "@testing-library/react";
 
-vi.mock("@tauri-apps/api/event", () => ({ listen: vi.fn().mockResolvedValue(() => {}) }));
-vi.mock("../../../shared/ipc/eval/batch", () => ({
+// Capture the event handlers so a test can fire a malformed payload at them.
+const { handlers } = vi.hoisted(() => ({ handlers: {} as Record<string, (e: { payload: unknown }) => void> }));
+vi.mock("@tauri-apps/api/event", () => ({
+  listen: vi.fn((event: string, cb: (e: { payload: unknown }) => void) => {
+    handlers[event] = cb;
+    return Promise.resolve(() => {});
+  }),
+}));
+// Keep the REAL schemas + event names (so the drift test exercises actual parsing);
+// only stub the two IPC calls.
+vi.mock("../../../shared/ipc/eval/batch", async (orig) => ({
+  ...(await orig<typeof import("../../../shared/ipc/eval/batch")>()),
   runBatchEval: vi.fn().mockResolvedValue(undefined),
   stopBatchEval: vi.fn(),
-  EVENT_BATCH_PROGRESS: "batch-progress",
-  EVENT_AGENTIC_STEP: "agentic-step",
-  EVENT_BATCH_COMPLETE: "batch-complete",
 }));
 vi.mock("../../../shared/ipc/core/client", () => ({ healthFor: vi.fn() }));
 
@@ -68,5 +75,20 @@ describe("useBatchRun pre-flight health check", () => {
 
     await waitFor(() => expect(runBatchEval).toHaveBeenCalled());
     expect(useBatchStore.getState().error).toBeNull();
+  });
+
+  it("logs IPC payload drift instead of silently dropping a malformed batch event", async () => {
+    const spy = vi.spyOn(console, "error").mockImplementation(() => {});
+    renderHook(() => useBatchRun());
+    await waitFor(() => expect(handlers["batch-progress"]).toBeDefined());
+
+    // A payload that doesn't match BatchProgressSchema must NOT vanish — it logs.
+    act(() => handlers["batch-progress"]({ payload: { totally: "wrong" } }));
+    expect(spy).toHaveBeenCalledWith(
+      expect.stringContaining("IPC payload drift (batch-progress)"),
+      expect.anything(),
+      expect.anything(),
+    );
+    spy.mockRestore();
   });
 });

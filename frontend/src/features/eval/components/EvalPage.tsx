@@ -36,7 +36,7 @@ export function EvalPage() {
   const recovery = useRunRecovery();
 
   useEffect(() => {
-    void initRegistry().catch(() => {});
+    void initRegistry().catch((e) => console.error("eval registry init failed (EvalPage):", e));
   }, [initRegistry]);
 
   // Context-shift cancellation law: a backend OR collection switch invalidates the

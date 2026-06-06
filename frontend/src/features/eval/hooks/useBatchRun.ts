@@ -37,14 +37,17 @@ export function useBatchRun() {
         listen(EVENT_BATCH_PROGRESS, (e) => {
           const r = BatchProgressSchema.safeParse(e.payload);
           if (r.success) useBatchStore.getState().ingestProgress(r.data);
+          else console.error("IPC payload drift (batch-progress):", r.error.issues, e.payload);
         }),
         listen(EVENT_AGENTIC_STEP, (e) => {
           const r = AgenticStepPayloadSchema.safeParse(e.payload);
           if (r.success) useBatchStore.getState().ingestStep(r.data);
+          else console.error("IPC payload drift (agentic-step):", r.error.issues, e.payload);
         }),
         listen(EVENT_BATCH_COMPLETE, (e) => {
           const r = BatchCompletePayloadSchema.safeParse(e.payload);
           if (r.success) useBatchStore.getState().complete(r.data.report);
+          else console.error("IPC payload drift (batch-complete):", r.error.issues, e.payload);
         }),
       ]);
       if (cancelled) {

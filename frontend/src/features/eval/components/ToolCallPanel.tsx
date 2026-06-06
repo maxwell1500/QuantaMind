@@ -173,7 +173,7 @@ export function ToolCallPanel({
   const isPreset = (id: string) => presets.some((p) => p.id === id);
 
   useEffect(() => {
-    void init().catch(() => {});
+    void init().catch((e) => console.error("eval registry init failed (ToolCallPanel):", e));
   }, [init]);
 
   // Load the chosen collection's tasks itself (preset OR custom) so the Simulator

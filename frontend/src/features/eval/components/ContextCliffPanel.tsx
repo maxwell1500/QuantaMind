@@ -75,7 +75,7 @@ export function ContextCliffPanel() {
   const isPreset = (id: string) => presets.some((p) => p.id === id);
 
   useEffect(() => {
-    void init().catch(() => { });
+    void init().catch((e) => console.error("eval registry init failed (ContextCliffPanel):", e));
   }, [init]);
 
   // Load the chosen collection's tasks itself (preset OR custom) so the probe

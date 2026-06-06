@@ -72,7 +72,7 @@ export function EvalManager({
 
   // Init on mount.
   useEffect(() => {
-    void init().catch(() => {});
+    void init().catch((e) => console.error("eval registry init failed (EvalManager):", e));
   }, [init]);
 
   // Drop targets that aren't on the active backend (handles a backend switch).

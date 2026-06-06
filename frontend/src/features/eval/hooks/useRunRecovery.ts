@@ -16,7 +16,7 @@ export function useRunRecovery() {
       .then((r) => {
         if (r && !useBatchStore.getState().running) setPending(r);
       })
-      .catch(() => {});
+      .catch((e) => console.error("run-recovery check failed:", e));
   }, []);
 
   const resume = useCallback(async () => {

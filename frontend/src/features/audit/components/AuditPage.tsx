@@ -44,7 +44,7 @@ export function AuditPage() {
   const backendHistory = history.filter((h) => h.backend === selectedBackend);
 
   useEffect(() => {
-    void init().catch(() => {});
+    void init().catch((e) => console.error("eval registry init failed (AuditPage):", e));
   }, [init]);
 
   useEffect(() => {
