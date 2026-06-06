@@ -14,10 +14,27 @@ fn try_profile_is_none_when_any_input_is_missing() {
 }
 
 #[test]
-fn try_profile_falls_back_to_model_max_context_when_run_has_no_num_ctx() {
-    let p = try_profile(Some(5 * GIB), Some(dims()), None, Some(16 * GIB)).unwrap();
-    assert_eq!(p.context_length, 8192); // dims.context_length (model max)
-    assert_eq!(p.kv_cache_bytes, GIB);
+fn fallback_context_is_capped_at_8k_not_the_model_max() {
+    // No run num_ctx + a 262 k-context model → estimate at 8 k (DEFAULT_FALLBACK_CTX),
+    // NOT 262 k (which would balloon the cache to ~100 GB).
+    let big = Dims { context_length: 262_144, ..dims() };
+    let p = try_profile(Some(5 * GIB), Some(big), None, Some(16 * GIB)).unwrap();
+    assert_eq!(p.context_length, super::DEFAULT_FALLBACK_CTX);
+    assert_eq!(p.kv_cache_bytes, GIB); // 8 k → exactly 1 GiB for these dims
+}
+
+#[test]
+fn explicit_run_num_ctx_is_honored_even_above_the_cap() {
+    let big = Dims { context_length: 262_144, ..dims() };
+    let p = try_profile(Some(5 * GIB), Some(big), Some(32_768), Some(64 * GIB)).unwrap();
+    assert_eq!(p.context_length, 32_768); // the run asked for it → estimate what they ran
+}
+
+#[test]
+fn fallback_uses_model_max_when_it_is_below_the_cap() {
+    let small = Dims { context_length: 4096, ..dims() };
+    let p = try_profile(Some(5 * GIB), Some(small), None, Some(16 * GIB)).unwrap();
+    assert_eq!(p.context_length, 4096); // min(4096, 8192)
 }
 
 #[test]
