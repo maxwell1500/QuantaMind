@@ -1,9 +1,8 @@
 use crate::commands::publish::auth::{get_refresh_token, store_refresh_token};
+use crate::commands::publish::auth_state::AuthState;
 use crate::errors::{AppError, AppResult};
 use crate::inference::http::http::{body_or_note, probe_client};
-use crate::sync::MutexExt;
 use serde::Deserialize;
-use std::sync::Mutex;
 
 /// The token endpoint response (OAuth-style). `refresh_token` ROTATES on every
 /// call (the server revokes the old one), so we always re-store what comes back.
@@ -13,13 +12,6 @@ pub struct Tokens {
     pub refresh_token: String,
     #[serde(default)]
     pub expires_in: u64,
-}
-
-/// Cached short-lived access token for the session. Managed by Tauri; the refresh
-/// token lives in the OS vault (`auth.rs`), never here.
-#[derive(Default)]
-pub struct AuthState {
-    access: Mutex<Option<String>>,
 }
 
 /// The caller must (re)authenticate — no usable refresh token, or the refresh
@@ -55,19 +47,14 @@ pub async fn refresh_access(base: &str, refresh: &str) -> AppResult<Tokens> {
 /// A usable access token: the cached one, else a refresh using the vault's refresh
 /// token (rotating + re-storing it), else `NeedsAuth`. Never panics.
 pub async fn access_token(base: &str, state: &AuthState) -> Result<String, NeedsAuth> {
-    if let Some(t) = state.access.lock_recover().clone() {
+    if let Some(t) = state.cached() {
         return Ok(t);
     }
     let refresh = get_refresh_token().ok_or(NeedsAuth)?;
     let tokens = refresh_access(base, &refresh).await.map_err(|_| NeedsAuth)?;
     store_refresh_token(&tokens.refresh_token);
-    *state.access.lock_recover() = Some(tokens.access_token.clone());
+    state.set(tokens.access_token.clone());
     Ok(tokens.access_token)
-}
-
-/// Drop the cached access token (e.g. after a 401) so the next call refreshes.
-pub fn clear_access(state: &AuthState) {
-    *state.access.lock_recover() = None;
 }
 
 #[cfg(test)]

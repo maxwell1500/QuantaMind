@@ -25,7 +25,7 @@ async fn refresh_access_rotates_the_refresh_token() {
 #[tokio::test]
 async fn access_token_returns_the_cached_token_without_touching_the_network() {
     let state = AuthState::default();
-    *state.access.lock_recover() = Some("cached_at".to_string());
+    state.set("cached_at".to_string());
     // An unroutable base proves no network call happens on the cached path.
     let t = access_token("http://127.0.0.1:1", &state).await.expect("cached");
     assert_eq!(t, "cached_at");

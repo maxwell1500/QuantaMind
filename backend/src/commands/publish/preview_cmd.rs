@@ -41,8 +41,9 @@ pub fn preview_publish_payload(verdicts: Vec<ModelVerdict>) -> Result<PublishPre
 }
 
 /// The pure core (no `snapshot()`/Tauri) so the projection + canonicalization are
-/// testable with a fixed cohort and version.
-fn build_preview(verdicts: &[ModelVerdict], cohort: String, tool_version: &str) -> Result<PublishPreview, AppError> {
+/// testable with a fixed cohort and version. Shared with `publish_cmd` so the
+/// previewed payload is byte-identical to the one sent.
+pub(crate) fn build_preview(verdicts: &[ModelVerdict], cohort: String, tool_version: &str) -> Result<PublishPreview, AppError> {
     let rows: Vec<PublishRow> =
         verdicts.iter().filter_map(|v| PublishRow::project(v, cohort.clone(), tool_version)).collect();
     let excluded_count = verdicts.len() - rows.len();
