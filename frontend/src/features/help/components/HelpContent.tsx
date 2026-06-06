@@ -1,13 +1,13 @@
-import type { DocBlock, DocSection } from "./docSections";
+import type { HelpBlock, HelpSection } from "./helpSections";
 
 /// One What/Why/How card for a single documented item. A computed metric also
 /// gets a monospace formula and a source-file reference so the derivation is
 /// fully visible — never a hand-wave.
-function Block({ sectionId, block }: { sectionId: string; block: DocBlock }) {
+function Block({ sectionId, block }: { sectionId: string; block: HelpBlock }) {
   return (
     <article
-      id={`doc-${sectionId}-${block.id}`}
-      data-testid={`doc-block-${sectionId}-${block.id}`}
+      id={`help-${sectionId}-${block.id}`}
+      data-testid={`help-block-${sectionId}-${block.id}`}
       className="border border-slate-200 rounded-lg p-4 bg-white scroll-mt-4"
     >
       <h3 className="text-sm font-semibold text-slate-900 mb-2">{block.heading}</h3>
@@ -46,9 +46,9 @@ function Block({ sectionId, block }: { sectionId: string; block: DocBlock }) {
 }
 
 /// The center pane: the active section's title, blurb, and every block.
-export function DocContent({ section }: { section: DocSection }) {
+export function HelpContent({ section }: { section: HelpSection }) {
   return (
-    <div data-testid={`doc-content-${section.id}`} className="flex-1 min-w-0 overflow-auto pl-4">
+    <div data-testid={`help-content-${section.id}`} className="flex-1 min-w-0 overflow-auto pl-4">
       <header className="mb-3">
         <h2 className="text-lg font-semibold text-slate-900">{section.title}</h2>
         <p className="text-xs text-slate-600">{section.blurb}</p>

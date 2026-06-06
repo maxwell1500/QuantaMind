@@ -12,11 +12,11 @@ import { AgentReportPage } from "./features/agentReport/components/AgentReportPa
 import { startInstalledModelsBus } from "./features/models/state/installedModelsBus";
 import { useModelSettingsStore } from "./features/models/state/modelSettingsStore";
 import { FeedbackButton } from "./features/feedback/components/FeedbackButton";
-import { DocPage } from "./features/doc/components/DocPage";
+import { HelpPage } from "./features/help/components/HelpPage";
 import { WorkspaceSidebar } from "./WorkspaceSidebar";
 import { useAutoSave } from "./features/workspaces/hooks/useAutoSave";
 import { HistoryPanel } from "./features/history/components/HistoryPanel";
-import { StartupUpdate } from "./features/doc/components/StartupUpdate";
+import { StartupUpdate } from "./features/help/components/StartupUpdate";
 import { OnboardingCoach } from "./features/onboarding/components/OnboardingCoach";
 import { AppHeader } from "./AppHeader";
 import { useGlobalHotkeys } from "./appHotkeys";
@@ -35,7 +35,7 @@ const TABS: { id: TopView; label: string }[] = [
   { id: "quant", label: "Quant" },
   { id: "agentReport", label: "Agent Report" },
   { id: "settings", label: "Settings" },
-  { id: "doc", label: "Doc" },
+  { id: "help", label: "Help" },
 ];
 
 const tabClass = (active: boolean) =>
@@ -89,7 +89,7 @@ export default function App() {
       <div hidden={view !== "quant"} data-testid="view-quant"><QuantPage /></div>
       <div hidden={view !== "agentReport"} data-testid="view-agentReport"><AgentReportPage /></div>
       <div hidden={view !== "settings"} data-testid="view-settings"><SettingsPage /></div>
-      <div hidden={view !== "doc"} data-testid="view-doc"><DocPage /></div>
+      <div hidden={view !== "help"} data-testid="view-help"><HelpPage /></div>
       <FeedbackButton />
       <HistoryPanel />
       <CheatsheetModal />
