@@ -35,6 +35,7 @@ pub fn run() {
             commands::compare::compare::stop_compare,
             commands::compare::compare_export::save_compare_report,
             commands::publish::export_cmd::save_readiness_image,
+            #[cfg(not(feature = "enterprise"))]
             commands::publish::preview_cmd::preview_publish_payload,
             commands::gguf::gguf_cmd::install_local_gguf,
             commands::hf::hf_browse::hf_search,

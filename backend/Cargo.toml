@@ -12,6 +12,12 @@ crate-type = ["staticlib", "cdylib", "rlib"]
 [build-dependencies]
 tauri-build = { version = "2", features = [] }
 
+[features]
+# Enterprise/air-gapped build: compile OUT the entire publish/auth surface
+# (commands/publish/{auth,preview_cmd,publish_cmd,cohort}). The offline share
+# export (commands/publish/export_cmd) stays IN every build.
+enterprise = []
+
 [dependencies]
 tauri = { version = "2", features = [] }
 tauri-plugin-dialog = "2"
@@ -30,6 +36,10 @@ uuid = { version = "1", features = ["v4"] }
 sysinfo = { version = "0.32", default-features = false, features = ["disk", "system"] }
 sha2 = "0.10"
 bytes = "1"
+# Publish auth (compiled out of enterprise builds): OS secure store for the
+# refresh token. Native backends only — Linux without a secret service falls
+# back to an in-memory session token (see commands/publish/auth.rs).
+keyring = { version = "3", features = ["apple-native", "windows-native"] }
 
 [dev-dependencies]
 mockito = "1"
