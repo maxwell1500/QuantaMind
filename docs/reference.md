@@ -825,7 +825,10 @@ refresh token). Publishing is **one batch = one request**: GET a fresh `/publish
 recompute the canonical hash, POST `/publish` with the bearer token — a fresh nonce per
 attempt (the server burns it on a 422). Every status maps to a typed outcome the UI
 handles without freezing: `200`→toast + open board, `401`→re-auth, `422`→show the failing
-row index, `426`→"please update", `429`→"try again shortly". An optional **write-up
+row index, `426`→"please update", `429`→"try again shortly". On the **first** `401`/
+`needs_auth` the UI opens sign-in and, once the token is stored, **auto-retries the
+publish once** — no second click. A one-shot guard stops there: if it still needs auth
+(sign-in cancelled/failed) the UI asks the user to Publish again rather than looping. An optional **write-up
 link** may accompany a result but is restricted to an allow-list of dev/social hosts
 (github.com, x.com, dev.to, reddit.com, medium.com, youtube.com, huggingface.co) to
 keep the board from becoming a link farm. The whole auth/publish surface **compiles out

@@ -3,6 +3,7 @@ import { open as openUrl } from "@tauri-apps/plugin-shell";
 import { useToast } from "../../shared/ui/Toast";
 import { formatIpcError } from "../../shared/ipc/core/error";
 import { publishToBoard, startLogin } from "../../shared/ipc/publish/publish";
+import type { PublishPreview } from "../../shared/ipc/publish/preview";
 import type { ModelVerdict } from "../../shared/ipc/eval/readiness";
 import { PublishDialog } from "./PublishDialog";
 
@@ -13,7 +14,10 @@ export function PublishButton({ verdicts }: { verdicts: ModelVerdict[] }) {
   const toast = useToast();
   const [open, setOpen] = useState(false);
 
-  const onPublish = async (_preview: unknown, link: string) => {
+  /// `retried` guards the auto-publish-after-login path: on first `needs_auth` we
+  /// open sign-in then re-attempt once. If it still needs auth (sign-in cancelled
+  /// or failed), we stop and ask the user instead of looping forever.
+  const onPublish = async (preview: PublishPreview, link: string, retried = false) => {
     try {
       const outcome = await publishToBoard(verdicts, link);
       switch (outcome.kind) {
@@ -22,10 +26,21 @@ export function PublishButton({ verdicts }: { verdicts: ModelVerdict[] }) {
           setOpen(false);
           void openUrl(outcome.board_url).catch(() => {});
           break;
-        case "needs_auth":
-          toast("Sign in in your browser, then Publish again");
-          void startLogin().catch((e) => toast(formatIpcError(e)));
+        case "needs_auth": {
+          if (retried) {
+            toast("Sign-in didn't complete — Publish again when ready");
+            break;
+          }
+          toast("Sign in in your browser to publish…");
+          try {
+            await startLogin();
+          } catch (e) {
+            toast(formatIpcError(e));
+            break;
+          }
+          await onPublish(preview, link, true);
           break;
+        }
         case "invalid":
           toast(`Row ${outcome.index} was rejected — adjust it and retry`);
           break;

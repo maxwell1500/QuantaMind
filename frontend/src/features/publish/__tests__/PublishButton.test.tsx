@@ -56,12 +56,34 @@ describe("PublishButton", () => {
     await waitFor(() => expect(screen.getByTestId("toast")).toHaveTextContent("Row 2"));
   });
 
-  it("triggers the sign-in flow on needs_auth", async () => {
+  it("signs in then auto-publishes on needs_auth, without a second click", async () => {
+    vi.mocked(publishToBoard)
+      .mockResolvedValueOnce({ kind: "needs_auth" })
+      .mockResolvedValueOnce({ kind: "ok", board_url: "https://quantamind.co/b/2" });
+    render(<><PublishButton verdicts={VERDICTS} /><ToastHost /></>);
+    await openDialogAndAgree();
+    await waitFor(() => expect(startLogin).toHaveBeenCalledTimes(1));
+    await waitFor(() => expect(screen.getByTestId("toast")).toHaveTextContent("Published"));
+    expect(publishToBoard).toHaveBeenCalledTimes(2);
+    expect(openUrl).toHaveBeenCalledWith("https://quantamind.co/b/2");
+  });
+
+  it("stops after one retry if sign-in still leaves needs_auth", async () => {
     vi.mocked(publishToBoard).mockResolvedValue({ kind: "needs_auth" });
     render(<><PublishButton verdicts={VERDICTS} /><ToastHost /></>);
     await openDialogAndAgree();
-    await waitFor(() => expect(startLogin).toHaveBeenCalled());
-    expect(screen.getByTestId("toast")).toHaveTextContent("Sign in");
+    await waitFor(() => expect(screen.getByTestId("toast")).toHaveTextContent("didn't complete"));
+    expect(startLogin).toHaveBeenCalledTimes(1);
+    expect(publishToBoard).toHaveBeenCalledTimes(2);
+  });
+
+  it("toasts the login error when sign-in itself fails", async () => {
+    vi.mocked(publishToBoard).mockResolvedValue({ kind: "needs_auth" });
+    vi.mocked(startLogin).mockRejectedValue(new Error("browser closed"));
+    render(<><PublishButton verdicts={VERDICTS} /><ToastHost /></>);
+    await openDialogAndAgree();
+    await waitFor(() => expect(screen.getByTestId("toast")).toHaveTextContent("browser closed"));
+    expect(publishToBoard).toHaveBeenCalledTimes(1);
   });
 
   it("toasts a friendly message on rate_limited", async () => {
