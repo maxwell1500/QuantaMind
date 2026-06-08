@@ -816,9 +816,14 @@ without it. ⚠ The `cohort_key` taxonomy is **v1 pending backend sign-off** —
 server's bucketing must match it exactly or dedup `UNIQUE(user, model, quant,
 cohort_key)` breaks.
 
-*Auth + send.* Sign-in is OAuth **PKCE** (no client secret): the app opens the
-browser to `/authorize`, catches the loopback redirect, and exchanges the code at
-`/token`. The **refresh token** is stored in the OS keychain (`keyring`), degrading
+*Auth + send.* The API base is resolved once from `QM_API_BASE`, defaulting to the
+local dev server `http://localhost:8787` (no production host yet). Sign-in is OAuth
+**PKCE** (no client secret): the app first runs a **pre-flight reachability probe**
+(a ~5s-bounded GET to `/authorize`) so a stopped server fails *immediately* with
+*"Can't reach the publish server — is it running?"* instead of hanging the 300s
+loopback wait; then it opens the browser to `/authorize`, catches the loopback
+redirect, and exchanges the code at `/token`. The **refresh token** is stored in the
+OS keychain (`keyring`), degrading
 to an in-memory session token when no secret service is present (headless Linux); a
 short-lived **access token** is cached in memory and silently refreshed (rotating the
 refresh token). Publishing is **one batch = one request**: GET a fresh `/publish/nonce`,

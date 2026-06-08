@@ -9,10 +9,19 @@ use crate::inference::http::http::{body_or_note, probe_client};
 use crate::persistence::publish::row::PublishRow;
 use reqwest::StatusCode;
 use serde::{Deserialize, Serialize};
+use std::sync::OnceLock;
 
-/// Production publish API base. Injectable in tests via the inner fn; the command
-/// uses this const. (Placeholder host until the backend repo is stood up.)
-pub const PUBLISH_API: &str = "https://api.quantamind.co";
+/// Publish API base. No production server yet, so this defaults to the local dev server
+/// (`http://localhost:8787`) — the app works when simply run for testing. Override with the
+/// `QM_API_BASE` env var to point elsewhere. Resolved once at first use.
+/// (The publish/login fns also take `base` directly, so tests inject without the env.)
+pub fn publish_api() -> &'static str {
+    static API: OnceLock<String> = OnceLock::new();
+    API.get_or_init(|| {
+        std::env::var("QM_API_BASE").unwrap_or_else(|_| "http://localhost:8787".to_string())
+    })
+    .as_str()
+}
 
 /// What the UI does next — every server status maps to one of these, so a failed
 /// publish never throws an opaque error that could freeze the dialog.
@@ -87,11 +96,11 @@ pub async fn publish_to_board(state: tauri::State<'_, AuthState>, verdicts: Vec<
     if let Some(inv) = preview.invalid {
         return Ok(PublishOutcome::Invalid { index: inv.index });
     }
-    let token = match access_token(PUBLISH_API, &state).await {
+    let token = match access_token(publish_api(), &state).await {
         Ok(t) => t,
         Err(_) => return Ok(PublishOutcome::NeedsAuth),
     };
-    let outcome = publish_batch(PUBLISH_API, &token, &preview.rows, &preview.hash, link.as_deref()).await?;
+    let outcome = publish_batch(publish_api(), &token, &preview.rows, &preview.hash, link.as_deref()).await?;
     if outcome == PublishOutcome::NeedsAuth {
         state.clear();
     }
