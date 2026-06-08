@@ -11,14 +11,16 @@ use reqwest::StatusCode;
 use serde::{Deserialize, Serialize};
 use std::sync::OnceLock;
 
-/// Publish API base. No production server yet, so this defaults to the local dev server
-/// (`http://localhost:8787`) — the app works when simply run for testing. Override with the
-/// `QM_API_BASE` env var to point elsewhere. Resolved once at first use.
-/// (The publish/login fns also take `base` directly, so tests inject without the env.)
+/// Publish API base. Defaults to the production host `https://api.quantamind.co`; set
+/// `QM_API_BASE=http://localhost:8787` to point at a local dev server. Resolved once at
+/// first use. (The publish/login fns also take `base` directly, so tests inject without
+/// the env.) NOTE: the production host must be deployed + DNS-resolvable for sign-in and
+/// publish to succeed; until then the pre-flight probe in `start_login` fails fast with a
+/// clear "can't reach the publish server" message.
 pub fn publish_api() -> &'static str {
     static API: OnceLock<String> = OnceLock::new();
     API.get_or_init(|| {
-        std::env::var("QM_API_BASE").unwrap_or_else(|_| "http://localhost:8787".to_string())
+        std::env::var("QM_API_BASE").unwrap_or_else(|_| "https://api.quantamind.co".to_string())
     })
     .as_str()
 }

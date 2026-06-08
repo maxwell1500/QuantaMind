@@ -79,6 +79,19 @@ describe("PublishDialog", () => {
     expect(onPublish).toHaveBeenCalledWith(expect.objectContaining({ hash: "abc123" }), "https://dev.to/me/post");
   });
 
+  it("explains why Publish is disabled when there are no measured results", async () => {
+    vi.mocked(previewPublishPayload).mockResolvedValue(preview({ rows: [], excluded_count: 3, canonical_json: "[]" }));
+    render(<PublishDialog verdicts={VERDICTS} onClose={noop} onPublish={noop} />);
+    const empty = await screen.findByTestId("publish-empty");
+    expect(empty).toHaveTextContent("Nothing to publish yet");
+    expect(empty).toHaveTextContent("3 models were excluded");
+    // No opt-in to tick and no payload shown — and Publish stays disabled with a reason.
+    expect(screen.queryByTestId("publish-optin")).not.toBeInTheDocument();
+    const confirm = screen.getByTestId("publish-confirm");
+    expect(confirm).toBeDisabled();
+    expect(confirm).toHaveAttribute("title", "No measured results to publish yet");
+  });
+
   it("keeps Publish disabled when a row fails local validation", async () => {
     vi.mocked(previewPublishPayload).mockResolvedValue(preview({ invalid: { index: 0, reason: "pass_k 1.5 out of range 0..=1" } }));
     render(<PublishDialog verdicts={VERDICTS} onClose={noop} onPublish={noop} />);

@@ -40,6 +40,20 @@ export function PublishDialog({ verdicts, onClose, onPublish }: Props) {
 
   const canPublish = !!preview && preview.rows.length > 0 && !preview.invalid && agreed && linkOk;
 
+  /// Why Publish is disabled — surfaced as a button tooltip so a greyed-out button is
+  /// never a dead end the user has to guess at.
+  const disabledReason = !preview
+    ? "Building the payload preview…"
+    : preview.invalid
+      ? `Row ${preview.invalid.index} failed validation`
+      : preview.rows.length === 0
+        ? "No measured results to publish yet"
+        : !agreed
+          ? "Tick the opt-in box to publish"
+          : !linkOk
+            ? "Write-up link isn't on the allow-list"
+            : "";
+
   return (
     <div role="presentation" onClick={onClose} data-testid="publish-dialog" className="fixed inset-0 z-50 bg-black/40 flex items-center justify-center p-4">
       <div role="dialog" aria-modal="true" aria-label="Publish to community board" onClick={(e) => e.stopPropagation()} className="bg-white rounded-xl shadow-2xl w-[34rem] max-w-[94vw] p-5 space-y-4 border border-slate-200 max-h-[90vh] overflow-y-auto">
@@ -50,7 +64,19 @@ export function PublishDialog({ verdicts, onClose, onPublish }: Props) {
 
         {error && <div data-testid="publish-error" className="text-xs text-red-600">{error}</div>}
 
-        {preview && (
+        {preview && preview.rows.length === 0 && !preview.invalid && (
+          <div data-testid="publish-empty" className="text-xs text-amber-700 bg-amber-50 border border-amber-200 rounded p-3 space-y-1">
+            <div className="font-semibold">Nothing to publish yet</div>
+            <p>
+              A result is only publishable once it has a <b>measured Pass^k</b> (run an evaluation) and a{" "}
+              <b>known quantization</b>.
+              {preview.excluded_count > 0 && <> All {preview.excluded_count} model{preview.excluded_count === 1 ? " was" : "s were"} excluded for missing one of these.</>}
+            </p>
+            <p>Run an eval on at least one quantized model, then reopen this dialog.</p>
+          </div>
+        )}
+
+        {preview && preview.rows.length > 0 && (
           <>
             <WhatsSharedPanel />
             <p className="text-xs text-slate-500">
@@ -94,7 +120,7 @@ export function PublishDialog({ verdicts, onClose, onPublish }: Props) {
           <button type="button" onClick={onClose} data-testid="publish-cancel" className="px-3 py-1.5 rounded-md text-sm text-slate-600 hover:bg-slate-100 transition-colors">
             Cancel
           </button>
-          <button type="button" disabled={!canPublish} data-testid="publish-confirm" onClick={() => preview && onPublish(preview, link.trim())} className="px-3 py-1.5 rounded-md text-sm font-semibold text-white bg-slate-900 hover:bg-slate-800 disabled:opacity-50">
+          <button type="button" disabled={!canPublish} title={disabledReason} data-testid="publish-confirm" onClick={() => preview && onPublish(preview, link.trim())} className="px-3 py-1.5 rounded-md text-sm font-semibold text-white bg-slate-900 hover:bg-slate-800 disabled:opacity-50">
             Publish
           </button>
         </div>
