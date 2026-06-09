@@ -6,6 +6,7 @@ export const UserSettingsSchema = z.object({
   first_run_complete: z.boolean().default(false),
   last_update_check_at: z.string().nullable().optional(),
   models_folder: z.string().nullable().optional(),
+  stt_engine_dir: z.string().nullable().optional(),
 });
 export type UserSettings = z.infer<typeof UserSettingsSchema>;
 
