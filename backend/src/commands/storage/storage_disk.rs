@@ -4,7 +4,7 @@ use sysinfo::Disks;
 
 /// Make a path absolute so the UI never shows a relative/"hidden" path like
 /// `./`. Relative paths are joined onto the current working directory.
-fn absolutize(p: PathBuf) -> PathBuf {
+pub(crate) fn absolutize(p: PathBuf) -> PathBuf {
     if p.is_absolute() {
         return p;
     }

@@ -14,5 +14,6 @@ pub mod prompt_templates;
 pub mod publish;
 pub mod settings;
 pub mod storage;
+pub mod stt;
 pub mod system;
 pub mod workspace;
