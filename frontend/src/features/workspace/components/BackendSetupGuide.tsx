@@ -39,16 +39,13 @@ const ENGINES: Engine[] = [
   {
     id: "llama_cpp",
     name: "llama.cpp",
-    tag: "Bundled — no install",
-    blurb: "The llama-server runs a single GGUF directly, bundled with QuantaMind.",
+    tag: "Local GGUF",
+    blurb: "Runs a single GGUF directly via llama-server.",
     runs: "Any .gguf file",
-    commands: [],
-    links: [
-      { text: "Browse GGUF models on Hugging Face", href: "https://huggingface.co/models?library=gguf&sort=trending" },
-      { text: "llama.cpp project", href: "https://github.com/ggml-org/llama.cpp" },
-    ],
+    commands: [{ label: "Install (macOS)", cmd: "brew install llama.cpp" }],
+    links: [{ text: "llama.cpp project", href: "https://github.com/ggml-org/llama.cpp" }],
     steps: [
-      "Nothing to install — llama-server ships with the app.",
+      "Install llama.cpp with the command above (a server also ships bundled).",
       "Download a GGUF in Models → Hugging Face (or Local File).",
       "Pick llama.cpp + your model in the header, then press ▶.",
     ],
