@@ -5,7 +5,7 @@ import { SingleRun } from "./run/SingleRun";
 import { HardwareSummary } from "../../compare/components/controls/HardwareSummary";
 import { RunStrategyPicker } from "../../compare/components/controls/RunStrategyPicker";
 import { MultiRun } from "../../compare/components/controls/MultiRun";
-import { PromptTemplatePicker } from "../../../shared/ui/PromptTemplatePicker";
+import { PromptTemplatePicker } from "./PromptTemplatePicker";
 import { useWorkspacesStore } from "../../workspaces/state/workspaceStore";
 import { useSelectedModelStore } from "../../../shared/state/selectedModelStore";
 

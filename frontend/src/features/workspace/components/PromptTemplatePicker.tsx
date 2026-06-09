@@ -1,5 +1,5 @@
 import { useEffect, useState } from "react";
-import { listPromptTemplates, type PromptTemplate } from "../ipc/prompts/templates";
+import { listPromptTemplates, type PromptTemplate } from "../../../shared/ipc/prompts/templates";
 
 /** A dropdown of bundled prompt templates; selecting one inserts its body. */
 export function PromptTemplatePicker({ onInsert }: { onInsert: (body: string) => void }) {
