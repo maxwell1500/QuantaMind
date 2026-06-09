@@ -288,6 +288,25 @@ it reads as fixable, not broken. The classifier (`ImportError` in
 
 The raw parser detail is kept (demoted) under **Details:** for diagnosis.
 
+### Speech-to-text server won't start {#stt-server}
+
+Starting the whisper.cpp STT server (`start_whisper_server`) returns a tagged
+result so the UI can say exactly what to fix — none of these mean the app is
+broken:
+
+- **`not_bundled`** — the `whisper-server` sidecar isn't bundled for this build
+  yet. STT is unavailable until it ships in `backend/binaries/`.
+- **`model_missing`** — the whisper model file isn't on disk. Download a model
+  from the STT catalog first.
+- **`vad_missing`** — the silero VAD model is absent. The VAD ships *together*
+  with each whisper model, so re-run the download; STT stays disabled without it
+  (the VAD gates the silence-detection metric).
+- **`port_conflict`** — something else holds the STT port (`:8093`). QuantaMind
+  won't take over a process it didn't start — stop the other process and retry.
+- **"Can't reach the local STT server"** — the server isn't answering on
+  `127.0.0.1`. STT is offline-only; it never reaches the cloud, so a down local
+  server fails loud rather than silently falling back.
+
 ### Clearing cached data {#clear-cache}
 
 Downloads → **Clear cache** reclaims space taken by regenerable app data. It

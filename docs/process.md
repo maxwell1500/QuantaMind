@@ -37,6 +37,7 @@ Phase 3 additions (locked; installed when their step lands):
 | Word diff (TS) | `diff-match-patch` | De-facto standard for word-level diffs; tiny, dependency-free. |
 | Secret storage (Rust) | `keyring` | OS-native keychain for cloud API keys — never plaintext on disk. |
 | llama.cpp backend | `llama-server` (Tauri sidecar binary) | Local GGUF inference over HTTP, mirroring the Ollama path. Subprocess, not in-process FFI. |
+| STT engine (Phase 0) | `whisper-server` (whisper.cpp `server` example; bundled sidecar) | Local speech-to-text over HTTP on `:8093`, mirroring the `llama-server` lifecycle; reuses the bundled `libggml-*` dylibs. Subprocess, not FFI. State-aware `/health`; silero VAD bundled with each model. `mlx-whisper`/`faster-whisper` are deferred — see [Future considerations](#future-considerations). |
 
 Phase 4 additions (locked; installed when their step lands):
 
@@ -672,6 +673,17 @@ Owners flesh out the next phase's section here when the current lands.
 Parking lot for ideas, libraries, and changes deliberately deferred. Nothing
 here is in the current phase — see [Phase roadmap](#phase-roadmap). If something
 here becomes relevant, move it into a phase plan first.
+
+### Additional STT engines (mlx-whisper, faster-whisper)
+
+**Why deferred:** Phase 0 lands one working STT engine first (whisper.cpp). The
+STT engine is its own state axis, so adding engines is purely additive.
+`mlx-whisper` (Apple-Silicon-native, mirrors `mlx_lm.server`: PATH-located, word
+timestamps) and `faster-whisper` (the path for Ollama users, who have no native
+STT) each get their own `commands/stt/<engine>` lifecycle. **Activate when:** a
+later phase needs Apple-Silicon-native word timestamps, or Ollama-user parity.
+Both expose an OpenAI-compatible endpoint, so each must keep the loopback-only
+`stt_probe` guardrail (never silently reach `api.openai.com`).
 
 ### Apple Developer ID + notarization (macOS)
 

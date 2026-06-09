@@ -73,6 +73,19 @@ HTTP to a local Ollama server.
   resolved via `inference/mlx/server/mlx_endpoint.rs` — not a hardcoded `:8082`.
   **Tauri-free and must not import `crate::commands`** — when it must report
   progress it takes a sink trait (see [Layering](#layering)), not an `AppHandle`.
+- `commands/stt/` + `inference/stt/` — **speech-to-text (whisper.cpp)**, an *additive
+  parallel capability* that does not touch `InferenceBackend`/`run_prompt`. The STT
+  engine is its own state axis, never derived from the LLM `BackendKind`.
+  `commands/stt/` owns the `whisper-server` sidecar lifecycle: a fixed port `:8093`
+  (clear of MLX's `8082..=8092` scan range) with **`/health`-gated readiness** — the
+  server's own state machine answers HTTP 200 once the model is loaded, 503 while
+  loading — graceful-then-hard kill, and reaping on exit alongside the LLM sidecars.
+  Acquisition is atomic: `download_stt_model` stages the whisper ggml + the shared
+  silero VAD, validates each, and promotes both-or-none; `reconcile_stt_dir` sweeps
+  half-installs at startup. IPC: `start`/`stop_whisper_server`, `check_whisper_health`,
+  `download_stt_model`, `cancel_stt_install`, `list_stt_catalog`. `inference/stt/` is
+  the Tauri-free domain (curated catalog, ggml-format validation, the loopback-only
+  offline probe so transcription never silently reaches the cloud).
 - `metrics/` — measurements: TTFT, tokens/sec, VRAM.
 - `persistence/` — YAML/JSON read+write of prompts and history, plus `evals.rs`
   (custom tool-call eval collections: one `.json` per collection, name-sanitised,

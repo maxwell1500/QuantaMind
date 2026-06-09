@@ -178,6 +178,13 @@ pub fn cancel_stt_install(state: tauri::State<'_, SttInstallState>) -> Result<()
     Ok(())
 }
 
+/// The curated STT catalog (id, display, repo/file, disk size, VRAM, language)
+/// for the pre-download disclosure list.
+#[tauri::command]
+pub fn list_stt_catalog() -> Vec<SttCatalogEntry> {
+    crate::inference::stt::stt_catalog::catalog().to_vec()
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
