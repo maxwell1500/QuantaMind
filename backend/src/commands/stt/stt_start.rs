@@ -5,6 +5,7 @@ use crate::commands::stt::stt_runtime::{
 use crate::commands::settings::user_settings::UserSettingsState;
 use crate::commands::stt::stt_server_types::{SttServerState, SttStartResult};
 use crate::errors::AppError;
+use serde::Serialize;
 use std::path::{Path, PathBuf};
 use std::time::Duration;
 use tauri::Manager;
@@ -89,6 +90,69 @@ fn resolve_whisper_on_path() -> Option<PathBuf> {
 #[cfg(not(target_os = "macos"))]
 fn resolve_whisper_on_path() -> Option<PathBuf> {
     None
+}
+
+/// Whether the STT engine is present AND actually runnable in this environment.
+/// `found` = a `whisper-server` binary was located; `runnable` = it executed (a
+/// `--help` dry-run exited 0). The split exists because a binary can be present
+/// yet broken — e.g. its `libwhisper` dylib is missing/mismatched — and we must
+/// not signal "ready" then fail on start. `error` carries the diagnostic for
+/// the not-runnable case.
+#[derive(Serialize, Debug, PartialEq)]
+pub struct WhisperEnv {
+    pub found: bool,
+    pub dir: Option<String>,
+    pub runnable: bool,
+    pub error: Option<String>,
+}
+
+/// Prove `whisper-server` actually runs from `dir` (its dylibs resolve), not just
+/// that the file exists: run `--help` with the same env `spawn_server` uses. A
+/// broken install exits non-zero with a dyld `Library not loaded: …` line on
+/// stderr, which we return (last few lines) as the diagnostic.
+fn dry_run(dir: &Path) -> Result<(), String> {
+    let out = std::process::Command::new(dir.join(bin_name()))
+        .arg("--help")
+        .current_dir(dir)
+        .env("DYLD_FALLBACK_LIBRARY_PATH", dir)
+        .output()
+        .map_err(|e| e.to_string())?;
+    if out.status.success() {
+        return Ok(());
+    }
+    let stderr = String::from_utf8_lossy(&out.stderr);
+    let tail: Vec<&str> = stderr.lines().filter(|l| !l.trim().is_empty()).collect();
+    let tail = tail.iter().rev().take(4).rev().cloned().collect::<Vec<_>>().join("\n");
+    Err(if tail.trim().is_empty() {
+        format!("whisper-server couldn't run (exit {})", out.status)
+    } else {
+        tail
+    })
+}
+
+/// Report whether the whisper.cpp STT engine is installed and runnable, so the
+/// UI can show the catalog (ready) vs a setup card (install / reinstall) without
+/// attempting a start. The dry-run runs off the async runtime.
+#[tauri::command]
+pub async fn check_whisper_env(app: tauri::AppHandle) -> WhisperEnv {
+    let Some(dir) = whisper_dir(&app) else {
+        return WhisperEnv { found: false, dir: None, runnable: false, error: None };
+    };
+    let dir_str = dir.to_string_lossy().into_owned();
+    let probe = dir.clone();
+    let result = tokio::task::spawn_blocking(move || dry_run(&probe)).await;
+    match result {
+        Ok(Ok(())) => WhisperEnv { found: true, dir: Some(dir_str), runnable: true, error: None },
+        Ok(Err(e)) => {
+            WhisperEnv { found: true, dir: Some(dir_str), runnable: false, error: Some(e) }
+        }
+        Err(e) => WhisperEnv {
+            found: true,
+            dir: Some(dir_str),
+            runnable: false,
+            error: Some(format!("dry-run failed to run: {e}")),
+        },
+    }
 }
 
 /// The R2 ownership decision from the two probe facts. Pure so the truth table
@@ -288,5 +352,24 @@ mod tests {
         let note = port_conflict_note();
         assert!(note.contains("8093"));
         assert!(note.contains("didn't start"));
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn dry_run_passes_a_runnable_binary_and_captures_a_broken_one() {
+        use std::os::unix::fs::PermissionsExt;
+        let make = |dir: &Path, body: &str| {
+            let bin = dir.join(bin_name());
+            std::fs::write(&bin, body).unwrap();
+            std::fs::set_permissions(&bin, std::fs::Permissions::from_mode(0o755)).unwrap();
+        };
+        let ok = tempfile::tempdir().unwrap();
+        make(ok.path(), "#!/bin/sh\nexit 0\n");
+        assert!(dry_run(ok.path()).is_ok(), "a binary that runs is OK");
+
+        let bad = tempfile::tempdir().unwrap();
+        make(bad.path(), "#!/bin/sh\necho 'dyld: Library not loaded: @rpath/libwhisper.1.dylib' >&2\nexit 134\n");
+        let err = dry_run(bad.path()).unwrap_err();
+        assert!(err.contains("Library not loaded"), "captures the dyld diagnostic: {err}");
     }
 }

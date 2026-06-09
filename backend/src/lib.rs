@@ -81,6 +81,7 @@ pub fn run() {
             commands::llama::llama_models::delete_llama_model,
             commands::stt::stt_start::start_whisper_server,
             commands::stt::stt_start::stop_whisper_server,
+            commands::stt::stt_start::check_whisper_env,
             commands::stt::stt_health::check_whisper_health,
             commands::stt::stt_download::download_stt_model,
             commands::stt::stt_download::cancel_stt_install,
