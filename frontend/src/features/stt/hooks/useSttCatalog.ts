@@ -15,9 +15,14 @@ export function useSttCatalog() {
   const [installed, setInstalled] = useState<InstalledSttModel[]>([]);
 
   const refresh = useCallback(async () => {
-    const [c, i] = await Promise.all([listSttCatalog(), listInstalledSttModels()]);
-    setCatalog(c);
-    setInstalled(i);
+    try {
+      const [c, i] = await Promise.all([listSttCatalog(), listInstalledSttModels()]);
+      setCatalog(c);
+      setInstalled(i);
+    } catch {
+      // IPC unavailable (e.g. very early boot / a non-Tauri context) — keep
+      // current state rather than throwing an unhandled rejection.
+    }
   }, []);
 
   useEffect(() => {
