@@ -5,7 +5,7 @@ import type { RepoKind } from "../../../shared/ipc/models/hf_browse";
 // Narrowed to the three Add-Model sub-tabs now that AddModelModal is
 // gone (M.5.81). Downloads and Storage are top-level tabs via
 // `navStore.topView`, not sub-tabs of the Models page.
-export const TabIdSchema = z.enum(["ollama", "huggingface", "local"]);
+export const TabIdSchema = z.enum(["ollama", "huggingface", "local", "stt"]);
 export type TabId = z.infer<typeof TabIdSchema>;
 
 export type DownloadStatus =
