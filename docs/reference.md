@@ -237,8 +237,9 @@ mlx-lm once (`pip install mlx-lm`). MLX models then work like every other
 backend: **download → select → Start → run/eval/quant.**
 
 **Download:** in **Models → HuggingFace**, flip the **GGUF / MLX** toggle to MLX
-and search (GGUF, the default, is unfiltered; MLX is narrowed to `mlx`-tagged
-repos, mostly `mlx-community`). Open a repo and click **Download for MLX** — the
+and search. Each toggle filters search to that library tag — GGUF to `gguf`-tagged
+repos (so only repos with downloadable `.gguf` files appear), MLX to `mlx`-tagged
+repos, mostly `mlx-community`. Open a repo and click **Download for MLX** — the
 full snapshot (config + safetensors + tokenizer) lands in `~/.quantamind/mlx/`
 (override with `QUANTAMIND_MLX_DIR`). The **detail view follows the repo's tags,
 not the toggle**, so an `mlx`-tagged repo opens the MLX download even when found

@@ -9,6 +9,7 @@ async fn search_returns_parsed_hits_with_query_params_set() {
         .mock("GET", "/api/models")
         .match_query(Matcher::AllOf(vec![
             Matcher::UrlEncoded("search".into(), "llama".into()),
+            Matcher::UrlEncoded("filter".into(), "gguf".into()),
             Matcher::UrlEncoded("sort".into(), "downloads".into()),
             Matcher::UrlEncoded("direction".into(), "-1".into()),
             Matcher::UrlEncoded("limit".into(), "30".into()),
@@ -32,11 +33,12 @@ async fn search_returns_parsed_hits_with_query_params_set() {
 }
 
 #[tokio::test]
-async fn gguf_kind_returns_every_hit_unfiltered() {
-    // GGUF search is unfiltered — repos surface regardless of tags or files.
+async fn gguf_kind_keeps_only_gguf_tagged_repos() {
+    // GGUF search filters to the `gguf` library tag, so safetensors-only repos
+    // (nothing to download) drop out.
     let mut s = Server::new_async().await;
     let _m = s.mock("GET", "/api/models")
-        .match_query(Matcher::Any)
+        .match_query(Matcher::UrlEncoded("filter".into(), "gguf".into()))
         .with_status(200)
         .with_body(r#"[
             {"id":"a/tagged","downloads":3,"likes":0,"tags":["gguf"]},
@@ -46,7 +48,7 @@ async fn gguf_kind_returns_every_hit_unfiltered() {
         .create_async().await;
     let hits = search_models(&s.url(), "x", 30, RepoKind::Gguf).await.expect("ok");
     let ids: Vec<&str> = hits.iter().map(|h| h.id.as_str()).collect();
-    assert_eq!(ids, vec!["a/tagged", "b/untagged", "c/anything"], "no GGUF filtering");
+    assert_eq!(ids, vec!["a/tagged"], "only the gguf-tagged repo survives");
 }
 
 #[tokio::test]
