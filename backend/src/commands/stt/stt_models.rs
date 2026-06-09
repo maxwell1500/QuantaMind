@@ -1,4 +1,7 @@
+use crate::commands::emit::log_emit;
+use crate::commands::gguf::gguf_cmd::EVENT_MODELS_CHANGED;
 use crate::commands::stt::stt_disk::{stt_dir, vad_dest, whisper_dest};
+use crate::errors::AppError;
 use crate::inference::stt::stt_catalog::{catalog, VAD_FILE};
 use crate::inference::stt::stt_format::{validate_stt_model, SttModelKind};
 use serde::Serialize;
@@ -52,6 +55,24 @@ pub fn list_installed_stt_models() -> Vec<InstalledSttModel> {
     installed_in(&stt_dir())
 }
 
+/// Remove a model's whisper `.bin` from `dir`. The shared VAD is left in place —
+/// other models rely on it. Missing file is a no-op.
+fn delete_in(dir: &Path, id: &str) -> std::io::Result<()> {
+    let path = whisper_dest(dir, id);
+    if path.exists() {
+        std::fs::remove_file(&path)?;
+    }
+    Ok(())
+}
+
+/// Delete an installed STT model (its whisper `.bin`), keeping the shared VAD.
+#[tauri::command]
+pub fn delete_stt_model(app: tauri::AppHandle, id: String) -> Result<(), AppError> {
+    delete_in(&stt_dir(), &id).map_err(|e| AppError::Io(e.to_string()))?;
+    log_emit(&app, EVENT_MODELS_CHANGED, ());
+    Ok(())
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -89,5 +110,21 @@ mod tests {
         std::fs::write(vad_dest(p, VAD_FILE), ggml(300 * 1024)).unwrap();
         std::fs::write(whisper_dest(p, "tiny.en"), ggml(4096)).unwrap(); // below the floor
         assert!(installed_in(p).is_empty(), "an invalid/truncated model is excluded");
+    }
+
+    #[test]
+    fn delete_removes_the_model_bin_but_keeps_the_vad() {
+        let dir = tempfile::tempdir().unwrap();
+        let p = dir.path();
+        let model = whisper_dest(p, "tiny.en");
+        let vad = vad_dest(p, VAD_FILE);
+        std::fs::write(&model, ggml(1024 * 1024 + 16)).unwrap();
+        std::fs::write(&vad, ggml(300 * 1024)).unwrap();
+
+        delete_in(p, "tiny.en").unwrap();
+        assert!(!model.exists(), "the whisper .bin is removed");
+        assert!(vad.exists(), "the shared VAD is kept");
+        // Deleting a missing model is a no-op.
+        delete_in(p, "tiny.en").unwrap();
     }
 }

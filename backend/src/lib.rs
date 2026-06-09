@@ -87,6 +87,7 @@ pub fn run() {
             commands::stt::stt_download::cancel_stt_install,
             commands::stt::stt_download::list_stt_catalog,
             commands::stt::stt_models::list_installed_stt_models,
+            commands::stt::stt_models::delete_stt_model,
             commands::settings::settings::get_storage_path,
             commands::settings::settings::validate_storage_path,
             commands::storage::storage::get_installed_models_with_stats,

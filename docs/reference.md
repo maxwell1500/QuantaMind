@@ -309,7 +309,9 @@ shows "ready" then fails on start.
 
 Once the engine is ready, the catalog lists models with their download size;
 installed models (validated ggml + the shared silero VAD) are reported by
-`list_installed_stt_models`.
+`list_installed_stt_models`. A download shows in the **Downloads** page too —
+live progress in the active list, then an **STT** tag in the installed list
+(Delete removes the model's `.bin`, keeping the shared VAD).
 
 **Start failures** (`start_whisper_server`) return a tagged result so the UI says
 exactly what to fix — none mean the app is broken:

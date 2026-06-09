@@ -72,6 +72,10 @@ export async function listInstalledSttModels(): Promise<InstalledSttModel[]> {
   return z.array(InstalledSttModelSchema).parse(await invoke("list_installed_stt_models"));
 }
 
+export async function deleteSttModel(id: string): Promise<void> {
+  await invoke("delete_stt_model", { id });
+}
+
 export async function checkWhisperEnv(): Promise<WhisperEnv> {
   return WhisperEnvSchema.parse(await invoke("check_whisper_env"));
 }
