@@ -28,34 +28,37 @@ beforeEach(() => {
 });
 
 describe("GlobalControls (global header)", () => {
+  const backendSelect = () => screen.getByTestId("header-backend-select") as HTMLSelectElement;
+
   it("renders the backend selector and the active server control together", () => {
     mockInvoke(false);
     render(<GlobalControls />);
     expect(screen.getByTestId("header-backend-selector")).toBeInTheDocument();
-    expect(screen.getByTestId("header-backend-ollama")).toHaveTextContent("Ollama");
+    expect(backendSelect().value).toBe("ollama");
     // Ollama active + down → its Start control shows.
     expect(screen.getByTestId("ollama-start")).toBeInTheDocument();
   });
 
-  it("clicking a backend switches the global selection and the server control", () => {
+  it("choosing a backend switches the global selection and the server control", () => {
     mockInvoke(false);
     render(<GlobalControls />);
-    fireEvent.click(screen.getByTestId("header-backend-llama_cpp"));
+    fireEvent.change(backendSelect(), { target: { value: "llama_cpp" } });
     expect(useBackendStore.getState().selectedBackend).toBe("llama_cpp");
     expect(screen.getByTestId("llama-start")).toBeInTheDocument();
     expect(screen.queryByTestId("ollama-start")).toBeNull();
   });
 
-  it("shows the MLX backend only on Apple Silicon", async () => {
+  it("shows the MLX option only on Apple Silicon", async () => {
     mockInvoke(true);
     render(<GlobalControls />);
-    expect(await screen.findByTestId("header-backend-mlx")).toHaveTextContent("MLX");
+    await waitFor(() => expect(invoke).toHaveBeenCalledWith("get_hardware_snapshot"));
+    expect(backendSelect().querySelector('option[value="mlx"]')).not.toBeNull();
   });
 
   it("hides MLX off Apple Silicon", async () => {
     mockInvoke(false);
     render(<GlobalControls />);
     await waitFor(() => expect(invoke).toHaveBeenCalledWith("get_hardware_snapshot"));
-    expect(screen.queryByTestId("header-backend-mlx")).toBeNull();
+    expect(backendSelect().querySelector('option[value="mlx"]')).toBeNull();
   });
 });
