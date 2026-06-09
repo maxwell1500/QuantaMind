@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useState } from "react";
+import { listen } from "@tauri-apps/api/event";
 import {
   listSttCatalog,
   listInstalledSttModels,
@@ -21,6 +22,12 @@ export function useSttCatalog() {
 
   useEffect(() => {
     void refresh();
+    // Refresh when a model lands (the STT install emits models-changed) so the
+    // header dropdown picks up a newly-downloaded model without a reload.
+    const un = listen("models-changed", () => void refresh());
+    return () => {
+      void un.then((f) => f());
+    };
   }, [refresh]);
 
   const installedIds = new Set(installed.map((m) => m.id));

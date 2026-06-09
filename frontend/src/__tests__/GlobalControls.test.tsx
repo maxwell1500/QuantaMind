@@ -3,6 +3,7 @@ import { render, screen, fireEvent, waitFor } from "@testing-library/react";
 
 vi.mock("@tauri-apps/api/core", () => ({ invoke: vi.fn() }));
 vi.mock("@tauri-apps/plugin-shell", () => ({ open: vi.fn() }));
+vi.mock("@tauri-apps/api/event", () => ({ listen: vi.fn().mockResolvedValue(() => {}) }));
 vi.mock("../features/workspace/hooks/useStartOllama", () => ({ useStartOllama: () => ({ start: vi.fn(), status: "idle" }) }));
 vi.mock("../features/workspace/hooks/useStopOllama", () => ({ useStopOllama: () => ({ stop: vi.fn(), status: "idle" }) }));
 vi.mock("../features/workspace/hooks/useStartLlamaServer", () => ({ useStartLlamaServer: () => ({ start: vi.fn(), status: "idle", error: null }) }));
@@ -37,6 +38,9 @@ describe("GlobalControls (global header)", () => {
     expect(backendSelect().value).toBe("ollama");
     // Ollama active + down → its Start control shows.
     expect(screen.getByTestId("ollama-start")).toBeInTheDocument();
+    // The STT group is always present alongside the LLM group.
+    expect(screen.getByTestId("header-stt-control")).toBeInTheDocument();
+    expect(screen.getByTestId("stt-start")).toBeDisabled(); // no STT model installed
   });
 
   it("choosing a backend switches the global selection and the server control", () => {

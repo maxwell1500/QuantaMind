@@ -1,4 +1,5 @@
 use crate::commands::emit::log_emit;
+use crate::commands::gguf::gguf_cmd::EVENT_MODELS_CHANGED;
 use crate::commands::stt::stt_disk::{reconcile_stt_dir, staging_dir, stt_dir, vad_dest, whisper_dest};
 use crate::errors::{AppError, AppResult};
 use crate::inference::hf::hf_download::{download_file, DownloadProgress};
@@ -167,6 +168,10 @@ pub async fn download_stt_model(
     let on_progress = move |p: SttInstallProgress| log_emit(&ev_app, EVENT_STT_PROGRESS, p);
     let result = install_to_dir(HF_ENDPOINT, &dir, entry, on_progress, token).await;
     *state.current.lock_recover() = None;
+    if matches!(result, Ok(SttInstallOutcome::Installed)) {
+        // Tell the UI an STT model landed, so the header's model dropdown refreshes.
+        log_emit(&app, EVENT_MODELS_CHANGED, ());
+    }
     result.map(|_| ())
 }
 

@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useState } from "react";
 import {
   startWhisperServer,
   stopWhisperServer,
@@ -6,62 +6,52 @@ import {
 } from "../../../shared/ipc/stt/stt";
 import { formatIpcError } from "../../../shared/ipc/core/error";
 
-const POLL_MS = 1500;
+const POLL_MS = 2000;
 
-/// Start/stop the whisper-server, mirroring useMlxServer: start branches on the
-/// tagged SttStartResult (each failure → an actionable message), then polls
-/// /health until ready. start_failed surfaces the stderr tail; the gating
-/// statuses surface their note. The caller renders the message via SttError.
+/// Start/stop the single whisper-server and track its health. A continuous
+/// /health poll keeps `healthy` live — so the header dot reflects a server
+/// started elsewhere (e.g. from the STT tab), and the spinner clears the moment
+/// the model finishes loading. start branches on the tagged SttStartResult so
+/// each failure yields an actionable message (rendered via SttError).
 export function useSttServer() {
-  const [starting, setStarting] = useState(false);
   const [healthy, setHealthy] = useState<boolean | null>(null);
+  const [starting, setStarting] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  const timer = useRef<ReturnType<typeof setInterval> | null>(null);
 
-  const clear = () => {
-    if (timer.current) clearInterval(timer.current);
-    timer.current = null;
-  };
-  useEffect(() => () => clear(), []);
-
-  const settle = useCallback((ok: boolean, msg: string | null) => {
-    clear();
-    setStarting(false);
-    setHealthy(ok);
-    if (msg) setError(msg);
+  useEffect(() => {
+    let cancelled = false;
+    const tick = async () => {
+      try {
+        const ok = (await checkWhisperHealth()).available;
+        if (cancelled) return;
+        setHealthy(ok);
+        if (ok) setStarting(false);
+      } catch {
+        if (!cancelled) setHealthy(false);
+      }
+    };
+    void tick();
+    const id = setInterval(() => void tick(), POLL_MS);
+    return () => {
+      cancelled = true;
+      clearInterval(id);
+    };
   }, []);
 
-  const poll = useCallback(async () => {
+  const start = useCallback(async (modelPath: string, vadPath: string) => {
+    setError(null);
+    setStarting(true);
     try {
-      if ((await checkWhisperHealth()).available) settle(true, null);
+      const r = await startWhisperServer(modelPath, vadPath);
+      if (r.status === "already_running" || r.status === "started") return; // poll flips healthy + clears starting
+      setStarting(false);
+      if (r.status === "start_failed") setError(`${r.error}\n${r.stderr_tail}`);
+      else setError(r.note); // not_bundled | model_missing | vad_missing | port_conflict
     } catch (e) {
-      settle(false, formatIpcError(e));
+      setStarting(false);
+      setError(formatIpcError(e));
     }
-  }, [settle]);
-
-  const start = useCallback(
-    async (modelPath: string, vadPath: string) => {
-      setError(null);
-      setStarting(true);
-      try {
-        const r = await startWhisperServer(modelPath, vadPath);
-        if (r.status === "already_running" || r.status === "started") {
-          clear();
-          timer.current = setInterval(() => void poll(), POLL_MS);
-          void poll();
-          return;
-        }
-        if (r.status === "start_failed") {
-          return settle(false, `${r.error}\n${r.stderr_tail}`);
-        }
-        // not_bundled | model_missing | vad_missing | port_conflict
-        return settle(false, r.note);
-      } catch (e) {
-        settle(false, formatIpcError(e));
-      }
-    },
-    [poll, settle],
-  );
+  }, []);
 
   const stop = useCallback(async () => {
     setError(null);
@@ -70,8 +60,9 @@ export function useSttServer() {
     } catch {
       /* best-effort */
     }
-    settle(false, null);
-  }, [settle]);
+    setHealthy(false);
+    setStarting(false);
+  }, []);
 
   return { start, stop, starting, healthy, error };
 }

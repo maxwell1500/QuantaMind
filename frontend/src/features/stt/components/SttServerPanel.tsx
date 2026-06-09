@@ -1,14 +1,16 @@
-import { useState } from "react";
 import type { InstalledSttModel } from "../../../shared/ipc/stt/stt";
 import { useSttServer } from "../hooks/useSttServer";
+import { useSttSelectionStore } from "../state/sttSelectionStore";
 import { SttError } from "./SttError";
 
 /// Start/stop the whisper-server for a chosen installed model, with a health
-/// dot. Start failures render as actionable guidance via SttError (incl. the
+/// dot. The selected model is the global one (shared with the header control).
+/// Start failures render as actionable guidance via SttError (incl. the
 /// truncated stderr tail on a crash). Mirrors MlxServerControl.
 export function SttServerPanel({ installed }: { installed: InstalledSttModel[] }) {
   const { start, stop, starting, healthy, error } = useSttServer();
-  const [selected, setSelected] = useState<string>("");
+  const selected = useSttSelectionStore((s) => s.selectedSttModelId);
+  const setSelected = useSttSelectionStore((s) => s.setSelectedSttModelId);
 
   if (installed.length === 0) {
     return (
