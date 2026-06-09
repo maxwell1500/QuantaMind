@@ -2,6 +2,7 @@ use crate::commands::stt::stt_runtime::{
     bin_name, build_spawn_args, is_reachable, is_ready, spawn_server, POLL_INTERVAL_MS, PORT,
     PROBE_TIMEOUT_MS, READY_TIMEOUT_SECS,
 };
+use crate::commands::settings::user_settings::UserSettingsState;
 use crate::commands::stt::stt_server_types::{SttServerState, SttStartResult};
 use crate::errors::AppError;
 use std::path::{Path, PathBuf};
@@ -13,11 +14,29 @@ pub const NOT_BUNDLED_MSG: &str =
 pub const READY_TIMEOUT_MSG: &str =
     "whisper-server started but didn't report a loaded model within 30 seconds.";
 
-/// Directory holding `whisper-server` and its dylibs (colocated, like
-/// llama-server): env override → bundled resources (prod) → source tree (dev).
-fn whisper_dir(app: &tauri::AppHandle) -> Option<PathBuf> {
-    if let Ok(p) = std::env::var("QUANTAMIND_WHISPER_DIR") {
-        return has_bin(PathBuf::from(p));
+/// Directory holding a runnable `whisper-server`. Resolution order, most
+/// explicit first: persistent user setting → `QUANTAMIND_WHISPER_DIR` env →
+/// PATH/Homebrew (a `brew install whisper-cpp`) → bundled resources (prod) →
+/// source tree (dev). The PATH/Homebrew step is what makes a user-installed
+/// engine "just work" without any path juggling. `spawn_server`'s
+/// `current_dir` + `DYLD_FALLBACK_LIBRARY_PATH` let the brew binary resolve its
+/// `@loader_path/../lib` `libwhisper`.
+pub(crate) fn whisper_dir(app: &tauri::AppHandle) -> Option<PathBuf> {
+    let setting = app
+        .try_state::<UserSettingsState>()
+        .and_then(|s| s.stt_engine_dir(app).ok().flatten());
+    let env = std::env::var("QUANTAMIND_WHISPER_DIR").ok();
+    let explicit: Vec<PathBuf> = [setting, env]
+        .into_iter()
+        .flatten()
+        .filter(|s| !s.trim().is_empty())
+        .map(PathBuf::from)
+        .collect();
+    if let Some(d) = first_dir_with_bin(&explicit) {
+        return Some(d);
+    }
+    if let Some(d) = resolve_whisper_on_path() {
+        return Some(d);
     }
     if let Ok(res) = app.path().resource_dir() {
         if let Some(d) = has_bin(res.join("binaries")) {
@@ -35,6 +54,41 @@ fn whisper_dir(app: &tauri::AppHandle) -> Option<PathBuf> {
 
 fn has_bin(dir: PathBuf) -> Option<PathBuf> {
     dir.join(bin_name()).exists().then_some(dir)
+}
+
+/// First of `dirs` that actually contains the `whisper-server` binary. Pure, so
+/// the setting-before-env ordering is testable without Tauri.
+fn first_dir_with_bin(dirs: &[PathBuf]) -> Option<PathBuf> {
+    dirs.iter().find_map(|d| has_bin(d.clone()))
+}
+
+/// Discover a user-installed `whisper-server` on PATH or in the standard
+/// Homebrew prefixes, mirroring `ollama_runtime::resolve_ollama`. The hardcoded
+/// prefixes matter: a Finder-launched GUI app doesn't inherit the shell `PATH`,
+/// so `which` alone would miss a brew install.
+#[cfg(target_os = "macos")]
+fn resolve_whisper_on_path() -> Option<PathBuf> {
+    if let Ok(out) = std::process::Command::new("which").arg(bin_name()).output() {
+        if out.status.success() {
+            let path = String::from_utf8_lossy(&out.stdout).trim().to_string();
+            if let Some(dir) = (!path.is_empty()).then(|| PathBuf::from(&path)).as_ref().and_then(|p| p.parent()) {
+                if let Some(d) = has_bin(dir.to_path_buf()) {
+                    return Some(d);
+                }
+            }
+        }
+    }
+    for dir in ["/opt/homebrew/bin", "/usr/local/bin"] {
+        if let Some(d) = has_bin(PathBuf::from(dir)) {
+            return Some(d);
+        }
+    }
+    None
+}
+
+#[cfg(not(target_os = "macos"))]
+fn resolve_whisper_on_path() -> Option<PathBuf> {
+    None
 }
 
 /// The R2 ownership decision from the two probe facts. Pure so the truth table
@@ -165,6 +219,26 @@ mod tests {
         assert!(has_bin(dir.path().to_path_buf()).is_none(), "empty dir resolves to None");
         std::fs::write(dir.path().join(bin_name()), b"x").unwrap();
         assert_eq!(has_bin(dir.path().to_path_buf()).as_deref(), Some(dir.path()));
+    }
+
+    #[test]
+    fn first_dir_with_bin_prefers_the_earliest_dir_that_has_the_binary() {
+        let empty = tempfile::tempdir().unwrap();
+        let a = tempfile::tempdir().unwrap();
+        let b = tempfile::tempdir().unwrap();
+        std::fs::write(a.path().join(bin_name()), b"x").unwrap();
+        std::fs::write(b.path().join(bin_name()), b"x").unwrap();
+        assert!(first_dir_with_bin(&[empty.path().to_path_buf()]).is_none());
+        // The earlier candidate (e.g. the user setting) wins over a later one (env).
+        assert_eq!(
+            first_dir_with_bin(&[a.path().to_path_buf(), b.path().to_path_buf()]).as_deref(),
+            Some(a.path())
+        );
+        // Skips a candidate that lacks the binary.
+        assert_eq!(
+            first_dir_with_bin(&[empty.path().to_path_buf(), b.path().to_path_buf()]).as_deref(),
+            Some(b.path())
+        );
     }
 
     #[test]
