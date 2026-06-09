@@ -2,7 +2,7 @@ import { formatBytes } from "../../../shared/format/bytes";
 import { memoryFit, fitBadge } from "../../models/fit";
 import type { HardwareSnapshot } from "../../../shared/ipc/compare/hardware";
 import type { SttCatalogEntry } from "../../../shared/ipc/stt/stt";
-import { useSttInstallStore } from "../state/sttInstallStore";
+import { useModelStore } from "../../models/state/modelStore";
 import { SttError } from "./SttError";
 
 type Props = {
@@ -18,8 +18,9 @@ type Props = {
 /// there's no fabricated VRAM column — the Fit badge (real available memory) is
 /// the headroom signal. The active download's progress/guidance render below.
 export function SttCatalogTable({ catalog, installedIds, snapshot, onInstall, onCancel }: Props) {
-  const install = useSttInstallStore();
-  const busy = install.status === "downloading";
+  // The active STT download from the shared store (also shown in the Downloads page).
+  const install = useModelStore((s) => (s.activeSttName ? s.downloads[s.activeSttName] ?? null : null));
+  const busy = install?.status === "downloading";
 
   return (
     <div className="flex flex-col gap-2">
@@ -57,7 +58,7 @@ export function SttCatalogTable({ catalog, installedIds, snapshot, onInstall, on
                       onClick={() => onInstall(m.id)}
                       className="text-xs border rounded px-2 py-1 disabled:opacity-50"
                     >
-                      {busy && install.modelId === m.id ? "…" : "Download"}
+                      {busy && install?.id === m.id ? "…" : "Download"}
                     </button>
                   )}
                 </td>
@@ -67,7 +68,7 @@ export function SttCatalogTable({ catalog, installedIds, snapshot, onInstall, on
         </tbody>
       </table>
 
-      {install.status === "downloading" && (
+      {install?.status === "downloading" && (
         <div data-testid="stt-downloading" className="flex items-center gap-2">
           <progress value={install.percent} max={100} className="flex-1 h-2" />
           <span className="text-xs tabular-nums w-10 text-right">{install.percent}%</span>
@@ -76,12 +77,12 @@ export function SttCatalogTable({ catalog, installedIds, snapshot, onInstall, on
           </button>
         </div>
       )}
-      {install.status === "done" && (
+      {install?.status === "success" && (
         <div role="status" data-testid="stt-install-done" className="text-green-700 text-xs">
           Downloaded ✓ — start the server below to use it.
         </div>
       )}
-      {install.status === "error" && install.error && (
+      {install?.status === "error" && install.error && (
         <SttError message={install.error} testid="stt-install-error" />
       )}
     </div>

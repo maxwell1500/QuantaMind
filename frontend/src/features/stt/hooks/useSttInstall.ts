@@ -1,35 +1,36 @@
 import { useCallback, useEffect } from "react";
 import { downloadSttModel, cancelSttInstall } from "../../../shared/ipc/stt/stt";
 import { friendlyInstallError } from "../../../shared/install_error";
-import { useSttInstallStore } from "../state/sttInstallStore";
-import { startSttInstallBus } from "../state/sttInstallBus";
+import { useModelStore } from "../../models/state/modelStore";
+import { useInstalledModelsStore } from "../../models/state/installedModelsStore";
+import { startDownloadEventBus } from "../../models/state/downloadEventBus";
 
-/// Download a whisper model + the shared VAD as one operation. Progress arrives
-/// via the install bus into `useSttInstallStore`; this hook owns begin/finish/
-/// fail and exposes install + cancel. `onDone` refreshes the installed list.
+/// Download a whisper model + the shared VAD as one operation, routed through the
+/// shared download store (source "stt") so progress shows in the Downloads page
+/// alongside LLM downloads. Mirrors useMlxInstall. `onDone` refreshes the
+/// installed list. Progress rides the shared download-event bus.
 export function useSttInstall(onDone?: () => void) {
-  const begin = useSttInstallStore((s) => s.begin);
-  const finish = useSttInstallStore((s) => s.finish);
-  const fail = useSttInstallStore((s) => s.fail);
-  const reset = useSttInstallStore((s) => s.reset);
+  const setActiveSttName = useModelStore((s) => s.setActiveSttName);
+  const upsertDownload = useModelStore((s) => s.upsertDownload);
 
-  // Attach the progress listener once the tab is in use (idempotent).
   useEffect(() => {
-    void startSttInstallBus();
+    void startDownloadEventBus();
   }, []);
 
   const install = useCallback(
     async (id: string) => {
-      begin(id);
+      setActiveSttName(id);
+      upsertDownload({ id, source: "stt", name: id, status: "downloading", percent: 0 });
       try {
         await downloadSttModel(id);
-        finish();
+        upsertDownload({ id, source: "stt", name: id, status: "success", percent: 100 });
+        void useInstalledModelsStore.getState().refresh();
         onDone?.();
       } catch (e) {
-        fail(friendlyInstallError(e));
+        upsertDownload({ id, source: "stt", name: id, status: "error", percent: 0, error: friendlyInstallError(e) });
       }
     },
-    [begin, finish, fail, onDone],
+    [setActiveSttName, upsertDownload, onDone],
   );
 
   const cancel = useCallback(async () => {
@@ -38,8 +39,9 @@ export function useSttInstall(onDone?: () => void) {
     } catch {
       /* best-effort */
     }
-    reset();
-  }, [reset]);
+    const n = useModelStore.getState().activeSttName;
+    if (n) upsertDownload({ id: n, source: "stt", name: n, status: "cancelled", percent: 0 });
+  }, [upsertDownload]);
 
-  return { install, cancel, reset };
+  return { install, cancel };
 }

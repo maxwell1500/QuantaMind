@@ -14,7 +14,7 @@ export type DownloadStatus =
   | "success"
   | "error"
   | "cancelled";
-export type DownloadSource = "ollama" | "huggingface" | "local";
+export type DownloadSource = "ollama" | "huggingface" | "local" | "stt";
 
 export interface DownloadEntry {
   id: string;
@@ -35,6 +35,7 @@ export interface ModelStore {
   downloads: Record<string, DownloadEntry>;
   activeHfName: string | null;
   activeLocalName: string | null;
+  activeSttName: string | null;
   pullNames: Record<string, string>;
   hfSearchQuery: string;
   hfSelectedRepo: string | null;
@@ -48,6 +49,7 @@ export interface ModelStore {
   removeDownload: (id: string) => void;
   setActiveHfName: (n: string | null) => void;
   setActiveLocalName: (n: string | null) => void;
+  setActiveSttName: (n: string | null) => void;
   recordPullName: (pullId: string, name: string) => void;
   removePullName: (pullId: string) => void;
   setHfSearchQuery: (q: string) => void;
@@ -61,6 +63,7 @@ export const useModelStore = create<ModelStore>((set) => ({
   downloads: {},
   activeHfName: null,
   activeLocalName: null,
+  activeSttName: null,
   pullNames: {},
   hfSearchQuery: "",
   hfSelectedRepo: null,
@@ -78,6 +81,7 @@ export const useModelStore = create<ModelStore>((set) => ({
     }),
   setActiveHfName: (n) => set({ activeHfName: n }),
   setActiveLocalName: (n) => set({ activeLocalName: n }),
+  setActiveSttName: (n) => set({ activeSttName: n }),
   recordPullName: (pullId, name) =>
     set((s) => ({ pullNames: { ...s.pullNames, [pullId]: name } })),
   removePullName: (pullId) =>
