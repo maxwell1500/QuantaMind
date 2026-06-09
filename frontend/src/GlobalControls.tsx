@@ -12,10 +12,10 @@ import { SttHeaderControl } from "./features/stt/components/SttHeaderControl";
 export function GlobalControls() {
   return (
     <div className="flex items-center gap-2" data-testid="global-controls">
+      <ServerControl />
       <BackendSelector />
       <ModelSelector />
       <ParamsControl />
-      <ServerControl />
       <span className="mx-1 h-5 w-px bg-gray-200" aria-hidden />
       <SttHeaderControl />
     </div>
