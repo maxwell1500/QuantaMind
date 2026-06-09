@@ -3,3 +3,4 @@
 // docs/architecture.md#architecture). STT engine selection is its own state
 // axis, never derived from the selected LLM backend.
 pub mod stt_disk;
+pub mod stt_stderr;
