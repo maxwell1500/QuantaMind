@@ -229,6 +229,14 @@ surface "Ollama is not running" inside the *Storage* panel. The zeroed sum is
 not a leaky "done" signal: the Ollama-down state is shown distinctly by the
 status bar and the installed-models list, so the user is never misled.
 
+`clear_app_cache` (Downloads → **Clear cache**) deletes only regenerable caches
+under `app_config_dir` via an explicit allow-list (`jobs/`, `history/`,
+`batch_reports/`, `traces/`, `cliff/`, `recent_workspaces.yaml`) and returns the
+measured bytes freed. Downloaded models, custom eval collections (`evals/`),
+readiness profiles (`readiness/`), and settings are absent from the list, so a
+clear can never destroy them. Logic lives in a pure `clear_cache_in(base)` core
+(unit-tested over a tempdir); the thin command only resolves the config dir.
+
 ### Errors are typed
 
 Rust returns `Result<T, AppError>`; TS returns discriminated unions over IPC, not

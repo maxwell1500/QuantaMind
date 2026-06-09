@@ -288,6 +288,17 @@ it reads as fixable, not broken. The classifier (`ImportError` in
 
 The raw parser detail is kept (demoted) under **Details:** for diagnosis.
 
+### Clearing cached data {#clear-cache}
+
+Downloads → **Clear cache** reclaims space taken by regenerable app data. It
+asks you to type `CLEAR` first, then deletes: eval regression history, the last
+batch reports, resumable job logs, pipeline-visualizer traces, context-cliff
+measurements, and the recent-workspace list. It reports how much was freed.
+
+**Kept, always:** your downloaded models, custom eval collections, readiness
+profiles, and app/model settings. The disk-usage number counts only model files,
+so it won't change after a clear — the freed amount is shown separately.
+
 ### Reporting something else
 
 Use the in-app **Feedback** button (bottom-right). Tick "Include diagnostic info"

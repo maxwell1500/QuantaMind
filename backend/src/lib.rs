@@ -75,6 +75,7 @@ pub fn run() {
             commands::settings::settings::validate_storage_path,
             commands::storage::storage::get_installed_models_with_stats,
             commands::storage::storage::remove_model,
+            commands::storage::storage_cache::clear_app_cache,
             commands::storage::storage_usage::get_disk_usage,
             commands::prompt::prompt::run_prompt,
             commands::prompt::prompt::stop_prompt,
