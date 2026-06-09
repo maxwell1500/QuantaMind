@@ -1,16 +1,20 @@
+import { useState } from "react";
 import { open as openExternal } from "@tauri-apps/plugin-shell";
 import { useNavStore } from "../../../shared/state/navStore";
 import { useMlxBackend } from "../hooks/useMlxBackend";
 import { useStartOllama } from "../hooks/useStartOllama";
 
-type Step = { text: string; href?: string };
+type Cmd = { label: string; cmd: string };
+type Link = { text: string; href: string };
 type Engine = {
   id: string;
   name: string;
   tag: string;
   blurb: string;
   runs: string;
-  steps: Step[];
+  commands: Cmd[];
+  links: Link[];
+  steps: string[];
   appleOnly?: boolean;
 };
 
@@ -21,21 +25,32 @@ const ENGINES: Engine[] = [
     tag: "Easiest",
     blurb: "Manages and runs models for you — the best place to start.",
     runs: "Llama 3.2, Qwen 2.5, Phi, Mistral, Gemma… (GGUF)",
+    commands: [
+      { label: "Install (macOS)", cmd: "brew install ollama" },
+      { label: "Then pull a model", cmd: "ollama pull llama3.2:1b" },
+    ],
+    links: [{ text: "Download for any OS", href: "https://ollama.com/download" }],
     steps: [
-      { text: "Install Ollama", href: "https://ollama.com/download" },
-      { text: "QuantaMind starts it for you (or press ▶ in the header)." },
-      { text: "Pull a model in the Models tab — try llama3.2:1b (~700 MB)." },
+      "Install Ollama (command above, or the download link).",
+      "Click “Start Ollama” below — QuantaMind runs it for you.",
+      "Pull a model with the command above, or from the Models tab.",
     ],
   },
   {
     id: "llama_cpp",
     name: "llama.cpp",
     tag: "Bundled — no install",
-    blurb: "Runs a single GGUF directly via the bundled llama-server.",
-    runs: "Any .gguf file from Hugging Face",
+    blurb: "The llama-server runs a single GGUF directly, bundled with QuantaMind.",
+    runs: "Any .gguf file",
+    commands: [],
+    links: [
+      { text: "Browse GGUF models on Hugging Face", href: "https://huggingface.co/models?library=gguf&sort=trending" },
+      { text: "llama.cpp project", href: "https://github.com/ggml-org/llama.cpp" },
+    ],
     steps: [
-      { text: "Download a GGUF — Models → Hugging Face or Local File." },
-      { text: "Pick llama.cpp + your model in the header, then press ▶." },
+      "Nothing to install — llama-server ships with the app.",
+      "Download a GGUF in Models → Hugging Face (or Local File).",
+      "Pick llama.cpp + your model in the header, then press ▶.",
     ],
   },
   {
@@ -45,10 +60,12 @@ const ENGINES: Engine[] = [
     blurb: "Apple-Silicon-native inference via mlx_lm.server.",
     runs: "mlx-community models (4-bit / 8-bit)",
     appleOnly: true,
+    commands: [{ label: "Install", cmd: "pip install mlx-lm" }],
+    links: [{ text: "mlx-lm project", href: "https://github.com/ml-explore/mlx-lm" }],
     steps: [
-      { text: "Install mlx-lm: pip install mlx-lm", href: "https://github.com/ml-explore/mlx-lm" },
-      { text: "Download an MLX model — Models → Hugging Face." },
-      { text: "Pick MLX + your model in the header, then press ▶." },
+      "Install mlx-lm with the command above.",
+      "Download an MLX model in Models → Hugging Face.",
+      "Pick MLX + your model in the header, then press ▶.",
     ],
   },
   {
@@ -57,30 +74,42 @@ const ENGINES: Engine[] = [
     tag: "Speech-to-Text",
     blurb: "Local speech-to-text — its own engine, runs alongside an LLM.",
     runs: "Whisper tiny / base / small / medium / large-v3",
+    commands: [{ label: "Install (macOS)", cmd: "brew install whisper-cpp" }],
+    links: [{ text: "whisper.cpp project", href: "https://github.com/ggml-org/whisper.cpp" }],
     steps: [
-      { text: "Install: brew install whisper-cpp", href: "https://github.com/ggml-org/whisper.cpp" },
-      { text: "Download a model — Models → Speech-to-Text." },
-      { text: "Pick a model in the STT header group, then press ▶." },
+      "Install whisper.cpp with the command above.",
+      "Download a model in Models → Speech-to-Text.",
+      "Pick a model in the STT header group, then press ▶.",
     ],
   },
 ];
 
-function StepLine({ n, step }: { n: number; step: Step }) {
+function CommandRow({ command, testid }: { command: Cmd; testid: string }) {
+  const [copied, setCopied] = useState(false);
+  const copy = async () => {
+    try {
+      await navigator.clipboard.writeText(command.cmd);
+      setCopied(true);
+      setTimeout(() => setCopied(false), 1500);
+    } catch {
+      /* clipboard unavailable — the command is shown inline */
+    }
+  };
   return (
-    <li className="flex gap-1.5">
-      <span className="text-gray-400 tabular-nums">{n}.</span>
-      {step.href ? (
+    <div className="flex flex-col gap-0.5">
+      <span className="text-[10px] uppercase tracking-wide text-gray-400">{command.label}</span>
+      <div className="flex items-center gap-2">
+        <code className="flex-1 bg-gray-50 border rounded px-2 py-1 text-xs break-all">{command.cmd}</code>
         <button
           type="button"
-          onClick={() => void openExternal(step.href!)}
-          className="text-left text-blue-700 hover:underline"
+          onClick={copy}
+          className="text-[11px] border rounded px-1.5 py-0.5 shrink-0"
+          data-testid={testid}
         >
-          {step.text} ↗
+          {copied ? "Copied" : "Copy"}
         </button>
-      ) : (
-        <span>{step.text}</span>
-      )}
-    </li>
+      </div>
+    </div>
   );
 }
 
@@ -95,11 +124,26 @@ function EngineCard({ engine, onStartOllama, ollamaBusy }: { engine: Engine; onS
       <p className="text-xs text-gray-500">
         <span className="text-gray-400">Runs:</span> {engine.runs}
       </p>
-      <ol className="text-xs text-gray-700 flex flex-col gap-1 mt-1">
-        {engine.steps.map((s, i) => (
-          <StepLine key={s.text} n={i + 1} step={s} />
+      {engine.commands.map((c, i) => (
+        <CommandRow key={c.cmd} command={c} testid={`setup-copy-${engine.id}-${i}`} />
+      ))}
+      <ol className="text-xs text-gray-700 list-decimal pl-4 flex flex-col gap-0.5 mt-1">
+        {engine.steps.map((s) => (
+          <li key={s}>{s}</li>
         ))}
       </ol>
+      <div className="flex flex-wrap gap-2 mt-1">
+        {engine.links.map((l) => (
+          <button
+            key={l.href}
+            type="button"
+            onClick={() => void openExternal(l.href)}
+            className="text-xs text-blue-700 hover:underline"
+          >
+            {l.text} ↗
+          </button>
+        ))}
+      </div>
       {engine.id === "ollama" && (
         <button
           type="button"
@@ -116,9 +160,9 @@ function EngineCard({ engine, onStartOllama, ollamaBusy }: { engine: Engine; onS
 }
 
 /// Shown in the workspace when no LLM backend is running: a step-by-step guide to
-/// install/start each engine (Ollama, llama.cpp, MLX, whisper.cpp) with links and
-/// what each runs. The moment a server comes up, the workspace switches to the
-/// prompt UI (the health poll in StatusBar / the header drives that).
+/// install/start each engine (Ollama, llama.cpp, MLX, whisper.cpp) with copy-able
+/// install commands, links, and what each runs. The moment a server comes up, the
+/// workspace switches to the prompt UI (the StatusBar / header health poll drives that).
 export function BackendSetupGuide() {
   const goToModels = useNavStore((s) => s.setTopView);
   const { appleSilicon } = useMlxBackend();
@@ -130,8 +174,8 @@ export function BackendSetupGuide() {
       <div>
         <h2 className="text-lg font-semibold">Connect a backend to start running models</h2>
         <p className="text-sm text-gray-600">
-          QuantaMind runs models through a local server. Set up at least one below — this
-          page switches to the prompt editor the moment a server is running.
+          QuantaMind runs models through a local server. Install one below (copy the command),
+          then start it — this page switches to the prompt editor the moment a server is running.
         </p>
       </div>
       <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
