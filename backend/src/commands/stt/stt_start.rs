@@ -11,7 +11,7 @@ use std::time::Duration;
 use tauri::Manager;
 
 pub const NOT_BUNDLED_MSG: &str =
-    "The whisper-server sidecar isn't bundled for this platform yet.";
+    "whisper.cpp (whisper-server) isn't installed. Install it with `brew install whisper-cpp`, then Re-check.";
 pub const READY_TIMEOUT_MSG: &str =
     "whisper-server started but didn't report a loaded model within 30 seconds.";
 
