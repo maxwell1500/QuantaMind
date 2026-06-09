@@ -36,6 +36,42 @@ pub fn vad_dest(dir: &Path, name: &str) -> PathBuf {
     dir.join(safe)
 }
 
+/// The root holding per-install staging dirs.
+pub fn staging_root(dir: &Path) -> PathBuf {
+    dir.join(".staging")
+}
+
+/// Per-install staging dir. A model's files download here and are promoted
+/// (renamed) into place only once *all* validate, so a crash mid-install never
+/// leaves a half-installed pair (R3).
+pub fn staging_dir(dir: &Path, id: &str) -> PathBuf {
+    staging_root(dir).join(id.replace([':', '/'], "_"))
+}
+
+/// Sweep orphaned install artifacts: the whole `.staging` tree and any stray
+/// `.partial` resume markers. Run at app init and before each download so a
+/// model is reported installed only when its real files are present — never
+/// half-installed. Returns the count of entries removed.
+pub fn reconcile_stt_dir(dir: &Path) -> std::io::Result<u64> {
+    if !dir.exists() {
+        return Ok(0);
+    }
+    let mut removed = 0;
+    let staging = staging_root(dir);
+    if staging.exists() {
+        std::fs::remove_dir_all(&staging)?;
+        removed += 1;
+    }
+    for entry in std::fs::read_dir(dir)? {
+        let p = entry?.path();
+        if p.is_file() && p.extension().is_some_and(|e| e == "partial") {
+            std::fs::remove_file(&p)?;
+            removed += 1;
+        }
+    }
+    Ok(removed)
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -88,5 +124,33 @@ mod tests {
         let resolved = stt_dir_resolved(Some("./stt"));
         assert!(resolved.is_absolute(), "expected absolute, got {resolved:?}");
         assert!(resolved.ends_with("stt"));
+    }
+
+    #[test]
+    fn staging_dir_is_under_dot_staging_and_sanitized() {
+        let s = staging_dir(Path::new("/s"), "large-v3");
+        assert_eq!(s, PathBuf::from("/s/.staging/large-v3"));
+        assert_eq!(staging_dir(Path::new("/s"), "a/b:c"), PathBuf::from("/s/.staging/a_b_c"));
+    }
+
+    #[test]
+    fn reconcile_removes_staging_and_partials_keeps_real_models() {
+        let dir = tempfile::tempdir().unwrap();
+        let p = dir.path();
+        std::fs::create_dir_all(staging_dir(p, "tiny.en")).unwrap();
+        std::fs::write(staging_dir(p, "tiny.en").join("ggml-tiny.en.bin.partial"), b"x").unwrap();
+        std::fs::write(p.join("ggml-base.en.bin.partial"), b"x").unwrap();
+        std::fs::write(p.join("ggml-tiny.en.bin"), b"real-model").unwrap();
+
+        let removed = reconcile_stt_dir(p).unwrap();
+        assert!(removed >= 2, "removed staging tree + stray partial");
+        assert!(!staging_root(p).exists(), "staging swept");
+        assert!(!p.join("ggml-base.en.bin.partial").exists(), "stray partial swept");
+        assert!(p.join("ggml-tiny.en.bin").exists(), "a real model file is kept");
+    }
+
+    #[test]
+    fn reconcile_on_a_missing_dir_is_a_noop() {
+        assert_eq!(reconcile_stt_dir(Path::new("/no/such/qm-stt-dir")).unwrap(), 0);
     }
 }
