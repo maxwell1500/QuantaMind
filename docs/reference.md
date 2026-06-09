@@ -270,6 +270,24 @@ run on MLX") with a *Pick another* / *Download anyway* choice.
   not seed-reproducible the way Ollama and llama.cpp runs are — a fixed seed in
   the params is ignored for MLX.
 
+### Invalid or truncated GGUF {#invalid-gguf}
+
+Adding a local `.gguf` parses it in Rust first (`inference/gguf/`). A bad file no
+longer shows the raw parser line (e.g. *"GGUF truncated: need 8 bytes at offset …"*);
+the **Models → Local file** tab renders plain-language guidance with steps instead, so
+it reads as fixable, not broken. The classifier (`ImportError` in
+`features/models/components/LocalFilePreview.tsx`) covers three cases:
+
+- **"This GGUF file is incomplete"** (truncated / file-too-small) — the download or copy
+  was cut off; it isn't the full model. Re-download the complete `.gguf`. Real models are
+  hundreds of MB to several GB; a tiny file is truncated. From Hugging Face, fetch the
+  real `.gguf` via **Git LFS**, not a small pointer stub.
+- **"This isn't a valid GGUF file"** (bad magic / wrong extension) — pick a `.gguf`, not
+  `.safetensors`, `.bin`, or a zip.
+- **"Unsupported GGUF version"** — QuantaMind reads GGUF v1–v3; get a compatible export.
+
+The raw parser detail is kept (demoted) under **Details:** for diagnosis.
+
 ### Reporting something else
 
 Use the in-app **Feedback** button (bottom-right). Tick "Include diagnostic info"

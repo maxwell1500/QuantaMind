@@ -68,6 +68,16 @@ describe("LocalFilePreview (M.8)", () => {
     expect(screen.getByTestId("import-error")).toHaveTextContent("M.12 not implemented");
   });
 
+  it("a truncated-GGUF error renders actionable guidance, not just the raw parser text", () => {
+    setup({ error: "GGUF truncated: need 8 bytes at offset 8388601, have 7" });
+    const alert = screen.getByTestId("import-error");
+    expect(alert).toHaveTextContent("This GGUF file is incomplete");
+    expect(alert).toHaveTextContent("Re-download the complete .gguf");
+    expect(alert).toHaveTextContent("Git LFS");
+    // raw detail is still available, just demoted
+    expect(alert).toHaveTextContent("offset 8388601");
+  });
+
   it("Cancel and Import invoke their callbacks; name edit reaches onNameChange", () => {
     const { onCancel, onImport, onNameChange } = setup();
     fireEvent.click(screen.getByRole("button", { name: /cancel/i }));
