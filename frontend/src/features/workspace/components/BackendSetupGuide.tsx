@@ -2,7 +2,6 @@ import { useState } from "react";
 import { open as openExternal } from "@tauri-apps/plugin-shell";
 import { useNavStore } from "../../../shared/state/navStore";
 import { useMlxBackend } from "../hooks/useMlxBackend";
-import { useStartOllama } from "../hooks/useStartOllama";
 
 type Cmd = { label: string; cmd: string };
 type Link = { text: string; href: string };
@@ -32,7 +31,7 @@ const ENGINES: Engine[] = [
     links: [{ text: "Download for any OS", href: "https://ollama.com/download" }],
     steps: [
       "Install Ollama (command above, or the download link).",
-      "Click “Start Ollama” below — QuantaMind runs it for you.",
+      "Press ▶ in the header to start it — QuantaMind runs it for you.",
       "Pull a model with the command above, or from the Models tab.",
     ],
   },
@@ -110,7 +109,7 @@ function CommandRow({ command, testid }: { command: Cmd; testid: string }) {
   );
 }
 
-function EngineCard({ engine, onStartOllama, ollamaBusy }: { engine: Engine; onStartOllama: () => void; ollamaBusy: boolean }) {
+function EngineCard({ engine }: { engine: Engine }) {
   return (
     <div data-testid={`setup-engine-${engine.id}`} className="border rounded-lg p-4 flex flex-col gap-2 bg-surface">
       <div className="flex items-center gap-2">
@@ -141,17 +140,6 @@ function EngineCard({ engine, onStartOllama, ollamaBusy }: { engine: Engine; onS
           </button>
         ))}
       </div>
-      {engine.id === "ollama" && (
-        <button
-          type="button"
-          onClick={onStartOllama}
-          disabled={ollamaBusy}
-          data-testid="setup-start-ollama"
-          className="self-start text-xs border rounded px-3 py-1 bg-blue-600 text-white hover:bg-blue-700 disabled:opacity-60"
-        >
-          {ollamaBusy ? "Starting…" : "Start Ollama"}
-        </button>
-      )}
     </div>
   );
 }
@@ -163,7 +151,6 @@ function EngineCard({ engine, onStartOllama, ollamaBusy }: { engine: Engine; onS
 export function BackendSetupGuide() {
   const goToModels = useNavStore((s) => s.setTopView);
   const { appleSilicon } = useMlxBackend();
-  const { start, status } = useStartOllama();
   const engines = ENGINES.filter((e) => !e.appleOnly || appleSilicon);
 
   return (
@@ -177,12 +164,7 @@ export function BackendSetupGuide() {
       </div>
       <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
         {engines.map((e) => (
-          <EngineCard
-            key={e.id}
-            engine={e}
-            onStartOllama={() => void start()}
-            ollamaBusy={status === "starting"}
-          />
+          <EngineCard key={e.id} engine={e} />
         ))}
       </div>
       <button
