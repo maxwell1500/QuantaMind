@@ -11,5 +11,6 @@ pub mod llama;
 pub mod mlx;
 pub mod ollama;
 pub mod pull;
+pub mod stt;
 pub mod token_handler;
 pub mod vram_math;
