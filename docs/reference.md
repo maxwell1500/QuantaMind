@@ -238,7 +238,8 @@ backend: **download → select → Start → run/eval/quant.**
 
 **Download:** in **Models → HuggingFace**, flip the **GGUF / MLX** toggle to MLX
 and search. Each toggle filters search to that library tag — GGUF to `gguf`-tagged
-repos (so only repos with downloadable `.gguf` files appear), MLX to `mlx`-tagged
+repos (so only repos with downloadable `.gguf` files appear; speech/audio GGUFs
+like whisper are dropped since they can't run as an LLM), MLX to `mlx`-tagged
 repos, mostly `mlx-community`. Open a repo and click **Download for MLX** — the
 full snapshot (config + safetensors + tokenizer) lands in `~/.quantamind/mlx/`
 (override with `QUANTAMIND_MLX_DIR`). The **detail view follows the repo's tags,

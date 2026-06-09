@@ -26,11 +26,29 @@ impl RepoKind {
     }
 
     /// Whether this hit carries the kind's library tag — so a search only shows
-    /// repos with files this backend can actually run.
+    /// repos with files this backend can actually run. GGUF additionally drops
+    /// speech/audio GGUFs (e.g. whisper STT): they carry the `gguf` tag but can't
+    /// run as an LLM on Ollama/llama.cpp, so importing them only errors.
     fn matches(self, hit: &RawHit) -> bool {
-        let tag = self.tag();
-        hit.tags.iter().any(|t| t.eq_ignore_ascii_case(tag))
+        if !hit.tags.iter().any(|t| t.eq_ignore_ascii_case(self.tag())) {
+            return false;
+        }
+        if self == RepoKind::Gguf && is_non_text_gguf(hit) {
+            return false;
+        }
+        true
     }
+}
+
+/// A GGUF repo that isn't a text LLM — speech-to-text (whisper), text-to-speech,
+/// audio. Detected from the HF `pipeline_tag` or tags, so it can be filtered out
+/// of the LLM GGUF search.
+fn is_non_text_gguf(hit: &RawHit) -> bool {
+    let speechy = |s: &str| {
+        let l = s.to_ascii_lowercase();
+        l.contains("speech") || l.contains("whisper") || l.contains("text-to-audio") || l == "audio"
+    };
+    hit.pipeline_tag.as_deref().is_some_and(speechy) || hit.tags.iter().any(|t| speechy(t))
 }
 
 #[derive(Serialize, Deserialize, Clone, Debug)]
@@ -55,6 +73,7 @@ struct RawHit {
     #[serde(default)] likes: u64,
     #[serde(default)] tags: Vec<String>,
     #[serde(default, rename = "lastModified")] last_modified: Option<String>,
+    #[serde(default)] pipeline_tag: Option<String>,
 }
 
 #[derive(Deserialize)]
