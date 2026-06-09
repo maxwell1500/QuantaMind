@@ -1,4 +1,4 @@
-use super::auth::store_refresh_token;
+use super::auth::{store_refresh_token, Persisted};
 use super::pkce::{await_redirect, pkce_pair};
 use super::token::exchange_code;
 use crate::commands::publish::auth_state::AuthState;
@@ -34,12 +34,14 @@ async fn ensure_reachable(base: &str) -> Result<(), AppError> {
 /// listener, open the system browser to `/authorize`, catch the redirect code,
 /// exchange it for tokens, and store the rotated refresh token + cache the access
 /// token. Thin glue over the unit-tested pkce/redirect/exchange pieces. A timeout
-/// keeps a never-completed sign-in from hanging the listener forever.
+/// keeps a never-completed sign-in from hanging the listener forever. Returns whether
+/// the refresh token reached durable keychain storage (`false` = session-only, so the
+/// UI can warn the user they may need to sign in again next launch).
 // `Shell::open` is deprecated in favor of tauri-plugin-opener; we stay on the
 // already-present shell plugin (dep-light) — revisit if we adopt opener elsewhere.
 #[allow(deprecated)]
 #[tauri::command]
-pub async fn start_login(app: AppHandle, state: State<'_, AuthState>) -> Result<(), AppError> {
+pub async fn start_login(app: AppHandle, state: State<'_, AuthState>) -> Result<bool, AppError> {
     ensure_reachable(publish_api()).await?;
 
     let (verifier, challenge) = pkce_pair();
@@ -66,9 +68,9 @@ pub async fn start_login(app: AppHandle, state: State<'_, AuthState>) -> Result<
         .map_err(|_| AppError::Validation("sign-in timed out — please try again".into()))??;
 
     let tokens = exchange_code(publish_api(), &code, &verifier).await?;
-    store_refresh_token(&tokens.refresh_token);
+    let persisted = store_refresh_token(&tokens.refresh_token);
     state.set(tokens.access_token);
-    Ok(())
+    Ok(persisted == Persisted::Keychain)
 }
 
 #[cfg(test)]

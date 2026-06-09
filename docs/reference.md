@@ -824,11 +824,18 @@ fast with a clear message rather than hanging. Sign-in is OAuth
 (a ~5s-bounded GET to `/authorize`) so a stopped server fails *immediately* with
 *"Can't reach the publish server — is it running?"* instead of hanging the 300s
 loopback wait; then it opens the browser to `/authorize`, catches the loopback
-redirect, and exchanges the code at `/token`. The **refresh token** is stored in the
-OS keychain (`keyring`), degrading
-to an in-memory session token when no secret service is present (headless Linux); a
-short-lived **access token** is cached in memory and silently refreshed (rotating the
-refresh token). Publishing is **one batch = one request**: GET a fresh `/publish/nonce`,
+redirect, and exchanges the code at `/token`. The **refresh token** is stored
+**write-through**: always kept in an in-memory session copy *and* best-effort written to
+the OS keychain (`keyring`) for cross-restart persistence. Reads prefer the session copy,
+so once signed in this launch the keychain is never re-prompted — and a **denied or locked
+keychain can never strand sign-in** (publishing keeps working for the session; sign-in
+returns `persisted=false` and the UI warns you may need to sign in again next launch). On
+macOS an **unsigned/dev build re-prompts on every keychain access** (the ACL can't bind to
+a stable code identity, so "Always Allow" doesn't stick) — the production fix is code
+signing + a keychain entitlement; the write-through vault makes it non-fatal meanwhile. To
+fully reset auth, delete the `quantamind` / `publish-refresh` item in **Keychain Access**
+and sign in again. A short-lived **access token** is cached in memory and silently
+refreshed (rotating the refresh token). Publishing is **one batch = one request**: GET a fresh `/publish/nonce`,
 recompute the canonical hash, POST `/publish` with the bearer token — a fresh nonce per
 attempt (the server burns it on a 422). Every status maps to a typed outcome the UI
 handles without freezing: `200`→toast + open board, `401`→re-auth, `422`→show the failing

@@ -31,7 +31,7 @@ beforeEach(() => {
   vi.clearAllMocks();
   vi.mocked(previewPublishPayload).mockResolvedValue(PREVIEW);
   vi.mocked(openUrl).mockResolvedValue(undefined);
-  vi.mocked(startLogin).mockResolvedValue(undefined);
+  vi.mocked(startLogin).mockResolvedValue(true);
 });
 
 describe("PublishButton", () => {
@@ -66,6 +66,17 @@ describe("PublishButton", () => {
     await waitFor(() => expect(screen.getByTestId("toast")).toHaveTextContent("Published"));
     expect(publishToBoard).toHaveBeenCalledTimes(2);
     expect(openUrl).toHaveBeenCalledWith("https://quantamind.co/b/2");
+  });
+
+  it("warns when sign-in only persisted for the session (keychain denied), then still publishes", async () => {
+    vi.mocked(startLogin).mockResolvedValue(false);
+    vi.mocked(publishToBoard)
+      .mockResolvedValueOnce({ kind: "needs_auth" })
+      .mockResolvedValueOnce({ kind: "ok", board_url: "https://quantamind.co/b/3" });
+    render(<><PublishButton verdicts={VERDICTS} /><ToastHost /></>);
+    await openDialogAndAgree();
+    await waitFor(() => expect(screen.getByTestId("toast")).toHaveTextContent("this session"));
+    await waitFor(() => expect(screen.getByTestId("toast")).toHaveTextContent("Published"));
   });
 
   it("stops after one retry if sign-in still leaves needs_auth", async () => {

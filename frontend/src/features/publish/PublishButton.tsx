@@ -32,11 +32,15 @@ export function PublishButton({ verdicts }: { verdicts: ModelVerdict[] }) {
             break;
           }
           toast("Sign in in your browser to publish…");
+          let persisted: boolean;
           try {
-            await startLogin();
+            persisted = await startLogin();
           } catch (e) {
             toast(formatIpcError(e));
             break;
+          }
+          if (!persisted) {
+            toast("Signed in for this session — Keychain access was denied, so you may need to sign in again next launch");
           }
           await onPublish(preview, link, true);
           break;
@@ -62,9 +66,9 @@ export function PublishButton({ verdicts }: { verdicts: ModelVerdict[] }) {
         type="button"
         data-testid="publish-open"
         onClick={() => setOpen(true)}
-        className="inline-flex items-center gap-2 bg-slate-900 hover:bg-slate-800 text-white rounded-lg text-sm font-semibold py-2 px-4 shadow-sm transition-all cursor-pointer"
+        className="inline-flex items-center gap-2 bg-slate-950 hover:bg-slate-900 text-white rounded-lg text-sm font-semibold py-2 px-4 shadow-sm transition-all cursor-pointer"
       >
-        Publish to Board
+        🚀 Deploy
       </button>
       {open && <PublishDialog verdicts={verdicts} onClose={() => setOpen(false)} onPublish={onPublish} />}
     </>

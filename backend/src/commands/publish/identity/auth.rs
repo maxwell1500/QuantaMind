@@ -13,21 +13,41 @@ fn mem() -> &'static Mutex<Option<String>> {
     MEM_TOKEN.get_or_init(|| Mutex::new(None))
 }
 
-/// Persist the rotated refresh token in the OS secure store; on ANY keyring error
-/// degrade to the in-memory fallback rather than panicking the thread.
-pub fn store_refresh_token(token: &str) {
+/// Whether the refresh token reached durable OS storage or only the session copy.
+/// `SessionOnly` (keychain locked/denied/absent) means the user stays signed in for
+/// this launch but may need to sign in again next time — surfaced to the UI so the
+/// dead-button/denied-keychain state is never silent.
+#[derive(Debug, Clone, Copy, PartialEq)]
+pub enum Persisted {
+    Keychain,
+    SessionOnly,
+}
+
+/// Persist the rotated refresh token. ALWAYS keep a session copy in memory first, so a
+/// later keychain prompt that the user denies can never strand the token; then make a
+/// best-effort durable write to the OS secure store. Never panics.
+pub fn store_refresh_token(token: &str) -> Persisted {
+    *mem().lock_recover() = Some(token.to_string());
     match keyring::Entry::new(SERVICE, REFRESH_USER).and_then(|e| e.set_password(token)) {
-        Ok(()) => {}
-        Err(_) => *mem().lock_recover() = Some(token.to_string()),
+        Ok(()) => Persisted::Keychain,
+        Err(_) => Persisted::SessionOnly,
     }
 }
 
-/// The stored refresh token, or `None` if the user never logged in. Reads the
-/// secure store first; on any error falls back to the in-memory token.
+/// The stored refresh token, or `None` if the user never logged in. Prefers the
+/// in-memory session copy (so we never re-prompt the keychain once we have it this
+/// launch); only on a cold session does it read the secure store, caching a hit into
+/// memory so subsequent calls this launch stay prompt-free.
 pub fn get_refresh_token() -> Option<String> {
+    if let Some(t) = mem().lock_recover().clone() {
+        return Some(t);
+    }
     match keyring::Entry::new(SERVICE, REFRESH_USER).and_then(|e| e.get_password()) {
-        Ok(t) => Some(t),
-        Err(_) => mem().lock_recover().clone(),
+        Ok(t) => {
+            *mem().lock_recover() = Some(t.clone());
+            Some(t)
+        }
+        Err(_) => None,
     }
 }
 

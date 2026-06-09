@@ -21,6 +21,8 @@ export async function publishToBoard(verdicts: ModelVerdict[], link: string): Pr
 
 /// Start the PKCE browser sign-in (opens the system browser, catches the loopback
 /// redirect, stores the rotated refresh token). Resolves once a token is stored.
-export async function startLogin(): Promise<void> {
-  await invoke("start_login");
+/// Returns `true` if the token reached durable keychain storage, `false` if it's
+/// session-only (keychain locked/denied) — the caller warns the user in that case.
+export async function startLogin(): Promise<boolean> {
+  return Boolean(await invoke("start_login"));
 }
