@@ -1,5 +1,6 @@
 use crate::commands::llama::llama_server_types::LlamaServerState;
 use crate::commands::mlx::mlx_server_types::MlxServerState;
+use crate::commands::stt::mlx::mlx_stt_server_types::MlxSttServerState;
 use crate::commands::stt::stt_server_types::SttServerState;
 use tauri::{AppHandle, Manager, RunEvent};
 
@@ -16,6 +17,9 @@ pub fn reap_on_exit(app: &AppHandle, event: RunEvent) {
         }
         if let Err(e) = app.state::<SttServerState>().stop() {
             eprintln!("whisper reap on exit failed: {e}");
+        }
+        if let Err(e) = app.state::<MlxSttServerState>().kill_all_servers() {
+            eprintln!("mlx-stt reap on exit failed: {e}");
         }
     }
 }

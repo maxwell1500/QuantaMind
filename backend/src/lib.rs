@@ -24,6 +24,7 @@ pub fn run() {
         .manage(commands::mlx::mlx_server_types::MlxServerState::default())
         .manage(commands::stt::stt_server_types::SttServerState::default())
         .manage(commands::stt::stt_download::SttInstallState::default())
+        .manage(commands::stt::mlx::mlx_stt_server_types::MlxSttServerState::default())
         .manage(commands::workspace::workspaces::WorkspaceState::default())
         .manage(commands::settings::user_settings::UserSettingsState::default())
         .manage(commands::eval::batch_cmd::BatchRunState::default())
@@ -88,6 +89,14 @@ pub fn run() {
             commands::stt::stt_download::list_stt_catalog,
             commands::stt::stt_models::list_installed_stt_models,
             commands::stt::stt_models::delete_stt_model,
+            commands::stt::mlx::mlx_stt_start::start_mlx_stt_server,
+            commands::stt::mlx::mlx_stt_start::stop_mlx_stt_server,
+            commands::stt::mlx::mlx_stt_start::mlx_stt_status,
+            commands::stt::mlx::mlx_stt_start::check_mlx_stt_env,
+            commands::stt::mlx::mlx_stt_download::download_mlx_stt_model,
+            commands::stt::mlx::mlx_stt_models::list_mlx_stt_catalog,
+            commands::stt::mlx::mlx_stt_models::list_installed_mlx_stt_models,
+            commands::stt::mlx::mlx_stt_models::delete_mlx_stt_model,
             commands::settings::settings::get_storage_path,
             commands::settings::settings::validate_storage_path,
             commands::storage::storage::get_installed_models_with_stats,

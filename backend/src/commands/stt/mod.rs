@@ -2,6 +2,7 @@
 // lifecycle, a parallel capability to the text backends (see
 // docs/architecture.md#architecture). STT engine selection is its own state
 // axis, never derived from the selected LLM backend.
+pub mod mlx;
 pub mod stt_disk;
 pub mod stt_download;
 pub mod stt_health;

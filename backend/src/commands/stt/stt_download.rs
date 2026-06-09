@@ -24,6 +24,15 @@ pub struct SttInstallState {
     current: Mutex<Option<CancellationToken>>,
 }
 
+impl SttInstallState {
+    /// The shared single-in-flight token slot. Exposed so the MLX-STT snapshot
+    /// download shares one cancel channel + one-at-a-time guard with the whisper
+    /// download (so `cancel_stt_install` covers both).
+    pub fn current(&self) -> &Mutex<Option<CancellationToken>> {
+        &self.current
+    }
+}
+
 #[derive(Serialize, Clone, Debug, PartialEq)]
 #[serde(tag = "phase", rename_all = "snake_case")]
 pub enum SttInstallProgress {
