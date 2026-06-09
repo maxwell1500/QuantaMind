@@ -54,6 +54,14 @@ static CATALOG: &[SttCatalogEntry] = &[
     e("medium", "Medium (multilingual)", "ggml-medium.bin", 1_533_763_059, true),
     e("large-v3", "Large v3 (multilingual)", "ggml-large-v3.bin", 3_095_033_483, true),
     e("large-v3-turbo", "Large v3 Turbo (multilingual)", "ggml-large-v3-turbo.bin", 1_624_555_275, true),
+    // Quantized variants — much smaller / faster, near-identical accuracy. Sizes
+    // verified against ggerganov/whisper.cpp.
+    e("tiny.en-q5_1", "Tiny (English, quantized)", "ggml-tiny.en-q5_1.bin", 32_166_155, false),
+    e("small.en-q5_1", "Small (English, quantized)", "ggml-small.en-q5_1.bin", 190_098_681, false),
+    e("small-q5_1", "Small (multilingual, quantized)", "ggml-small-q5_1.bin", 190_085_487, true),
+    e("medium.en-q5_0", "Medium (English, quantized)", "ggml-medium.en-q5_0.bin", 539_225_533, false),
+    e("large-v3-turbo-q5_0", "Large v3 Turbo (quantized)", "ggml-large-v3-turbo-q5_0.bin", 574_041_195, true),
+    e("large-v3-q5_0", "Large v3 (quantized)", "ggml-large-v3-q5_0.bin", 1_081_140_203, true),
 ];
 
 /// The full curated catalog (for the pre-download disclosure list).
@@ -84,8 +92,10 @@ mod tests {
 
     #[test]
     fn english_only_entries_are_not_multilingual_and_vice_versa() {
+        // `.en` may be mid-id for quantized variants (e.g. `tiny.en-q5_1`), so
+        // detect English by substring, not suffix.
         for m in catalog() {
-            assert_eq!(m.multilingual, !m.id.ends_with(".en"), "{} multilingual flag", m.id);
+            assert_eq!(m.multilingual, !m.id.contains(".en"), "{} multilingual flag", m.id);
         }
     }
 
