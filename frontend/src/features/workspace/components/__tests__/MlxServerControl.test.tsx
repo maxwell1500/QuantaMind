@@ -42,7 +42,7 @@ describe("MlxServerControl", () => {
   it("shows Stop when MLX is healthy", () => {
     useBackendStore.setState({ mlxHealthy: true });
     render(<MlxServerControl />);
-    expect(screen.getByTestId("mlx-stop")).toHaveTextContent("Stop MLX");
+    expect(screen.getByTestId("mlx-stop")).toHaveAttribute("aria-label", "Stop MLX");
     expect(screen.queryByTestId("mlx-start")).toBeNull();
   });
 });
