@@ -4,7 +4,7 @@ import { clearAppCache } from "../../../../shared/ipc/cache";
 import { formatBytes } from "../../../../shared/format/bytes";
 import { StoragePathSection } from "../StoragePathSection";
 import { ModelsFolderSection } from "../ModelsFolderSection";
-import { ClearCacheConfirm } from "../ClearCacheConfirm";
+import { ClearCacheConfirm } from "./ClearCacheConfirm";
 import { formatIpcError } from "../../../../shared/ipc/core/error";
 import { useInstalledModelsStore } from "../../state/installedModelsStore";
 import { useBatchStore } from "../../../eval/state/batchStore";

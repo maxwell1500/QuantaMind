@@ -1,4 +1,4 @@
-import { StorageSection } from "./StorageSection";
+import { StorageSection } from "../storage/StorageSection";
 import { DownloadsActive } from "./DownloadsActive";
 import { DownloadsInstalled } from "./DownloadsInstalled";
 
