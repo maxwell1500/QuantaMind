@@ -91,23 +91,6 @@ pub fn spawn_server(
     Ok((child, tail))
 }
 
-/// Poll `/health` until ready (HTTP 200), bailing the instant the child exits so
-/// a crash surfaces immediately (caller reads the stderr tail) instead of
-/// waiting out the full timeout.
-pub async fn wait_until_ready(child: &mut Child) -> bool {
-    let attempts = (READY_TIMEOUT_SECS * 1000) / POLL_INTERVAL_MS;
-    for _ in 0..attempts {
-        tokio::time::sleep(Duration::from_millis(POLL_INTERVAL_MS)).await;
-        if matches!(child.try_wait(), Ok(Some(_))) {
-            return false;
-        }
-        if is_ready(PROBE_TIMEOUT_MS).await {
-            return true;
-        }
-    }
-    false
-}
-
 #[cfg(unix)]
 fn request_graceful_stop(pid: u32) {
     let _ = Command::new("kill")

@@ -5,4 +5,5 @@
 pub mod stt_disk;
 pub mod stt_runtime;
 pub mod stt_server_types;
+pub mod stt_start;
 pub mod stt_stderr;
