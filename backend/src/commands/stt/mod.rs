@@ -4,4 +4,5 @@
 // axis, never derived from the selected LLM backend.
 pub mod stt_disk;
 pub mod stt_runtime;
+pub mod stt_server_types;
 pub mod stt_stderr;
