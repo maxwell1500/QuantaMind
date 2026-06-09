@@ -288,14 +288,31 @@ it reads as fixable, not broken. The classifier (`ImportError` in
 
 The raw parser detail is kept (demoted) under **Details:** for diagnosis.
 
-### Speech-to-text server won't start {#stt-server}
+### Setting up speech-to-text (whisper.cpp) {#stt-server}
 
-Starting the whisper.cpp STT server (`start_whisper_server`) returns a tagged
-result so the UI can say exactly what to fix — none of these mean the app is
-broken:
+Speech-to-text uses the whisper.cpp engine. On macOS, install it once with
+Homebrew — the **Speech-to-Text** tab walks you through it:
 
-- **`not_bundled`** — the `whisper-server` sidecar isn't bundled for this build
-  yet. STT is unavailable until it ships in `backend/binaries/`.
+1. Install [Homebrew](https://brew.sh) if you don't have it.
+2. Run `brew install whisper-cpp` (the tab has a copy button).
+3. Click **Re-check** — QuantaMind finds it automatically on `PATH`/Homebrew
+   (`check_whisper_env`); no path setup needed. Installed it elsewhere? Use
+   **Choose its folder** (remembered across launches).
+
+If the tab says **"installed but can't run"**, the binary is present but its
+libraries are missing/mismatched (a dyld *Library not loaded* error, shown under
+Details) — run `brew reinstall whisper-cpp` and Re-check. QuantaMind only signals
+ready after a `--help` dry-run proves the engine actually executes, so it never
+shows "ready" then fails on start.
+
+Once the engine is ready, the catalog lists models with their download size;
+installed models (validated ggml + the shared silero VAD) are reported by
+`list_installed_stt_models`.
+
+**Start failures** (`start_whisper_server`) return a tagged result so the UI says
+exactly what to fix — none mean the app is broken:
+
+- **`not_bundled`** — no `whisper-server` was found. Install whisper.cpp (above).
 - **`model_missing`** — the whisper model file isn't on disk. Download a model
   from the STT catalog first.
 - **`vad_missing`** — the silero VAD model is absent. The VAD ships *together*

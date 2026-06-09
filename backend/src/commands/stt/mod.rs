@@ -5,6 +5,7 @@
 pub mod stt_disk;
 pub mod stt_download;
 pub mod stt_health;
+pub mod stt_models;
 pub mod stt_runtime;
 pub mod stt_server_types;
 pub mod stt_start;

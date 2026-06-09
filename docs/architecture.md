@@ -82,10 +82,15 @@ HTTP to a local Ollama server.
   loading — graceful-then-hard kill, and reaping on exit alongside the LLM sidecars.
   Acquisition is atomic: `download_stt_model` stages the whisper ggml + the shared
   silero VAD, validates each, and promotes both-or-none; `reconcile_stt_dir` sweeps
-  half-installs at startup. IPC: `start`/`stop_whisper_server`, `check_whisper_health`,
-  `download_stt_model`, `cancel_stt_install`, `list_stt_catalog`. `inference/stt/` is
-  the Tauri-free domain (curated catalog, ggml-format validation, the loopback-only
-  offline probe so transcription never silently reaches the cloud).
+  half-installs at startup. IPC: `start`/`stop_whisper_server`, `check_whisper_health`, `check_whisper_env`,
+  `download_stt_model`, `cancel_stt_install`, `list_stt_catalog`,
+  `list_installed_stt_models`. `inference/stt/` is the Tauri-free domain (curated catalog,
+  ggml-format validation, the loopback-only offline probe so transcription never silently
+  reaches the cloud). The engine binary is discovered most-explicit-first —
+  `UserSettings.stt_engine_dir` → `QUANTAMIND_WHISPER_DIR` → PATH/Homebrew → bundled
+  resources → dev tree — so a user's `brew install whisper-cpp` is found with no setup
+  (mirrors `ollama_runtime::resolve_ollama`); `check_whisper_env` then `--help`-dry-runs it
+  so "found" never masquerades as "runnable" when its dylibs are broken.
 - `metrics/` — measurements: TTFT, tokens/sec, VRAM.
 - `persistence/` — YAML/JSON read+write of prompts and history, plus `evals.rs`
   (custom tool-call eval collections: one `.json` per collection, name-sanitised,
