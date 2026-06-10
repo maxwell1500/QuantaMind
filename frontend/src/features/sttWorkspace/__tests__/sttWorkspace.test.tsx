@@ -80,6 +80,20 @@ describe("SttWorkspace", () => {
     expect(screen.getByTestId("stt-reference-pane")).toBeInTheDocument();
   });
 
+  it("Clear empties the transcript segments", () => {
+    useTranscriptStore.setState({
+      status: "done",
+      segments: [
+        { text: "hello", start_secs: 0, end_secs: 1, avg_logprob: null, no_speech_prob: null, words: null },
+      ],
+    });
+    render(<SttWorkspace engine="whisper_cpp" />);
+    expect(screen.getAllByTestId("stt-segment").length).toBe(1);
+    fireEvent.click(screen.getByTestId("stt-transcript-clear"));
+    expect(screen.queryByTestId("stt-segment")).toBeNull();
+    expect(useTranscriptStore.getState().segments).toEqual([]);
+  });
+
   it("shows the coming-later notice for mlx-audio (not the controls)", () => {
     render(<SttWorkspace engine="mlx_audio" />);
     expect(screen.getByTestId("stt-mlx-notice")).toBeInTheDocument();

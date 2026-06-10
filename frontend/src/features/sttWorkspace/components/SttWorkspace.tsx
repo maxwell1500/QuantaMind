@@ -29,12 +29,12 @@ export function SttWorkspace({ engine }: { engine: RunningSttEngine }) {
 
   return (
     <div className="flex flex-col gap-3" data-testid="stt-workspace">
+      <VoiceAssistant />
       <RecordControls onRun={run} />
       <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
         <TranscriptPane />
         <ReferencePane />
       </div>
-      <VoiceAssistant />
       <SttProfilePanel />
     </div>
   );
