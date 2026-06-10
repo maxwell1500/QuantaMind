@@ -290,23 +290,12 @@ it reads as fixable, not broken. The classifier (`ImportError` in
 
 The raw parser detail is kept (demoted) under **Details:** for diagnosis.
 
-### Setting up speech-to-text (whisper.cpp / mlx-audio) {#stt-server}
+### Setting up speech-to-text (whisper.cpp) {#stt-server}
 
-STT has two engines, picked in the header's STT group (and the Speech-to-Text
-tab toggle), parallel to the LLM backend — one STT runs alongside one LLM:
-
-- **whisper.cpp** (everywhere) — the default; see below.
-- **mlx-audio** (Apple Silicon only) — Apple-Silicon-native MLX whisper. Install
-  with `pip install "mlx-audio[server]"` (the `[server]` extra is required — bare
-  `mlx-audio` omits fastapi/uvicorn/webrtcvad and the server won't start);
-  QuantaMind locates `mlx_audio.server` on
-  `PATH`/venv/Homebrew (`check_mlx_stt_env`) and spawns it on a free loopback
-  port in `8094..=8104`. Models are `mlx-community/whisper-*` snapshots,
-  downloaded into `~/.quantamind/mlx-stt` (they also show in **Downloads** with an
-  **STT** tag). The engine is **strictly local** — the server binds `127.0.0.1`
-  only and never calls any cloud API. The engine option is hidden entirely off
-  Apple Silicon. (Live transcription is a later phase; this sets up the engine +
-  models + start/stop.)
+STT runs on **whisper.cpp**, its own axis parallel to the LLM backend — one STT
+runs alongside one LLM. Install it (`brew install whisper-cpp`), download a model
+in Models → Speech-to-Text, then pick it in the header STT group and press ▶. See
+below for details.
 
 The whisper.cpp engine. On macOS, install it once with Homebrew — the
 **Speech-to-Text** tab walks you through it:
@@ -627,7 +616,7 @@ text Inspector, it never fabricates a number — any metric the backend can't su
 - **Output during silence** — fraction of segments the model emitted where an **independent** voice
   detector (`webrtc-vad`, never the model's own judgement) found no speech and the model was itself
   unsure. The highest-value behavioral signal for hallucination.
-- **VRAM** — **"Not available for this backend"**: whisper.cpp / mlx-audio don't report runtime VRAM.
+- **VRAM** — **"Not available for this backend"**: whisper.cpp doesn't report runtime VRAM.
 
 The behavioral analysis runs off the transcription's timed path, so measuring it never inflates the
 RTF it reports.

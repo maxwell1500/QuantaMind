@@ -38,7 +38,6 @@ Phase 3 additions (locked; installed when their step lands):
 | Secret storage (Rust) | `keyring` | OS-native keychain for cloud API keys — never plaintext on disk. |
 | llama.cpp backend | `llama-server` (Tauri sidecar binary) | Local GGUF inference over HTTP, mirroring the Ollama path. Subprocess, not in-process FFI. |
 | STT engine (Phase 0) | `whisper-server` (whisper.cpp `server` example; bundled sidecar) | Local speech-to-text over HTTP on `:8093`, mirroring the `llama-server` lifecycle; reuses the bundled `libggml-*` dylibs. Subprocess, not FFI. State-aware `/health`; silero VAD bundled with each model. |
-| STT engine (MLX) | `mlx_audio.server` (Blaizzy/mlx-audio; `pip install "mlx-audio[server]"` — the `[server]` extra is mandatory) | Apple-Silicon-native speech-to-text, spawned on a free loopback port `8094..=8104` (mirrors `mlx_lm.server`). `mlx-community/whisper-*` models. **Strictly local** — binds `127.0.0.1` only, never an OpenAI fallback. `faster-whisper` is deferred — see [Future considerations](#future-considerations). |
 | STT audio preprocessing (P1/P2) | `hound` (WAV) + `symphonia` (MP3/others, P2 upload) + `rubato` (resample) + `reqwest` `multipart` | Decode audio → downmix → resample to 16 kHz mono **in Rust** (explicit, logged) → POST per ~30 s window to whisper-server `/inference` (`verbose_json`). Pure-Rust, not FFI; lets the seam stream + bound memory + assert the resample/duration in our own code. WAV-first; `symphonia` (compressed formats) deferred. |
 | STT Inspector VAD (P3) | `webrtc-vad` | The silence-hallucination metric needs an **independent** voice-activity detector over the raw 16 kHz PCM — never the STT model's own opinion, or the metric is circular. WebRTC VAD is deterministic, non-ML (energy/SBC), negligible CPU, loads no model. Its `Vad` C handle is `!Send`, so the profiling fold runs on a `spawn_blocking` thread. Distinct from whisper-server's bundled silero VAD (which lives inside the decode path). |
 
@@ -679,10 +678,13 @@ here becomes relevant, move it into a phase plan first.
 
 ### Additional STT engines (faster-whisper)
 
-**Shipped:** `mlx-audio` is the second STT engine (Apple Silicon) —
-`commands/stt/mlx/` spawns `mlx_audio.server` on a loopback port, mirroring the
-`mlx_lm.server` launcher; bound to `127.0.0.1` only (the loopback guardrail is a
-runtime test). Models are `mlx-community/whisper-*` snapshots.
+**Removed:** `mlx-audio` was trialed as a second STT engine but removed — its
+0.4.4 server crashes during transcription (its inference broker runs the model on
+a worker thread with no Metal GPU stream), and the transcription endpoint only
+exists in that broken release. The MLX whisper model itself works *inline*, so a
+future engine could wrap `mlx-whisper` directly (bypassing mlx-audio's server),
+but that's a custom sidecar with its own maintenance cost — not worth it while
+whisper.cpp covers Apple Silicon well. (The MLX **LLM** backend is unaffected.)
 
 **Why deferred:** `faster-whisper` (the path for Ollama users, who have no native
 STT) gets its own `commands/stt/<engine>` lifecycle. **Activate when:** a later
