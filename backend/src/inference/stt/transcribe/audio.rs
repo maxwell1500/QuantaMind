@@ -1,4 +1,5 @@
 use crate::errors::{AppError, AppResult};
+use crate::inference::stt::transcribe::decode_mp3::open_symphonia;
 use crate::inference::stt::transcribe::transcript::AudioSpec;
 use hound::{SampleFormat, WavReader, WavSpec, WavWriter};
 use rubato::{FftFixedInOut, Resampler};
@@ -16,23 +17,48 @@ fn wav_err(e: hound::Error) -> AppError {
     AppError::Validation(format!("WAV decode failed: {e}"))
 }
 
-/// Decoded truth: rate, channels, and duration from the actual decoded frame
-/// count (`frames / rate`), never the container's declared duration.
+fn is_wav(path: &Path) -> bool {
+    path.extension().and_then(|e| e.to_str()).map(|s| s.eq_ignore_ascii_case("wav")).unwrap_or(false)
+}
+
+/// Decoded truth: rate, channels, and duration. For WAV the duration is the exact
+/// decoded frame count (`frames / rate`); for compressed audio it's the
+/// container's declared duration (refined to the true decoded length while
+/// streaming by the backend), or `0.0` when unknown (VBR with no frame count).
 pub fn probe(path: &Path) -> AppResult<AudioSpec> {
-    let reader = WavReader::open(path).map_err(wav_err)?;
-    let spec = reader.spec();
-    let channels = spec.channels.max(1) as u64;
-    let frames = reader.len() as u64 / channels; // len() = interleaved samples across channels
-    Ok(AudioSpec {
-        sample_rate_hz: spec.sample_rate,
-        channels: spec.channels,
-        duration_secs: frames as f64 / spec.sample_rate.max(1) as f64,
-    })
+    if is_wav(path) {
+        let reader = WavReader::open(path).map_err(wav_err)?;
+        let spec = reader.spec();
+        let channels = spec.channels.max(1) as u64;
+        let frames = reader.len() as u64 / channels; // len() = interleaved samples across channels
+        Ok(AudioSpec {
+            sample_rate_hz: spec.sample_rate,
+            channels: spec.channels,
+            duration_secs: frames as f64 / spec.sample_rate.max(1) as f64,
+        })
+    } else {
+        let (channels, rate, declared, _samples) = open_symphonia(path)?;
+        Ok(AudioSpec { sample_rate_hz: rate, channels, duration_secs: declared.unwrap_or(0.0) })
+    }
+}
+
+/// `(channels, sample_rate, interleaved f32 sample stream)` for any supported
+/// container — WAV via `hound`, else via `symphonia`. Downstream (windowing,
+/// downmix, resample) never branches on source.
+fn open_samples(path: &Path) -> AppResult<(usize, usize, Box<dyn Iterator<Item = AppResult<f32>> + Send>)> {
+    if is_wav(path) {
+        let reader = WavReader::open(path).map_err(wav_err)?;
+        let spec = reader.spec();
+        Ok((spec.channels.max(1) as usize, spec.sample_rate.max(1) as usize, f32_samples(reader)?))
+    } else {
+        let (channels, rate, _declared, samples) = open_symphonia(path)?;
+        Ok((channels.max(1) as usize, rate.max(1) as usize, samples))
+    }
 }
 
 /// A normalized-`f32` interleaved sample stream over the WAV, owning the reader
 /// so it can be pulled lazily (bounded memory — the whole file is never buffered).
-fn f32_samples(reader: WavReader<std::io::BufReader<std::fs::File>>) -> AppResult<Box<dyn Iterator<Item = AppResult<f32>>>> {
+fn f32_samples(reader: WavReader<std::io::BufReader<std::fs::File>>) -> AppResult<Box<dyn Iterator<Item = AppResult<f32>> + Send>> {
     let spec = reader.spec();
     match (spec.sample_format, spec.bits_per_sample) {
         (SampleFormat::Float, 32) => Ok(Box::new(reader.into_samples::<f32>().map(|r| r.map_err(wav_err)))),
@@ -59,7 +85,7 @@ pub struct AudioWindow {
 /// Each `next()` pulls only one window's frames (so a 60-min file never lands in
 /// one `Vec`). Resampling to 16 kHz is an explicit, logged step.
 pub struct WindowReader {
-    samples: Box<dyn Iterator<Item = AppResult<f32>>>,
+    samples: Box<dyn Iterator<Item = AppResult<f32>> + Send>,
     channels: usize,
     in_rate: usize,
     window_frames: usize,
@@ -126,16 +152,12 @@ impl Iterator for WindowReader {
     }
 }
 
-/// Open a WAV and stream it as 16 kHz mono windows of `window_secs`, overlapping
-/// by `overlap_secs`.
+/// Open any supported audio file and stream it as 16 kHz mono windows of
+/// `window_secs`, overlapping by `overlap_secs`.
 pub fn windows(path: &Path, window_secs: f64, overlap_secs: f64) -> AppResult<WindowReader> {
-    let reader = WavReader::open(path).map_err(wav_err)?;
-    let spec = reader.spec();
-    let channels = spec.channels.max(1) as usize;
-    let in_rate = spec.sample_rate.max(1) as usize;
+    let (channels, in_rate, samples) = open_samples(path)?;
     let window_frames = ((window_secs * in_rate as f64) as usize).max(1);
     let overlap_frames = ((overlap_secs * in_rate as f64) as usize).min(window_frames.saturating_sub(1));
-    let samples = f32_samples(reader)?;
     Ok(WindowReader {
         samples,
         channels,

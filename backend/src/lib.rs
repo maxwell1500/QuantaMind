@@ -29,10 +29,12 @@ pub fn run() {
         .manage(commands::settings::user_settings::UserSettingsState::default())
         .manage(commands::eval::batch_cmd::BatchRunState::default())
         .manage(commands::publish::auth_state::AuthState::default())
-        .setup(|_app| {
+        .setup(|app| {
             // Sweep any half-installed STT artifacts left by a prior crash, so a
             // model reads installed only when its real files are present (R3).
             let _ = commands::stt::stt_disk::reconcile_stt_dir(&commands::stt::stt_disk::stt_dir());
+            // Clear leftover recording scratch from a prior session.
+            commands::stt::transcribe::clear_scratch(app.handle());
             Ok(())
         })
         .invoke_handler(tauri::generate_handler![
@@ -97,6 +99,9 @@ pub fn run() {
             commands::stt::mlx::mlx_stt_models::list_mlx_stt_catalog,
             commands::stt::mlx::mlx_stt_models::list_installed_mlx_stt_models,
             commands::stt::mlx::mlx_stt_models::delete_mlx_stt_model,
+            commands::stt::transcribe::transcribe_audio,
+            commands::stt::transcribe::save_recording,
+            commands::stt::transcribe::load_transcript,
             commands::settings::settings::get_storage_path,
             commands::settings::settings::validate_storage_path,
             commands::storage::storage::get_installed_models_with_stats,

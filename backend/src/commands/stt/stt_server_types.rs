@@ -52,6 +52,14 @@ impl SttServerState {
         }
     }
 
+    /// The model path of the live server, or `None` when nothing is running —
+    /// used by the transcribe command to label the artifact + confirm readiness.
+    pub fn running_model(&self) -> Option<String> {
+        let mut guard = self.inner.lock_recover();
+        let r = guard.as_mut()?;
+        matches!(r.child.try_wait(), Ok(None)).then(|| r.model_path.clone())
+    }
+
     pub fn store(
         &self,
         child: Child,
