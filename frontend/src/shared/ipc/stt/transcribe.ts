@@ -81,10 +81,12 @@ export type Transcript = z.infer<typeof TranscriptSchema>;
 export const SegmentsPayloadSchema = z.object({ segments: z.array(SegmentSchema) });
 export const ProgressPayloadSchema = z.object({ processed_secs: z.number(), total_secs: z.number() });
 
-/// Transcribe an audio file (the running whisper.cpp server); persists + returns
-/// the canonical Transcript. Segments also stream via EVENT_STT_SEGMENTS.
-export async function transcribeAudio(path: string, id: string): Promise<Transcript> {
-  return TranscriptSchema.parse(await invoke("transcribe_audio", { path, id }));
+/// Transcribe an audio file with whichever STT server is running (whisper.cpp or
+/// mlx-audio); persists + returns the canonical Transcript. Segments also stream
+/// via EVENT_STT_SEGMENTS. `model` is the per-request mlx-audio repo (ignored by
+/// whisper.cpp, which uses its running model).
+export async function transcribeAudio(path: string, id: string, model?: string | null): Promise<Transcript> {
+  return TranscriptSchema.parse(await invoke("transcribe_audio", { path, id, model: model ?? null }));
 }
 
 /// Reload a persisted transcript by id (disk is the source of truth).

@@ -1,4 +1,4 @@
-import { useEffect } from "react";
+import { useCallback, useEffect } from "react";
 import type { RunningSttEngine } from "../../stt/state/sttRuntimeStore";
 import { useTranscription } from "../hooks/useTranscription";
 import { useTranscriptStore } from "../state/transcriptStore";
@@ -10,27 +10,22 @@ import { SttProfilePanel } from "./SttProfilePanel";
 
 /// The Workspace's STT mode (shown while an STT server is running). Two panes —
 /// the live canonical transcript + an optional reference — fed by Record/Upload.
-/// Transcription runs on whisper.cpp; mlx-audio shows a proactive notice.
-export function SttWorkspace({ engine }: { engine: RunningSttEngine }) {
+/// Works on either engine: whisper.cpp uses its running model; mlx-audio needs
+/// the selected repo passed as `model` (it loads per request).
+export function SttWorkspace({ engine, model }: { engine: RunningSttEngine; model?: string | null }) {
   const { run } = useTranscription();
   const reset = useTranscriptStore((s) => s.reset);
 
   // Transient: clear the live transcript on leave (disk is the source of truth).
   useEffect(() => () => reset(), [reset]);
 
-  if (engine === "mlx_audio") {
-    return (
-      <div className="border rounded p-4 text-sm text-amber-800 bg-amber-50" data-testid="stt-mlx-notice">
-        Transcription runs on whisper.cpp for now. Switch the STT engine to whisper.cpp to transcribe —
-        mlx-audio transcription is coming in a later phase.
-      </div>
-    );
-  }
+  // The mlx-audio model rides with each run; whisper.cpp ignores it.
+  const onRun = useCallback((path: string) => run(path, engine === "mlx_audio" ? model : null), [run, engine, model]);
 
   return (
     <div className="flex flex-col gap-3" data-testid="stt-workspace">
       <VoiceAssistant />
-      <RecordControls onRun={run} />
+      <RecordControls onRun={onRun} />
       <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
         <TranscriptPane />
         <ReferencePane />

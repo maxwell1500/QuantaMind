@@ -8,6 +8,7 @@ vi.mock("@tauri-apps/plugin-dialog", () => ({ open: vi.fn() }));
 
 import { useTranscriptStore } from "../state/transcriptStore";
 import { useMicRecorder } from "../hooks/useMicRecorder";
+import { useTranscription } from "../hooks/useTranscription";
 import { SttWorkspace } from "../components/SttWorkspace";
 import { SttProfilePanel } from "../components/SttProfilePanel";
 import { VoiceAssistant } from "../components/VoiceAssistant";
@@ -94,10 +95,37 @@ describe("SttWorkspace", () => {
     expect(useTranscriptStore.getState().segments).toEqual([]);
   });
 
-  it("shows the coming-later notice for mlx-audio (not the controls)", () => {
-    render(<SttWorkspace engine="mlx_audio" />);
-    expect(screen.getByTestId("stt-mlx-notice")).toBeInTheDocument();
-    expect(screen.queryByTestId("stt-workspace")).toBeNull();
+  it("renders the transcribe surface for mlx-audio too (transcription supported)", () => {
+    render(<SttWorkspace engine="mlx_audio" model="mlx-community/whisper-tiny" />);
+    expect(screen.getByTestId("stt-workspace")).toBeInTheDocument();
+    expect(screen.queryByTestId("stt-mlx-notice")).toBeNull();
+  });
+
+  it("passes the selected mlx repo as the transcribe model", async () => {
+    invokeMock.mockResolvedValue({
+      id: "clip-1",
+      model: "mlx-community/whisper-tiny",
+      language: "en",
+      audio: { sample_rate_hz: 16000, channels: 1, duration_secs: 1 },
+      segments: [],
+      complete: true,
+      stats: {
+        source_duration_secs: 1,
+        audio_decoded_secs: 1,
+        transcribe_wall_ms: 100,
+        segment_count: 0,
+        detected_language: "en",
+        received_sample_rate_hz: 16000,
+        rtf: 10,
+      },
+      stt_profile: null,
+    });
+    const { result } = renderHook(() => useTranscription());
+    await act(async () => {
+      await result.current.run("/tmp/clip.wav", "mlx-community/whisper-tiny");
+    });
+    const call = invokeMock.mock.calls.find((c) => c[0] === "transcribe_audio");
+    expect(call?.[1]).toMatchObject({ path: "/tmp/clip.wav", model: "mlx-community/whisper-tiny" });
   });
 });
 

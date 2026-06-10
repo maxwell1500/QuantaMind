@@ -6,6 +6,7 @@ pub mod audio;
 pub mod backend;
 pub mod decode_mp3;
 pub mod dedup;
+pub mod mlx_audio;
 pub mod sink;
 pub mod transcript;
 pub mod whisper_cpp;
