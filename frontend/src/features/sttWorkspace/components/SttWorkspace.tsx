@@ -5,6 +5,7 @@ import { useTranscriptStore } from "../state/transcriptStore";
 import { TranscriptPane } from "./TranscriptPane";
 import { ReferencePane } from "./ReferencePane";
 import { RecordControls } from "./RecordControls";
+import { VoiceAssistant } from "./VoiceAssistant";
 import { SttProfilePanel } from "./SttProfilePanel";
 
 /// The Workspace's STT mode (shown while an STT server is running). Two panes —
@@ -33,6 +34,7 @@ export function SttWorkspace({ engine }: { engine: RunningSttEngine }) {
         <TranscriptPane />
         <ReferencePane />
       </div>
+      <VoiceAssistant />
       <SttProfilePanel />
     </div>
   );

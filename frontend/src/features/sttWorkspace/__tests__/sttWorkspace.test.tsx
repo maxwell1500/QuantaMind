@@ -1,5 +1,5 @@
 import { describe, it, expect, vi, beforeEach } from "vitest";
-import { render, screen, renderHook, act } from "@testing-library/react";
+import { render, screen, renderHook, act, fireEvent } from "@testing-library/react";
 
 const { invokeMock } = vi.hoisted(() => ({ invokeMock: vi.fn() }));
 vi.mock("@tauri-apps/api/core", () => ({ invoke: invokeMock }));
@@ -10,6 +10,8 @@ import { useTranscriptStore } from "../state/transcriptStore";
 import { useMicRecorder } from "../hooks/useMicRecorder";
 import { SttWorkspace } from "../components/SttWorkspace";
 import { SttProfilePanel } from "../components/SttProfilePanel";
+import { VoiceAssistant } from "../components/VoiceAssistant";
+import { useSelectedModelStore } from "../../../shared/state/selectedModelStore";
 
 beforeEach(() => {
   invokeMock.mockReset();
@@ -120,5 +122,52 @@ describe("SttProfilePanel", () => {
     expect(screen.getByTestId("stt-confidence-na").textContent).toBe("N/A");
     expect(screen.getByTestId("stt-vram-na").textContent).toBe("Not available for this backend");
     expect(screen.getByTestId("stt-split-na").textContent).toContain("N/A");
+  });
+});
+
+describe("VoiceAssistant", () => {
+  const seg = (text: string) => ({
+    text,
+    start_secs: 0,
+    end_secs: 1,
+    avg_logprob: null,
+    no_speech_prob: null,
+    words: null,
+  });
+
+  it("sends the transcript as the prompt and the typed text as the system prompt", async () => {
+    invokeMock.mockResolvedValue(undefined);
+    useSelectedModelStore.setState({
+      selectedModels: [{ name: "llama3.2:1b", backend: "ollama", size_bytes: 1 }],
+    });
+    useTranscriptStore.setState({
+      status: "done",
+      segments: [seg("Hi I'm Alicia, my electric bike isn't working.")],
+    });
+
+    render(<VoiceAssistant />);
+    fireEvent.change(screen.getByTestId("stt-assistant-prompt"), {
+      target: { value: "You are a customer support agent for Amazon ecommerce." },
+    });
+    await act(async () => {
+      fireEvent.click(screen.getByTestId("stt-assistant-ask"));
+    });
+
+    const call = invokeMock.mock.calls.find((c) => c[0] === "run_prompt");
+    expect(call).toBeTruthy();
+    expect(call?.[1]).toEqual({
+      model: "llama3.2:1b",
+      prompt: "Hi I'm Alicia, my electric bike isn't working.",
+      system: "You are a customer support agent for Amazon ecommerce.",
+      backend: "ollama",
+    });
+  });
+
+  it("blocks asking when no model is selected", () => {
+    useSelectedModelStore.setState({ selectedModels: [] });
+    useTranscriptStore.setState({ status: "done", segments: [seg("hello")] });
+    render(<VoiceAssistant />);
+    expect(screen.getByTestId("stt-assistant-ask")).toBeDisabled();
+    expect(screen.getByTestId("stt-assistant-no-model")).toBeInTheDocument();
   });
 });
