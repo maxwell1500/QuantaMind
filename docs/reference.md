@@ -621,6 +621,34 @@ text Inspector, it never fabricates a number — any metric the backend can't su
 The behavioral analysis runs off the transcription's timed path, so measuring it never inflates the
 RTF it reports.
 
+### In the Analysis & Inspector tabs {#stt-inspector-tabs}
+
+The same measured profile is surfaced with the visual density of the LLM views. Once a
+transcription completes, an **STT section auto-appears** in both the **Analysis** and **Inspector**
+tabs (alongside any LLM run — neither clobbers the other). It survives tab navigation because the
+finished transcript is held in a durable store, not the transient live-transcript store.
+
+- **Analysis** — RTF, words/sec, and first-segment latency as ruler bars (the speech analog of the
+  throughput / TTFT bars), the full transcript text, and **Export Markdown / JSON** of the metrics +
+  raw segments. **words/sec** is a *measured* count (real whitespace words ÷ wall seconds), **N/A**
+  when wall time is missing — never an estimate.
+- **Inspector** — a wall-time **phase bar** `[ first segment | transcription ]` (the only honest
+  split — whisper-server reports no model-load / encode / decode breakdown), the **confidence
+  timeline**, a **confidence distribution** histogram, and the **metric-card grid**.
+
+**Confidence timeline (the per-token-latency analog).** whisper-server reports no per-segment
+*processing* time, so the latency chart can't be mirrored literally. Instead the hero chart plots
+**per-segment confidence over the audio timeline** — x = audio time, y = `exp(avg_logprob)` ∈ 0..1,
+each bar spanning its segment's audio extent. A segment with no logprob is a **gap**, never a
+guessed 0. Two scrutiny flags colour a bar, using **whisper's own quality gates** (stable and
+interpretable, not a per-run relative threshold that would mislabel the worst segment of a clean
+transcript):
+
+- **low confidence** — `avg_logprob < -1.0` (whisper's decode-failure cut).
+- **speech over silence** — `no_speech_prob > 0.6` (whisper's default `no_speech_threshold`) yet text
+  was emitted — the per-segment hallucination signal that complements the run-level *Output during
+  silence* rate above.
+
 ## Built-in presets & the finance set {#builtin-presets}
 
 The tool-call eval ships built-in presets — **Curated Suite** and **Finance (preset)** — selectable
