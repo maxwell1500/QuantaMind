@@ -13,20 +13,17 @@ const setAppleSilicon = (appleSilicon: boolean) =>
 beforeEach(() => vi.mocked(useMlxBackend).mockReset());
 
 describe("BackendSetupGuide", () => {
-  it("shows the mlx-audio STT card with its install command on Apple Silicon", () => {
+  it("shows the MLX (LLM) card on Apple Silicon alongside whisper.cpp", () => {
     setAppleSilicon(true);
     render(<BackendSetupGuide />);
-    const card = screen.getByTestId("setup-engine-mlx-audio");
-    expect(card).toHaveTextContent('pip install "mlx-audio[server]"');
-    expect(card).toHaveTextContent("mlx-community/whisper-*");
+    expect(screen.getByTestId("setup-engine-mlx")).toBeInTheDocument();
     // whisper.cpp (not Apple-only) is always present.
     expect(screen.getByTestId("setup-engine-whisper")).toBeInTheDocument();
   });
 
-  it("excludes the Apple-only cards (mlx-audio, MLX) off Apple Silicon", () => {
+  it("excludes the Apple-only MLX LLM card off Apple Silicon, keeps whisper.cpp", () => {
     setAppleSilicon(false);
     render(<BackendSetupGuide />);
-    expect(screen.queryByTestId("setup-engine-mlx-audio")).toBeNull();
     expect(screen.queryByTestId("setup-engine-mlx")).toBeNull();
     expect(screen.getByTestId("setup-engine-whisper")).toBeInTheDocument();
     expect(screen.getByTestId("setup-engine-ollama")).toBeInTheDocument();

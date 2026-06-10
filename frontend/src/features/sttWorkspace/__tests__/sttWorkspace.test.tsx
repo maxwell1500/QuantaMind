@@ -74,8 +74,8 @@ describe("useMicRecorder", () => {
 });
 
 describe("SttWorkspace", () => {
-  it("renders the two-pane surface for whisper.cpp", () => {
-    render(<SttWorkspace engine="whisper_cpp" />);
+  it("renders the two-pane surface", () => {
+    render(<SttWorkspace />);
     expect(screen.getByTestId("stt-workspace")).toBeInTheDocument();
     expect(screen.getByTestId("stt-transcript-pane")).toBeInTheDocument();
     expect(screen.getByTestId("stt-reference-pane")).toBeInTheDocument();
@@ -88,23 +88,17 @@ describe("SttWorkspace", () => {
         { text: "hello", start_secs: 0, end_secs: 1, avg_logprob: null, no_speech_prob: null, words: null },
       ],
     });
-    render(<SttWorkspace engine="whisper_cpp" />);
+    render(<SttWorkspace />);
     expect(screen.getAllByTestId("stt-segment").length).toBe(1);
     fireEvent.click(screen.getByTestId("stt-transcript-clear"));
     expect(screen.queryByTestId("stt-segment")).toBeNull();
     expect(useTranscriptStore.getState().segments).toEqual([]);
   });
 
-  it("gates mlx-audio with the upstream-blocker notice (not the transcribe surface)", () => {
-    render(<SttWorkspace engine="mlx_audio" model="mlx-community/whisper-tiny-asr-fp16" />);
-    expect(screen.getByTestId("stt-mlx-blocked")).toBeInTheDocument();
-    expect(screen.queryByTestId("stt-workspace")).toBeNull();
-  });
-
-  it("passes the selected mlx repo as the transcribe model", async () => {
+  it("transcribes via the whisper.cpp transcribe_audio command", async () => {
     invokeMock.mockResolvedValue({
       id: "clip-1",
-      model: "mlx-community/whisper-tiny",
+      model: "ggml-tiny.en.bin",
       language: "en",
       audio: { sample_rate_hz: 16000, channels: 1, duration_secs: 1 },
       segments: [],
@@ -122,10 +116,10 @@ describe("SttWorkspace", () => {
     });
     const { result } = renderHook(() => useTranscription());
     await act(async () => {
-      await result.current.run("/tmp/clip.wav", "mlx-community/whisper-tiny");
+      await result.current.run("/tmp/clip.wav");
     });
     const call = invokeMock.mock.calls.find((c) => c[0] === "transcribe_audio");
-    expect(call?.[1]).toMatchObject({ path: "/tmp/clip.wav", model: "mlx-community/whisper-tiny" });
+    expect(call?.[1]).toMatchObject({ path: "/tmp/clip.wav" });
   });
 });
 

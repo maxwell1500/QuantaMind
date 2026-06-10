@@ -44,14 +44,14 @@ export function useTranscription() {
     };
   }, [append, setProgress]);
 
-  const run = useCallback(async (path: string, model?: string | null) => {
+  const run = useCallback(async (path: string) => {
     const store = useTranscriptStore.getState();
     const id = `clip-${Date.now()}`;
     store.reset();
     store.setCurrentId(id);
     store.setStatus("transcribing");
     try {
-      const transcript = await transcribeAudio(path, id, model);
+      const transcript = await transcribeAudio(path, id);
       // Reconcile the live view with the persisted truth (deduped, canonical).
       useTranscriptStore.getState().loadFrom(transcript);
     } catch (e) {

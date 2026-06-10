@@ -78,24 +78,6 @@ const ENGINES: Engine[] = [
       "Pick a model in the STT header group, then press ▶.",
     ],
   },
-  {
-    id: "mlx-audio",
-    name: "mlx-audio (MLX STT)",
-    tag: "Speech-to-Text · Apple Silicon",
-    blurb: "Apple-Silicon-native speech-to-text via the local mlx-audio server.",
-    runs: "mlx-community/whisper-* (MLX)",
-    appleOnly: true,
-    commands: [{ label: "Install (with the server runtime)", cmd: 'pip install "mlx-audio[server]"' }],
-    links: [
-      { text: "mlx-audio project", href: "https://github.com/Blaizzy/mlx-audio" },
-      { text: "MLX whisper models", href: "https://huggingface.co/mlx-community" },
-    ],
-    steps: [
-      "Install mlx-audio with the command above.",
-      "Download a model in Models → Speech-to-Text (mlx-audio engine).",
-      "In the STT header group, pick mlx-audio + your model, then press ▶.",
-    ],
-  },
 ];
 
 function CommandRow({ command, testid }: { command: Cmd; testid: string }) {
