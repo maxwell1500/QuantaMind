@@ -3,7 +3,7 @@ use crate::inference::http::http::streaming_client;
 use crate::inference::stt::stt_probe::ensure_local_reachable;
 use crate::inference::stt::transcribe::audio;
 use crate::inference::stt::transcribe::dedup::dedupe_incoming;
-use crate::inference::stt::profile::perf;
+use crate::inference::stt::profile::{perf, Profiler};
 use crate::inference::stt::transcribe::sink::TranscribeSink;
 use crate::inference::stt::transcribe::transcript::{
     AudioSpec, Segment, SttProfile, Transcript, TranscribeStats, Word,
@@ -80,6 +80,9 @@ pub async fn transcribe(
     let mut language: Option<String> = None;
     // Time from submission to the first streamed segment — the STT analog of TTFT.
     let mut first_segment_ms: Option<u64> = None;
+    // Behavioral analysis runs off the timed path so its cost can't inflate RTF.
+    // Dropped on any `?` below → its task is aborted (no lingering state).
+    let profiler = Profiler::spawn();
 
     let mut reader = audio::windows(path, WINDOW_SECS, audio::OVERLAP_SECS)?;
     while let Some(win) = reader.next() {
@@ -145,11 +148,12 @@ pub async fn transcribe(
         }
         sink.segments(&fresh);
         sink.progress(win.end_secs, container_secs);
+        profiler.observe(&fresh).await; // off-path fold; doesn't block the loop
         all.extend(fresh);
     }
 
     // Stop the clock the instant the last segment landed (loop exit), before any
-    // finalize work, so wall time = pure inference (the RTF numerator's partner).
+    // finalize work (incl. joining the profiler), so wall = pure inference.
     let wall_ms = started.elapsed().as_millis() as u64;
     // The decoded sample count is the hardware fact RTF divides by — not the
     // container header (which is 0.0 for VBR). Also refines the artifact's duration.
@@ -164,11 +168,12 @@ pub async fn transcribe(
         received_sample_rate_hz: Some(audio::TARGET_RATE_HZ),
         rtf: perf::rtf(decoded_secs, wall_ms),
     };
-    // Performance layer of the profile (behavioral lands in a later step, off the
-    // timed path). VRAM is None — whisper.cpp doesn't report it.
+    // Join the off-path fold (after the wall clock stopped) for the behavioral
+    // layer. VRAM is None — whisper.cpp doesn't report it.
+    let behavioral = profiler.finish().await;
     let stt_profile = Some(SttProfile {
         perf: Some(perf::profile(first_segment_ms)),
-        behavioral: None,
+        behavioral: Some(behavioral),
         vram_bytes: None,
     });
     Ok(Transcript {
@@ -233,9 +238,15 @@ mod tests {
         assert_eq!(t.stats.audio_decoded_secs, Some(35.0), "decoded-sample truth");
         assert!(t.stats.rtf.is_some_and(|r| r > 0.0), "RTF populated from decoded ÷ wall");
         // Perf layer: first-segment latency captured, encode/decode split honestly None.
-        let perf = t.stt_profile.as_ref().unwrap().perf.as_ref().unwrap();
+        let profile = t.stt_profile.as_ref().unwrap();
+        let perf = profile.perf.as_ref().unwrap();
         assert!(perf.first_segment_ms.is_some(), "first-segment latency measured");
         assert_eq!(perf.encode_ms, None, "no guessed encode/decode split");
+        // Behavioral layer was folded off-path and joined: both windows emit " hi"
+        // → an adjacent repeat; RTF (timed before the join) is still populated.
+        let behavioral = profile.behavioral.as_ref().unwrap();
+        assert_eq!(behavioral.repeat_rate, Some(1.0), "two identical segments → full repeat");
+        assert!(t.stats.rtf.is_some(), "RTF computed before the off-path join, unaffected by it");
     }
 
     #[tokio::test]
