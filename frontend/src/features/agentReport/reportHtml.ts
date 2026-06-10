@@ -21,9 +21,11 @@ function memoryHtml(m: ModelVerdict): string {
     return m.backend !== "ollama" ? `<div class=mem>VRAM fit: N/A (single-model backend)</div>` : "";
   }
   const note = !mem.fits ? "won't fit" : mem.pressure ? "high VRAM pressure" : "fits";
+  const est = mem.estimated ? " (conservative estimate)" : "";
+  const ctx = mem.context_length >= 1024 ? `${Math.round(mem.context_length / 1024)}k` : `${mem.context_length}`;
   return (
-    `<div class=mem>VRAM: ${gb(mem.total_bytes)} GB (${gb(mem.weights_bytes)} model + ${gb(mem.kv_cache_bytes)} cache) ` +
-    `${mem.fits ? "&lt;" : "&gt;"} ${gb(mem.cap_bytes)} GB cap · ${note}</div>`
+    `<div class=mem>VRAM: ${gb(mem.total_bytes)} GB (${gb(mem.weights_bytes)} model + ${gb(mem.kv_cache_bytes)} cache @ ${ctx} ctx) ` +
+    `${mem.fits ? "&lt;" : "&gt;"} ${gb(mem.cap_bytes)} GB cap · ${note}${est}</div>`
   );
 }
 

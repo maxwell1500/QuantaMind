@@ -2,7 +2,7 @@ import { useEffect, useState } from "react";
 import { open } from "@tauri-apps/plugin-dialog";
 import { useEvalRegistryStore } from "../../state/evalRegistryStore";
 import { useInstalledModelsStore } from "../../../models/state/installedModelsStore";
-import { useBackendStore } from "../../../../shared/state/backendStore";
+import { useSelectedModelStore } from "../../../../shared/state/selectedModelStore";
 import { InfoButton } from "../../../../shared/ui/InfoButton";
 import { TOOL_HELP } from "../../help";
 import { useBatchStore } from "../../state/batchStore";
@@ -11,16 +11,14 @@ import { formatIpcError } from "../../../../shared/ipc/core/error";
 import { useToast } from "../../../../shared/ui/Toast";
 import type { ToolTask } from "../../../../shared/ipc/eval/registry";
 import { batchToCsv, download } from "../../exportBatch";
-import { ModelDropdown } from "../matrix/ModelDropdown";
-import { dedupeByDigest } from "../../../../shared/models/dedupeDigest";
 import { ConfirmDialog } from "./ConfirmDialog";
 import { CsvImportModal } from "./CsvImportModal";
 import { KebabMenu } from "./KebabMenu";
 import { Spinner } from "../../../../shared/ui/Spinner";
 
 interface EvalManagerProps {
-  targets: string[];
-  setTargets: (t: string[]) => void;
+  model: string;
+  setModel: (m: string) => void;
   k: number;
   setK: (k: number) => void;
   maxSteps: number;
@@ -30,8 +28,8 @@ interface EvalManagerProps {
 }
 
 export function EvalManager({
-  targets = [],
-  setTargets = () => {},
+  model = "",
+  setModel = () => {},
   k = 1,
   setK = () => {},
   maxSteps = 8,
@@ -43,14 +41,9 @@ export function EvalManager({
     useEvalRegistryStore();
   const showToast = useToast();
   const list = useInstalledModelsStore((s) => s.list);
-  const selectedBackend = useBackendStore((s) => s.selectedBackend);
-  // Only the selected backend's models can be evaluated (a model is bound to its
-  // backend's weight format) — the dropdown and run targets are scoped to it. Then
-  // de-dupe by content digest: Ollama lists the same blob once per tag (e.g.
-  // `gemma_q3_k_l:latest` and `gemma:q3_k_l`), which would otherwise show the same
-  // model several times. Mirrors the global header picker. (llama.cpp/MLX have no
-  // digest, so they're always kept.)
-  const backendModels = dedupeByDigest(list.filter((m) => m.backend === selectedBackend));
+  // The eval runs ONE model from the GLOBAL selection (single source of truth) — the
+  // header's multi (Ollama) / single (llama.cpp/MLX) picker. No per-page model list.
+  const selectedModels = useSelectedModelStore((s) => s.selectedModels);
   const running = useBatchStore((s) => s.running);
   const report = useBatchStore((s) => s.report);
   const { run, stop } = useBatchRun();
@@ -74,14 +67,6 @@ export function EvalManager({
   useEffect(() => {
     void init().catch((e) => console.error("eval registry init failed (EvalManager):", e));
   }, [init]);
-
-  // Drop targets that aren't on the active backend (handles a backend switch).
-  useEffect(() => {
-    if (useInstalledModelsStore.getState().status !== "ready") return;
-    const names = new Set(backendModels.map((m) => m.name));
-    const kept = targets.filter((t) => names.has(t));
-    if (kept.length !== targets.length) setTargets(kept);
-  }, [selectedBackend, backendModels, targets, setTargets]);
 
   const handleDataSourceChange = async (source: "custom" | "builtin") => {
     setError(null);
@@ -144,21 +129,18 @@ export function EvalManager({
       await stop();
       return;
     }
-    const ts = backendModels.filter((m) => targets.includes(m.name)).map((m) => ({ model: m.name, backend: m.backend }));
-    if (ts.length === 0 || tasks.length === 0) return;
-    void run(selected, ts, tasks, k, maxSteps, nativeFc);
+    const picked = selectedModels.find((m) => m.name === model);
+    if (!picked || tasks.length === 0) return;
+    void run(selected, [{ model: picked.name, backend: picked.backend }], tasks, k, maxSteps, nativeFc);
   };
 
-  const toggleTarget = (name: string) =>
-    setTargets(targets.includes(name) ? targets.filter((t) => t !== name) : [...targets, name]);
-
-  const runDisabled = targets.length === 0 || tasks.length === 0;
+  const runDisabled = !model || tasks.length === 0;
   // Explain WHY RUN BATCH is disabled instead of leaving a greyed-out dead button.
   const runDisabledReason =
-    targets.length === 0 && tasks.length === 0
-      ? "Select at least one model and a collection with tasks"
-      : targets.length === 0
-        ? "Select at least one model"
+    !model && tasks.length === 0
+      ? "Select a model at the top and a collection with tasks"
+      : !model
+        ? "Select a model at the top"
         : tasks.length === 0
           ? "This collection has no tasks"
           : undefined;
@@ -313,10 +295,27 @@ export function EvalManager({
           <div style={sectionHeaderStyle}>▾ RUN CONTROLS</div>
           <div style={{ display: "flex", flexDirection: "column", gap: 14, paddingLeft: 12, marginTop: 10 }}>
             
-            {/* Target Models (multi-select) */}
+            {/* Model — the one to eval, from the GLOBAL selection (pick at the top). */}
             <div style={{ display: "flex", flexDirection: "column", gap: 6 }} data-testid="eval-manager-model-select">
-              <span style={controlLabelStyle}>Target Models:</span>
-              <ModelDropdown models={backendModels} selected={new Set(targets)} onToggle={toggleTarget} />
+              <span style={controlLabelStyle}>Model:</span>
+              {selectedModels.length === 0 ? (
+                <span style={{ fontSize: 12, color: "#94a3b8", fontStyle: "italic" }} data-testid="eval-no-model">
+                  Select a model at the top
+                </span>
+              ) : (
+                <select
+                  value={model}
+                  onChange={(e) => setModel(e.target.value)}
+                  data-testid="eval-model-dropdown"
+                  style={{ ...numberInputStyle, width: "100%", cursor: "pointer" }}
+                >
+                  {selectedModels.map((m) => (
+                    <option key={m.name} value={m.name}>
+                      {m.name}
+                    </option>
+                  ))}
+                </select>
+              )}
             </div>
 
             {/* Iterations Selector — Pass^k repeats; only affects Multi-Step tasks */}

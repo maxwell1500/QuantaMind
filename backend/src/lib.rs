@@ -25,6 +25,7 @@ pub fn run() {
         .manage(commands::workspace::workspaces::WorkspaceState::default())
         .manage(commands::settings::user_settings::UserSettingsState::default())
         .manage(commands::eval::batch_cmd::BatchRunState::default())
+        .manage(commands::publish::auth_state::AuthState::default())
         .invoke_handler(tauri::generate_handler![
             commands::system::feasibility::check_install_feasibility,
             commands::gguf::gguf_cmd::inspect_gguf,
@@ -34,6 +35,13 @@ pub fn run() {
             commands::compare::compare::run_compare,
             commands::compare::compare::stop_compare,
             commands::compare::compare_export::save_compare_report,
+            commands::publish::export_cmd::save_readiness_image,
+            #[cfg(not(feature = "enterprise"))]
+            commands::publish::preview_cmd::preview_publish_payload,
+            #[cfg(not(feature = "enterprise"))]
+            commands::publish::publish_cmd::publish_to_board,
+            #[cfg(not(feature = "enterprise"))]
+            commands::publish::identity::login_cmd::start_login,
             commands::gguf::gguf_cmd::install_local_gguf,
             commands::hf::hf_browse::hf_search,
             commands::hf::hf_browse::hf_repo_files,
@@ -67,6 +75,7 @@ pub fn run() {
             commands::settings::settings::validate_storage_path,
             commands::storage::storage::get_installed_models_with_stats,
             commands::storage::storage::remove_model,
+            commands::storage::storage_cache::clear_app_cache,
             commands::storage::storage_usage::get_disk_usage,
             commands::prompt::prompt::run_prompt,
             commands::prompt::prompt::stop_prompt,

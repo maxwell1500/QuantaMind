@@ -1,5 +1,5 @@
 use super::profile::ReadinessProfile;
-use super::types::{AgentPath, NativeFcStatus, Readiness, ReadinessInputs, ReadinessVerdict, EPSILON};
+use super::types::{AgentPath, CliffStatus, NativeFcStatus, Readiness, ReadinessInputs, ReadinessVerdict, EPSILON};
 
 /// Pure synthesis: measured inputs + a profile → a verdict. No async, no I/O —
 /// the single source of truth shared by the GUI command and the future CLI.
@@ -41,14 +41,24 @@ pub fn assess(i: &ReadinessInputs, p: &ReadinessProfile) -> ReadinessVerdict {
         conditions.push("high VRAM pressure near allocation ceiling".into());
     }
 
-    // Context-cliff hard gate (only when the profile demands headroom).
+    // Context-cliff hard gate (only when the profile demands headroom). Strict: a
+    // NoCliff passes only if the probe actually reached the required depth — an
+    // incomplete probe (or an unprobed model) is not a pass.
     if let Some(min_tok) = p.min_context_tokens {
-        match i.cliff_tokens {
-            Some(t) if t < min_tok => {
-                blocking.push(format!("reasoning cliff at {} < {} needed", t, min_tok));
+        match i.cliff {
+            CliffStatus::Collapsed { depth } if depth < min_tok => {
+                blocking.push(format!("reasoning cliff at {} < {} needed", depth, min_tok));
             }
-            None => blocking.push(format!("context headroom required ({} tok) but not measured", min_tok)),
-            Some(_) => {}
+            CliffStatus::NoCliff { tested } if tested < min_tok => {
+                blocking.push(format!("only probed to {} tok < {} needed (no cliff, but headroom unproven)", tested, min_tok));
+            }
+            CliffStatus::Broken { .. } => {
+                blocking.push("tool-call accuracy fails at the baseline (broken) — no usable context window".to_string());
+            }
+            CliffStatus::NotProbed => {
+                blocking.push(format!("context headroom required ({} tok) but not measured", min_tok));
+            }
+            _ => {} // Collapsed{depth >= min} or NoCliff{tested >= min} → pass
         }
     }
 

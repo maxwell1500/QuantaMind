@@ -5,6 +5,12 @@ use serde::{Deserialize, Serialize};
 /// (a soft Conditional, not a block). Mirrors the `fit.ts` "tight" precedent.
 pub const PRESSURE_FRACTION: f64 = 0.85;
 
+/// Fallback context for the KV-cache estimate when the run pinned no `num_ctx`.
+/// Sizing at the model's *max* context (262 k on newer models) yields an absurd
+/// 100+ GB cache that nobody actually allocates; an 8 k dev window is the realistic
+/// default. An explicit run `num_ctx` always wins — this only caps the fallback.
+pub const DEFAULT_FALLBACK_CTX: u32 = 8192;
+
 /// One model's measured memory footprint against an allocation cap: exact on-disk
 /// weights + the real f16 KV cache at the run's context length. Never an estimate
 /// of the weights — only the cache uses the canonical formula.
@@ -17,6 +23,10 @@ pub struct MemoryProfile {
     pub context_length: u32,
     pub fits: bool,
     pub pressure: bool,
+    /// The KV cache was sized from a defaulted `head_count_kv` (the model didn't
+    /// report one) → a conservative overestimate. The UI labels the fit "estimated".
+    #[serde(default)]
+    pub estimated: bool,
 }
 
 /// Pure VRAM-fit estimate: weights + KV cache (via the canonical `vram_math`
@@ -37,7 +47,7 @@ pub fn estimate(
     let total_bytes = weights_bytes.saturating_add(kv_cache_bytes);
     let fits = total_bytes <= cap_bytes;
     let pressure = fits && cap_bytes > 0 && total_bytes as f64 >= cap_bytes as f64 * PRESSURE_FRACTION;
-    MemoryProfile { weights_bytes, kv_cache_bytes, total_bytes, cap_bytes, context_length, fits, pressure }
+    MemoryProfile { weights_bytes, kv_cache_bytes, total_bytes, cap_bytes, context_length, fits, pressure, estimated: false }
 }
 
 /// Transformer dimensions for the KV-cache estimate, mirrored from `commands`'
@@ -50,12 +60,17 @@ pub struct Dims {
     pub head_count_kv: u64,
     pub embedding_length: u64,
     pub context_length: u32,
+    /// `head_count_kv` was defaulted (model didn't report it) → the resulting fit
+    /// is a conservative estimate; propagated to `MemoryProfile.estimated`.
+    pub kv_estimated: bool,
 }
 
 /// Compute a memory profile only when every input is present: a cap, the exact
 /// weight size, and real dims. Any `None` ⇒ `None` ("not measured" — the verdict
 /// then treats VRAM as unmeasured, never a guessed fit). Sizes the cache to the
-/// run's `num_ctx`, falling back to the model's max context.
+/// run's `num_ctx`, falling back to a realistic 8 k window (`DEFAULT_FALLBACK_CTX`)
+/// capped by the model's max — never the model's full (e.g. 262 k) context, which
+/// would balloon the cache far beyond any real workload.
 pub fn try_profile(
     weights_bytes: Option<u64>,
     dims: Option<Dims>,
@@ -63,8 +78,10 @@ pub fn try_profile(
     cap_bytes: Option<u64>,
 ) -> Option<MemoryProfile> {
     let (weights, d, cap) = (weights_bytes?, dims?, cap_bytes?);
-    let ctx = num_ctx.unwrap_or(d.context_length);
-    Some(estimate(weights, d.layers, d.head_count, d.head_count_kv, d.embedding_length, ctx, cap))
+    let ctx = num_ctx.unwrap_or_else(|| d.context_length.min(DEFAULT_FALLBACK_CTX));
+    let mut profile = estimate(weights, d.layers, d.head_count, d.head_count_kv, d.embedding_length, ctx, cap);
+    profile.estimated = d.kv_estimated;
+    Some(profile)
 }
 
 #[cfg(test)]

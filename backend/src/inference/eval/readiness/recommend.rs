@@ -35,7 +35,7 @@ pub fn recommendation(verdicts: &[ModelVerdict]) -> Option<&ModelVerdict> {
 mod tests {
     use super::*;
     use crate::inference::backend::backend_kind::BackendKind;
-    use crate::inference::eval::readiness::types::{AgentPath, ReadinessVerdict};
+    use crate::inference::eval::readiness::types::{AgentPath, CliffStatus, ReadinessVerdict};
 
     fn verdict(model: &str, status: Readiness, effort: Option<f64>, steps: Option<f64>) -> ModelVerdict {
         ModelVerdict {
@@ -47,7 +47,7 @@ mod tests {
             effort,
             pass_k: None,
             quantization: None,
-            cliff_tokens: None,
+            cliff: CliffStatus::NotProbed,
         }
     }
 

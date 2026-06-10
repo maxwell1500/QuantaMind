@@ -27,6 +27,10 @@ export interface RunProbeArgs {
   maxTokens: number;
   steps: number;
   params?: InferenceParams;
+  /// Pin temperature 0 (greedy) so the verdict is REPRODUCIBLE for a given (model,
+  /// collection) — a diagnostic must not flip run-to-run. Off → sample at the global
+  /// temperature. Everything else still comes from `params`.
+  greedy?: boolean;
 }
 
 interface CliffStore {
@@ -93,8 +97,23 @@ export const useCliffStore = create<CliffStore>((set, get) => ({
 
   hydrate: async (collectionId) => {
     try {
-      const map = await getCliffResults(collectionId);
-      set((s) => ({ results: { ...s.results, [collectionId]: map } }));
+      const map = await getCliffResults(collectionId); // model → CliffStatus
+      // Restore ALL states so broken/no-cliff survive a reload, not just collapse depths:
+      // results = collapse depths; probed = any probed state; brokenBaseline = Broken.
+      const results: Record<string, number> = {};
+      const probed: Record<string, boolean> = {};
+      const broken: Record<string, boolean> = {};
+      for (const [m, st] of Object.entries(map)) {
+        if (st.status === "NotProbed") continue;
+        probed[m] = true;
+        if (st.status === "Collapsed") results[m] = st.depth;
+        else if (st.status === "Broken") broken[m] = true;
+      }
+      set((s) => ({
+        results: { ...s.results, [collectionId]: results },
+        probed: { ...s.probed, [collectionId]: probed },
+        brokenBaseline: { ...s.brokenBaseline, [collectionId]: broken },
+      }));
     } catch (e) {
       // best-effort — a missing/unreadable store just leaves the cell N/A — but log it.
       console.error("cliff hydrate failed:", e);
@@ -111,7 +130,7 @@ export const useCliffStore = create<CliffStore>((set, get) => ({
   wasProbed: (collectionId, model) => get().probed[collectionId]?.[model] === true,
   hasBrokenBaseline: (collectionId, model) => get().brokenBaseline[collectionId]?.[model] === true,
 
-  runProbe: async ({ model, backend, collectionId, tasks, maxTokens, steps, params }) => {
+  runProbe: async ({ model, backend, collectionId, tasks, maxTokens, steps, params, greedy }) => {
     // GUARDRAIL 2: clear all prior state BEFORE dispatching — never append to a
     // stale series (that corrupts the chart and the persisted cliff).
     const myRun = ++activeRun;
@@ -120,7 +139,13 @@ export const useCliffStore = create<CliffStore>((set, get) => ({
 
     // The probe IS about context depth — give Ollama a window for the largest rung
     // (+ headroom), respecting a higher user num_ctx. No-op for llama.cpp/MLX.
-    const probeParams = { ...params, num_ctx: Math.max(params?.num_ctx ?? 0, maxTokens + 2048) };
+    const probeParams = {
+      ...params,
+      num_ctx: Math.max(params?.num_ctx ?? 0, maxTokens + 2048),
+      // Greedy → reproducible: pin temp 0 so the same (model, collection) yields the
+      // same verdict on a re-run. Off → keep the global temperature.
+      ...(greedy ? { temperature: 0 } : {}),
+    };
     try {
       for (const padUnits of ladder) {
         if (activeRun !== myRun) return; // stopped or superseded
@@ -154,12 +179,28 @@ export const useCliffStore = create<CliffStore>((set, get) => ({
         probed: { ...s.probed, [collectionId]: { ...(s.probed[collectionId] ?? {}), [model]: true } },
         brokenBaseline: { ...s.brokenBaseline, [collectionId]: { ...(s.brokenBaseline[collectionId] ?? {}), [model]: broken } },
       }));
-      if (verdict.kind === "cliff" && verdict.depth != null) {
+      // Persist the outcome so the Agent Report + a reloaded Matrix reflect it, not just
+      // this session: cliff → Collapsed{depth}; no-cliff → NoCliff{tested}; broken →
+      // Broken{tested} (a distinct state, never a fake depth); no-baseline → not
+      // persisted (stays NotProbed).
+      const tested = Math.max(0, ...get().points.map((pt) => pt.promptTokens ?? 0));
+      let out: { depth: number | null; broken: boolean } | undefined; // undefined ⇒ skip
+      if (verdict.kind === "cliff") out = { depth: verdict.depth ?? tested, broken: false };
+      else if (verdict.kind === "no-cliff") out = { depth: null, broken: false };
+      else if (verdict.kind === "broken-baseline") out = { depth: null, broken: true };
+      if (out && tested > 0) {
+        const persisted = out;
         try {
-          await saveCliffResult(collectionId, model, verdict.depth);
-          set((s) => ({
-            results: { ...s.results, [collectionId]: { ...(s.results[collectionId] ?? {}), [model]: verdict.depth as number } },
-          }));
+          await saveCliffResult(collectionId, model, persisted.depth, tested, persisted.broken);
+          // `results` holds GENUINE collapse depths only (the Matrix's numeric source):
+          // set it for a real cliff, clear it otherwise (no-cliff / broken render via
+          // their own flags, never a misleading number).
+          set((s) => {
+            const col = { ...(s.results[collectionId] ?? {}) };
+            if (verdict.kind === "cliff" && persisted.depth != null) col[model] = persisted.depth;
+            else delete col[model];
+            return { results: { ...s.results, [collectionId]: col } };
+          });
         } catch (e) {
           set((s) => ({ error: s.error ?? formatIpcError(e) }));
         }

@@ -15,6 +15,11 @@ pub struct ModelDims {
     pub head_count_kv: u64,
     pub embedding_length: u64,
     pub context_length: u64,
+    /// `head_count_kv` was absent from `/api/show` and defaulted to `head_count`
+    /// (MHA per GGUF convention). The KV-cache/VRAM figure derived from it is then a
+    /// conservative overestimate for a GQA model — labelled as such, never fabricated.
+    #[serde(default)]
+    pub kv_estimated: bool,
 }
 
 /// Model metadata for the inspector / template guard. `available` is false for
@@ -35,15 +40,22 @@ pub struct ModelInspect {
 }
 
 /// Extract KV-cache dimensions from `/api/show` `model_info`. Keys are namespaced
-/// by `general.architecture` (e.g. `llama.block_count`). All five must be present
-/// — otherwise `None`, so the predictor falls back rather than guess.
+/// by `general.architecture` (e.g. `llama.block_count`). `head_count_kv` is the one
+/// tolerated absence: when missing/null it defaults to `head_count` (MHA per GGUF
+/// convention) and `kv_estimated` is set — newer arches (e.g. `qwen35`) omit it, and
+/// blocking on that would wrongly mark a working model unmeasured. The defaulted
+/// figure OVERESTIMATES the cache for a GQA model — conservative, never optimistic.
+/// The other four keys stay required → `None` (predictor falls back rather than guess).
 fn dims_from_model_info(info: &serde_json::Map<String, serde_json::Value>) -> Option<ModelDims> {
     let arch = info.get("general.architecture")?.as_str()?;
     let g = |suffix: &str| info.get(&format!("{arch}.{suffix}")).and_then(|v| v.as_u64());
+    let head_count = g("attention.head_count")?;
+    let kv = g("attention.head_count_kv");
     Some(ModelDims {
         layers: g("block_count")?,
-        head_count: g("attention.head_count")?,
-        head_count_kv: g("attention.head_count_kv")?,
+        head_count,
+        head_count_kv: kv.unwrap_or(head_count),
+        kv_estimated: kv.is_none(),
         embedding_length: g("embedding_length")?,
         context_length: g("context_length")?,
     })
@@ -169,15 +181,35 @@ mod tests {
             "llama.context_length": 8192
         });
         let d = dims_from_model_info(info.as_object().unwrap()).unwrap();
-        assert_eq!(d, ModelDims { layers: 32, head_count: 32, head_count_kv: 8, embedding_length: 4096, context_length: 8192 });
+        assert_eq!(
+            d,
+            ModelDims { layers: 32, head_count: 32, head_count_kv: 8, embedding_length: 4096, context_length: 8192, kv_estimated: false }
+        );
     }
 
     #[test]
-    fn dims_none_when_a_key_is_missing() {
+    fn dims_none_when_a_required_key_is_missing() {
+        // head_count absent ⇒ still None (head_count_kv is the only tolerated absence).
         let info = serde_json::json!({
             "general.architecture": "llama",
             "llama.block_count": 32
         });
         assert!(dims_from_model_info(info.as_object().unwrap()).is_none());
+    }
+
+    #[test]
+    fn missing_kv_head_count_defaults_to_head_count_and_flags_estimate() {
+        // qwen35 omits attention.head_count_kv — must still parse (conservative MHA).
+        let info = serde_json::json!({
+            "general.architecture": "qwen35",
+            "qwen35.block_count": 32,
+            "qwen35.attention.head_count": 16,
+            "qwen35.attention.head_count_kv": serde_json::Value::Null,
+            "qwen35.embedding_length": 4096,
+            "qwen35.context_length": 262144
+        });
+        let d = dims_from_model_info(info.as_object().unwrap()).expect("parses despite null kv");
+        assert_eq!(d.head_count_kv, 16); // defaulted to head_count
+        assert!(d.kv_estimated);
     }
 }

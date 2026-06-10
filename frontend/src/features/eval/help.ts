@@ -39,8 +39,8 @@ export const TOOL_HELP = {
   },
 } satisfies Record<string, Help>;
 
-/// How each metric is computed. Used both in InfoButtons and as native title=
-/// tooltips on the dense metric labels.
+/// How each metric is computed. Used both in InfoButtons and as clip-safe Tooltip
+/// labels on the dense metric column headers.
 export const METRIC_HELP = {
   passK: {
     title: "Pass^k",
@@ -72,7 +72,7 @@ export const METRIC_HELP = {
   },
 } satisfies Record<string, Help>;
 
-/// "Title — body" for a native title= tooltip on a metric label.
+/// "Title — body" for a clip-safe Tooltip label on a metric column header.
 export function metricTitle(key: keyof typeof METRIC_HELP): string {
   const h = METRIC_HELP[key];
   return `${h.title} — ${h.body}`;

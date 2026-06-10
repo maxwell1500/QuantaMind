@@ -1,13 +1,12 @@
-import { useEffect, useState } from "react";
-import { download } from "../../eval/exportBatch";
-import { useToast } from "../../../shared/ui/Toast";
+import { useEffect, useRef, useState } from "react";
 import { useEvalRegistryStore } from "../../eval/state/evalRegistryStore";
 import { useReadinessStore } from "../state/readinessStore";
-import { buildReadinessHtml } from "../reportHtml";
 import { HostHardwareProfile } from "./HostHardwareProfile";
 import { ProfileSelector } from "./ProfileSelector";
 import { VerdictTable } from "./VerdictTable";
 import { RecommendationBanner } from "./RecommendationBanner";
+import { ExportMenu } from "./ExportMenu";
+import { PublishButton } from "../../publish/PublishButton";
 import { useNavStore } from "../../../shared/state/navStore";
 import { InfoButton } from "../../../shared/ui/InfoButton";
 import { READINESS_HELP } from "../readinessHelp";
@@ -33,22 +32,15 @@ export function AgentReportPage() {
     assess,
     saveProfile,
   } = useReadinessStore();
-  const toast = useToast();
   const goBack = useNavStore((s) => s.goBack);
   const [showNativeFc, setShowNativeFc] = useState(true);
+  // The report card (banner + table) snapshotted to PNG by the export menu.
+  const cardRef = useRef<HTMLDivElement>(null);
 
   // Changing the cap re-assesses fit in-session (only once a run is on screen).
   const onCapChange = (bytes: number) => {
     setCap(bytes);
     if (assessed) void assess(selected);
-  };
-
-  const onExport = () => {
-    const profile = profiles.find((p) => p.id === selectedProfileId);
-    if (!profile || verdicts.length === 0) return;
-    const html = buildReadinessHtml(verdicts, profile, selected, new Date().toISOString());
-    download(`readiness-${selected}.html`, html, "text/html");
-    toast("Readiness report exported ✓");
   };
 
   useEffect(() => {
@@ -181,7 +173,7 @@ export function AgentReportPage() {
         </div>
 
         {verdicts.length > 0 && (
-          <div className="space-y-6">
+          <div className="space-y-6" ref={cardRef}>
             <RecommendationBanner
               verdicts={verdicts}
               profileName={activeProfile?.name ?? "this profile"}
@@ -236,18 +228,17 @@ export function AgentReportPage() {
           Cancel / Back
         </button>
 
-        {verdicts.length > 0 && (
-          <button
-            type="button"
-            data-testid="readiness-export"
-            className="inline-flex items-center gap-2 bg-slate-900 hover:bg-slate-800 text-white active:bg-slate-900 rounded-lg text-sm font-semibold py-2 px-4 shadow-sm transition-all duration-150 cursor-pointer"
-            onClick={onExport}
-          >
-            <svg className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4" />
-            </svg>
-            <span>Export Shareable Report (.HTML)</span>
-          </button>
+        {verdicts.length > 0 && activeProfile && (
+          <div className="flex items-center gap-2">
+            <ExportMenu
+              verdicts={verdicts}
+              profile={activeProfile}
+              collectionId={selected}
+              hardware={hardware}
+              cardRef={cardRef}
+            />
+            <PublishButton verdicts={verdicts} />
+          </div>
         )}
       </footer>
     </div>

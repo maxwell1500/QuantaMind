@@ -20,6 +20,7 @@ vi.mock("../../../../shared/ipc/core/client", () => ({
 import { EvalManager } from "../../components/manager/EvalManager";
 import { useEvalRegistryStore } from "../../state/evalRegistryStore";
 import { useInstalledModelsStore } from "../../../models/state/installedModelsStore";
+import { useSelectedModelStore } from "../../../../shared/state/selectedModelStore";
 import { runBatchEval } from "../../../../shared/ipc/eval/batch";
 import { useParamsStore } from "../../../../shared/state/paramsStore";
 import { useBackendStore } from "../../../../shared/state/backendStore";
@@ -36,6 +37,18 @@ const init = vi.fn().mockResolvedValue(undefined);
 const select = vi.fn().mockResolvedValue(undefined);
 const importFile = vi.fn().mockResolvedValue(undefined);
 
+// Default props shorthand: the eval model + collection config (the model comes from
+// the GLOBAL selection store; the prop is the chosen one).
+const props = (over: Record<string, unknown> = {}) => ({
+  model: "llama3.2:1b",
+  setModel: () => {},
+  k: 1,
+  setK: () => {},
+  maxSteps: 8,
+  setMaxSteps: () => {},
+  ...over,
+});
+
 beforeEach(() => {
   vi.clearAllMocks();
   useBackendStore.setState({ selectedBackend: "ollama" });
@@ -43,6 +56,8 @@ beforeEach(() => {
     list: [{ name: "llama3.2:1b", size_bytes: 1, modified_at: "", family: "", parameter_size: "", quantization: "Q4_0", backend: "ollama" }],
     status: "ready", error: null, lastRefreshedAt: 1,
   });
+  // The eval model dropdown is driven by the GLOBAL selection (not a per-page list).
+  useSelectedModelStore.setState({ selectedModels: [{ name: "llama3.2:1b", backend: "ollama", size_bytes: 1 }] });
   useEvalRegistryStore.setState({
     presets: [{ id: "curated", label: "Curated Suite" }],
     collections: ["my-evals"],
@@ -55,68 +70,54 @@ beforeEach(() => {
 });
 
 describe("EvalManager Sidebar Controls", () => {
-  it("lists only the selected backend's models in the target dropdown", () => {
-    useBackendStore.setState({ selectedBackend: "llama_cpp" });
-    useInstalledModelsStore.setState({
-      list: [
-        { name: "llama3.2:1b", size_bytes: 1, modified_at: "", family: "", parameter_size: "", quantization: "Q4_0", backend: "ollama" },
-        { name: "qwen.gguf", size_bytes: 1, modified_at: "", family: "", parameter_size: "", quantization: "Q4_0", backend: "llama_cpp", path: "/w/qwen.gguf" },
+  it("lists the GLOBAL selection in the Model dropdown (single source of truth)", () => {
+    useSelectedModelStore.setState({
+      selectedModels: [
+        { name: "qwen3.5:9b", backend: "ollama", size_bytes: 1 },
+        { name: "llama3.2:1b", backend: "ollama", size_bytes: 1 },
       ],
-      status: "ready", error: null, lastRefreshedAt: 1,
     });
-    render(<EvalManager targets={[]} setTargets={() => {}} k={1} setK={() => {}} maxSteps={8} setMaxSteps={() => {}} />);
-    fireEvent.click(screen.getByTestId("eval-model-dropdown"));
-    expect(screen.getByTestId("eval-model-toggle-qwen.gguf")).toBeInTheDocument();
-    expect(screen.queryByTestId("eval-model-toggle-llama3.2:1b")).toBeNull();
+    render(<EvalManager {...props({ model: "qwen3.5:9b" })} />);
+    const dropdown = screen.getByTestId("eval-model-dropdown");
+    expect(dropdown).toHaveTextContent("qwen3.5:9b");
+    expect(dropdown).toHaveTextContent("llama3.2:1b");
   });
 
-  it("de-dupes Ollama tag duplicates (same digest) so a model isn't listed several times", () => {
-    useBackendStore.setState({ selectedBackend: "ollama" });
-    useInstalledModelsStore.setState({
-      list: [
-        // The same blob under two Ollama tags (identical digest) — e.g. gemma.
-        { name: "gemma_q3_k_l:latest", digest: "3d3dcc", size_bytes: 1, modified_at: "", family: "", parameter_size: "", quantization: "Q3_K_L", backend: "ollama" },
-        { name: "gemma:q3_k_l", digest: "3d3dcc", size_bytes: 1, modified_at: "", family: "", parameter_size: "", quantization: "Q3_K_L", backend: "ollama" },
-        { name: "qwen3.5:9b", digest: "6488c9", size_bytes: 1, modified_at: "", family: "", parameter_size: "", quantization: "Q4_K_M", backend: "ollama" },
-      ],
-      status: "ready", error: null, lastRefreshedAt: 1,
-    });
-    render(<EvalManager targets={[]} setTargets={() => {}} k={1} setK={() => {}} maxSteps={8} setMaxSteps={() => {}} />);
-    fireEvent.click(screen.getByTestId("eval-model-dropdown"));
-    // First occurrence of the shared digest wins; the duplicate tag is collapsed.
-    expect(screen.getByTestId("eval-model-toggle-gemma_q3_k_l:latest")).toBeInTheDocument();
-    expect(screen.queryByTestId("eval-model-toggle-gemma:q3_k_l")).toBeNull();
-    expect(screen.getByTestId("eval-model-toggle-qwen3.5:9b")).toBeInTheDocument();
+  it("prompts to pick a model at the top when nothing is selected globally", () => {
+    useSelectedModelStore.setState({ selectedModels: [] });
+    render(<EvalManager {...props({ model: "" })} />);
+    expect(screen.getByTestId("eval-no-model")).toHaveTextContent("Select a model at the top");
+    expect(screen.queryByTestId("eval-model-dropdown")).toBeNull();
+    expect(screen.getByTestId("eval-run-all")).toHaveAttribute("title", "Select a model at the top");
   });
 
   it("offers an ⓘ next to Iterations (k) explaining Pass^k", () => {
-    render(<EvalManager targets={[]} setTargets={() => {}} k={1} setK={() => {}} maxSteps={8} setMaxSteps={() => {}} />);
+    render(<EvalManager {...props()} />);
     const info = screen.getByTestId("info-iterations");
     fireEvent.mouseEnter(info.parentElement as HTMLElement);
     expect(screen.getByTestId("info-popup-iterations")).toHaveTextContent(/Pass\^k/);
   });
 
-  it("explains WHY the RUN BATCH button is disabled (no models vs no tasks)", () => {
-    // No models selected (targets = []) → the button says select a model.
-    const { rerender } = render(<EvalManager targets={[]} setTargets={() => {}} k={1} setK={() => {}} maxSteps={8} setMaxSteps={() => {}} />);
-    expect(screen.getByTestId("eval-run-all")).toHaveAttribute("title", "Select at least one model");
-    // Models present but the collection has no tasks → the button says no tasks.
+  it("explains WHY the RUN BATCH button is disabled (no model vs no tasks)", () => {
+    useSelectedModelStore.setState({ selectedModels: [] });
+    const { rerender } = render(<EvalManager {...props({ model: "" })} />);
+    expect(screen.getByTestId("eval-run-all")).toHaveAttribute("title", "Select a model at the top");
+    // Model present but the collection has no tasks → the button says no tasks.
+    useSelectedModelStore.setState({ selectedModels: [{ name: "llama3.2:1b", backend: "ollama", size_bytes: 1 }] });
     useEvalRegistryStore.setState({ tasks: [] });
-    rerender(<EvalManager targets={["llama3.2:1b"]} setTargets={() => {}} k={1} setK={() => {}} maxSteps={8} setMaxSteps={() => {}} />);
+    rerender(<EvalManager {...props()} />);
     expect(screen.getByTestId("eval-run-all")).toHaveAttribute("title", "This collection has no tasks");
   });
 
   it("nudges to enable native tool-calling while it's off, and hides the nudge once enabled", () => {
-    render(<EvalManager targets={["llama3.2:1b"]} setTargets={() => {}} k={1} setK={() => {}} maxSteps={8} setMaxSteps={() => {}} />);
-    // Prompt-based is the default → the honesty hint is shown.
+    render(<EvalManager {...props()} />);
     expect(screen.getByTestId("native-fc-hint")).toHaveTextContent(/underrepresent native tool-calling/i);
-    // Enabling native FC means they've opted into strict fidelity → hint goes away.
     fireEvent.click(screen.getByTestId("eval-native-fc"));
     expect(screen.queryByTestId("native-fc-hint")).toBeNull();
   });
 
   it("renders the headers and Data Source radio controls", () => {
-    render(<EvalManager targets={["llama3.2:1b"]} setTargets={() => {}} k={1} setK={() => {}} maxSteps={8} setMaxSteps={() => {}} />);
+    render(<EvalManager {...props()} />);
     expect(screen.getByText("1. EVAL MANAGER")).toBeInTheDocument();
     expect(screen.getByText("(File & Controls)")).toBeInTheDocument();
     expect(screen.getByText("◉ Built-in")).toBeInTheDocument();
@@ -124,20 +125,14 @@ describe("EvalManager Sidebar Controls", () => {
   });
 
   it("renders presets under collections when Built-in is selected", () => {
-    render(<EvalManager targets={["llama3.2:1b"]} setTargets={() => {}} k={1} setK={() => {}} maxSteps={8} setMaxSteps={() => {}} />);
+    render(<EvalManager {...props()} />);
     expect(screen.getByTestId("eval-collection-item-curated")).toBeInTheDocument();
   });
 
   it("switches to Custom JSON and lists custom collections", async () => {
-    render(<EvalManager targets={["llama3.2:1b"]} setTargets={() => {}} k={1} setK={() => {}} maxSteps={8} setMaxSteps={() => {}} />);
-    
-    // Switch to Custom JSON
-    const customRadioLabel = screen.getByText("◯ Custom JSON");
-    fireEvent.click(customRadioLabel);
-    
-    await waitFor(() => {
-      expect(select).toHaveBeenCalledWith("my-evals");
-    });
+    render(<EvalManager {...props()} />);
+    fireEvent.click(screen.getByText("◯ Custom JSON"));
+    await waitFor(() => expect(select).toHaveBeenCalledWith("my-evals"));
   });
 
   it("confirms before deleting a custom collection", async () => {
@@ -145,21 +140,18 @@ describe("EvalManager Sidebar Controls", () => {
     useEvalRegistryStore.setState({
       presets: [{ id: "curated", label: "Curated Suite" }],
       collections: ["my-evals"],
-      selected: "my-evals", // custom selection → the custom list (with ✕) renders
+      selected: "my-evals",
       tasks: sampleTasks,
       init,
       select,
       importFile,
       remove,
     });
-    render(<EvalManager targets={["llama3.2:1b"]} setTargets={() => {}} k={1} setK={() => {}} maxSteps={8} setMaxSteps={() => {}} />);
-
-    // Open the ⋯ menu, then choose Delete → a confirm popup appears.
+    render(<EvalManager {...props()} />);
     fireEvent.click(screen.getByTestId("eval-collection-menu-my-evals"));
     fireEvent.click(screen.getByTestId("eval-collection-delete-my-evals"));
     expect(screen.getByTestId("confirm-dialog")).toBeInTheDocument();
     expect(remove).not.toHaveBeenCalled();
-
     fireEvent.click(screen.getByTestId("confirm-ok"));
     await waitFor(() => expect(remove).toHaveBeenCalledWith("my-evals"));
   });
@@ -176,27 +168,20 @@ describe("EvalManager Sidebar Controls", () => {
       importFile,
       hidePreset,
     });
-    render(<EvalManager targets={["llama3.2:1b"]} setTargets={() => {}} k={1} setK={() => {}} maxSteps={8} setMaxSteps={() => {}} />);
-
+    render(<EvalManager {...props()} />);
     fireEvent.click(screen.getByTestId("eval-collection-menu-agentic_3"));
     fireEvent.click(screen.getByTestId("eval-collection-delete-agentic_3"));
     fireEvent.click(screen.getByTestId("confirm-ok"));
     await waitFor(() => expect(hidePreset).toHaveBeenCalledWith("agentic_3"));
   });
 
-  it("triggers runBatchEval when ▶ RUN BATCH is clicked", async () => {
+  it("runs the chosen global model when ▶ RUN BATCH is clicked", async () => {
     useParamsStore.setState({ globalParams: { temperature: 0.2 } });
-    vi.mocked(runBatchEval).mockResolvedValue({
-      collection_id: "curated",
-      columns: [],
-    });
-
-    render(<EvalManager targets={["llama3.2:1b"]} setTargets={() => {}} k={1} setK={() => {}} maxSteps={8} setMaxSteps={() => {}} />);
-    
+    vi.mocked(runBatchEval).mockResolvedValue({ collection_id: "curated", columns: [] });
+    render(<EvalManager {...props()} />);
     const runBtn = screen.getByTestId("eval-run-all");
     expect(runBtn).not.toBeDisabled();
     fireEvent.click(runBtn);
-    
     await waitFor(() => {
       expect(runBatchEval).toHaveBeenCalledWith(
         "curated",
@@ -206,7 +191,7 @@ describe("EvalManager Sidebar Controls", () => {
         8,
         { temperature: 0.2 },
         undefined,
-        false, // runNativeFc — the "Measure native tool-calling" checkbox (Phase 7.2), off by default
+        false, // runNativeFc — off by default
       );
     });
   });

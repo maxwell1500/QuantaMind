@@ -53,6 +53,16 @@ HTTP to a local Ollama server.
   core. The **only** layer that names `tauri::` types. See [Layering](#layering).
   `run_prompt` is backend-aware (dispatches to Ollama or the `llama-server`
   sidecar per the request's `backend`); the workspace sidebar's backend list picks it.
+  `commands/publish/` (Phase 8) holds the share/publish commands: `export_cmd` is a
+  thin offline PNG sink (ships in every build); the auth + send surface
+  (`auth`/`pkce`/`token`/`login_cmd`/`cohort`/`preview_cmd`/`publish_cmd`) is gated
+  behind the `enterprise` cargo feature — `#[cfg(not(feature = "enterprise"))]` on the
+  modules AND their `generate_handler!` entries — so it compiles OUT of enterprise/
+  air-gapped builds. Auth uses PKCE (no client secret); the refresh token lives in the
+  OS keychain (`keyring`) with an in-memory fallback when no secret service exists; the
+  short-lived access token is the only managed `AuthState` (un-gated so `.manage()`
+  works in every build). The pure, metrics-only canonical record + hash + local
+  pre-validation live as a leaf in `persistence/publish/`.
 - `inference/` — backend adapters behind the `InferenceBackend` trait
   (`backend.rs`). `OllamaBackend`, `LlamaCppBackend` (a `llama-server` sidecar),
   and `MlxBackend` (`mlx_lm.server`, Apple Silicon) today; callers build one by
@@ -218,6 +228,14 @@ the model sum (`disk_usage_for`) — it never fails the whole call, which used t
 surface "Ollama is not running" inside the *Storage* panel. The zeroed sum is
 not a leaky "done" signal: the Ollama-down state is shown distinctly by the
 status bar and the installed-models list, so the user is never misled.
+
+`clear_app_cache` (Downloads → **Clear cache**) deletes only regenerable caches
+under `app_config_dir` via an explicit allow-list (`jobs/`, `history/`,
+`batch_reports/`, `traces/`, `cliff/`, `recent_workspaces.yaml`) and returns the
+measured bytes freed. Downloaded models, custom eval collections (`evals/`),
+readiness profiles (`readiness/`), and settings are absent from the list, so a
+clear can never destroy them. Logic lives in a pure `clear_cache_in(base)` core
+(unit-tested over a tempdir); the thin command only resolves the config dir.
 
 ### Errors are typed
 

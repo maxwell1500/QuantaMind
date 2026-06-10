@@ -6,6 +6,26 @@ use serde::{Deserialize, Serialize};
 /// or a true 4/5 = 0.8) so a threshold comparison never flips a false NotReady.
 pub const EPSILON: f64 = 1e-6;
 
+/// The context-cliff outcome for a (collection, model) — the single source of truth
+/// the readiness gate and the report read (replacing a bare `Option<u32>` that
+/// couldn't tell "probed, held" from "never probed"). `NotProbed` = no probe run
+/// (absence in the store); `NoCliff { tested }` = accuracy held through `tested`
+/// tokens; `Collapsed { depth }` = tool-call accuracy fell off at `depth` tokens (a
+/// "broken baseline" maps here at the first rung — it fails from the start).
+#[derive(Debug, Default, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(tag = "status")]
+pub enum CliffStatus {
+    #[default]
+    NotProbed,
+    NoCliff { tested: u32 },
+    Collapsed { depth: u32 },
+    /// Tool-call accuracy was already failing at the SMALLEST tested context (a broken
+    /// baseline) — there is no usable context window, distinct from a collapse partway
+    /// through. `tested` = the deepest rung reached. Renders red "fails from start" and
+    /// blocks any context-headroom gate.
+    Broken { tested: u32 },
+}
+
 /// Which measurement path produced the verdict — stated explicitly so a "Ready"
 /// on the prompt-based proxy is never mistaken for the native tool-calling path.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
@@ -31,7 +51,7 @@ pub struct ReadinessInputs {
     pub pass_k: Option<f64>,
     pub avg_steps: Option<f64>,
     pub ms_per_step: Option<u64>,
-    pub cliff_tokens: Option<u32>,
+    pub cliff: CliffStatus,
     pub fits_in_vram: Option<bool>,
     /// Fits, but sits near the allocation ceiling → a soft Conditional note.
     pub vram_pressure: bool,
@@ -84,10 +104,10 @@ pub struct ModelVerdict {
     /// registry — never guessed. `None` when the backend didn't report one.
     #[serde(default)]
     pub quantization: Option<String>,
-    /// The model's measured context-cliff depth (tokens) for this collection, from
-    /// the cliff store — the headroom before tool-call accuracy collapses. `None`
-    /// when no probe has run (rendered "N/A"; the gate only blocks when a profile
-    /// opts in via `min_context_tokens`).
+    /// The model's context-cliff outcome for this collection, from the cliff store:
+    /// NotProbed (rendered "N/A"), NoCliff{tested} ("✓ No cliff (≥tested)"), or
+    /// Collapsed{depth} ("Collapsed at depth"). The gate only blocks when a profile
+    /// opts in via `min_context_tokens` (strict: NoCliff passes iff tested ≥ min).
     #[serde(default)]
-    pub cliff_tokens: Option<u32>,
+    pub cliff: CliffStatus,
 }

@@ -69,10 +69,27 @@ describe("VerdictTable", () => {
     render(<VerdictTable verdicts={VERDICTS} />);
     // Ollama with a measured profile → weights + cache vs cap, "fits".
     expect(screen.getByTestId("readiness-row-qwen2.5-coder")).toHaveTextContent(
-      "VRAM: 6.0 GB (5.0 model + 1.0 cache) < 24.0 GB cap · fits",
+      "VRAM: 6.0 GB (5.0 model + 1.0 cache @ 8k ctx) < 24.0 GB cap · fits",
     );
     // llama.cpp (no memory profile) → honest N/A, never a guessed fit.
     expect(screen.getByTestId("readiness-row-mistral-nemo")).toHaveTextContent("VRAM fit: N/A (single-model backend)");
+    // A measured-but-exact profile shows no estimate caveat.
+    expect(screen.queryByTestId("vram-estimated")).not.toBeInTheDocument();
+  });
+
+  it("labels the VRAM line as a conservative estimate when KV head count was defaulted", () => {
+    const est: ModelVerdict[] = [
+      {
+        model: "qwen3.5",
+        backend: "ollama",
+        verdict: { status: "ready", blocking: [], conditions: [], path: "native_fc" },
+        memory: { weights_bytes: 5 * GIB, kv_cache_bytes: 2 * GIB, total_bytes: 7 * GIB, cap_bytes: 24 * GIB, context_length: 8192, fits: true, pressure: false, estimated: true },
+      },
+    ];
+    render(<VerdictTable verdicts={est} />);
+    const row = screen.getByTestId("readiness-row-qwen3.5");
+    expect(row).toHaveTextContent("· est."); // hidden machine-readable string
+    expect(within(row).getByTestId("vram-estimated")).toBeInTheDocument();
   });
 
   it("shows REAL measured metrics (Pass^k / steps / effort) — values or N/A, never fabricated", () => {
@@ -85,7 +102,7 @@ describe("VerdictTable", () => {
         avg_steps: 1.0,
         effort: 29,
         quantization: "Q4_K_M", // real backend value
-        cliff_tokens: 12000, // measured by the Context-Cliff probe
+        cliff: { status: "Collapsed", depth: 12000 }, // measured by the Context-Cliff probe
         memory: null, // VRAM not measured (no cap)
       },
       {
@@ -101,7 +118,7 @@ describe("VerdictTable", () => {
     expect(within(ready).getByTestId("metric-passk")).toHaveTextContent("100%");
     expect(within(ready).getByTestId("metric-steps")).toHaveTextContent("1.0");
     expect(within(ready).getByTestId("metric-effort")).toHaveTextContent("29 tok");
-    expect(within(ready).getByTestId("metric-cliff")).toHaveTextContent("12,000 tok"); // measured cliff
+    expect(within(ready).getByTestId("metric-cliff")).toHaveTextContent("Collapsed at 12,000 tok"); // measured collapse
     expect(ready).toHaveTextContent("Q4_K_M"); // real quant, not a per-family guess
     // VRAM was NOT measured → must NOT claim it fits.
     expect(ready).not.toHaveTextContent("Fits completely in VRAM");
@@ -111,6 +128,38 @@ describe("VerdictTable", () => {
     expect(within(weak).getByTestId("metric-steps")).toHaveTextContent("N/A");
     expect(within(weak).getByTestId("metric-effort")).toHaveTextContent("N/A");
     expect(within(weak).getByTestId("metric-cliff")).toHaveTextContent("N/A"); // no probe → N/A, not fabricated
+  });
+
+  it("renders a broken baseline as 'fails from start', never a depth", () => {
+    const broke: ModelVerdict[] = [
+      {
+        model: "broke:9b",
+        backend: "ollama",
+        verdict: { status: "not_ready", blocking: [], conditions: [], path: "native_fc" },
+        pass_k: 1.0,
+        cliff: { status: "Broken", tested: 388 },
+      },
+    ];
+    render(<VerdictTable verdicts={broke} />);
+    const cell = within(screen.getByTestId("readiness-row-broke:9b")).getByTestId("metric-cliff");
+    expect(cell).toHaveTextContent("fails from start");
+    expect(cell).not.toHaveTextContent("388");
+  });
+
+  it("renders a probed-but-no-cliff result as '✓ No cliff (≥tested)', not N/A", () => {
+    const held: ModelVerdict[] = [
+      {
+        model: "qwen3.5:9b",
+        backend: "ollama",
+        verdict: { status: "ready", blocking: [], conditions: [], path: "native_fc" },
+        pass_k: 1.0,
+        cliff: { status: "NoCliff", tested: 4000 },
+      },
+    ];
+    render(<VerdictTable verdicts={held} />);
+    expect(within(screen.getByTestId("readiness-row-qwen3.5:9b")).getByTestId("metric-cliff")).toHaveTextContent(
+      "✓ No cliff (≥4,000 tok)",
+    );
   });
 
   it("never guesses a quant — an unknown name renders a dash, not a family default", () => {

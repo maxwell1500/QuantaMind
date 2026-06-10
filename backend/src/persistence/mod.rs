@@ -4,6 +4,7 @@ pub mod evals;
 pub mod jobs;
 pub mod model_settings;
 pub mod prompts;
+pub mod publish;
 pub mod readiness;
 pub mod user_settings;
 pub mod workspaces;

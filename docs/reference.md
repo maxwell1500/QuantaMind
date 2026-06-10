@@ -270,6 +270,35 @@ run on MLX") with a *Pick another* / *Download anyway* choice.
   not seed-reproducible the way Ollama and llama.cpp runs are — a fixed seed in
   the params is ignored for MLX.
 
+### Invalid or truncated GGUF {#invalid-gguf}
+
+Adding a local `.gguf` parses it in Rust first (`inference/gguf/`). A bad file no
+longer shows the raw parser line (e.g. *"GGUF truncated: need 8 bytes at offset …"*);
+the **Models → Local file** tab renders plain-language guidance with steps instead, so
+it reads as fixable, not broken. The classifier (`ImportError` in
+`features/models/components/LocalFilePreview.tsx`) covers three cases:
+
+- **"This GGUF file is incomplete"** (truncated / file-too-small) — the download or copy
+  was cut off; it isn't the full model. Re-download the complete `.gguf`. Real models are
+  hundreds of MB to several GB; a tiny file is truncated. From Hugging Face, fetch the
+  real `.gguf` via **Git LFS**, not a small pointer stub.
+- **"This isn't a valid GGUF file"** (bad magic / wrong extension) — pick a `.gguf`, not
+  `.safetensors`, `.bin`, or a zip.
+- **"Unsupported GGUF version"** — QuantaMind reads GGUF v1–v3; get a compatible export.
+
+The raw parser detail is kept (demoted) under **Details:** for diagnosis.
+
+### Clearing cached data {#clear-cache}
+
+Downloads → **Clear cache** reclaims space taken by regenerable app data. It
+asks you to type `CLEAR` first, then deletes: eval regression history, the last
+batch reports, resumable job logs, pipeline-visualizer traces, context-cliff
+measurements, and the recent-workspace list. It reports how much was freed.
+
+**Kept, always:** your downloaded models, custom eval collections, readiness
+profiles, and app/model settings. The disk-usage number counts only model files,
+so it won't change after a clear — the freed amount is shown separately.
+
 ### Reporting something else
 
 Use the in-app **Feedback** button (bottom-right). Tick "Include diagnostic info"
@@ -384,8 +413,10 @@ Error), with a click-through Trace Debugger. See [the workspace](#eval-runner).
   `Top Error` shows the dominant failure mode; when a model had
   any agentic failure an **ⓘ** sits next to the badge — hovering it reveals the full
   count of all four modes (Loop Cap · Fake Done · Bad Schema · Malformed), including
-  the two the headline badge hides. It's a native tooltip (the Matrix card is
-  overflow-clipped, so an absolute popup would be cut off).
+  the two the headline badge hides. The breakdown (and each column header) uses a
+  **clip-safe tooltip** (`shared/ui/Tooltip`) that portals to `<body>` and is
+  `position: fixed`, so the overflow-scrolled Matrix card can't clip it — replacing
+  the native `title=` attribute, which the macOS WebView rendered unreliably.
   Faults and the recovery budget are authored in the Task & Sandbox Configurator
   (the **Fault Injection** box and **Max Recovery** field); single-turn tasks and
   fault-free agentic tasks omit both and round-trip byte-identical.
@@ -603,7 +634,10 @@ shows **"Not available"** and is dropped from the chart rather than placed at a 
 The probe owns its own **Active Collection** picker (independent of the EvalManager editor), so it
 always has a real dataset to run. The **Max Tokens** control sets the padding target (how much filler
 to add) and is capped at the model's reported **context window** when known (Ollama `/api/show` dims),
-falling back to a fixed ceiling otherwise.
+falling back to a fixed ceiling otherwise. A **Greedy (temp 0)** toggle (default **on**) forces
+deterministic decoding so the verdict reproduces for a given (collection, model); a cliff is a
+*diagnostic*, so the greedy path is the canonical benchmark. Turning it off samples at the **global
+temperature** instead (useful to eyeball run-to-run variance, never the recorded baseline).
 A run that errors surfaces a **"Not available — …"** banner rather than a silent blank chart.
 
 **How each rung's "Accuracy" is scored.** Each rung re-runs the dataset and reports the **composite
@@ -627,14 +661,27 @@ persisted depth and the displayed verdict can never disagree):
 
 The **broken-baseline** case is the important guardrail: a model stuck at 0% on every rung has no
 healthy plateau to "fall off", so it is **never** dressed up as "✓ no cliff" — it's flagged red as a
-tool-call failure (not a context-length limit), and no cliff depth is persisted. ↺ clears the results.
-Single-turn, greedy — a failed rung is a gap, never a fabricated score.
+tool-call failure (not a context-length limit). Single-turn, greedy — a failed rung is a gap, never a
+fabricated score.
+
+**Persistence + the Agent Report (three-state cliff).** Every terminal probe outcome is now persisted
+(not just a found collapse): the store holds a `CliffStatus` per (collection, model) —
+`NoCliff { tested }` (held to that depth), `Collapsed { depth }`, or (broken-baseline) `Collapsed` at
+the first rung; an unprobed model is `NotProbed`. So `assess_readiness` reflects the probe: a held probe
+reads **"✓ No cliff (≥tested tok)"**, a collapse **"Collapsed at depth tok"**, unprobed **"N/A"** — no
+longer a misleading "N/A" after a successful probe. The legacy bare-`u32` store migrates to `Collapsed`.
+The `min_context_tokens` hard gate is **strict**: `Collapsed` passes iff `depth ≥ min`, and `NoCliff`
+passes iff `tested ≥ min` (an incomplete probe is not a pass); `NotProbed` blocks. Off in the built-in
+profiles, so cliff stays informational unless a custom profile opts in.
 
 **The probe is part of the pipeline, not a dead-end.** The journey is Eval → Audit → Agent Report.
 On the **Performance Matrix**, an unmeasured *Cliff Depth* cell shows **"Run probe ↗"** which
 **pre-fills** the probe for that model + the current collection + a context length and switches to the
 Audit tab — it **never auto-runs** (a misclick must not lock the GPU on a long sweep); you click
-**Execute**. The run lives in a store, so it **survives tab navigation** (a progress bar shows rung
+**Execute**. An *already-measured* cell instead shows a small **"↻"** re-probe control beside its depth
+badge that takes the same pre-fill-and-open-Audit path (also never auto-running) — the workflow for
+**re-validating** a model after a runtime/driver change rather than trusting a stale measurement.
+The run lives in a store, so it **survives tab navigation** (a progress bar shows rung
 X/N at ~N tokens; **Stop** cancels). On completion the cliff is saved to the backend **per
 (collection, model)** — `~/.config/quantamind/cliff/<collection>.json`, written atomically
 (temp-file + rename) with the **raw** model name as the key (colons intact). The Matrix then shows the
@@ -716,7 +763,9 @@ architecture (Apple unified memory / NVIDIA discrete / CPU) and an allocation-ca
 dropdown defaulting to your VRAM (unified RAM on Apple), overridable in-session
 (never persisted). For each **Ollama** model the verdict measures the footprint —
 exact on-disk weights + the real f16 KV cache (the canonical `vram_math` formula) at
-the run's `num_ctx` — against the cap: `fits` when total ≤ cap, a soft **high VRAM
+the run's `num_ctx` (falling back to a capped **8 k** dev window — `DEFAULT_FALLBACK_CTX`,
+bounded by the model max — never the model's full 262 k context, which would balloon the
+cache past any real workload; the line shows the assumed context as `@ 8k ctx`) — against the cap: `fits` when total ≤ cap, a soft **high VRAM
 pressure** condition at ≥85% of the cap, **won't fit** otherwise (which, under
 `require_full_vram`, blocks). The per-model line reads `VRAM: 6.0 GB (5.0 model +
 1.0 cache) < 24 GB cap · fits`. Single-model backends (llama.cpp / MLX) where precise
@@ -724,6 +773,16 @@ dims aren't available show **N/A (single-model backend)** — never an approxima
 under `require_full_vram` that N/A blocks (ignorance is not a pass). Lower the cap and
 a fitting model flips to NotReady deterministically — model the exact hardware you're
 buying for.
+
+**Metadata resilience.** Some newer Ollama archs (e.g. `qwen35`) omit
+`attention.head_count_kv` from `/api/show`. Rather than mark such a model "VRAM fit not
+measured" (which would wrongly block it under `require_full_vram`), the dims parser
+defaults a missing KV head count to `head_count` (MHA, the GGUF convention) and labels
+the result a **conservative estimate** — for a GQA model this overestimates the KV
+cache, so it can only ever under-promise fit, never over-promise it. The per-model line
+and the recommendation banner say the figure is a conservative estimate; the other four
+dims stay required (still N/A if any is missing). This keeps the "never fabricate —
+label estimates" contract while not penalising a working model for incomplete metadata.
 
 **Prompt-based vs native path.** Two ways a model can do tool-calling, measured and
 labelled **separately** so they're never conflated. The **prompt-based** proxy injects
@@ -755,8 +814,69 @@ uses.
 `assess_readiness` command loads it and calls the one pure scoring function
 (`readiness::assess`) — the same function a future headless CLI will link, so GUI
 and CLI verdicts can never diverge. The frontend stores no verdicts; it renders what
-Rust returns. **Export shareable report (.HTML)** emits a self-contained, offline
-one-pager (escaped, utf-8) to email a verdict to a CTO.
+Rust returns. The **Export Report** menu emits three fully-offline (no network, no
+auth) share artifacts of the verdict: a **PNG card** (`snapshot.ts` rasterizes the
+banner + table via `html-to-image` — fonts embedded + a warm-up render so the export
+keeps Inter, white background hardcoded so it's never invisible; bytes written by the
+`save_readiness_image` Rust sink), a **Markdown** summary copied to the clipboard
+(`export/markdown.ts`, GFM table, "N/A" for unmeasured metrics — never fabricated),
+and the original self-contained **HTML** one-pager (escaped, utf-8) to email a verdict
+to a CTO. The image/Markdown builders are pure; the PNG path is the Phase 8 offline
+share lever (see `process.md#phase-roadmap`, step 8.B4).
+
+**Publishing to the community board (Phase 8 — privacy contract).** Separate from the
+offline export, an *opt-in* publish path can contribute a verdict to a shared
+leaderboard. What's sent is **metrics-only**: a `PublishRow` per measured model —
+`model`, `quant`, a **hardware `cohort_key`** (`{platform}/{accel}/{mem_tier}`, e.g.
+`apple-silicon/m3-pro/32-64gb`), `tool_version`, and the metrics bag (`pass_k`,
+`effort?`, `avg_steps?`). **Never sent:** task content, prompts, file names, raw model
+output, or any identity beyond the GitHub handle. The payload is built in Rust
+(`persistence/publish/` + `commands/publish/`), serialized to **deterministic
+canonical JSON** (object keys sorted at every depth) and hashed (SHA-256) so transit
+tampering is detectable; unmeasured/unquantized rows are dropped (never sent as a null
+that would skew server baselines), and the same plausibility checks the server runs are
+applied locally first (`pre_validate`). The `PublishDialog` shows the **exact raw
+payload** and the shared/never-shared breakdown behind a **default-OFF opt-in** before
+anything leaves the machine. Results are **community-reported** — self-fabrication is
+deterred (validation, outliers, GitHub identity, report/remove), not cryptographically
+prevented. The closed backend (token authority, validation, dedup, leaderboard,
+baselines) is a separate hosted repo; the desktop app is fully functional offline
+without it. ⚠ The `cohort_key` taxonomy is **v1 pending backend sign-off** — the
+server's bucketing must match it exactly or dedup `UNIQUE(user, model, quant,
+cohort_key)` breaks.
+
+*Auth + send.* The API base is resolved once from `QM_API_BASE`, defaulting to the live
+production host `https://api.quantamind.co` (set `QM_API_BASE=http://localhost:8787` for
+a local dev server). If the host is ever unreachable, the pre-flight probe below fails
+fast with a clear message rather than hanging. Sign-in is OAuth
+**PKCE** (no client secret): the app first runs a **pre-flight reachability probe**
+(a ~5s-bounded GET to `/authorize`) so a stopped server fails *immediately* with
+*"Can't reach the publish server — is it running?"* instead of hanging the 300s
+loopback wait; then it opens the browser to `/authorize`, catches the loopback
+redirect, and exchanges the code at `/token`. The **refresh token** is stored
+**write-through**: always kept in an in-memory session copy *and* best-effort written to
+the OS keychain (`keyring`) for cross-restart persistence. Reads prefer the session copy,
+so once signed in this launch the keychain is never re-prompted — and a **denied or locked
+keychain can never strand sign-in** (publishing keeps working for the session; sign-in
+returns `persisted=false` and the UI warns you may need to sign in again next launch). On
+macOS an **unsigned/dev build re-prompts on every keychain access** (the ACL can't bind to
+a stable code identity, so "Always Allow" doesn't stick) — the production fix is code
+signing + a keychain entitlement; the write-through vault makes it non-fatal meanwhile. To
+fully reset auth, delete the `quantamind` / `publish-refresh` item in **Keychain Access**
+and sign in again. A short-lived **access token** is cached in memory and silently
+refreshed (rotating the refresh token). Publishing is **one batch = one request**: GET a fresh `/publish/nonce`,
+recompute the canonical hash, POST `/publish` with the bearer token — a fresh nonce per
+attempt (the server burns it on a 422). Every status maps to a typed outcome the UI
+handles without freezing: `200`→toast + open board, `401`→re-auth, `422`→show the failing
+row index, `426`→"please update", `429`→"try again shortly". On the **first** `401`/
+`needs_auth` the UI opens sign-in and, once the token is stored, **auto-retries the
+publish once** — no second click. A one-shot guard stops there: if it still needs auth
+(sign-in cancelled/failed) the UI asks the user to Publish again rather than looping. An optional **write-up
+link** may accompany a result but is restricted to an allow-list of dev/social hosts
+(github.com, x.com, dev.to, reddit.com, medium.com, youtube.com, huggingface.co) to
+keep the board from becoming a link farm. The whole auth/publish surface **compiles out
+of enterprise/air-gapped builds** (cargo `enterprise` feature); the offline export does
+not.
 
 **The recommendation (the one-line answer).** `assess_readiness` returns the verdicts
 **ranked best-first** (`readiness::recommend::rank`, also CLI-shareable) so the page

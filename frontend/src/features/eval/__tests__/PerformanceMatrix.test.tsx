@@ -65,6 +65,16 @@ describe("PerformanceMatrix", () => {
     expect(screen.queryByTestId("cliff-run-qwen")).toBeNull(); // measured → no link
   });
 
+  it("a measured cell offers a re-probe (↻) that pre-fills + opens Audit", async () => {
+    const { useNavStore } = await import("../../../shared/state/navStore");
+    useBatchStore.setState({ report });
+    useCliffStore.setState({ results: { c: { qwen: 12000 } } }); // already measured
+    render(<PerformanceMatrix focusedModel="qwen" onFocusModel={() => {}} />);
+    fireEvent.click(screen.getByTestId("cliff-reprobe-qwen"));
+    expect(useCliffStore.getState().request).toMatchObject({ model: "qwen", collectionId: "c", steps: 5 });
+    expect(useNavStore.getState().topView).toBe("audit");
+  });
+
   it("shows '✓ no cliff' for a model that was probed but found no cliff (not a misleading Run-probe)", () => {
     useBatchStore.setState({ report });
     useCliffStore.setState({ probed: { c: { qwen: true } } }); // probed, accuracy held
@@ -84,6 +94,27 @@ describe("PerformanceMatrix", () => {
     expect(screen.queryByTestId("cliff-run-qwen")).toBeNull();
   });
 
+  it("broken baseline wins over a persisted depth — 'fails from start', not the number", () => {
+    useBatchStore.setState({ report });
+    // The backend persists broken-baseline as a collapse depth (for the Agent Report
+    // gate), so results AND brokenBaseline can both be set — the cell must prioritize
+    // the red failure, never render the misleading depth.
+    useCliffStore.setState({ results: { c: { qwen: 388 } }, probed: { c: { qwen: true } }, brokenBaseline: { c: { qwen: true } } });
+    render(<PerformanceMatrix focusedModel="qwen" onFocusModel={() => {}} />);
+    expect(screen.getByTestId("cliff-broken-qwen")).toHaveTextContent("fails from start");
+    expect(screen.queryByTestId("cliff-value-qwen")).toBeNull(); // the "388 tok" depth is suppressed
+  });
+
+  it("shows the 'click a row to inspect' hint only with 2+ models", () => {
+    useBatchStore.setState({ report }); // two models
+    const { rerender } = render(<PerformanceMatrix focusedModel="qwen" onFocusModel={() => {}} />);
+    expect(screen.getByText(/click a row to inspect/)).toBeInTheDocument();
+
+    useBatchStore.setState({ report: { collection_id: "c", columns: [report.columns[0]] } }); // one model
+    rerender(<PerformanceMatrix focusedModel="qwen" onFocusModel={() => {}} />);
+    expect(screen.queryByText(/click a row to inspect/)).toBeNull();
+  });
+
   it("renders an always-visible legend explaining Cliff Depth + the probe payoff", () => {
     useBatchStore.setState({ report });
     render(<PerformanceMatrix focusedModel="qwen" onFocusModel={() => {}} />);
@@ -101,14 +132,19 @@ describe("PerformanceMatrix", () => {
   it("surfaces the full failure breakdown (incl. the 2 previously-hidden counts) on the Top Error cell", () => {
     useBatchStore.setState({ report });
     render(<PerformanceMatrix focusedModel="qwen" onFocusModel={() => {}} />);
-    // loopy hit the loop cap 4×, so the ⓘ exposes ALL four counts in its native
-    // (clip-proof) title — including Fake Done / Bad Schema, which the badge hides.
+    // loopy hit the loop cap 4×. Hovering the ⓘ opens a clip-safe portal tooltip
+    // (replacing the WebView-unreliable native title) exposing ALL four counts —
+    // including Fake Done / Bad Schema, which the badge itself hides.
     const info = screen.getByTestId("failbreak-loopy");
-    const title = info.getAttribute("title") ?? "";
-    expect(title).toMatch(/Loop Cap 4/);
-    expect(title).toMatch(/Fake Done 0/);
-    expect(title).toMatch(/Bad Schema 0/);
-    expect(title).toMatch(/Malformed 0/);
+    expect(screen.queryByTestId("tooltip-failbreak-loopy")).toBeNull(); // closed until hover
+    fireEvent.mouseEnter(info);
+    const tip = screen.getByTestId("tooltip-failbreak-loopy");
+    expect(tip).toHaveTextContent(/Loop Cap 4/);
+    expect(tip).toHaveTextContent(/Fake Done 0/);
+    expect(tip).toHaveTextContent(/Bad Schema 0/);
+    expect(tip).toHaveTextContent(/Malformed 0/);
+    fireEvent.mouseLeave(info);
+    expect(screen.queryByTestId("tooltip-failbreak-loopy")).toBeNull(); // closes on leave
     // qwen had zero failures → no breakdown affordance.
     expect(screen.queryByTestId("failbreak-qwen")).toBeNull();
   });

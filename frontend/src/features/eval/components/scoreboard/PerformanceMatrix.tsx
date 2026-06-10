@@ -5,6 +5,7 @@ import { useNavStore } from "../../../../shared/state/navStore";
 import { useCliffStore } from "../../state/cliffStore";
 import { toScoreRows } from "./scoreRows";
 import { InfoButton } from "../../../../shared/ui/InfoButton";
+import { Tooltip } from "../../../../shared/ui/Tooltip";
 import { TOOL_HELP, metricTitle } from "../../help";
 import type { FailureTracker } from "../../../../shared/ipc/eval/batch";
 
@@ -135,6 +136,32 @@ export function PerformanceMatrix({
   }, [collectionId, hydrateCliff]);
   const anyNative = (report?.columns ?? []).some((c) => c.agentic_native_fc != null);
   const [showNative, setShowNative] = useState(false);
+
+  // Pre-fill the Context-Cliff probe for a model + the current collection and switch to
+  // the Audit tab. NEVER auto-runs (guardrail 1). Shared by the unprobed "Run probe ↗"
+  // button and the "↻" re-probe affordance on already-measured cells.
+  const reprobe = (model: string) => {
+    const backend = report?.columns.find((c) => c.model === model)?.backend ?? "ollama";
+    if (collectionId) setCliffRequest({ model, backend, collectionId, maxTokens: PREFILL_MAX_TOKENS, steps: PREFILL_STEPS });
+    goAudit("audit");
+  };
+  // A small re-probe control shown next to a measured cliff badge — the path to Audit
+  // that measured cells otherwise lacked. `stopPropagation` so it doesn't trigger the
+  // row's focus/scroll.
+  const ReprobeBtn = ({ model }: { model: string }) => (
+    <button
+      type="button"
+      onClick={(e) => {
+        e.stopPropagation();
+        reprobe(model);
+      }}
+      title="Re-run the Context-Cliff probe for this model (opens the Audit tab)"
+      data-testid={`cliff-reprobe-${model}`}
+      style={{ marginLeft: 4, cursor: "pointer", color: "#94a3b8", fontSize: 11, background: "none", border: "none", padding: 0 }}
+    >
+      ↻
+    </button>
+  );
   const columns = [
     "Model",
     "Quant",
@@ -161,7 +188,9 @@ export function PerformanceMatrix({
           </span>
         </div>
         <span style={{ fontSize: 11, color: "#64748b", fontFamily: "Inter, sans-serif" }}>
-          &nbsp;(per-model summary — click a row to inspect model details)
+          {/* The "click to inspect" hint only earns its place with ≥2 models to switch
+              between; with one model the row click just scrolls to the (already-shown) detail. */}
+          {rows.length > 1 ? " (per-model summary — click a row to inspect model details)" : " (per-model summary)"}
         </span>
         <span style={{ marginLeft: "auto", display: "inline-flex", alignItems: "center", gap: 10 }}>
           {anyNative && (
@@ -199,7 +228,9 @@ export function PerformanceMatrix({
                 {columns.map((h) => {
                   const tip = COLUMN_HELP[h];
                   return (
-                    <th key={h} style={th} title={tip}>{h}</th>
+                    <th key={h} style={th}>
+                      {tip ? <Tooltip label={tip} testId={`col-${h}`}><span style={{ cursor: "help" }}>{h}</span></Tooltip> : h}
+                    </th>
                   );
                 })}
               </tr>
@@ -248,43 +279,47 @@ export function PerformanceMatrix({
                         <span data-testid={`cliff-probing-${r.model}`} style={{ color: "#2563eb", fontSize: 12, fontWeight: 600, fontFamily: "Inter, sans-serif" }}>
                           probing…
                         </span>
-                      ) : cliffResults?.[r.model] != null ? (
-                        <span style={{ ...badgeStyle, background: "#f1f5f9", border: "1px solid #e2e8f0", color: "#334155", textTransform: "none" }} data-testid={`cliff-value-${r.model}`}>
-                          {cliffResults[r.model].toLocaleString()} tok
-                        </span>
                       ) : cliffBroken?.[r.model] ? (
-                        // Probed, but the model failed at the SMALLEST context (baseline below the
-                        // pass bar). There's no healthy plateau to fall off — reporting "no cliff"
-                        // here would dress up a total failure as a pass. Show it red.
-                        <span
-                          style={{ ...badgeStyle, background: "#fee2e2", border: "1px solid #fca5a5", color: "#991b1b", textTransform: "none" }}
-                          data-testid={`cliff-broken-${r.model}`}
-                          title="Probed — accuracy was already failing at the smallest context (broken baseline), so no usable context window could be measured. This is a tool-call failure, not a context-length limit."
-                        >
-                          fails from start
-                        </span>
+                        // Checked BEFORE a persisted depth: a broken baseline failed at the
+                        // SMALLEST context (no healthy plateau to fall off). Even though the
+                        // backend persists it as a collapse depth (for the Agent Report gate),
+                        // the Matrix must show the red failure, never dress it up as a cliff.
+                        <>
+                          <span
+                            style={{ ...badgeStyle, background: "#fee2e2", border: "1px solid #fca5a5", color: "#991b1b", textTransform: "none" }}
+                            data-testid={`cliff-broken-${r.model}`}
+                            title="Probed — accuracy was already failing at the smallest context (broken baseline), so no usable context window could be measured. This is a tool-call failure, not a context-length limit."
+                          >
+                            fails from start
+                          </span>
+                          <ReprobeBtn model={r.model} />
+                        </>
+                      ) : cliffResults?.[r.model] != null ? (
+                        <>
+                          <span style={{ ...badgeStyle, background: "#f1f5f9", border: "1px solid #e2e8f0", color: "#334155", textTransform: "none" }} data-testid={`cliff-value-${r.model}`}>
+                            {cliffResults[r.model].toLocaleString()} tok
+                          </span>
+                          <ReprobeBtn model={r.model} />
+                        </>
                       ) : cliffProbed?.[r.model] ? (
                         // Probed this session, accuracy held across the range from a HEALTHY
                         // baseline — a genuinely GOOD result, not just "no drop from zero".
-                        <span
-                          style={{ ...badgeStyle, background: "#dcfce7", border: "1px solid #bbf7d0", color: "#166534", textTransform: "none" }}
-                          data-testid={`cliff-nocliff-${r.model}`}
-                          title="Probed — accuracy held across the tested context range (no cliff found)"
-                        >
-                          ✓ no cliff
-                        </span>
+                        <>
+                          <span
+                            style={{ ...badgeStyle, background: "#dcfce7", border: "1px solid #bbf7d0", color: "#166534", textTransform: "none" }}
+                            data-testid={`cliff-nocliff-${r.model}`}
+                            title="Probed — accuracy held across the tested context range (no cliff found)"
+                          >
+                            ✓ no cliff
+                          </span>
+                          <ReprobeBtn model={r.model} />
+                        </>
                       ) : (
                         <button
                           type="button"
                           onClick={(e) => {
                             e.stopPropagation();
-                            // Pre-fill the probe for this model + the current collection,
-                            // then switch tabs. NEVER auto-run (guardrail 1).
-                            const backend = report?.columns.find((c) => c.model === r.model)?.backend ?? "ollama";
-                            if (collectionId) {
-                              setCliffRequest({ model: r.model, backend, collectionId, maxTokens: PREFILL_MAX_TOKENS, steps: PREFILL_STEPS });
-                            }
-                            goAudit("audit");
+                            reprobe(r.model);
                           }}
                           title="Not measured yet — pre-fills the Context-Cliff probe for this model on the Audit tab"
                           style={cliffLink}
@@ -298,20 +333,22 @@ export function PerformanceMatrix({
                     <td style={td}>
                       {getTopErrorBadge(r.topError)}
                       {(() => {
-                        // Native title (not an absolute popup) — the table card is
-                        // overflow-hidden, which would clip an InfoButton popup; a
-                        // native tooltip is OS-rendered and never clips.
+                        // Clip-safe portal tooltip — the table card scrolls
+                        // (overflow), which would clip an in-flow popup, and the
+                        // native title= the cell used before doesn't render
+                        // reliably in the WebView. Tooltip portals to <body>.
                         if (!r.failures) return null;
                         const fb = failureBreakdown(r.failures);
                         if (fb.total === 0) return null;
                         return (
-                          <span
-                            title={fb.text}
-                            data-testid={`failbreak-${r.model}`}
-                            style={{ marginLeft: 5, cursor: "help", color: "#94a3b8", fontSize: 10, fontWeight: 700 }}
-                          >
-                            ⓘ
-                          </span>
+                          <Tooltip label={fb.text} testId={`failbreak-${r.model}`}>
+                            <span
+                              data-testid={`failbreak-${r.model}`}
+                              style={{ marginLeft: 5, cursor: "help", color: "#94a3b8", fontSize: 10, fontWeight: 700 }}
+                            >
+                              ⓘ
+                            </span>
+                          </Tooltip>
                         );
                       })()}
                     </td>

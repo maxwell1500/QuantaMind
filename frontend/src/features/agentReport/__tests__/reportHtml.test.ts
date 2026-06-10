@@ -54,7 +54,7 @@ describe("buildReadinessHtml", () => {
     expect(html).toContain("finance");
     expect(html).toContain("Coding agent");
     // The memory footprint line is in the export (escaped < for the cap comparison).
-    expect(html).toContain("VRAM: 6.0 GB (5.0 model + 1.0 cache) &lt; 24.0 GB cap · fits");
+    expect(html).toContain("VRAM: 6.0 GB (5.0 model + 1.0 cache @ 8k ctx) &lt; 24.0 GB cap · fits");
   });
 
   it("escapes all interpolated text — no raw angle brackets from a reason leak through", () => {

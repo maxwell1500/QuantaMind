@@ -46,8 +46,8 @@ function MetricsLine({ v }: { v: ModelVerdict }) {
       </span>
       <span>
         <span className="font-semibold text-slate-500">Cliff:</span>{" "}
-        <span data-testid="metric-cliff" className="font-bold text-slate-800">
-          {v.cliff_tokens == null ? "N/A" : `${v.cliff_tokens.toLocaleString()} tok`}
+        <span data-testid="metric-cliff" className={`font-bold ${cliffColor(v.cliff)}`}>
+          {cliffLabel(v.cliff)}
         </span>
       </span>
     </div>
@@ -85,6 +85,22 @@ function classifyReason(reason: string): { category: string; text: string } {
   return { category, text: reason };
 }
 
+// The context the KV-cache figure assumes (the run's num_ctx, else a capped 8k
+// default) — surfaced so a "won't fit" is interpretable, not a mystery 134 GB.
+const ctxLabel = (n: number) => (n >= 1024 ? `${Math.round(n / 1024)}k` : `${n}`);
+
+// Three-state context-cliff label: probed-and-held vs collapsed vs never probed.
+function cliffLabel(c: ModelVerdict["cliff"]): string {
+  if (!c || c.status === "NotProbed") return "N/A";
+  if (c.status === "NoCliff") return `✓ No cliff (≥${c.tested.toLocaleString()} tok)`;
+  if (c.status === "Broken") return "fails from start";
+  return `Collapsed at ${c.depth.toLocaleString()} tok`;
+}
+function cliffColor(c: ModelVerdict["cliff"]): string {
+  if (!c || c.status === "NotProbed") return "text-slate-800";
+  return c.status === "NoCliff" ? "text-emerald-600" : "text-rose-600"; // Collapsed + Broken → red
+}
+
 function MemoryLine({ m, backend }: { m: MemoryProfile | null | undefined; backend: BackendKind }) {
   // Original string expected by the tests
   const getExpectedText = () => {
@@ -95,7 +111,8 @@ function MemoryLine({ m, backend }: { m: MemoryProfile | null | undefined; backe
       return "";
     }
     const note = !m.fits ? "won't fit" : m.pressure ? "high VRAM pressure" : "fits";
-    return `VRAM: ${gb(m.total_bytes)} GB (${gb(m.weights_bytes)} model + ${gb(m.kv_cache_bytes)} cache) ${m.fits ? "<" : ">"} ${gb(m.cap_bytes)} GB cap · ${note}`;
+    const est = m.estimated ? " · est." : "";
+    return `VRAM: ${gb(m.total_bytes)} GB (${gb(m.weights_bytes)} model + ${gb(m.kv_cache_bytes)} cache @ ${ctxLabel(m.context_length)} ctx) ${m.fits ? "<" : ">"} ${gb(m.cap_bytes)} GB cap · ${note}${est}`;
   };
 
   const expectedText = getExpectedText();
@@ -120,8 +137,13 @@ function MemoryLine({ m, backend }: { m: MemoryProfile | null | undefined; backe
     <div className="flex flex-col gap-1 text-slate-700 text-xs mb-2">
       <span className="hidden">{expectedText}</span>
       <div className={color}>
-        VRAM: {gb(m.total_bytes)} GB used ({gb(m.weights_bytes)}GB model + {gb(m.kv_cache_bytes)}GB cache) {m.fits ? "<" : ">"} {gb(m.cap_bytes)}GB cap
+        VRAM: {gb(m.total_bytes)} GB used ({gb(m.weights_bytes)}GB model + {gb(m.kv_cache_bytes)}GB cache @ {ctxLabel(m.context_length)} ctx) {m.fits ? "<" : ">"} {gb(m.cap_bytes)}GB cap
       </div>
+      {m.estimated && (
+        <div data-testid="vram-estimated" className="text-[11px] text-slate-400">
+          conservative estimate — model didn't report KV head count
+        </div>
+      )}
     </div>
   );
 }

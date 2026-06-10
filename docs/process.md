@@ -638,7 +638,30 @@ turns it on) so an un-probed model is never silently failed. VRAM fit is **Ollam
 cap is auto-detected and overridable in-session (not persisted). The verdict scoring
 is **one function** (`assess`) so GUI and the future CLI can never diverge.
 
-### Phase 7+
+### Phase 8 — Publish & Community (OSS client, PART B)
+
+Turns a local readiness verdict into a shareable asset and (opt-in) aggregate data
+for the recommender. Phase 8 spans two systems: a **closed backend** (separate
+private, hosted repo — token authority, publish API, validation, dedup, leaderboard,
+baselines, moderation; out of scope for this open repo) and the **OSS client** flow
+here. The app stays 100% functional offline — a publish/auth failure never touches it.
+
+| # | Step | Status |
+| --- | --- | --- |
+| 8.B4 | **Offline share export** — fully offline, no auth, no backend. Pure `buildReadinessMarkdown` (GFM table + per-model reasons, "N/A" never fabricated); `snapshotPng` rasterizes the report card via `html-to-image` (embedded fonts + warm-up render; hardcoded white background); a thin `save_readiness_image` Rust sink writes the PNG bytes (path via OS dialog). The Agent Report's **Export Report** menu offers Image / Copy Markdown / HTML | done |
+| 8.B2 | Canonical record (`persistence/publish/`, pure: metrics-only `PublishRow`, sorted-key deterministic JSON + SHA-256 hash + local `pre_validate`) + `commands/publish/cohort.rs` (v1 hardware cohort key) + `preview_publish_payload` + privacy gate (`PublishDialog`: shows the exact raw payload, default opt-out) | done |
+| 8.B1 | PKCE auth + hybrid vault (`commands/publish/{auth,pkce,token,login_cmd}.rs`, `keyring` with in-memory fallback when no secret service; S256 challenge; loopback redirect; rotating refresh + cached access token) — `enterprise`-gated, verified against `mockito` | done |
+| 8.B3 | Send pipeline (`publish_cmd.rs`: fresh nonce → canonical hash → batch POST; typed `PublishOutcome` for 200/401/422-with-index/426/429, **fresh nonce per attempt**) + walled-garden write-up link + UI wiring (`PublishButton`, never freezes) — `enterprise`-gated, verified against `mockito` | done |
+
+Locked decisions: **server-side everything** (the open client is untrusted; the
+backend enforces rate limits, validation, dedup, anti-replay); **no client secret**
+(PKCE); **privacy gate** sends metrics + cohort tags + signature only, never task
+content/prompts/file names, default opt-out, disabled in enterprise builds; results
+are labelled **"community-reported"** (self-fabrication is deterred via validation +
+outliers + GitHub identity + report/remove, never cryptographically prevented). The
+**export (B4) is ungated** — it ships in every build, including enterprise.
+
+### Phase 8+
 
 Owners flesh out the next phase's section here when the current lands.
 

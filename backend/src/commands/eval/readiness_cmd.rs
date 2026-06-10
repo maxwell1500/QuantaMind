@@ -6,7 +6,7 @@ use crate::inference::backend::endpoint;
 use crate::inference::eval::readiness::inputs::{agentic_metrics, pass_k_of, verdict_for};
 use crate::inference::eval::readiness::recommend;
 use crate::inference::eval::readiness::profile::ReadinessProfile;
-use crate::inference::eval::readiness::types::ModelVerdict;
+use crate::inference::eval::readiness::types::{CliffStatus, ModelVerdict};
 use crate::inference::eval::readiness::vram_fit::{try_profile, Dims};
 use crate::persistence::readiness::{cliff, profiles, reports};
 use std::collections::HashMap;
@@ -39,15 +39,35 @@ fn cliff_dir(app: &AppHandle) -> Result<PathBuf, AppError> {
     Ok(dir.join("cliff"))
 }
 
-/// The probe writes one model's measured cliff depth for a collection (atomic).
+/// The probe writes one model's cliff outcome for a collection (atomic). `broken` ⇒
+/// fails at the baseline; else `depth` `Some` ⇒ collapsed at that depth, `None` ⇒ no
+/// cliff (held through `tested`). (NotProbed is never written — it's the absence of a
+/// record.)
 #[tauri::command]
-pub fn save_cliff_result(app: AppHandle, collection_id: String, model: String, cliff_tokens: u32) -> Result<(), AppError> {
-    cliff::save(&cliff_dir(&app)?, &collection_id, &model, cliff_tokens)
+pub fn save_cliff_result(
+    app: AppHandle,
+    collection_id: String,
+    model: String,
+    depth: Option<u32>,
+    tested: u32,
+    broken: bool,
+) -> Result<(), AppError> {
+    let status = if broken {
+        CliffStatus::Broken { tested }
+    } else {
+        match depth {
+            Some(d) => CliffStatus::Collapsed { depth: d },
+            None => CliffStatus::NoCliff { tested },
+        }
+    };
+    cliff::save(&cliff_dir(&app)?, &collection_id, &model, status)
 }
 
-/// The Matrix / readiness page reads the collection's measured cliff depths.
+/// The full per-model cliff status for a collection — the Matrix hydrates every state
+/// (collapse depth, no-cliff, broken) from this so they survive a reload, not just
+/// collapse depths.
 #[tauri::command]
-pub fn get_cliff_results(app: AppHandle, collection_id: String) -> Result<HashMap<String, u32>, AppError> {
+pub fn get_cliff_results(app: AppHandle, collection_id: String) -> Result<HashMap<String, CliffStatus>, AppError> {
     cliff::load(&cliff_dir(&app)?, &collection_id)
 }
 
@@ -110,6 +130,7 @@ pub async fn assess_readiness(
                     head_count_kv: d.head_count_kv,
                     embedding_length: d.embedding_length,
                     context_length: d.context_length as u32,
+                    kv_estimated: d.kv_estimated,
                 }),
                 None => None,
             };
@@ -119,8 +140,8 @@ pub async fn assess_readiness(
         };
         let fits_in_vram = memory.as_ref().map(|m| m.fits);
         let vram_pressure = memory.as_ref().map(|m| m.pressure).unwrap_or(false);
-        let cliff_tokens = registry_get(&cliffs, &col.model).copied();
-        let verdict = verdict_for(col, fits_in_vram, vram_pressure, cliff_tokens, &profile);
+        let cliff = registry_get(&cliffs, &col.model).copied().unwrap_or_default();
+        let verdict = verdict_for(col, fits_in_vram, vram_pressure, cliff, &profile);
         let (avg_steps, effort) = agentic_metrics(col);
         out.push(ModelVerdict {
             model: col.model.clone(),
@@ -131,7 +152,7 @@ pub async fn assess_readiness(
             effort,
             pass_k: pass_k_of(col),
             quantization: registry_get(&quants, &col.model).cloned(),
-            cliff_tokens,
+            cliff,
         });
     }
     // Phase 7.3: rank best-first (Ready > Conditional > NotReady, ties by effort

@@ -11,6 +11,7 @@ pub mod models;
 pub mod ollama;
 pub mod prompt;
 pub mod prompt_templates;
+pub mod publish;
 pub mod settings;
 pub mod storage;
 pub mod system;

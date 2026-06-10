@@ -44,8 +44,20 @@ export const MemoryProfileSchema = z.object({
   context_length: z.number().int().nonnegative(),
   fits: z.boolean(),
   pressure: z.boolean(),
+  // KV cache sized from a defaulted head_count_kv → a conservative overestimate.
+  estimated: z.boolean().optional(),
 });
 export type MemoryProfile = z.infer<typeof MemoryProfileSchema>;
+
+/// The context-cliff outcome (mirror of the Rust `CliffStatus`): not probed,
+/// no cliff up to `tested`, or collapsed at `depth`.
+export const CliffStatusSchema = z.discriminatedUnion("status", [
+  z.object({ status: z.literal("NotProbed") }),
+  z.object({ status: z.literal("NoCliff"), tested: z.number() }),
+  z.object({ status: z.literal("Collapsed"), depth: z.number() }),
+  z.object({ status: z.literal("Broken"), tested: z.number() }),
+]);
+export type CliffStatus = z.infer<typeof CliffStatusSchema>;
 
 export const ModelVerdictSchema = z.object({
   model: z.string(),
@@ -61,9 +73,10 @@ export const ModelVerdictSchema = z.object({
   // installed-models registry. Both null → rendered "N/A"/"—".
   pass_k: z.number().nullish(),
   quantization: z.string().nullish(),
-  // The measured context-cliff depth (tokens) for this collection, from the probe.
-  // `null` → "N/A". The hard gate only blocks when a profile sets `min_context_tokens`.
-  cliff_tokens: z.number().nullish(),
+  // The context-cliff outcome for this collection (NotProbed/NoCliff/Collapsed).
+  // Absent → treated as NotProbed ("N/A"). The hard gate only blocks when a profile
+  // sets `min_context_tokens` (strict: NoCliff passes iff tested ≥ min).
+  cliff: CliffStatusSchema.optional(),
 });
 export type ModelVerdict = z.infer<typeof ModelVerdictSchema>;
 

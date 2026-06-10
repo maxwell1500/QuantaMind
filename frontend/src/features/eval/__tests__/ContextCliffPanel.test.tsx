@@ -59,6 +59,11 @@ beforeEach(() => {
 });
 
 describe("ContextCliffPanel", () => {
+  it("defaults the Greedy (reproducible) toggle to on", () => {
+    render(<ContextCliffPanel />);
+    expect(screen.getByTestId("cliff-greedy")).toBeChecked();
+  });
+
   it("loads its own dataset and plots the cliff at the model's REAL measured token depth", async () => {
     // (composite, measured prompt_eval_count) per rung — accuracy collapses at
     // the rung the model measured at ~8300 prompt tokens.
@@ -145,10 +150,22 @@ describe("ContextCliffPanel", () => {
     const call = vi.mocked(runToolcallEval).mock.calls[0];
     expect(call[0]).toBe("m"); // model
     expect(call[1]).toBe("ollama"); // backend
-    // Global params flow through; the probe also raises num_ctx so the prompt
-    // isn't truncated at Ollama's 4096 default.
-    expect(call[4]).toMatchObject({ temperature: 0.2 });
+    // Greedy is ON by default → temperature pinned 0 (reproducible diagnostic),
+    // overriding the global 0.2; global params still flow (num_ctx is raised so the
+    // prompt isn't truncated at Ollama's 4096 default).
+    expect((call[4] as { temperature?: number }).temperature).toBe(0);
     expect((call[4] as { num_ctx?: number }).num_ctx).toBeGreaterThan(4096);
+  });
+
+  it("uses the global temperature when Greedy is turned off", async () => {
+    useParamsStore.setState({ globalParams: { temperature: 0.2 } });
+    vi.mocked(runToolcallEval).mockResolvedValue(report(1.0, 5000) as never);
+    render(<ContextCliffPanel />);
+    await waitFor(() => expect(screen.getByTestId("cliff-run")).not.toBeDisabled());
+    fireEvent.click(screen.getByTestId("cliff-greedy")); // turn greedy OFF
+    fireEvent.click(screen.getByTestId("cliff-run"));
+    await waitFor(() => expect(runToolcallEval).toHaveBeenCalled());
+    expect((vi.mocked(runToolcallEval).mock.calls[0][4] as { temperature?: number }).temperature).toBe(0.2);
   });
 
   it("with 2+ selected Ollama models, a dropdown picks which one the probe runs", async () => {

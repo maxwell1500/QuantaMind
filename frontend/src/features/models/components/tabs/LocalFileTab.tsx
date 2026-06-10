@@ -1,5 +1,5 @@
 import { useLocalImport } from "../../hooks/useLocalImport";
-import { LocalFilePreview } from "../LocalFilePreview";
+import { LocalFilePreview, ImportError } from "../LocalFilePreview";
 import { useModelStore } from "../../state/modelStore";
 
 export function LocalFileTab() {
@@ -51,11 +51,7 @@ export function LocalFileTab() {
       >
         Browse files…
       </button>
-      {s.error && (
-        <div role="alert" data-testid="local-error" className="text-red-600 text-xs">
-          {s.error}
-        </div>
-      )}
+      {s.error && <ImportError message={s.error} testid="local-error" />}
     </div>
   );
 }

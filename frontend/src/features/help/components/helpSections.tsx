@@ -324,7 +324,7 @@ export const HELP_SECTIONS: HelpSection[] = [
         heading: "Context-Cliff probe + chart",
         what: "Runs a dataset at growing prompt lengths and graphs (visx) where tool-call accuracy collapses — the “context cliff”.",
         why: "Many local models break down well before their advertised context window. The probe finds the real usable window for tool use, which feeds the Agent-Readiness verdict.",
-        how: "The x-axis is the model’s real measured prompt-token depth (prompt_eval_count, averaged per rung) — never a chars÷4 estimate; the y-axis is the composite accuracy above. The verdict is computed so the persisted depth and the badge can never disagree: a healthy baseline (rung 0 ≥ 50%) that then drops ≥20pp = a cliff at that rung’s depth; a healthy baseline that holds = “✓ no cliff”; a baseline already below 50% = “fails from start” (broken at the smallest context, a tool-call failure — not a context limit); an errored baseline = unmeasured.",
+        how: "The x-axis is the model’s real measured prompt-token depth (prompt_eval_count, averaged per rung) — never a chars÷4 estimate; the y-axis is the composite accuracy above. The verdict is computed so the persisted depth and the badge can never disagree: a healthy baseline (rung 0 ≥ 50%) that then drops ≥20pp = a cliff at that rung’s depth; a healthy baseline that holds = “✓ no cliff”; a baseline already below 50% = “fails from start” (broken at the smallest context, a tool-call failure — not a context limit); an errored baseline = unmeasured. Because a cliff is a diagnostic, the probe defaults to Greedy (temperature 0) decoding so the same (model, collection) reproduces the same verdict run-to-run — untick “Greedy (temp 0)” to sample at your global temperature instead. The probe never auto-runs: you start it with Execute Probe, or from the Performance Matrix via “Run probe ↗” on an un-measured model or the “↻” re-probe control beside an already-measured cliff badge — both pre-fill the model + collection and open the Audit tab.",
         formula:
           "baseline = composite(rung 0)\n" +
           "if baseline < 0.50            → broken-baseline (“fails from start”)\n" +
@@ -455,10 +455,19 @@ export const HELP_SECTIONS: HelpSection[] = [
       },
       {
         id: "report-export",
-        heading: "Export readiness report (HTML)",
-        what: "Save the verdict table and per-model memory lines as a standalone HTML report.",
-        why: "The readiness call is something you share with a team or attach to a decision — a self-contained file is the portable form.",
-        how: "Writes the verdicts, reasons, and metrics to HTML; content is escaped, never injected as raw markup.",
+        heading: "Export the readiness report (Image · Markdown · HTML)",
+        what: "The Export Report menu offers three fully-offline formats: a PNG image of the report card, the report as GitHub-flavoured Markdown copied to your clipboard, and a standalone HTML file.",
+        why: "The readiness call is something you share with a team, paste into a ticket, or attach to a decision — and different destinations want different forms. None of them needs auth, a network, or the community board.",
+        how: "“Export as Image (.png)” rasterizes the live report card (a thin Rust sink writes the bytes to a path you pick). “Copy Markdown” builds a GFM table plus per-model reasons and puts it on the clipboard. “Export HTML” downloads a self-contained file. Every format renders the same measured verdicts — an unmeasured metric is written as “N/A”, never fabricated, and HTML content is escaped, never injected as raw markup.",
+        source: "frontend/src/features/agentReport/components/ExportMenu.tsx · export/markdown.ts · reportHtml.ts",
+      },
+      {
+        id: "publish-board",
+        heading: "Publish to Board (opt-in community share)",
+        what: "A “Publish to Board” button that contributes your aggregate readiness numbers to the community leaderboard — behind an explicit, default-off privacy gate.",
+        why: "Cross-machine readiness data is what makes the recommender useful, but it can never come at the cost of leaking your tasks. So sharing is opt-in, aggregate-only, and shows you the exact bytes before any leave the machine.",
+        how: "The dialog shows a Shared / Never-shared panel and the literal canonical JSON payload. It shares only metrics (Pass^k, effort, avg steps), hardware cohort tags, model name + quant, and an integrity hash — never task content, prompts, file names, or raw traces. Publish stays disabled until you tick the opt-in box (it starts unchecked); an optional write-up link is allow-listed to a few domains. The app is 100% functional offline — every server outcome (sign-in needed, rate-limited, rejected row) becomes a toast and never freezes the UI. Results are labelled “community-reported”.",
+        source: "frontend/src/features/publish/PublishDialog.tsx · WhatsSharedPanel.tsx",
       },
     ],
   },
