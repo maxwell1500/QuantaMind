@@ -108,6 +108,10 @@ HTTP to a local Ollama server.
   meter, `stop_recording` encodes the take (16-bit WAV at native rate — P1 resamples)
   into the scratch dir and reports `had_audio` so a silent take (muted mic / TCC
   denial, which records silence rather than erroring) surfaces "no audio detected".
+  A micless machine maps to a clean "no microphone found" — CoreAudio hands back a
+  phantom default input whose every query fails with an unknown OSStatus (e.g. a
+  Mac mini with no mic), so the failure is classified by whether any input device
+  exists, not by the opaque backend error.
   The macOS mic prompt is driven by `NSMicrophoneUsageDescription` in
   `backend/Info.plist`, embedded by Tauri's `generate_context!` (dev binary included).
   Frontend IPC mirrors the module in `shared/ipc/audio/capture.ts`
