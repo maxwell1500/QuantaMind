@@ -1,6 +1,8 @@
 use crate::inference::eval::readiness::types::Readiness;
 use crate::inference::eval::readiness::vram_fit::MemoryProfile;
+use crate::inference::stt::eval::report::{SttReport, SttReportRow};
 use serde::{Deserialize, Serialize};
+use std::collections::HashMap;
 
 /// Transcription-readiness gating thresholds (parallels the text `ReadinessProfile`).
 /// Soft targets are `Option` (unset → silent); the WER gate is **reference-gated**.
@@ -166,9 +168,72 @@ pub fn builtin_profiles() -> Vec<SttReadinessProfile> {
     ]
 }
 
+/// Mean of the measured values, `None` when none are measured (never coerced to
+/// 0 — the conditional-denominator discipline).
+fn mean<I: IntoIterator<Item = Option<f64>>>(it: I) -> Option<f64> {
+    let v: Vec<f64> = it.into_iter().flatten().collect();
+    (!v.is_empty()).then(|| v.iter().sum::<f64>() / v.len() as f64)
+}
+
+/// Aggregate a report into one verdict per model and assess each — **pure** (the
+/// command only loads the report + profile). Per-model metrics are means over that
+/// model's rows; `weighted_wer` averages only the rows that carried a reference, so
+/// a reference-less run leaves it `None` ("accuracy unverified"), never fabricated.
+/// Ranked best-first (Ready → Conditional → NotReady).
+pub fn verdicts(report: &SttReport, profile: &SttReadinessProfile) -> Vec<SttModelVerdict> {
+    let mut order: Vec<String> = Vec::new();
+    let mut groups: HashMap<&str, Vec<&SttReportRow>> = HashMap::new();
+    for r in &report.rows {
+        if !groups.contains_key(r.model.as_str()) {
+            order.push(r.model.clone());
+        }
+        groups.entry(r.model.as_str()).or_default().push(r);
+    }
+
+    let mut out: Vec<SttModelVerdict> = order
+        .iter()
+        .map(|model| {
+            let rows = &groups[model.as_str()];
+            let rtf = mean(rows.iter().map(|r| r.rtf));
+            let raw_wer = mean(rows.iter().map(|r| r.wer.as_ref().map(|w| w.wer)));
+            let weighted_wer = mean(rows.iter().map(|r| r.wer.as_ref().map(|w| w.weighted_wer)));
+            let repeat_rate = mean(rows.iter().map(|r| r.repeat_rate));
+            let silence_rate = mean(rows.iter().map(|r| r.silence_rate));
+            let confidence = mean(rows.iter().map(|r| r.confidence));
+            let inputs = SttReadinessInputs {
+                rtf,
+                weighted_wer,
+                repeat_rate,
+                silence_rate,
+                confidence,
+                fits_in_vram: None, // whisper.cpp doesn't report VRAM
+                vram_pressure: false,
+            };
+            SttModelVerdict {
+                model: model.clone(),
+                verdict: assess(&inputs, profile),
+                rtf,
+                wer: raw_wer,
+                weighted_wer,
+                repeat_rate,
+                silence_rate,
+                confidence,
+                memory: None,
+            }
+        })
+        .collect();
+    out.sort_by_key(|v| match v.verdict.status {
+        Readiness::Ready => 0,
+        Readiness::Conditional => 1,
+        Readiness::NotReady => 2,
+    });
+    out
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::inference::stt::eval::wer::WerResult;
 
     fn profile() -> SttReadinessProfile {
         SttReadinessProfile {
@@ -239,5 +304,45 @@ mod tests {
         let v = assess(&i, &profile());
         assert_eq!(v.status, Readiness::Conditional);
         assert!(v.conditions.iter().any(|c| c.contains("repeats")));
+    }
+
+    fn row(model: &str, weighted: Option<f64>) -> SttReportRow {
+        SttReportRow {
+            task_id: "t".into(),
+            model: model.into(),
+            rtf: Some(2.0),
+            repeat_rate: Some(0.0),
+            silence_rate: Some(0.0),
+            confidence: Some(0.9),
+            wer: weighted.map(|w| WerResult {
+                wer: w,
+                weighted_wer: w,
+                adjusted_wer: w,
+                substitutions: 0,
+                insertions: 0,
+                deletions: 0,
+                ref_words: 10,
+                critical_token_accuracy: None,
+                misreads: vec![],
+            }),
+        }
+    }
+
+    #[test]
+    fn verdicts_aggregate_per_model_and_rank_best_first() {
+        // model-bad has a high weighted WER → NotReady; model-good is clean → Ready.
+        // The reference-less row leaves model-good's weighted_wer driven only by its
+        // referenced row (here perfect) — a None never coerced into the mean.
+        let report = SttReport {
+            rows: vec![row("model-bad", Some(0.30)), row("model-good", Some(0.0)), row("model-good", None)],
+        };
+        let v = verdicts(&report, &profile());
+        assert_eq!(v.len(), 2);
+        // Ranked best-first.
+        assert_eq!(v[0].model, "model-good");
+        assert_eq!(v[0].verdict.status, Readiness::Ready);
+        assert_eq!(v[0].weighted_wer, Some(0.0), "the None row didn't drag the mean");
+        assert_eq!(v[1].model, "model-bad");
+        assert_eq!(v[1].verdict.status, Readiness::NotReady);
     }
 }
