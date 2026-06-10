@@ -32,10 +32,13 @@ pub struct Segment {
 }
 
 /// Per-run measurements. **Every field is `Option`** — `None` unless the backend
-/// actually emitted it (no fabricated metrics). `rtf` stays `None` until P3.
+/// actually emitted it (no fabricated metrics). `rtf` is decoded-seconds ÷
+/// wall-seconds (P3), `None` for a zero-length or instantaneous run.
 #[derive(Serialize, Deserialize, Clone, Debug, PartialEq, Default)]
 pub struct TranscribeStats {
+    /// The container's declared duration (or `0.0` for VBR with no frame count).
     pub source_duration_secs: Option<f64>,
+    /// The true decoded length (mono frames ÷ rate) — RTF's denominator.
     pub audio_decoded_secs: Option<f64>,
     pub transcribe_wall_ms: Option<u64>,
     pub segment_count: Option<usize>,
@@ -100,7 +103,7 @@ mod tests {
         let json = serde_json::to_string_pretty(&t).unwrap();
         let back: Transcript = serde_json::from_str(&json).unwrap();
         assert_eq!(t, back, "write → read → deep-equal");
-        assert!(back.stt_profile.is_none(), "SttProfile slot is None until P3");
-        assert_eq!(back.stats.rtf, None, "RTF is not fabricated in P1");
+        assert!(back.stt_profile.is_none(), "SttProfile slot is None until P3 fills it");
+        assert_eq!(back.stats.rtf, None, "an unset RTF round-trips as None, never coerced to 0");
     }
 }

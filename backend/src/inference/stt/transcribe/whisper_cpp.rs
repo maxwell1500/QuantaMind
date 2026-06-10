@@ -3,8 +3,9 @@ use crate::inference::http::http::streaming_client;
 use crate::inference::stt::stt_probe::ensure_local_reachable;
 use crate::inference::stt::transcribe::audio;
 use crate::inference::stt::transcribe::dedup::dedupe_incoming;
+use crate::inference::stt::profile::perf;
 use crate::inference::stt::transcribe::sink::TranscribeSink;
-use crate::inference::stt::transcribe::transcript::{Segment, Transcript, TranscribeStats, Word};
+use crate::inference::stt::transcribe::transcript::{AudioSpec, Segment, Transcript, TranscribeStats, Word};
 use reqwest::multipart::{Form, Part};
 use serde::Deserialize;
 use std::path::Path;
@@ -66,14 +67,18 @@ pub async fn transcribe(
 ) -> AppResult<Transcript> {
     ensure_local_reachable(base, "/health").await?;
     let spec = audio::probe(path)?;
-    let total = spec.duration_secs;
+    // probe's duration is the container's declared estimate (or 0.0 for VBR) — fine
+    // for the live progress denominator, but the decoded sample count below is the
+    // truth RTF is computed from.
+    let container_secs = spec.duration_secs;
     let client = streaming_client()?;
     let started = Instant::now();
 
     let mut all: Vec<Segment> = Vec::new();
     let mut language: Option<String> = None;
 
-    for win in audio::windows(path, WINDOW_SECS, audio::OVERLAP_SECS)? {
+    let mut reader = audio::windows(path, WINDOW_SECS, audio::OVERLAP_SECS)?;
+    while let Some(win) = reader.next() {
         let win = win?;
         let wav = audio::encode_wav_16k_mono(&win.samples_16k_mono)?;
         let mut form = Form::new()
@@ -132,24 +137,31 @@ pub async fn transcribe(
         // view and the persisted artifact stay monotonic + non-overlapping.
         let fresh = dedupe_incoming(&all, segs);
         sink.segments(&fresh);
-        sink.progress(win.end_secs, total);
+        sink.progress(win.end_secs, container_secs);
         all.extend(fresh);
     }
 
+    // Stop the clock the instant the last segment landed (loop exit), before any
+    // finalize work, so wall time = pure inference (the RTF numerator's partner).
+    let wall_ms = started.elapsed().as_millis() as u64;
+    // The decoded sample count is the hardware fact RTF divides by — not the
+    // container header (which is 0.0 for VBR). Also refines the artifact's duration.
+    let decoded_secs = reader.decoded_secs();
+
     let stats = TranscribeStats {
-        source_duration_secs: Some(total),
-        audio_decoded_secs: Some(total),
-        transcribe_wall_ms: Some(started.elapsed().as_millis() as u64),
+        source_duration_secs: Some(container_secs),
+        audio_decoded_secs: Some(decoded_secs),
+        transcribe_wall_ms: Some(wall_ms),
         segment_count: Some(all.len()),
         detected_language: language.clone(),
         received_sample_rate_hz: Some(audio::TARGET_RATE_HZ),
-        rtf: None, // P3
+        rtf: perf::rtf(decoded_secs, wall_ms),
     };
     Ok(Transcript {
         id: id.to_string(),
         model: model.to_string(),
         language,
-        audio: spec,
+        audio: AudioSpec { duration_secs: decoded_secs, ..spec },
         segments: all,
         complete: true,
         stats,
@@ -202,7 +214,10 @@ mod tests {
         // monotonic, non-overlapping across windows
         assert!(t.segments[1].start_secs >= t.segments[0].end_secs);
         assert_eq!(t.stats.received_sample_rate_hz, Some(16_000));
-        assert_eq!(t.stats.rtf, None);
+        // RTF is computed from the decoded sample count (35 s here), not the
+        // container header, ÷ wall time. Two real mock roundtrips take > 0 ms.
+        assert_eq!(t.stats.audio_decoded_secs, Some(35.0), "decoded-sample truth");
+        assert!(t.stats.rtf.is_some_and(|r| r > 0.0), "RTF populated from decoded ÷ wall");
     }
 
     #[tokio::test]
