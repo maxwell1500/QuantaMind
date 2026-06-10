@@ -6,15 +6,17 @@ import {
 import { listLlamaModels } from "../../../shared/ipc/models/llama_start";
 import { listMlxModels } from "../../../shared/ipc/models/mlx";
 import { listInstalledSttModels, type InstalledSttModel } from "../../../shared/ipc/stt/stt";
+import { listInstalledMlxSttModels, type InstalledMlxSttModel } from "../../../shared/ipc/stt/mlxStt";
 import { formatIpcError } from "../../../shared/ipc/core/error";
 
 export type InstalledStatus = "idle" | "loading" | "ready" | "error";
 
 export interface InstalledModelsState {
   list: InstalledModelInfo[];
-  /// Installed STT (whisper.cpp) models — a separate axis from the LLM list, so
-  /// they're not forced into the BackendKind-typed list.
+  /// Installed STT models — a separate axis from the LLM list, so they're not
+  /// forced into the BackendKind-typed list. whisper.cpp and mlx-audio engines.
   sttList: InstalledSttModel[];
+  mlxSttList: InstalledMlxSttModel[];
   status: InstalledStatus;
   error: string | null;
   lastRefreshedAt: number | null;
@@ -32,6 +34,7 @@ export const useInstalledModelsStore = create<InstalledModelsState>(
   (set, get) => ({
     list: [],
     sttList: [],
+    mlxSttList: [],
     status: "idle",
     error: null,
     lastRefreshedAt: null,
@@ -43,22 +46,24 @@ export const useInstalledModelsStore = create<InstalledModelsState>(
     refresh: async () => {
       if (get().status === "loading") return;
       set({ status: "loading", error: null });
-      const [ollama, llama, mlx, stt] = await Promise.allSettled([
+      const [ollama, llama, mlx, stt, mlxStt] = await Promise.allSettled([
         getInstalledModelsWithStats(),
         listLlamaModels(),
         listMlxModels(),
         listInstalledSttModels(),
+        listInstalledMlxSttModels(),
       ]);
       const list: InstalledModelInfo[] = [];
       if (ollama.status === "fulfilled") list.push(...ollama.value);
       if (llama.status === "fulfilled") list.push(...llama.value);
       if (mlx.status === "fulfilled") list.push(...mlx.value);
       const sttList = stt.status === "fulfilled" ? stt.value : [];
+      const mlxSttList = mlxStt.status === "fulfilled" ? mlxStt.value : [];
       if (ollama.status === "rejected" && llama.status === "rejected" && mlx.status === "rejected") {
         set({ status: "error", error: formatIpcError(ollama.reason) });
         return;
       }
-      set({ list, sttList, status: "ready", error: null, lastRefreshedAt: Date.now() });
+      set({ list, sttList, mlxSttList, status: "ready", error: null, lastRefreshedAt: Date.now() });
     },
   }),
 );

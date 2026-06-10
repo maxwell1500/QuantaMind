@@ -1,5 +1,5 @@
 import { describe, it, expect, vi, beforeEach } from "vitest";
-import { render, screen } from "@testing-library/react";
+import { render, screen, fireEvent } from "@testing-library/react";
 
 vi.mock("@tauri-apps/api/event", () => ({ listen: vi.fn().mockResolvedValue(() => {}) }));
 vi.mock("@tauri-apps/api/core", () => ({ invoke: vi.fn() }));
@@ -7,6 +7,7 @@ vi.mock("@tauri-apps/plugin-dialog", () => ({ open: vi.fn() }));
 
 import { invoke } from "@tauri-apps/api/core";
 import { SpeechToTextTab } from "../SpeechToTextTab";
+import { useSttSelectionStore } from "../../state/sttSelectionStore";
 import type { WhisperEnv } from "../../../../shared/ipc/stt/stt";
 
 function withEnv(env: WhisperEnv) {
@@ -14,6 +15,8 @@ function withEnv(env: WhisperEnv) {
     switch (cmd) {
       case "check_whisper_env":
         return env;
+      // check_mlx_stt_env unset → useMlxSttEnv falls back to unsupported → no
+      // engine toggle, whisper panel only (the existing assertions hold).
       case "list_stt_catalog":
       case "list_installed_stt_models":
         return [];
@@ -23,7 +26,10 @@ function withEnv(env: WhisperEnv) {
   });
 }
 
-beforeEach(() => vi.mocked(invoke).mockReset());
+beforeEach(() => {
+  vi.mocked(invoke).mockReset();
+  useSttSelectionStore.setState({ engine: "whisper_cpp" });
+});
 
 describe("SpeechToTextTab", () => {
   it("shows the install setup card when the engine isn't found", async () => {
@@ -47,5 +53,27 @@ describe("SpeechToTextTab", () => {
     render(<SpeechToTextTab />);
     expect(await screen.findByTestId("stt-ready")).toBeInTheDocument();
     expect(screen.getByTestId("stt-catalog")).toBeInTheDocument();
+  });
+
+  it("shows the engine toggle on Apple Silicon and routes to the MLX panel", async () => {
+    vi.mocked(invoke).mockImplementation(async (cmd: string) => {
+      switch (cmd) {
+        case "check_whisper_env":
+          return { found: true, dir: "/x", runnable: true, error: null };
+        case "check_mlx_stt_env":
+          return { supported: true, found: false, dir: null };
+        case "list_mlx_stt_catalog":
+          return [{ repo: "mlx-community/whisper-tiny", display: "Tiny (multilingual)", disk_bytes: 74418444, est_vram_bytes: null, multilingual: true }];
+        default:
+          return [];
+      }
+    });
+    render(<SpeechToTextTab />);
+    const mlxTab = await screen.findByTestId("stt-engine-tab-mlx_audio");
+    fireEvent.click(mlxTab);
+    expect(await screen.findByTestId("mlx-stt-panel")).toBeInTheDocument();
+    expect(screen.getByTestId("mlx-stt-row-mlx-community/whisper-tiny")).toBeInTheDocument();
+    // mlx-audio not installed → the install hint shows (download still works).
+    expect(screen.getByText(/mlx-audio isn't installed/i)).toBeInTheDocument();
   });
 });

@@ -1,49 +1,42 @@
-import { useWhisperEnv } from "../hooks/useWhisperEnv";
-import { useSttCatalog } from "../hooks/useSttCatalog";
-import { useSttInstall } from "../hooks/useSttInstall";
-import { useHardwareSnapshot } from "../../models/hooks/useHardwareSnapshot";
-import { SttSetupCard } from "./SttSetupCard";
-import { SttCatalogTable } from "./SttCatalogTable";
-import { SttServerPanel } from "./SttServerPanel";
+import { useMlxSttEnv } from "../hooks/useMlxSttEnv";
+import { useSttSelectionStore, type SttEngine } from "../state/sttSelectionStore";
+import { WhisperSttPanel } from "./WhisperSttPanel";
+import { MlxSttPanel } from "./MlxSttPanel";
 
-/// The Speech-to-Text tab. Three states from the engine check: not installed →
-/// setup card; installed but not runnable → reinstall card; ready → catalog +
-/// server controls. Reachable in any state (so the setup guide always shows).
+const ENGINES: { id: SttEngine; label: string }[] = [
+  { id: "whisper_cpp", label: "whisper.cpp" },
+  { id: "mlx_audio", label: "mlx-audio" },
+];
+
+/// The Speech-to-Text tab, routed by the global STT engine. The engine toggle
+/// shows mlx-audio only on Apple Silicon (excluded entirely otherwise); each
+/// engine has its own setup + catalog.
 export function SpeechToTextTab() {
-  const { env, loading, recheck, chooseFolder } = useWhisperEnv();
-  const { catalog, installed, installedIds, refresh } = useSttCatalog();
-  const { install, cancel } = useSttInstall(refresh);
-  const { snapshot } = useHardwareSnapshot();
-
-  if (!env || !env.found || !env.runnable) {
-    if (loading && !env) {
-      return (
-        <p data-testid="stt-checking" className="text-xs text-gray-500">
-          Checking for whisper.cpp…
-        </p>
-      );
-    }
-    return (
-      <SttSetupCard
-        notRunnable={!!env?.found && !env.runnable}
-        detail={env?.error ?? null}
-        loading={loading}
-        onRecheck={() => void recheck()}
-        onChooseFolder={() => void chooseFolder()}
-      />
-    );
-  }
+  const engine = useSttSelectionStore((s) => s.engine);
+  const setEngine = useSttSelectionStore((s) => s.setEngine);
+  const { env: mlxEnv } = useMlxSttEnv();
+  const mlxSupported = !!mlxEnv?.supported;
+  const isMlx = engine === "mlx_audio" && mlxSupported;
 
   return (
-    <div className="flex flex-col gap-4" data-testid="stt-ready">
-      <SttCatalogTable
-        catalog={catalog}
-        installedIds={installedIds}
-        snapshot={snapshot}
-        onInstall={(id) => void install(id)}
-        onCancel={() => void cancel()}
-      />
-      <SttServerPanel installed={installed} />
+    <div className="flex flex-col gap-3" data-testid="speech-to-text-tab">
+      {mlxSupported && (
+        <div className="flex rounded border overflow-hidden text-xs self-start" role="group" aria-label="Speech-to-text engine">
+          {ENGINES.map((e) => (
+            <button
+              key={e.id}
+              type="button"
+              onClick={() => setEngine(e.id)}
+              aria-pressed={engine === e.id}
+              data-testid={`stt-engine-tab-${e.id}`}
+              className={`px-3 py-1 ${engine === e.id ? "bg-blue-600 text-white" : "bg-surface hover:bg-gray-100"}`}
+            >
+              {e.label}
+            </button>
+          ))}
+        </div>
+      )}
+      {isMlx ? <MlxSttPanel /> : <WhisperSttPanel />}
     </div>
   );
 }

@@ -290,10 +290,24 @@ it reads as fixable, not broken. The classifier (`ImportError` in
 
 The raw parser detail is kept (demoted) under **Details:** for diagnosis.
 
-### Setting up speech-to-text (whisper.cpp) {#stt-server}
+### Setting up speech-to-text (whisper.cpp / mlx-audio) {#stt-server}
 
-Speech-to-text uses the whisper.cpp engine. On macOS, install it once with
-Homebrew — the **Speech-to-Text** tab walks you through it:
+STT has two engines, picked in the header's STT group (and the Speech-to-Text
+tab toggle), parallel to the LLM backend — one STT runs alongside one LLM:
+
+- **whisper.cpp** (everywhere) — the default; see below.
+- **mlx-audio** (Apple Silicon only) — Apple-Silicon-native MLX whisper. Install
+  with `pip install mlx-audio`; QuantaMind locates `mlx_audio.server` on
+  `PATH`/venv/Homebrew (`check_mlx_stt_env`) and spawns it on a free loopback
+  port in `8094..=8104`. Models are `mlx-community/whisper-*` snapshots,
+  downloaded into `~/.quantamind/mlx-stt` (they also show in **Downloads** with an
+  **STT** tag). The engine is **strictly local** — the server binds `127.0.0.1`
+  only and never calls any cloud API. The engine option is hidden entirely off
+  Apple Silicon. (Live transcription is a later phase; this sets up the engine +
+  models + start/stop.)
+
+The whisper.cpp engine. On macOS, install it once with Homebrew — the
+**Speech-to-Text** tab walks you through it:
 
 1. Install [Homebrew](https://brew.sh) if you don't have it.
 2. Run `brew install whisper-cpp` (the tab has a copy button).

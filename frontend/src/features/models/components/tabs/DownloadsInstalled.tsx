@@ -3,6 +3,7 @@ import { removeModel } from "../../../../shared/ipc/models/storage";
 import { deleteLlamaModel } from "../../../../shared/ipc/models/llama_start";
 import { deleteMlxModel } from "../../../../shared/ipc/models/mlx";
 import { deleteSttModel } from "../../../../shared/ipc/stt/stt";
+import { deleteMlxSttModel } from "../../../../shared/ipc/stt/mlxStt";
 import { formatBytes } from "../../../../shared/format/bytes";
 import { formatIpcError } from "../../../../shared/ipc/core/error";
 import { useInstalledModelsStore } from "../../state/installedModelsStore";
@@ -15,6 +16,7 @@ const badge = "text-[10px] px-1 py-0.5 rounded";
 export function DownloadsInstalled() {
   const list = useInstalledModelsStore((s) => s.list);
   const sttList = useInstalledModelsStore((s) => s.sttList);
+  const mlxSttList = useInstalledModelsStore((s) => s.mlxSttList);
   const status = useInstalledModelsStore((s) => s.status);
   const storeError = useInstalledModelsStore((s) => s.error);
   const refresh = useInstalledModelsStore((s) => s.refresh);
@@ -42,10 +44,10 @@ export function DownloadsInstalled() {
     }
   };
 
-  const onDeleteStt = async (id: string) => {
+  const onDeleteStt = async (del: () => Promise<void>) => {
     setError(null);
     try {
-      await deleteSttModel(id);
+      await del();
       await refresh();
     } catch (e) {
       setError(formatIpcError(e));
@@ -53,7 +55,7 @@ export function DownloadsInstalled() {
   };
 
   const showErr = error ?? storeError;
-  if (groups.length === 0 && sttList.length === 0) {
+  if (groups.length === 0 && sttList.length === 0 && mlxSttList.length === 0) {
     return (
       <div className="text-xs text-gray-500" data-testid="downloads-empty-installed">
         No installed models yet. Browse the Ollama Library, Hugging Face, Local File, or
@@ -101,7 +103,25 @@ export function DownloadsInstalled() {
                 whisper.cpp · {formatBytes(m.size_bytes)}
               </div>
             </div>
-            <button type="button" onClick={() => void onDeleteStt(m.id)}
+            <button type="button" onClick={() => void onDeleteStt(() => deleteSttModel(m.id))}
+              className="text-xs border rounded px-2 py-1 shrink-0" aria-label={`Delete ${m.display}`}>
+              Delete
+            </button>
+          </li>
+        ))}
+        {mlxSttList.map((m) => (
+          <li key={`mlx-stt-${m.repo}`} data-testid={`download-installed-mlx-stt-${m.repo}`}
+            className="px-3 py-2 flex items-center justify-between gap-2">
+            <div className="min-w-0">
+              <div className="text-sm truncate flex items-center gap-1">
+                {m.display}
+                <span className={`${badge} bg-teal-50 text-teal-700`}>STT</span>
+              </div>
+              <div className="text-[11px] text-gray-500">
+                mlx-audio · {formatBytes(m.size_bytes)}
+              </div>
+            </div>
+            <button type="button" onClick={() => void onDeleteStt(() => deleteMlxSttModel(m.repo))}
               className="text-xs border rounded px-2 py-1 shrink-0" aria-label={`Delete ${m.display}`}>
               Delete
             </button>
