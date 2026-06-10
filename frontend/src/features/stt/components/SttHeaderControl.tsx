@@ -90,7 +90,11 @@ export function SttHeaderControl() {
           className="text-sm bg-transparent outline-none cursor-pointer disabled:opacity-60"
         >
           <option value="whisper_cpp">whisper.cpp</option>
-          {mlxSupported && <option value="mlx_audio">mlx-audio</option>}
+          {mlxSupported && (
+            <option value="mlx_audio" title="Transcription runs on whisper.cpp for now — mlx-audio transcription is coming in a later phase">
+              mlx-audio
+            </option>
+          )}
         </select>
         {isMlx ? (
           <select

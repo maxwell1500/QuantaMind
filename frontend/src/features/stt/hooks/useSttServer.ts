@@ -5,6 +5,7 @@ import {
   checkWhisperHealth,
 } from "../../../shared/ipc/stt/stt";
 import { formatIpcError } from "../../../shared/ipc/core/error";
+import { useSttRuntimeStore } from "../state/sttRuntimeStore";
 
 const POLL_MS = 2000;
 
@@ -17,6 +18,7 @@ export function useSttServer() {
   const [healthy, setHealthy] = useState<boolean | null>(null);
   const [starting, setStarting] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const setShared = useSttRuntimeStore((s) => s.setWhisperHealthy);
 
   useEffect(() => {
     let cancelled = false;
@@ -25,9 +27,13 @@ export function useSttServer() {
         const ok = (await checkWhisperHealth()).available;
         if (cancelled) return;
         setHealthy(ok);
+        setShared(ok); // expose to the Workspace auto-route
         if (ok) setStarting(false);
       } catch {
-        if (!cancelled) setHealthy(false);
+        if (!cancelled) {
+          setHealthy(false);
+          setShared(false);
+        }
       }
     };
     void tick();
@@ -61,8 +67,9 @@ export function useSttServer() {
       /* best-effort */
     }
     setHealthy(false);
+    setShared(false);
     setStarting(false);
-  }, []);
+  }, [setShared]);
 
   return { start, stop, starting, healthy, error };
 }

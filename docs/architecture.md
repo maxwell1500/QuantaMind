@@ -98,6 +98,12 @@ HTTP to a local Ollama server.
   `Transcript`. Engine choice is enum-dispatched (`SttTranscribeEngine`, no `dyn`).
   The artifact persists via `persistence/stt/transcripts.rs` (atomic; refuses an
   incomplete run). Every `TranscribeStats` field is `Option` (no fabricated RTF).
+  `commands/stt/transcribe.rs` is the **only** `AppHandle` seam: `transcribe_audio`
+  streams segments to the UI (a `TauriTranscribeSink`) + persists; `save_recording`
+  lands frontend-captured WAV bytes in a scratch dir; `load_transcript` reloads the
+  artifact. The Workspace **auto-routes to STT mode** (a live two-pane transcribe
+  surface) while an STT server is running (`features/sttWorkspace/`); mic capture is
+  Web Audio in the webview, upload is path-based (WAV→hound, MP3→symphonia).
 - `metrics/` — measurements: TTFT, tokens/sec, VRAM.
 - `persistence/` — YAML/JSON read+write of prompts and history, plus `evals.rs`
   (custom tool-call eval collections: one `.json` per collection, name-sanitised,

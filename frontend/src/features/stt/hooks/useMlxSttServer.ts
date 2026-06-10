@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useState } from "react";
 import { startMlxSttServer, stopMlxSttServer, mlxSttStatus } from "../../../shared/ipc/stt/mlxStt";
 import { formatIpcError } from "../../../shared/ipc/core/error";
+import { useSttRuntimeStore } from "../state/sttRuntimeStore";
 
 const POLL_MS = 2000;
 
@@ -12,6 +13,7 @@ export function useMlxSttServer() {
   const [healthy, setHealthy] = useState<boolean | null>(null);
   const [starting, setStarting] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const setShared = useSttRuntimeStore((s) => s.setMlxSttHealthy);
 
   useEffect(() => {
     let cancelled = false;
@@ -21,16 +23,22 @@ export function useMlxSttServer() {
         if (cancelled) return;
         if (st.state === "running") {
           setHealthy(true);
+          setShared(true);
           setStarting(false);
         } else if (st.state === "exited") {
           setHealthy(false);
+          setShared(false);
           setStarting(false);
           setError(st.stderr_tail || `mlx-audio exited (code ${st.code ?? "?"})`);
         } else {
           setHealthy(false);
+          setShared(false);
         }
       } catch {
-        if (!cancelled) setHealthy(false);
+        if (!cancelled) {
+          setHealthy(false);
+          setShared(false);
+        }
       }
     };
     void tick();
@@ -69,8 +77,9 @@ export function useMlxSttServer() {
       /* best-effort */
     }
     setHealthy(false);
+    setShared(false);
     setStarting(false);
-  }, []);
+  }, [setShared]);
 
   return { start, stop, starting, healthy, error };
 }
