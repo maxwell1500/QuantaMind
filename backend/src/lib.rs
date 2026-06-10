@@ -31,6 +31,16 @@ pub fn run() {
         .manage(commands::eval::batch_cmd::BatchRunState::default())
         .manage(commands::publish::auth_state::AuthState::default())
         .setup(|app| {
+            // Reclaim any sidecars a previous instance orphaned by dying without
+            // reaping (a crash or dev-restart SIGKILL), so a stale server can't
+            // keep holding a port. Conservative: only our-signature processes.
+            let reclaimed = commands::app_lifecycle::sweep_orphans();
+            if reclaimed > 0 {
+                eprintln!("[reap] reclaimed {reclaimed} orphaned server(s) at startup");
+            }
+            // Reap our servers on SIGINT/SIGTERM too — ExitRequested only fires on
+            // a graceful quit (Cmd+Q), not when a signal kills the process.
+            commands::app_lifecycle::install_signal_reaper(app.handle().clone());
             // Sweep any half-installed STT artifacts left by a prior crash, so a
             // model reads installed only when its real files are present (R3).
             let _ = commands::stt::stt_disk::reconcile_stt_dir(&commands::stt::stt_disk::stt_dir());
