@@ -1,5 +1,5 @@
 import React from "react";
-import type { AgentPath, MemoryProfile, ModelVerdict, ReadinessProfile } from "../../../shared/ipc/eval/readiness";
+import type { AgentPath, MemoryProfile, ModelVerdict } from "../../../shared/ipc/eval/readiness";
 import type { BackendKind } from "../../../shared/ipc/models/storage";
 import { StatusBadge } from "./StatusBadge";
 import { parseQuant } from "../../models/parse_quant";

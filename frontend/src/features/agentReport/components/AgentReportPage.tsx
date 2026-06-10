@@ -57,8 +57,7 @@ export function AgentReportPage() {
   ];
   
   const activeProfile = profiles.find((p) => p.id === selectedProfileId);
-  const isAppleSilicon = hardware?.is_apple_silicon ?? false;
-  
+
   const pct = (x: number) => `${Math.round(x * 100)}%`;
   const yn = (b: boolean) => (b ? "YES" : "no");
 
