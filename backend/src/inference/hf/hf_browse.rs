@@ -4,11 +4,11 @@ use crate::inference::hf::hf_request::{map_status, validate_repo};
 use crate::inference::http::http::probe_client;
 use serde::{Deserialize, Serialize};
 
-/// Which backend a HuggingFace repo is being browsed for. GGUF (Ollama /
-/// llama.cpp) is unfiltered — every search hit is shown, and the repo's
-/// `.gguf` files are picked on its detail page. MLX repos are safetensors with
-/// no distinguishing file extension, so they're matched by the `mlx` library
-/// tag to keep that mode useful.
+/// Which backend a HuggingFace repo is being browsed for. Each kind narrows the
+/// search to the matching HuggingFace library tag — `gguf` (Ollama / llama.cpp)
+/// or `mlx` — so only repos that actually carry downloadable files for that
+/// backend surface. (HuggingFace auto-tags a repo with `gguf` when it contains
+/// `.gguf` files.)
 #[derive(Serialize, Deserialize, Clone, Copy, Debug, PartialEq, Eq)]
 #[serde(rename_all = "lowercase")]
 pub enum RepoKind {
@@ -17,14 +17,38 @@ pub enum RepoKind {
 }
 
 impl RepoKind {
-    /// Whether this hit should appear in search. GGUF shows everything; MLX is
-    /// narrowed to `mlx`-tagged repos.
-    fn matches(self, hit: &RawHit) -> bool {
+    /// The HuggingFace library tag this kind filters on.
+    fn tag(self) -> &'static str {
         match self {
-            RepoKind::Gguf => true,
-            RepoKind::Mlx => hit.tags.iter().any(|t| t.eq_ignore_ascii_case("mlx")),
+            RepoKind::Gguf => "gguf",
+            RepoKind::Mlx => "mlx",
         }
     }
+
+    /// Whether this hit carries the kind's library tag — so a search only shows
+    /// repos with files this backend can actually run. GGUF additionally drops
+    /// speech/audio GGUFs (e.g. whisper STT): they carry the `gguf` tag but can't
+    /// run as an LLM on Ollama/llama.cpp, so importing them only errors.
+    fn matches(self, hit: &RawHit) -> bool {
+        if !hit.tags.iter().any(|t| t.eq_ignore_ascii_case(self.tag())) {
+            return false;
+        }
+        if self == RepoKind::Gguf && is_non_text_gguf(hit) {
+            return false;
+        }
+        true
+    }
+}
+
+/// A GGUF repo that isn't a text LLM — speech-to-text (whisper), text-to-speech,
+/// audio. Detected from the HF `pipeline_tag` or tags, so it can be filtered out
+/// of the LLM GGUF search.
+fn is_non_text_gguf(hit: &RawHit) -> bool {
+    let speechy = |s: &str| {
+        let l = s.to_ascii_lowercase();
+        l.contains("speech") || l.contains("whisper") || l.contains("text-to-audio") || l == "audio"
+    };
+    hit.pipeline_tag.as_deref().is_some_and(speechy) || hit.tags.iter().any(|t| speechy(t))
 }
 
 #[derive(Serialize, Deserialize, Clone, Debug)]
@@ -49,6 +73,7 @@ struct RawHit {
     #[serde(default)] likes: u64,
     #[serde(default)] tags: Vec<String>,
     #[serde(default, rename = "lastModified")] last_modified: Option<String>,
+    #[serde(default)] pipeline_tag: Option<String>,
 }
 
 #[derive(Deserialize)]
@@ -72,6 +97,9 @@ pub async fn search_models(
         .get(format!("{endpoint}/api/models"))
         .query(&[
             ("search", query.to_string()),
+            // Restrict to the kind's library tag (gguf / mlx) so only repos with
+            // downloadable files for this backend come back.
+            ("filter", kind.tag().to_string()),
             ("sort", "downloads".to_string()),
             ("direction", "-1".to_string()),
             ("limit", limit.to_string()),
@@ -81,8 +109,8 @@ pub async fn search_models(
     if let Some(err) = map_status(resp.status(), "hf search") { return Err(err); }
     let raw: Vec<RawHit> = resp.json().await
         .map_err(|e| AppError::Inference(format!("bad HF search body: {e}")))?;
-    // GGUF is unfiltered (every hit shown); MLX is narrowed to `mlx`-tagged
-    // repos. See RepoKind::matches.
+    // Belt-and-suspenders post-filter on the same library tag (see
+    // RepoKind::matches), in case a stray hit slips through the API filter.
     Ok(raw.into_iter()
         .filter(|h| kind.matches(h))
         .map(|h| HfSearchHit {

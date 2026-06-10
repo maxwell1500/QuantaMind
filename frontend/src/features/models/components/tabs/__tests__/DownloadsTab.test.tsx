@@ -5,7 +5,7 @@ vi.mock("@tauri-apps/api/event", () => ({
   listen: vi.fn().mockResolvedValue(() => {}),
 }));
 vi.mock("@tauri-apps/api/core", () => ({ invoke: vi.fn() }));
-vi.mock("../StorageSection", () => ({ StorageSection: () => null }));
+vi.mock("../../storage/StorageSection", () => ({ StorageSection: () => null }));
 vi.mock("../../../../../shared/ipc/models/storage", () => ({
   getInstalledModelsWithStats: vi.fn(),
   removeModel: vi.fn(),
@@ -57,5 +57,20 @@ describe("DownloadsTab", () => {
     render(<DownloadsTab />);
     expect(await screen.findByTestId("download-installed-phi3.5")).toBeInTheDocument();
     expect(screen.getByRole("button", { name: /delete phi3\.5/i })).toBeInTheDocument();
+  });
+
+  it("lists installed STT models with an STT tag", async () => {
+    // status "ready" so the mount effect skips refresh and renders this sttList.
+    useInstalledModelsStore.setState({
+      status: "ready",
+      sttList: [
+        { id: "tiny.en", display: "Tiny (English)", model_path: "/s/ggml-tiny.en.bin", vad_path: "/s/vad.bin", size_bytes: 77_704_715 },
+      ],
+    });
+    render(<DownloadsTab />);
+    const row = await screen.findByTestId("download-installed-stt-tiny.en");
+    expect(row).toHaveTextContent("Tiny (English)");
+    expect(row).toHaveTextContent("STT");
+    expect(screen.getByRole("button", { name: /delete Tiny \(English\)/i })).toBeInTheDocument();
   });
 });

@@ -18,6 +18,12 @@ pub struct UserSettings {
     /// Override for the shared GGUF weights folder (default `~/.quantamind/gguf`).
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub models_folder: Option<String>,
+    /// Folder holding a user-installed `whisper-server` (STT engine), set via the
+    /// Speech-to-Text setup card's folder picker. Persisted so a custom install
+    /// is found on every launch without re-picking. Consulted first by
+    /// `whisper_dir`, ahead of PATH/Homebrew discovery.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub stt_engine_dir: Option<String>,
 }
 
 pub fn load(path: &Path) -> AppResult<UserSettings> {

@@ -237,8 +237,10 @@ mlx-lm once (`pip install mlx-lm`). MLX models then work like every other
 backend: **download → select → Start → run/eval/quant.**
 
 **Download:** in **Models → HuggingFace**, flip the **GGUF / MLX** toggle to MLX
-and search (GGUF, the default, is unfiltered; MLX is narrowed to `mlx`-tagged
-repos, mostly `mlx-community`). Open a repo and click **Download for MLX** — the
+and search. Each toggle filters search to that library tag — GGUF to `gguf`-tagged
+repos (so only repos with downloadable `.gguf` files appear; speech/audio GGUFs
+like whisper are dropped since they can't run as an LLM), MLX to `mlx`-tagged
+repos, mostly `mlx-community`. Open a repo and click **Download for MLX** — the
 full snapshot (config + safetensors + tokenizer) lands in `~/.quantamind/mlx/`
 (override with `QUANTAMIND_MLX_DIR`). The **detail view follows the repo's tags,
 not the toggle**, so an `mlx`-tagged repo opens the MLX download even when found
@@ -287,6 +289,60 @@ it reads as fixable, not broken. The classifier (`ImportError` in
 - **"Unsupported GGUF version"** — QuantaMind reads GGUF v1–v3; get a compatible export.
 
 The raw parser detail is kept (demoted) under **Details:** for diagnosis.
+
+### Setting up speech-to-text (whisper.cpp / mlx-audio) {#stt-server}
+
+STT has two engines, picked in the header's STT group (and the Speech-to-Text
+tab toggle), parallel to the LLM backend — one STT runs alongside one LLM:
+
+- **whisper.cpp** (everywhere) — the default; see below.
+- **mlx-audio** (Apple Silicon only) — Apple-Silicon-native MLX whisper. Install
+  with `pip install "mlx-audio[server]"` (the `[server]` extra is required — bare
+  `mlx-audio` omits fastapi/uvicorn/webrtcvad and the server won't start);
+  QuantaMind locates `mlx_audio.server` on
+  `PATH`/venv/Homebrew (`check_mlx_stt_env`) and spawns it on a free loopback
+  port in `8094..=8104`. Models are `mlx-community/whisper-*` snapshots,
+  downloaded into `~/.quantamind/mlx-stt` (they also show in **Downloads** with an
+  **STT** tag). The engine is **strictly local** — the server binds `127.0.0.1`
+  only and never calls any cloud API. The engine option is hidden entirely off
+  Apple Silicon. (Live transcription is a later phase; this sets up the engine +
+  models + start/stop.)
+
+The whisper.cpp engine. On macOS, install it once with Homebrew — the
+**Speech-to-Text** tab walks you through it:
+
+1. Install [Homebrew](https://brew.sh) if you don't have it.
+2. Run `brew install whisper-cpp` (the tab has a copy button).
+3. Click **Re-check** — QuantaMind finds it automatically on `PATH`/Homebrew
+   (`check_whisper_env`); no path setup needed. Installed it elsewhere? Use
+   **Choose its folder** (remembered across launches).
+
+If the tab says **"installed but can't run"**, the binary is present but its
+libraries are missing/mismatched (a dyld *Library not loaded* error, shown under
+Details) — run `brew reinstall whisper-cpp` and Re-check. QuantaMind only signals
+ready after a `--help` dry-run proves the engine actually executes, so it never
+shows "ready" then fails on start.
+
+Once the engine is ready, the catalog lists models with their download size;
+installed models (validated ggml + the shared silero VAD) are reported by
+`list_installed_stt_models`. A download shows in the **Downloads** page too —
+live progress in the active list, then an **STT** tag in the installed list
+(Delete removes the model's `.bin`, keeping the shared VAD).
+
+**Start failures** (`start_whisper_server`) return a tagged result so the UI says
+exactly what to fix — none mean the app is broken:
+
+- **`not_bundled`** — no `whisper-server` was found. Install whisper.cpp (above).
+- **`model_missing`** — the whisper model file isn't on disk. Download a model
+  from the STT catalog first.
+- **`vad_missing`** — the silero VAD model is absent. The VAD ships *together*
+  with each whisper model, so re-run the download; STT stays disabled without it
+  (the VAD gates the silence-detection metric).
+- **`port_conflict`** — something else holds the STT port (`:8093`). QuantaMind
+  won't take over a process it didn't start — stop the other process and retry.
+- **"Can't reach the local STT server"** — the server isn't answering on
+  `127.0.0.1`. STT is offline-only; it never reaches the cloud, so a down local
+  server fails loud rather than silently falling back.
 
 ### Clearing cached data {#clear-cache}
 

@@ -28,7 +28,8 @@
       "icons/icon.ico"
     ],
     "macOS": {
-      "signingIdentity": "-"
+      "signingIdentity": "-",
+      "entitlements": "macos.entitlements"
     },
     "windows": {
       "webviewInstallMode": { "type": "downloadBootstrapper" }

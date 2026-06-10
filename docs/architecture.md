@@ -73,6 +73,48 @@ HTTP to a local Ollama server.
   resolved via `inference/mlx/server/mlx_endpoint.rs` — not a hardcoded `:8082`.
   **Tauri-free and must not import `crate::commands`** — when it must report
   progress it takes a sink trait (see [Layering](#layering)), not an `AppHandle`.
+- `commands/stt/` + `inference/stt/` — **speech-to-text (whisper.cpp)**, an *additive
+  parallel capability* that does not touch `InferenceBackend`/`run_prompt`. The STT
+  engine is its own state axis, never derived from the LLM `BackendKind`.
+  `commands/stt/` owns the `whisper-server` sidecar lifecycle: a fixed port `:8093`
+  (clear of MLX's `8082..=8092` scan range) with **`/health`-gated readiness** — the
+  server's own state machine answers HTTP 200 once the model is loaded, 503 while
+  loading — graceful-then-hard kill, and reaping on exit alongside the LLM sidecars.
+  Acquisition is atomic: `download_stt_model` stages the whisper ggml + the shared
+  silero VAD, validates each, and promotes both-or-none; `reconcile_stt_dir` sweeps
+  half-installs at startup. IPC: `start`/`stop_whisper_server`, `check_whisper_health`, `check_whisper_env`,
+  `download_stt_model`, `cancel_stt_install`, `list_stt_catalog`,
+  `list_installed_stt_models`. `inference/stt/` is the Tauri-free domain (curated catalog,
+  ggml-format validation, the loopback-only offline probe so transcription never silently
+  reaches the cloud). The engine binary is discovered most-explicit-first —
+  `UserSettings.stt_engine_dir` → `QUANTAMIND_WHISPER_DIR` → PATH/Homebrew → bundled
+  resources → dev tree — so a user's `brew install whisper-cpp` is found with no setup
+  (mirrors `ollama_runtime::resolve_ollama`); `check_whisper_env` then `--help`-dry-runs it
+  so "found" never masquerades as "runnable" when its dylibs are broken.
+  `inference/stt/transcribe/` is the **transcription seam** (P1): decode WAV →
+  downmix → resample to 16 kHz mono in Rust (`audio.rs`, hound + rubato) →
+  one whisper-server `/inference` call per ~30 s window → stream segments through
+  the Tauri-free `TranscribeSink` (parallel to `BatchSink`) → assemble the canonical
+  `Transcript`. Engine choice is enum-dispatched (`SttTranscribeEngine`, no `dyn`).
+  The artifact persists via `persistence/stt/transcripts.rs` (atomic; refuses an
+  incomplete run). Every `TranscribeStats` field is `Option` (no fabricated RTF).
+  `commands/stt/transcribe.rs` is the **only** `AppHandle` seam: `transcribe_audio`
+  streams segments to the UI (a `TauriTranscribeSink`) + persists; `write_scratch_wav`
+  lands captured WAV bytes in a scratch dir (the returned path is the atomic
+  ready-to-transcribe signal); `load_transcript` reloads the artifact. **Mic capture
+  is native** (`commands/audio/capture.rs`, cpal) — WKWebView's `getUserMedia` is
+  unreliable on macOS, so audio never touches the webview: `start_recording` runs the
+  `!Send` cpal stream on its own thread, `recording_level` is polled for the live
+  meter, `stop_recording` encodes the take (16-bit WAV at native rate — P1 resamples)
+  into the scratch dir and reports `had_audio` so a silent take (muted mic / TCC
+  denial, which records silence rather than erroring) surfaces "no audio detected".
+  The macOS mic prompt is driven by `NSMicrophoneUsageDescription` in
+  `backend/Info.plist`, embedded by Tauri's `generate_context!` (dev binary included).
+  Frontend IPC mirrors the module in `shared/ipc/audio/capture.ts`
+  (`features/sttWorkspace/hooks/useMicRecorder.ts` drives it). The Workspace
+  **auto-routes to STT mode** (a live two-pane transcribe surface) while an STT
+  server is running (`features/sttWorkspace/`); upload is path-based
+  (WAV→hound, MP3→symphonia).
 - `metrics/` — measurements: TTFT, tokens/sec, VRAM.
 - `persistence/` — YAML/JSON read+write of prompts and history, plus `evals.rs`
   (custom tool-call eval collections: one `.json` per collection, name-sanitised,

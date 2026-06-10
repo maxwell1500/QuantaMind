@@ -13,43 +13,40 @@ function dotClass(healthy: boolean | null): string {
   return `inline-block h-2 w-2 rounded-full ${color}`;
 }
 
-function BackendButton({ id, label }: { id: BackendKind; label: string }) {
-  const active = useBackendStore((s) => s.selectedBackend === id);
-  const setActive = useBackendStore((s) => s.setSelectedBackend);
-  const healthy = useBackendStore((s) =>
-    id === "ollama" ? s.ollamaHealthy : id === "mlx" ? s.mlxHealthy : s.llamaHealthy,
-  );
-  return (
-    <button
-      type="button"
-      onClick={() => setActive(id)}
-      aria-pressed={active}
-      data-testid={`header-backend-${id}`}
-      className={`flex items-center gap-1.5 px-2 py-1 text-sm rounded
-        ${active ? "bg-blue-50 text-ink font-medium" : "text-gray-600 hover:bg-gray-100"}`}
-    >
-      <span className={dotClass(healthy)} aria-hidden />
-      <span>{label}</span>
-    </button>
-  );
-}
-
-/// The global backend picker in the header. The whole app scopes its model list
-/// and runs to the selected backend (architecture.md rule 7). MLX shows only on
-/// Apple Silicon, where mlx_lm.server can run; useMlxBackend polls MLX health and
-/// useLlamaBackend polls llama.cpp health into backendStore (Ollama is polled by
-/// the StatusBar) so all three header dots stay live.
+/// The global LLM-backend picker in the header — a dropdown (Ollama / llama.cpp,
+/// plus MLX on Apple Silicon where mlx_lm.server can run). The whole app scopes
+/// its model list and runs to the selected backend (architecture.md rule 7). The
+/// dot reflects the selected backend's server: green = running. useMlxBackend /
+/// useLlamaBackend poll their health into backendStore (Ollama via the StatusBar).
 export function BackendSelector() {
   const { appleSilicon } = useMlxBackend();
   useLlamaBackend();
+  const selected = useBackendStore((s) => s.selectedBackend);
+  const setSelected = useBackendStore((s) => s.setSelectedBackend);
+  const healthy = useBackendStore((s) => s.isHealthy(selected));
   const backends = appleSilicon
     ? [...BASE_BACKENDS, { id: "mlx" as BackendKind, label: "MLX" }]
     : BASE_BACKENDS;
   return (
-    <div data-testid="header-backend-selector" className="flex items-center gap-0.5 border rounded px-0.5">
-      {backends.map((b) => (
-        <BackendButton key={b.id} id={b.id} label={b.label} />
-      ))}
+    <div
+      data-testid="header-backend-selector"
+      className="flex items-center gap-1.5 border rounded px-2 py-1"
+      title={healthy ? "server running" : "server stopped"}
+    >
+      <span className={dotClass(healthy)} aria-hidden />
+      <select
+        data-testid="header-backend-select"
+        aria-label="LLM backend"
+        value={selected}
+        onChange={(e) => setSelected(e.target.value as BackendKind)}
+        className="text-sm bg-transparent outline-none cursor-pointer"
+      >
+        {backends.map((b) => (
+          <option key={b.id} value={b.id}>
+            {b.label}
+          </option>
+        ))}
+      </select>
     </div>
   );
 }

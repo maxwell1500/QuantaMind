@@ -22,10 +22,22 @@ pub fn run() {
         .manage(commands::ollama::ollama_start::OllamaStartState::default())
         .manage(commands::llama::llama_server_types::LlamaServerState::default())
         .manage(commands::mlx::mlx_server_types::MlxServerState::default())
+        .manage(commands::stt::stt_server_types::SttServerState::default())
+        .manage(commands::stt::stt_download::SttInstallState::default())
+        .manage(commands::stt::mlx::mlx_stt_server_types::MlxSttServerState::default())
+        .manage(commands::audio::capture::CaptureState::default())
         .manage(commands::workspace::workspaces::WorkspaceState::default())
         .manage(commands::settings::user_settings::UserSettingsState::default())
         .manage(commands::eval::batch_cmd::BatchRunState::default())
         .manage(commands::publish::auth_state::AuthState::default())
+        .setup(|app| {
+            // Sweep any half-installed STT artifacts left by a prior crash, so a
+            // model reads installed only when its real files are present (R3).
+            let _ = commands::stt::stt_disk::reconcile_stt_dir(&commands::stt::stt_disk::stt_dir());
+            // Clear leftover recording scratch from a prior session.
+            commands::stt::transcribe::clear_scratch(app.handle());
+            Ok(())
+        })
         .invoke_handler(tauri::generate_handler![
             commands::system::feasibility::check_install_feasibility,
             commands::gguf::gguf_cmd::inspect_gguf,
@@ -71,6 +83,28 @@ pub fn run() {
             commands::llama::llama_start::stop_llama_server,
             commands::llama::llama_models::list_llama_models,
             commands::llama::llama_models::delete_llama_model,
+            commands::stt::stt_start::start_whisper_server,
+            commands::stt::stt_start::stop_whisper_server,
+            commands::stt::stt_start::check_whisper_env,
+            commands::stt::stt_health::check_whisper_health,
+            commands::stt::stt_download::download_stt_model,
+            commands::stt::stt_download::cancel_stt_install,
+            commands::stt::stt_download::list_stt_catalog,
+            commands::stt::stt_models::list_installed_stt_models,
+            commands::stt::stt_models::delete_stt_model,
+            commands::stt::mlx::mlx_stt_start::start_mlx_stt_server,
+            commands::stt::mlx::mlx_stt_start::stop_mlx_stt_server,
+            commands::stt::mlx::mlx_stt_start::mlx_stt_status,
+            commands::stt::mlx::mlx_stt_start::check_mlx_stt_env,
+            commands::stt::mlx::mlx_stt_download::download_mlx_stt_model,
+            commands::stt::mlx::mlx_stt_models::list_mlx_stt_catalog,
+            commands::stt::mlx::mlx_stt_models::list_installed_mlx_stt_models,
+            commands::stt::mlx::mlx_stt_models::delete_mlx_stt_model,
+            commands::stt::transcribe::transcribe_audio,
+            commands::stt::transcribe::load_transcript,
+            commands::audio::capture::start_recording,
+            commands::audio::capture::stop_recording,
+            commands::audio::capture::recording_level,
             commands::settings::settings::get_storage_path,
             commands::settings::settings::validate_storage_path,
             commands::storage::storage::get_installed_models_with_stats,

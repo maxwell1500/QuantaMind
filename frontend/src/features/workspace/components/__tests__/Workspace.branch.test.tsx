@@ -12,7 +12,8 @@ import { useSelectedModelStore } from "../../../../shared/state/selectedModelSto
 
 beforeEach(() => {
   vi.clearAllMocks();
-  useBackendStore.setState({ selectedBackend: "ollama", ollamaHealthy: null });
+  // A healthy LLM so the run surface (not the setup guide) renders by default.
+  useBackendStore.setState({ selectedBackend: "ollama", ollamaHealthy: true, llamaHealthy: null, mlxHealthy: null });
   useSelectedModelStore.setState({ selectedModels: [] });
   useWorkspacesStore.setState({
     root: "/ws", tree: [], currentPath: "/ws/a.quantamind.yaml",
@@ -45,6 +46,26 @@ describe("Workspace (adaptive run surface)", () => {
     render(<Workspace />);
     expect(screen.getByTestId("no-model-hint")).toBeInTheDocument();
     expect((screen.getByRole("button", { name: /^run$/i }) as HTMLButtonElement).disabled).toBe(true);
+  });
+
+  it("no LLM running → the backend setup guide replaces the run surface", () => {
+    useBackendStore.setState({ ollamaHealthy: false, llamaHealthy: false, mlxHealthy: false });
+    useSelectedModelStore.setState({ selectedModels: [{ name: "llama3.2:1b", backend: "ollama", size_bytes: 1 }] });
+    render(<Workspace />);
+    expect(screen.getByTestId("backend-setup-guide")).toBeInTheDocument();
+    expect(screen.getByTestId("setup-engine-ollama")).toBeInTheDocument();
+    expect(screen.queryByTestId("run-status")).toBeNull();
+  });
+
+  it("a running LLM switches from the guide to the run surface", () => {
+    useBackendStore.setState({ ollamaHealthy: false, llamaHealthy: false, mlxHealthy: false });
+    useSelectedModelStore.setState({ selectedModels: [{ name: "llama3.2:1b", backend: "ollama", size_bytes: 1 }] });
+    const { rerender } = render(<Workspace />);
+    expect(screen.getByTestId("backend-setup-guide")).toBeInTheDocument();
+    act(() => useBackendStore.setState({ ollamaHealthy: true }));
+    rerender(<Workspace />);
+    expect(screen.queryByTestId("backend-setup-guide")).toBeNull();
+    expect(screen.getByTestId("run-status")).toBeInTheDocument();
   });
 
   it("MLX: Run is disabled until the MLX server is healthy", () => {
