@@ -11,7 +11,7 @@ interface SttSelectionStore {
   /// whisper.cpp catalog id (e.g. "tiny.en").
   selectedSttModelId: string | null;
   setSelectedSttModelId: (id: string | null) => void;
-  /// mlx-audio repo id (e.g. "mlx-community/whisper-large-v3-turbo-q4").
+  /// mlx-audio repo id (e.g. "mlx-community/whisper-large-v3-turbo-asr-fp16").
   selectedMlxSttRepo: string | null;
   setSelectedMlxSttRepo: (r: string | null) => void;
 }

@@ -95,9 +95,9 @@ mod tests {
         let dir = tempfile::tempdir().unwrap();
         let p = dir.path();
         // A real snapshot: marker + a >1 MiB weights file.
-        let real = p.join("mlx-community_whisper-tiny");
+        let real = p.join("mlx-community_whisper-tiny-asr-fp16");
         fs::create_dir_all(&real).unwrap();
-        fs::write(real.join(REPO_MARKER), "mlx-community/whisper-tiny").unwrap();
+        fs::write(real.join(REPO_MARKER), "mlx-community/whisper-tiny-asr-fp16").unwrap();
         fs::write(real.join("weights.safetensors"), vec![0u8; 2 * 1024 * 1024]).unwrap();
         // No marker → ignored.
         let junk = p.join("junk");
@@ -106,11 +106,11 @@ mod tests {
         // Marked but tiny (partial) → ignored.
         let partial = p.join("partial");
         fs::create_dir_all(&partial).unwrap();
-        fs::write(partial.join(REPO_MARKER), "mlx-community/whisper-base-mlx").unwrap();
+        fs::write(partial.join(REPO_MARKER), "mlx-community/whisper-base-asr-fp16").unwrap();
 
         let got = installed_in(p);
         assert_eq!(got.len(), 1);
-        assert_eq!(got[0].repo, "mlx-community/whisper-tiny");
+        assert_eq!(got[0].repo, "mlx-community/whisper-tiny-asr-fp16");
         assert_eq!(got[0].display, "Tiny (multilingual)", "catalog display used");
         assert!(got[0].size_bytes >= 2 * 1024 * 1024);
     }

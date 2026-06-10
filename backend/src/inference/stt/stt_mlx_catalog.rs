@@ -17,19 +17,22 @@ const fn e(repo: &'static str, display: &'static str, disk_bytes: u64, multiling
     MlxSttCatalogEntry { repo, display, disk_bytes, est_vram_bytes: None, multilingual }
 }
 
-/// Curated `mlx-community/whisper-*` models. Sizes verified against the HF repo
-/// trees. `.en` repos are English-only; the rest are multilingual.
+/// Curated `mlx-community/whisper-*-asr-*` models. **The `-asr-*` family bundles
+/// the HF processor (tokenizer + `preprocessor_config.json`) that mlx-audio's
+/// whisper requires** — the older `-mlx`/npz repos (just `config.json` +
+/// `weights.npz`) crash mlx-audio with "Processor not found", so they're excluded.
+/// Sizes verified against the HF repo trees. `.en` repos are English-only.
 static CATALOG: &[MlxSttCatalogEntry] = &[
-    e("mlx-community/whisper-tiny", "Tiny (multilingual)", 74_418_444, true),
-    e("mlx-community/whisper-base-mlx", "Base (multilingual)", 143_724_466, true),
-    e("mlx-community/whisper-base.en-mlx", "Base (English)", 143_723_394, false),
-    e("mlx-community/whisper-small-mlx", "Small (multilingual)", 481_307_858, true),
-    e("mlx-community/whisper-small.en-mlx", "Small (English)", 481_306_466, false),
-    e("mlx-community/whisper-medium-mlx", "Medium (multilingual)", 1_524_925_180, true),
-    e("mlx-community/whisper-large-v3-turbo-q4", "Large v3 Turbo (4-bit)", 463_665_005, true),
-    e("mlx-community/whisper-large-v3-turbo", "Large v3 Turbo (multilingual)", 1_613_977_880, true),
-    e("mlx-community/distil-whisper-large-v3", "Distil Large v3 (multilingual)", 1_509_130_380, true),
-    e("mlx-community/whisper-large-v3-mlx", "Large v3 (multilingual)", 3_083_520_685, true),
+    e("mlx-community/whisper-tiny-asr-fp16", "Tiny (multilingual)", 78_774_283, true),
+    e("mlx-community/whisper-tiny.en-asr-fp16", "Tiny (English)", 78_338_567, false),
+    e("mlx-community/whisper-base-asr-fp16", "Base (multilingual)", 148_070_180, true),
+    e("mlx-community/whisper-base.en-asr-fp16", "Base (English)", 147_633_380, false),
+    e("mlx-community/whisper-small-asr-fp16", "Small (multilingual)", 485_624_250, true),
+    e("mlx-community/whisper-small.en-asr-fp16", "Small (English)", 485_186_977, false),
+    e("mlx-community/whisper-medium-asr-fp16", "Medium (multilingual)", 1_529_183_568, true),
+    e("mlx-community/whisper-large-v3-turbo-asr-4bit", "Large v3 Turbo (4-bit)", 468_152_234, true),
+    e("mlx-community/whisper-large-v3-turbo-asr-fp16", "Large v3 Turbo (multilingual)", 1_618_636_172, true),
+    e("mlx-community/whisper-large-v3-asr-fp16", "Large v3 (multilingual)", 3_087_749_956, true),
 ];
 
 /// The full curated MLX STT catalog (pre-download disclosure list).
@@ -68,7 +71,17 @@ mod tests {
     fn repos_are_unique_and_find_works() {
         let ids: HashSet<_> = catalog().iter().map(|m| m.repo).collect();
         assert_eq!(ids.len(), catalog().len());
-        assert_eq!(find("mlx-community/whisper-large-v3-mlx").map(|m| m.disk_bytes), Some(3_083_520_685));
+        assert_eq!(find("mlx-community/whisper-large-v3-asr-fp16").map(|m| m.disk_bytes), Some(3_087_749_956));
         assert!(find("mlx-community/nope").is_none());
+    }
+
+    #[test]
+    fn every_repo_is_the_mlx_audio_compatible_asr_format() {
+        // The old mlx-examples `-mlx` repos (config.json + weights.npz, no HF
+        // processor) crash mlx-audio's whisper with "Processor not found"; only
+        // the `-asr-*` family bundles the processor. Guard against regressing.
+        for m in catalog() {
+            assert!(m.repo.contains("-asr-"), "{} must be an mlx-audio asr repo", m.repo);
+        }
     }
 }

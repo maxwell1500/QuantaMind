@@ -95,10 +95,10 @@ describe("SttWorkspace", () => {
     expect(useTranscriptStore.getState().segments).toEqual([]);
   });
 
-  it("renders the transcribe surface for mlx-audio too (transcription supported)", () => {
-    render(<SttWorkspace engine="mlx_audio" model="mlx-community/whisper-tiny" />);
-    expect(screen.getByTestId("stt-workspace")).toBeInTheDocument();
-    expect(screen.queryByTestId("stt-mlx-notice")).toBeNull();
+  it("gates mlx-audio with the upstream-blocker notice (not the transcribe surface)", () => {
+    render(<SttWorkspace engine="mlx_audio" model="mlx-community/whisper-tiny-asr-fp16" />);
+    expect(screen.getByTestId("stt-mlx-blocked")).toBeInTheDocument();
+    expect(screen.queryByTestId("stt-workspace")).toBeNull();
   });
 
   it("passes the selected mlx repo as the transcribe model", async () => {
