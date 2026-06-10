@@ -2,6 +2,7 @@ use crate::errors::{AppError, AppResult};
 use crate::inference::http::http::streaming_client;
 use crate::inference::stt::stt_probe::ensure_local_reachable;
 use crate::inference::stt::transcribe::audio;
+use crate::inference::stt::transcribe::dedup::dedupe_incoming;
 use crate::inference::stt::transcribe::sink::TranscribeSink;
 use crate::inference::stt::transcribe::transcript::{Segment, Transcript, TranscribeStats, Word};
 use reqwest::multipart::{Form, Part};
@@ -72,7 +73,7 @@ pub async fn transcribe(
     let mut all: Vec<Segment> = Vec::new();
     let mut language: Option<String> = None;
 
-    for win in audio::windows(path, WINDOW_SECS)? {
+    for win in audio::windows(path, WINDOW_SECS, audio::OVERLAP_SECS)? {
         let win = win?;
         let wav = audio::encode_wav_16k_mono(&win.samples_16k_mono)?;
         let mut form = Form::new()
@@ -106,7 +107,7 @@ pub async fn transcribe(
         }
 
         let off = win.start_secs;
-        let mut segs: Vec<Segment> = body
+        let segs: Vec<Segment> = body
             .segments
             .into_iter()
             .map(|s| Segment {
@@ -127,9 +128,12 @@ pub async fn transcribe(
                 }),
             })
             .collect();
-        sink.segments(&segs);
+        // Drop the boundary segments the window overlap repeats, so the streamed
+        // view and the persisted artifact stay monotonic + non-overlapping.
+        let fresh = dedupe_incoming(&all, segs);
+        sink.segments(&fresh);
         sink.progress(win.end_secs, total);
-        all.append(&mut segs);
+        all.extend(fresh);
     }
 
     let stats = TranscribeStats {
@@ -191,10 +195,10 @@ mod tests {
         let t = transcribe(&base, &p, "ggml-tiny.en.bin", "clip-1", &NullSink).await.unwrap();
         assert!(t.complete);
         assert_eq!(t.language.as_deref(), Some("en"));
-        assert_eq!(t.segments.len(), 2, "one segment per window");
-        // window 0: offset 0 -> 1.0 ; window 1: offset 30 -> 31.0
+        assert_eq!(t.segments.len(), 2, "one segment per window (distinct times, both kept)");
+        // window 0 starts at 0 -> seg 1.0 ; window 1 starts at 29 (1s overlap) -> seg 30.0
         assert!((t.segments[0].start_secs - 1.0).abs() < 1e-6);
-        assert!((t.segments[1].start_secs - 31.0).abs() < 1e-6, "offset by window start");
+        assert!((t.segments[1].start_secs - 30.0).abs() < 1e-6, "offset by overlapped window start");
         // monotonic, non-overlapping across windows
         assert!(t.segments[1].start_secs >= t.segments[0].end_secs);
         assert_eq!(t.stats.received_sample_rate_hz, Some(16_000));

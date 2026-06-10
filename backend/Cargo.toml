@@ -44,6 +44,7 @@ keyring = { version = "3", features = ["apple-native", "windows-native"] }
 base64 = "0.22"
 hound = "3"
 rubato = "0.16"
+symphonia = { version = "0.6.0", default-features = false, features = ["mp3"] }
 
 [dev-dependencies]
 mockito = "1"

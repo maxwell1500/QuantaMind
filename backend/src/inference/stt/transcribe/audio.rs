@@ -8,6 +8,10 @@ use std::path::Path;
 /// Whisper's expected input rate. Resampling to this is explicit + logged.
 pub const TARGET_RATE_HZ: u32 = 16_000;
 
+/// Windows overlap by this much so a word straddling a cut isn't truncated into
+/// garbage; the duplicated boundary segments are removed by `dedup`.
+pub const OVERLAP_SECS: f64 = 1.0;
+
 fn wav_err(e: hound::Error) -> AppError {
     AppError::Validation(format!("WAV decode failed: {e}"))
 }
@@ -50,15 +54,20 @@ pub struct AudioWindow {
     pub end_secs: f64,
 }
 
-/// Lazily decode → downmix → resample the WAV in fixed-duration windows. Each
-/// `next()` pulls only one window's frames (so a 60-min file never lands in one
-/// `Vec`). Resampling to 16 kHz is an explicit, logged step.
+/// Lazily decode → downmix → resample the WAV in fixed-duration windows that
+/// **overlap** by `overlap_frames` (so a word straddling a cut isn't truncated).
+/// Each `next()` pulls only one window's frames (so a 60-min file never lands in
+/// one `Vec`). Resampling to 16 kHz is an explicit, logged step.
 pub struct WindowReader {
     samples: Box<dyn Iterator<Item = AppResult<f32>>>,
     channels: usize,
     in_rate: usize,
-    frames_per_window: usize,
-    cursor_frames: u64,
+    window_frames: usize,
+    overlap_frames: usize,
+    /// Mono tail of the previous window, prepended to the next (the overlap).
+    carry: Vec<f32>,
+    carry_start_frame: u64,
+    next_new_frame: u64,
     done: bool,
 }
 
@@ -69,10 +78,11 @@ impl Iterator for WindowReader {
         if self.done {
             return None;
         }
-        let start_frame = self.cursor_frames;
-        let mut mono: Vec<f32> = Vec::with_capacity(self.frames_per_window);
+        let mut mono = std::mem::take(&mut self.carry); // start with the overlap tail
+        let start_frame = if mono.is_empty() { self.next_new_frame } else { self.carry_start_frame };
         let mut frame: Vec<f32> = Vec::with_capacity(self.channels);
-        while mono.len() < self.frames_per_window {
+        let mut new_read: u64 = 0;
+        while mono.len() < self.window_frames {
             frame.clear();
             for _ in 0..self.channels {
                 match self.samples.next() {
@@ -91,14 +101,21 @@ impl Iterator for WindowReader {
                 break; // EOF (drop a partial trailing frame)
             }
             mono.push(frame.iter().sum::<f32>() / self.channels as f32); // downmix
+            new_read += 1;
         }
-        if mono.is_empty() {
+        self.next_new_frame += new_read;
+        // No fresh audio (only the already-emitted overlap remained at EOF).
+        if new_read == 0 {
             self.done = true;
             return None;
         }
-        self.cursor_frames += mono.len() as u64;
+        let window_end_frame = start_frame + mono.len() as u64;
+        if !self.done && self.overlap_frames > 0 && mono.len() > self.overlap_frames {
+            self.carry = mono[mono.len() - self.overlap_frames..].to_vec();
+            self.carry_start_frame = window_end_frame - self.overlap_frames as u64;
+        }
         let start_secs = start_frame as f64 / self.in_rate as f64;
-        let end_secs = self.cursor_frames as f64 / self.in_rate as f64;
+        let end_secs = window_end_frame as f64 / self.in_rate as f64;
         match resample_mono(&mono, self.in_rate, TARGET_RATE_HZ as usize) {
             Ok(samples_16k_mono) => Some(Ok(AudioWindow { samples_16k_mono, start_secs, end_secs })),
             Err(e) => {
@@ -109,15 +126,27 @@ impl Iterator for WindowReader {
     }
 }
 
-/// Open a WAV and stream it as 16 kHz mono windows of `window_secs` each.
-pub fn windows(path: &Path, window_secs: f64) -> AppResult<WindowReader> {
+/// Open a WAV and stream it as 16 kHz mono windows of `window_secs`, overlapping
+/// by `overlap_secs`.
+pub fn windows(path: &Path, window_secs: f64, overlap_secs: f64) -> AppResult<WindowReader> {
     let reader = WavReader::open(path).map_err(wav_err)?;
     let spec = reader.spec();
     let channels = spec.channels.max(1) as usize;
     let in_rate = spec.sample_rate.max(1) as usize;
-    let frames_per_window = ((window_secs * in_rate as f64) as usize).max(1);
+    let window_frames = ((window_secs * in_rate as f64) as usize).max(1);
+    let overlap_frames = ((overlap_secs * in_rate as f64) as usize).min(window_frames.saturating_sub(1));
     let samples = f32_samples(reader)?;
-    Ok(WindowReader { samples, channels, in_rate, frames_per_window, cursor_frames: 0, done: false })
+    Ok(WindowReader {
+        samples,
+        channels,
+        in_rate,
+        window_frames,
+        overlap_frames,
+        carry: Vec::new(),
+        carry_start_frame: 0,
+        next_new_frame: 0,
+        done: false,
+    })
 }
 
 /// Resample a mono `f32` buffer to `out_rate` (rubato FFT). A no-op when the
@@ -203,7 +232,7 @@ mod tests {
         let dir = tempfile::tempdir().unwrap();
         let p = dir.path().join("s.wav");
         write_wav(&p, 44_100, 2, 44_100); // 1s, 44.1k, stereo
-        let wins: Vec<_> = windows(&p, 30.0).unwrap().collect::<Result<_, _>>().unwrap();
+        let wins: Vec<_> = windows(&p, 30.0, 1.0).unwrap().collect::<Result<_, _>>().unwrap();
         assert_eq!(wins.len(), 1, "1s fits one 30s window");
         let n = wins[0].samples_16k_mono.len();
         // ~16000 frames out of ~44100 in (allow FFT-chunk rounding).
@@ -215,20 +244,23 @@ mod tests {
         let dir = tempfile::tempdir().unwrap();
         let p = dir.path().join("m.wav");
         write_wav(&p, 16_000, 1, 16_000); // 1s already at target
-        let wins: Vec<_> = windows(&p, 30.0).unwrap().collect::<Result<_, _>>().unwrap();
+        let wins: Vec<_> = windows(&p, 30.0, 1.0).unwrap().collect::<Result<_, _>>().unwrap();
         assert_eq!(wins[0].samples_16k_mono.len(), 16_000, "no resample, same length");
     }
 
     #[test]
-    fn long_audio_splits_into_multiple_bounded_windows() {
+    fn long_audio_splits_into_overlapping_bounded_windows() {
         let dir = tempfile::tempdir().unwrap();
         let p = dir.path().join("long.wav");
         write_wav(&p, 16_000, 1, 16_000 * 70); // 70s
-        let wins: Vec<_> = windows(&p, 30.0).unwrap().collect::<Result<_, _>>().unwrap();
-        assert_eq!(wins.len(), 3, "70s / 30s -> 3 windows (30+30+10)");
+        let wins: Vec<_> = windows(&p, 30.0, 1.0).unwrap().collect::<Result<_, _>>().unwrap();
+        // [0,30] [29,59] [58,70] — each advances 29s after the first.
+        assert_eq!(wins.len(), 3, "70s, 30s windows, 1s overlap -> 3 windows");
+        assert!((wins[0].start_secs - 0.0).abs() < 1e-9);
         assert!((wins[2].end_secs - 70.0).abs() < 0.01);
-        // windows are contiguous, non-overlapping
-        assert!((wins[0].end_secs - wins[1].start_secs).abs() < 1e-9);
+        // windows OVERLAP by ~1s: window n+1 starts 1s before window n ended.
+        assert!((wins[1].start_secs - (wins[0].end_secs - 1.0)).abs() < 1e-6, "1s overlap");
+        assert!((wins[2].start_secs - (wins[1].end_secs - 1.0)).abs() < 1e-6);
     }
 
     #[test]

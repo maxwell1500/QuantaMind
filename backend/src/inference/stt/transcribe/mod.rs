@@ -4,6 +4,7 @@
 // TranscribeSink trait); strictly offline (loopback-only).
 pub mod audio;
 pub mod backend;
+pub mod dedup;
 pub mod sink;
 pub mod transcript;
 pub mod whisper_cpp;
