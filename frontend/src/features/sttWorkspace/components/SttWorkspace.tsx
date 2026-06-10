@@ -5,7 +5,6 @@ import { TranscriptPane } from "./TranscriptPane";
 import { ReferencePane } from "./ReferencePane";
 import { RecordControls } from "./RecordControls";
 import { VoiceAssistant } from "./VoiceAssistant";
-import { SttProfilePanel } from "./SttProfilePanel";
 
 /// The Workspace's STT mode (shown while the whisper.cpp STT server is running).
 /// Two panes — the live canonical transcript + an optional reference — fed by
@@ -25,7 +24,6 @@ export function SttWorkspace() {
         <TranscriptPane />
         <ReferencePane />
       </div>
-      <SttProfilePanel />
     </div>
   );
 }

@@ -10,7 +10,6 @@ import { useTranscriptStore } from "../state/transcriptStore";
 import { useMicRecorder } from "../hooks/useMicRecorder";
 import { useTranscription } from "../hooks/useTranscription";
 import { SttWorkspace } from "../components/SttWorkspace";
-import { SttProfilePanel } from "../components/SttProfilePanel";
 import { VoiceAssistant } from "../components/VoiceAssistant";
 import { useSelectedModelStore } from "../../../shared/state/selectedModelStore";
 
@@ -120,44 +119,6 @@ describe("SttWorkspace", () => {
     });
     const call = invokeMock.mock.calls.find((c) => c[0] === "transcribe_audio");
     expect(call?.[1]).toMatchObject({ path: "/tmp/clip.wav" });
-  });
-});
-
-describe("SttProfilePanel", () => {
-  it("renders nothing until a run completes", () => {
-    useTranscriptStore.setState({ status: "transcribing", stats: null, profile: null });
-    render(<SttProfilePanel />);
-    expect(screen.queryByTestId("stt-profile-panel")).toBeNull();
-  });
-
-  it("shows measured numbers and 'N/A' for what the backend can't report", () => {
-    useTranscriptStore.setState({
-      status: "done",
-      stats: {
-        source_duration_secs: 60,
-        audio_decoded_secs: 60,
-        transcribe_wall_ms: 25_000,
-        segment_count: 12,
-        detected_language: "en",
-        received_sample_rate_hz: 16_000,
-        rtf: 2.4,
-      },
-      profile: {
-        perf: { first_segment_ms: 180, encode_ms: null, decode_ms: null },
-        behavioral: { repeat_rate: 0, confidence: null, silence_hallucination_rate: 0.1 },
-        vram_bytes: null,
-      },
-    });
-    render(<SttProfilePanel />);
-    // Measured values render as numbers.
-    expect(screen.getByTestId("stt-rtf").textContent).toBe("2.40×");
-    expect(screen.getByTestId("stt-first-segment").textContent).toBe("180 ms");
-    expect(screen.getByTestId("stt-repeat").textContent).toBe("0%");
-    expect(screen.getByTestId("stt-silence").textContent).toBe("10%");
-    // What the backend can't supply renders "N/A" / a backend note — never 0 or 100%.
-    expect(screen.getByTestId("stt-confidence-na").textContent).toBe("N/A");
-    expect(screen.getByTestId("stt-vram-na").textContent).toBe("Not available for this backend");
-    expect(screen.getByTestId("stt-split-na").textContent).toContain("N/A");
   });
 });
 

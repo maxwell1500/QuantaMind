@@ -110,7 +110,9 @@ HTTP to a local Ollama server.
   (never the model's own `no_speech_prob` — that would be circular; an `assert_ne!`
   on the engine id enforces it). The `Profiler` is dropped (channel closed, thread
   drains) on any error `?`, so no partial profiling state lingers. The frontend
-  `SttProfilePanel` renders it with the text-Inspector's N/A framing.
+  renders it in the **Analysis & Inspector tabs** (`features/sttInspector`, fed by a
+  durable `sttResultStore`) with the text-Inspector's N/A framing — see
+  `reference.md#stt-inspector`.
   `commands/stt/transcribe.rs` is the **only** `AppHandle` seam: `transcribe_audio`
   streams segments to the UI (a `TauriTranscribeSink`) + persists; `write_scratch_wav`
   lands captured WAV bytes in a scratch dir (the returned path is the atomic
