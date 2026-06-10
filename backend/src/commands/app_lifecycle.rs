@@ -1,6 +1,5 @@
 use crate::commands::llama::llama_server_types::LlamaServerState;
 use crate::commands::mlx::mlx_server_types::MlxServerState;
-use crate::commands::stt::mlx::mlx_stt_server_types::MlxSttServerState;
 use crate::commands::stt::stt_server_types::SttServerState;
 use sysinfo::{ProcessRefreshKind, ProcessesToUpdate, Signal, System};
 use tauri::{AppHandle, Manager, RunEvent};
@@ -8,8 +7,9 @@ use tauri::{AppHandle, Manager, RunEvent};
 /// Our private app dir — a server process whose command line references it is one
 /// of ours, never a stranger's (a user would never point a hand-run server here).
 const OUR_MARKER: &str = ".quantamind";
-/// The server binaries we spawn (native sidecars + the python MLX servers).
-const SERVER_BINS: &[&str] = &["whisper-server", "llama-server", "mlx_audio.server", "mlx_lm.server"];
+/// The server binaries we spawn (whisper.cpp + llama-server sidecars + the MLX
+/// LLM server).
+const SERVER_BINS: &[&str] = &["whisper-server", "llama-server", "mlx_lm.server"];
 
 /// True for an **orphaned QuantaMind sidecar**: its command line names one of our
 /// servers AND references our private dir. Conservative on purpose — we never kill
@@ -28,9 +28,6 @@ fn reap_managed(app: &AppHandle) {
     }
     if let Err(e) = app.state::<SttServerState>().stop() {
         eprintln!("whisper reap failed: {e}");
-    }
-    if let Err(e) = app.state::<MlxSttServerState>().kill_all_servers() {
-        eprintln!("mlx-stt reap failed: {e}");
     }
 }
 

@@ -68,25 +68,6 @@ pub fn mlx_dir() -> PathBuf {
     mlx_dir_resolved(None)
 }
 
-/// MLX **STT** (mlx-audio whisper) snapshot folder — kept separate from the MLX
-/// LLM folder so speech models don't co-mingle with chat models. Precedence:
-/// user setting → `QUANTAMIND_MLX_STT_DIR` env → `~/.quantamind/mlx-stt`.
-pub fn mlx_stt_dir_resolved(setting: Option<&str>) -> PathBuf {
-    if let Some(p) = setting.filter(|s| !s.trim().is_empty()) {
-        return absolutize(PathBuf::from(p));
-    }
-    if let Ok(p) = std::env::var("QUANTAMIND_MLX_STT_DIR") {
-        return absolutize(PathBuf::from(p));
-    }
-    let home = std::env::var("HOME").unwrap_or_else(|_| "/".to_string());
-    PathBuf::from(home).join(".quantamind/mlx-stt")
-}
-
-/// The default/env-resolved MLX STT folder (no user-setting override).
-pub fn mlx_stt_dir() -> PathBuf {
-    mlx_stt_dir_resolved(None)
-}
-
 /// Subdirectory holding one MLX repo's snapshot, sanitizing `/`/`:` so
 /// `mlx-community/Llama-3.2-3B-Instruct-4bit` maps to a safe
 /// `mlx-community_Llama-3.2-3B-Instruct-4bit` folder.

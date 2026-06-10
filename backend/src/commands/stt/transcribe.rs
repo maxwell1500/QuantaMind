@@ -1,7 +1,5 @@
 use crate::commands::emit::log_emit;
-use crate::commands::stt::mlx::mlx_stt_server_types::MlxSttServerState;
 use crate::commands::stt::stt_server_types::SttServerState;
-use crate::commands::storage::storage_disk::{mlx_model_dir, mlx_stt_dir};
 use crate::errors::{AppError, AppResult};
 use crate::inference::stt::transcribe::backend::{transcribe as run_transcribe, SttTranscribeEngine};
 use crate::inference::stt::transcribe::sink::TranscribeSink;
@@ -58,66 +56,30 @@ fn model_label(model_path: &str) -> String {
 }
 
 /// Transcribe an audio file with the **running whisper.cpp** server, streaming
-/// segments to the frontend and persisting the canonical `Transcript`. mlx-audio
-/// transcription via whichever STT server the app owns: whisper.cpp if it's
-/// running, else mlx-audio (its per-request model comes from `model`). With no
-/// STT server running, a clear notice (not a crash).
+/// segments to the frontend and persisting the canonical `Transcript`. With no
+/// whisper.cpp server running, a clear notice (not a crash).
 #[tauri::command]
 pub async fn transcribe_audio(
     app: AppHandle,
     stt: tauri::State<'_, SttServerState>,
-    mlx_stt: tauri::State<'_, MlxSttServerState>,
     path: String,
     id: String,
-    model: Option<String>,
 ) -> Result<Transcript, AppError> {
-    let sink = TauriTranscribeSink { app: app.clone() };
-    // whisper.cpp takes precedence (the same order as the engine resolver); its
-    // model is the running server's, mlx-audio's is the per-request `model`.
-    let transcript = if let Some(model_path) = stt.running_model() {
-        run_transcribe(
-            SttTranscribeEngine::WhisperCpp,
-            WHISPER_BASE,
-            Path::new(&path),
-            &model_label(&model_path),
-            &id,
-            &sink,
-        )
-        .await?
-    } else if mlx_stt.is_running() {
-        let port = mlx_stt
-            .port()
-            .ok_or_else(|| AppError::Validation("the mlx-audio server isn't ready yet".into()))?;
-        let repo = model.filter(|m| !m.trim().is_empty()).ok_or_else(|| {
-            AppError::Validation("select an mlx-audio model to transcribe with".into())
-        })?;
-        // mlx-audio resolves `model` as a local path OR an HF repo id, but our
-        // snapshots live under ~/.quantamind/mlx-stt — NOT the HF cache — so hand it
-        // the on-disk directory. Passing the bare repo id made mlx-audio look in the
-        // HF cache (empty) and fail to find the downloaded model.
-        let model_dir = mlx_model_dir(&mlx_stt_dir(), &repo);
-        if !model_dir.exists() {
-            return Err(AppError::Validation(format!(
-                "the mlx-audio model {repo} isn't installed — download it in the Speech-to-Text tab first."
-            )));
-        }
-        let mut t = run_transcribe(
-            SttTranscribeEngine::MlxAudio,
-            &format!("http://127.0.0.1:{port}"),
-            Path::new(&path),
-            &model_dir.to_string_lossy(),
-            &id,
-            &sink,
-        )
-        .await?;
-        // Label the artifact with the friendly repo, not the on-disk path.
-        t.model = repo;
-        t
-    } else {
+    let Some(model_path) = stt.running_model() else {
         return Err(AppError::Validation(
-            "no STT server is running — start whisper.cpp or mlx-audio first".into(),
+            "no whisper.cpp STT server is running — start one to transcribe.".into(),
         ));
     };
+    let sink = TauriTranscribeSink { app: app.clone() };
+    let transcript = run_transcribe(
+        SttTranscribeEngine::WhisperCpp,
+        WHISPER_BASE,
+        Path::new(&path),
+        &model_label(&model_path),
+        &id,
+        &sink,
+    )
+    .await?;
     // Persist only on a complete run (save() refuses incomplete).
     transcripts::save(&transcripts_dir(&app)?, &transcript)?;
     Ok(transcript)

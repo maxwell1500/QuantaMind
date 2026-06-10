@@ -1,16 +1,15 @@
 use crate::errors::AppResult;
 use crate::inference::stt::transcribe::sink::TranscribeSink;
 use crate::inference::stt::transcribe::transcript::Transcript;
-use crate::inference::stt::transcribe::{mlx_audio, whisper_cpp};
+use crate::inference::stt::transcribe::whisper_cpp;
 use std::path::Path;
 
 /// Which transcription engine to drive. **Enum dispatch — no `Box<dyn>` /
-/// `async-trait`** in the domain, mirroring `BackendKind`. `faster-whisper`
-/// becomes a further variant.
+/// `async-trait`** in the domain, mirroring `BackendKind`. whisper.cpp today;
+/// `faster-whisper` could become a further variant.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum SttTranscribeEngine {
     WhisperCpp,
-    MlxAudio,
 }
 
 /// Transcribe `path` with `engine`, streaming segments through `sink`. The single
@@ -26,6 +25,5 @@ pub async fn transcribe(
 ) -> AppResult<Transcript> {
     match engine {
         SttTranscribeEngine::WhisperCpp => whisper_cpp::transcribe(base, path, model, id, sink).await,
-        SttTranscribeEngine::MlxAudio => mlx_audio::transcribe(base, path, model, id, sink).await,
     }
 }
