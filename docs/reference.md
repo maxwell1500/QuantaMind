@@ -649,6 +649,36 @@ transcript):
   was emitted — the per-segment hallucination signal that complements the run-level *Output during
   silence* rate above.
 
+## STT Eval & Readiness {#stt-eval}
+
+Beyond the per-transcript Inspector, the **Analysis** tab has an **STT Eval & Readiness** panel that
+scores transcription *accuracy* across a batch and gives a go/no-go verdict. It is **decoupled from
+transcription**: it scores transcripts you've **already** produced (read from disk), so a sidecar
+crash can't kill a sweep, and you can re-score with a new metric in milliseconds without re-running
+the model.
+
+**The eval spec** is a small text file — one task per transcript, joined **by id**:
+`{ id, reference, critical_tokens }`. `reference` is the ground-truth text; `critical_tokens` are the
+words that *must* be right.
+
+- **Reference present** → **WER** via word alignment (insertions/deletions don't smear into
+  substitutions), plus **weighted WER** and **critical-token accuracy**.
+- **Reference absent** → **behavioral-only**: WER reads **"N/A — accuracy unverified"**, never a
+  fabricated number, and it can neither pass nor fail the accuracy gate.
+
+**Weighted WER (financial/legal).** A critical token counts **5×** in the weighted figure — so a
+mis-transcribed dollar amount or payee dominates the score while a missed "the" barely registers. The
+readiness gate keys on this weighted figure (it equals the plain WER when a task has no critical
+tokens). A **confident** substitution (the model was sure, e.g. the reader said "reuben" for "ruben")
+is flagged as a likely **human misread** and shown separately, so a reader's slip on a read-aloud
+clip isn't blamed on the model.
+
+**Readiness verdict.** Pick a profile (built-ins: **Production dictation**, **High accuracy
+(legal/financial)**, **Fast draft**) and Assess. Each model gets **Ready / Conditional / Not ready**
+(ranked best-first), gating on: **speed** (`min_rtf` — too slow is an explicit hard fail, not a vague
+one), **weighted WER** (`max_wer`), and behavioral targets (repeats / output-during-silence /
+confidence, as soft conditions). The verdict spells out every blocking reason and condition verbatim.
+
 ## Built-in presets & the finance set {#builtin-presets}
 
 The tool-call eval ships built-in presets — **Curated Suite** and **Finance (preset)** — selectable
