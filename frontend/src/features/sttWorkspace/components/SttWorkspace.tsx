@@ -5,6 +5,7 @@ import { useTranscriptStore } from "../state/transcriptStore";
 import { TranscriptPane } from "./TranscriptPane";
 import { ReferencePane } from "./ReferencePane";
 import { RecordControls } from "./RecordControls";
+import { SttProfilePanel } from "./SttProfilePanel";
 
 /// The Workspace's STT mode (shown while an STT server is running). Two panes —
 /// the live canonical transcript + an optional reference — fed by Record/Upload.
@@ -32,6 +33,7 @@ export function SttWorkspace({ engine }: { engine: RunningSttEngine }) {
         <TranscriptPane />
         <ReferencePane />
       </div>
+      <SttProfilePanel />
     </div>
   );
 }
