@@ -9,6 +9,7 @@ import {
 } from "../../../shared/ipc/stt/transcribe";
 import { formatIpcError } from "../../../shared/ipc/core/error";
 import { useTranscriptStore } from "../state/transcriptStore";
+import { useSttResultStore } from "../../sttInspector/state/sttResultStore";
 
 /// Subscribe to live segment/progress events (unregistered on unmount — no
 /// stacked listeners across enter/leave of STT mode) and drive a transcription.
@@ -54,6 +55,8 @@ export function useTranscription() {
       const transcript = await transcribeAudio(path, id);
       // Reconcile the live view with the persisted truth (deduped, canonical).
       useTranscriptStore.getState().loadFrom(transcript);
+      // Durable copy for the Analysis/Inspector STT sections (survives tab nav).
+      useSttResultStore.getState().setResult(transcript);
     } catch (e) {
       useTranscriptStore.getState().setError(formatIpcError(e));
     }
