@@ -17,7 +17,7 @@ describe("BackendSetupGuide", () => {
     setAppleSilicon(true);
     render(<BackendSetupGuide />);
     const card = screen.getByTestId("setup-engine-mlx-audio");
-    expect(card).toHaveTextContent("pip install mlx-audio");
+    expect(card).toHaveTextContent('pip install "mlx-audio[server]"');
     expect(card).toHaveTextContent("mlx-community/whisper-*");
     // whisper.cpp (not Apple-only) is always present.
     expect(screen.getByTestId("setup-engine-whisper")).toBeInTheDocument();

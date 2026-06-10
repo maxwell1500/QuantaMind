@@ -49,7 +49,7 @@ export function useMlxSttServer() {
       if (r.status === "already_running" || r.status === "started") return; // poll flips healthy
       setStarting(false);
       if (r.status === "not_found") {
-        setError("mlx-audio isn't installed. Run `pip install mlx-audio`, then retry.");
+        setError('mlx-audio isn\'t installed. Run `pip install "mlx-audio[server]"`, then retry.');
       } else if (r.status === "no_free_port") {
         setError(r.note);
       } else {

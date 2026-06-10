@@ -85,7 +85,7 @@ const ENGINES: Engine[] = [
     blurb: "Apple-Silicon-native speech-to-text via the local mlx-audio server.",
     runs: "mlx-community/whisper-* (MLX)",
     appleOnly: true,
-    commands: [{ label: "Install", cmd: "pip install mlx-audio" }],
+    commands: [{ label: "Install (with the server runtime)", cmd: 'pip install "mlx-audio[server]"' }],
     links: [
       { text: "mlx-audio project", href: "https://github.com/Blaizzy/mlx-audio" },
       { text: "MLX whisper models", href: "https://huggingface.co/mlx-community" },

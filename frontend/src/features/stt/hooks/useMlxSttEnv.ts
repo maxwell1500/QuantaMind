@@ -3,7 +3,7 @@ import { checkMlxSttEnv, type MlxSttEnv } from "../../../shared/ipc/stt/mlxStt";
 
 /// Is the mlx-audio STT engine usable here? `supported` = Apple Silicon (the only
 /// place mlx-audio runs — used to gate the engine in/out of the UI); `found` =
-/// mlx_audio.server installed. Re-checkable (after `pip install mlx-audio`),
+/// mlx_audio.server installed. Re-checkable (after `pip install "mlx-audio[server]"`),
 /// guarded against re-entrant clicks.
 export function useMlxSttEnv() {
   const [env, setEnv] = useState<MlxSttEnv | null>(null);

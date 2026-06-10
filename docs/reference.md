@@ -297,7 +297,9 @@ tab toggle), parallel to the LLM backend — one STT runs alongside one LLM:
 
 - **whisper.cpp** (everywhere) — the default; see below.
 - **mlx-audio** (Apple Silicon only) — Apple-Silicon-native MLX whisper. Install
-  with `pip install mlx-audio`; QuantaMind locates `mlx_audio.server` on
+  with `pip install "mlx-audio[server]"` (the `[server]` extra is required — bare
+  `mlx-audio` omits fastapi/uvicorn/webrtcvad and the server won't start);
+  QuantaMind locates `mlx_audio.server` on
   `PATH`/venv/Homebrew (`check_mlx_stt_env`) and spawns it on a free loopback
   port in `8094..=8104`. Models are `mlx-community/whisper-*` snapshots,
   downloaded into `~/.quantamind/mlx-stt` (they also show in **Downloads** with an

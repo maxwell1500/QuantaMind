@@ -6,7 +6,7 @@ import { MlxSttCatalogTable } from "./MlxSttCatalogTable";
 
 /// The mlx-audio engine panel: download `mlx-community/whisper-*` snapshots
 /// (works even before mlx-audio is installed — it's a plain HF download). If the
-/// engine isn't installed, a hint points at `pip install mlx-audio`; the server
+/// engine isn't installed, a hint points at `pip install "mlx-audio[server]"`; the server
 /// itself is started from the STT header.
 export function MlxSttPanel() {
   const { env, recheck } = useMlxSttEnv();
@@ -20,8 +20,8 @@ export function MlxSttPanel() {
         <div className="text-xs text-amber-800 bg-amber-50 border border-amber-200 rounded p-3 flex flex-col gap-1">
           <div className="font-semibold">mlx-audio isn't installed</div>
           <p>
-            Run <code className="bg-white/70 border rounded px-1">pip install mlx-audio</code>, then
-            start it from the STT header. You can still download models below now.
+            Run <code className="bg-white/70 border rounded px-1">pip install "mlx-audio[server]"</code>,
+            then start it from the STT header. You can still download models below now.
           </p>
           <button
             type="button"
