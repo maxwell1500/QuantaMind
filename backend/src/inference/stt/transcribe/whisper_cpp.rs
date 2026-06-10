@@ -5,7 +5,9 @@ use crate::inference::stt::transcribe::audio;
 use crate::inference::stt::transcribe::dedup::dedupe_incoming;
 use crate::inference::stt::profile::perf;
 use crate::inference::stt::transcribe::sink::TranscribeSink;
-use crate::inference::stt::transcribe::transcript::{AudioSpec, Segment, Transcript, TranscribeStats, Word};
+use crate::inference::stt::transcribe::transcript::{
+    AudioSpec, Segment, SttProfile, Transcript, TranscribeStats, Word,
+};
 use reqwest::multipart::{Form, Part};
 use serde::Deserialize;
 use std::path::Path;
@@ -76,6 +78,8 @@ pub async fn transcribe(
 
     let mut all: Vec<Segment> = Vec::new();
     let mut language: Option<String> = None;
+    // Time from submission to the first streamed segment — the STT analog of TTFT.
+    let mut first_segment_ms: Option<u64> = None;
 
     let mut reader = audio::windows(path, WINDOW_SECS, audio::OVERLAP_SECS)?;
     while let Some(win) = reader.next() {
@@ -136,6 +140,9 @@ pub async fn transcribe(
         // Drop the boundary segments the window overlap repeats, so the streamed
         // view and the persisted artifact stay monotonic + non-overlapping.
         let fresh = dedupe_incoming(&all, segs);
+        if first_segment_ms.is_none() && !fresh.is_empty() {
+            first_segment_ms = Some(started.elapsed().as_millis() as u64);
+        }
         sink.segments(&fresh);
         sink.progress(win.end_secs, container_secs);
         all.extend(fresh);
@@ -157,6 +164,13 @@ pub async fn transcribe(
         received_sample_rate_hz: Some(audio::TARGET_RATE_HZ),
         rtf: perf::rtf(decoded_secs, wall_ms),
     };
+    // Performance layer of the profile (behavioral lands in a later step, off the
+    // timed path). VRAM is None — whisper.cpp doesn't report it.
+    let stt_profile = Some(SttProfile {
+        perf: Some(perf::profile(first_segment_ms)),
+        behavioral: None,
+        vram_bytes: None,
+    });
     Ok(Transcript {
         id: id.to_string(),
         model: model.to_string(),
@@ -165,7 +179,7 @@ pub async fn transcribe(
         segments: all,
         complete: true,
         stats,
-        stt_profile: None,
+        stt_profile,
     })
 }
 
@@ -218,6 +232,10 @@ mod tests {
         // container header, ÷ wall time. Two real mock roundtrips take > 0 ms.
         assert_eq!(t.stats.audio_decoded_secs, Some(35.0), "decoded-sample truth");
         assert!(t.stats.rtf.is_some_and(|r| r > 0.0), "RTF populated from decoded ÷ wall");
+        // Perf layer: first-segment latency captured, encode/decode split honestly None.
+        let perf = t.stt_profile.as_ref().unwrap().perf.as_ref().unwrap();
+        assert!(perf.first_segment_ms.is_some(), "first-segment latency measured");
+        assert_eq!(perf.encode_ms, None, "no guessed encode/decode split");
     }
 
     #[tokio::test]
