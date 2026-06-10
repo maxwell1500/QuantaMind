@@ -148,7 +148,8 @@ pub async fn transcribe(
         }
         sink.segments(&fresh);
         sink.progress(win.end_secs, container_secs);
-        profiler.observe(&fresh).await; // off-path fold; doesn't block the loop
+        // Off-path fold: behavioral stats + independent VAD over this window's PCM.
+        profiler.observe(&fresh, &win.samples_16k_mono, win.start_secs).await;
         all.extend(fresh);
     }
 
