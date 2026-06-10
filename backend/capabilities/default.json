@@ -11,8 +11,9 @@
       "allow": [
         { "url": "https://ollama.com/download" },
         { "url": "https://ollama.com/library" },
-        { "url": "https://quantamind.co/docs/**" },
-        { "url": "mailto:**" }
+        { "url": "https://huggingface.co/**" },
+        { "url": "https://quantamind.co/**" },
+        { "url": "mailto:info@quantamind.co**" }
       ]
     },
     "updater:default",
