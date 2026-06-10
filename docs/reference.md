@@ -609,6 +609,29 @@ The Inspector shows how much of the context window a run consumed — the exact 
 `prompt_eval_count` over the model's `context_length` — turning red at ≥95% (past which earlier
 tokens are silently dropped). Exact counts only; "Not available" when either number is missing.
 
+## STT Inspector {#stt-inspector}
+
+After a transcription finishes, the STT workspace shows a measured profile of the run. Like the
+text Inspector, it never fabricates a number — any metric the backend can't supply reads **"N/A"**:
+
+- **Real-time factor (RTF)** — decoded audio seconds ÷ wall-clock seconds; `> 1×` is faster than
+  real time. The denominator is the **decoded sample count** (a hardware fact), so it's the same
+  across WAV / MP3 / OGG of the same audio, not biased by container metadata.
+- **First-segment latency** — time to the first streamed segment (the speech analog of TTFT).
+- **Encode / decode split** — **N/A**: whisper-server reports no per-phase timing (the total is the
+  RTF wall above). Never split by a guess.
+- **Repeated-token rate** — adjacent duplicate segments (a stuck/looping decode). `0%` is a real
+  measurement (counted, none found).
+- **Mean confidence** — average of whisper's word-level probabilities, with the low (5th-percentile)
+  tail. **N/A** when the backend emits no probabilities — never shown as 0% or 100%.
+- **Output during silence** — fraction of segments the model emitted where an **independent** voice
+  detector (`webrtc-vad`, never the model's own judgement) found no speech and the model was itself
+  unsure. The highest-value behavioral signal for hallucination.
+- **VRAM** — **"Not available for this backend"**: whisper.cpp / mlx-audio don't report runtime VRAM.
+
+The behavioral analysis runs off the transcription's timed path, so measuring it never inflates the
+RTF it reports.
+
 ## Built-in presets & the finance set {#builtin-presets}
 
 The tool-call eval ships built-in presets — **Curated Suite** and **Finance (preset)** — selectable

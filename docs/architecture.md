@@ -97,7 +97,20 @@ HTTP to a local Ollama server.
   the Tauri-free `TranscribeSink` (parallel to `BatchSink`) → assemble the canonical
   `Transcript`. Engine choice is enum-dispatched (`SttTranscribeEngine`, no `dyn`).
   The artifact persists via `persistence/stt/transcripts.rs` (atomic; refuses an
-  incomplete run). Every `TranscribeStats` field is `Option` (no fabricated RTF).
+  incomplete run). Every `TranscribeStats` field is `Option` (no fabricated metric).
+  `inference/stt/profile/` is the **measurement layer** (P3): it fills `SttProfile`
+  (every field `Option` → "N/A", never a guess). RTF = decoded sample-count seconds
+  (`WindowReader::decoded_secs`, a hardware fact — not the container header) ÷ wall
+  seconds (stopped on loop exit, before any finalize work). First-segment latency is
+  the TTFT analog; the encode/decode split is `None` (whisper-server reports none).
+  The **behavioral** fold (repeated-segment rate; word-level `Confidence`, `None`
+  when the backend emits no probabilities; silence-hallucination) runs **off the
+  timed path** on a `spawn_blocking` thread fed by a bounded channel, so its cost
+  can't inflate RTF. Silence uses an **independent** `webrtc-vad` over the raw PCM
+  (never the model's own `no_speech_prob` — that would be circular; an `assert_ne!`
+  on the engine id enforces it). The `Profiler` is dropped (channel closed, thread
+  drains) on any error `?`, so no partial profiling state lingers. The frontend
+  `SttProfilePanel` renders it with the text-Inspector's N/A framing.
   `commands/stt/transcribe.rs` is the **only** `AppHandle` seam: `transcribe_audio`
   streams segments to the UI (a `TauriTranscribeSink`) + persists; `write_scratch_wav`
   lands captured WAV bytes in a scratch dir (the returned path is the atomic
