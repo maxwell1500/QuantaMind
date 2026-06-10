@@ -48,10 +48,47 @@ pub struct TranscribeStats {
     pub rtf: Option<f64>,
 }
 
-/// The quality/readiness profile (P3). A typed placeholder so the artifact has a
-/// stable shape now; `None` until P3 fills it.
+/// Word-level confidence summary (whisper `probability`, 0..1). The **whole
+/// struct is `None`** when the backend emits no probabilities — never `0.0`/`1.0`,
+/// which would read as "fully unsure"/"fully sure" when it had no opinion.
 #[derive(Serialize, Deserialize, Clone, Debug, PartialEq)]
-pub struct SttProfile {}
+pub struct Confidence {
+    pub mean: f32,
+    /// The low tail (bottom 5th percentile) — where the model was least sure.
+    pub low_percentile: f32,
+}
+
+/// Performance measurements. `encode_ms`/`decode_ms` are `None` for whisper-server
+/// (it exposes no encoder/decoder split) — the total wall stays in `TranscribeStats`,
+/// never split by a guessed ratio. `first_segment_ms` is `None` for a non-streaming
+/// backend (the STT analog of TTFT).
+#[derive(Serialize, Deserialize, Clone, Debug, PartialEq)]
+pub struct PerfProfile {
+    pub first_segment_ms: Option<u64>,
+    pub encode_ms: Option<u64>,
+    pub decode_ms: Option<u64>,
+}
+
+/// Behavioral signals. `repeat_rate` is always measurable (`Some(0.0)` = counted,
+/// none found — distinct from `None` "not measured"). `confidence` and
+/// `silence_hallucination_rate` are `None` when the backend can't supply them.
+#[derive(Serialize, Deserialize, Clone, Debug, PartialEq)]
+pub struct BehavioralProfile {
+    pub repeat_rate: Option<f64>,
+    pub confidence: Option<Confidence>,
+    pub silence_hallucination_rate: Option<f64>,
+}
+
+/// The measured STT profile (P3). Every field `Option` — the renderer maps `None`
+/// to "N/A", never a guessed number.
+#[derive(Serialize, Deserialize, Clone, Debug, PartialEq)]
+pub struct SttProfile {
+    pub perf: Option<PerfProfile>,
+    pub behavioral: Option<BehavioralProfile>,
+    /// Runtime VRAM in bytes — `None` ("Not available for this backend") for
+    /// whisper.cpp/mlx, which don't report it (mirrors `SttCatalogEntry.est_vram_bytes`).
+    pub vram_bytes: Option<u64>,
+}
 
 /// The canonical transcription artifact — the source of truth (text/SRT/VTT are
 /// derived exports later, never this). `complete` is `true` only when the whole
@@ -105,5 +142,26 @@ mod tests {
         assert_eq!(t, back, "write → read → deep-equal");
         assert!(back.stt_profile.is_none(), "SttProfile slot is None until P3 fills it");
         assert_eq!(back.stats.rtf, None, "an unset RTF round-trips as None, never coerced to 0");
+    }
+
+    #[test]
+    fn populated_stt_profile_round_trips_with_options_intact() {
+        let mut t = sample();
+        t.stt_profile = Some(SttProfile {
+            perf: Some(PerfProfile { first_segment_ms: Some(180), encode_ms: None, decode_ms: None }),
+            behavioral: Some(BehavioralProfile {
+                repeat_rate: Some(0.0), // a real "counted, none found" — not None
+                confidence: Some(Confidence { mean: 0.91, low_percentile: 0.42 }),
+                silence_hallucination_rate: None, // not measured this run
+            }),
+            vram_bytes: None, // "Not available for this backend"
+        });
+        let json = serde_json::to_string(&t).unwrap();
+        let back: Transcript = serde_json::from_str(&json).unwrap();
+        assert_eq!(t, back, "the whole profile round-trips deep-equal");
+        let p = back.stt_profile.unwrap();
+        assert_eq!(p.perf.as_ref().unwrap().encode_ms, None, "an absent split stays None");
+        assert_eq!(p.behavioral.as_ref().unwrap().repeat_rate, Some(0.0), "0.0 is a measurement, kept");
+        assert_eq!(p.vram_bytes, None, "VRAM N/A survives as None, not 0");
     }
 }
