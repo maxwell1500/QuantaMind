@@ -60,12 +60,6 @@ export async function transcribeAudio(path: string, id: string): Promise<Transcr
   return TranscriptSchema.parse(await invoke("transcribe_audio", { path, id }));
 }
 
-/// Hand frontend-captured WAV bytes to Rust; the returned path is the atomic
-/// ready-to-transcribe signal (await before transcribing).
-export async function saveRecording(bytes: Uint8Array): Promise<string> {
-  return z.string().parse(await invoke("save_recording", { bytes }));
-}
-
 /// Reload a persisted transcript by id (disk is the source of truth).
 export async function loadTranscript(id: string): Promise<Transcript | null> {
   return TranscriptSchema.nullable().parse(await invoke("load_transcript", { id }));

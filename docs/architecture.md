@@ -99,11 +99,22 @@ HTTP to a local Ollama server.
   The artifact persists via `persistence/stt/transcripts.rs` (atomic; refuses an
   incomplete run). Every `TranscribeStats` field is `Option` (no fabricated RTF).
   `commands/stt/transcribe.rs` is the **only** `AppHandle` seam: `transcribe_audio`
-  streams segments to the UI (a `TauriTranscribeSink`) + persists; `save_recording`
-  lands frontend-captured WAV bytes in a scratch dir; `load_transcript` reloads the
-  artifact. The Workspace **auto-routes to STT mode** (a live two-pane transcribe
-  surface) while an STT server is running (`features/sttWorkspace/`); mic capture is
-  Web Audio in the webview, upload is path-based (WAV→hound, MP3→symphonia).
+  streams segments to the UI (a `TauriTranscribeSink`) + persists; `write_scratch_wav`
+  lands captured WAV bytes in a scratch dir (the returned path is the atomic
+  ready-to-transcribe signal); `load_transcript` reloads the artifact. **Mic capture
+  is native** (`commands/audio/capture.rs`, cpal) — WKWebView's `getUserMedia` is
+  unreliable on macOS, so audio never touches the webview: `start_recording` runs the
+  `!Send` cpal stream on its own thread, `recording_level` is polled for the live
+  meter, `stop_recording` encodes the take (16-bit WAV at native rate — P1 resamples)
+  into the scratch dir and reports `had_audio` so a silent take (muted mic / TCC
+  denial, which records silence rather than erroring) surfaces "no audio detected".
+  The macOS mic prompt is driven by `NSMicrophoneUsageDescription` in
+  `backend/Info.plist`, embedded by Tauri's `generate_context!` (dev binary included).
+  Frontend IPC mirrors the module in `shared/ipc/audio/capture.ts`
+  (`features/sttWorkspace/hooks/useMicRecorder.ts` drives it). The Workspace
+  **auto-routes to STT mode** (a live two-pane transcribe surface) while an STT
+  server is running (`features/sttWorkspace/`); upload is path-based
+  (WAV→hound, MP3→symphonia).
 - `metrics/` — measurements: TTFT, tokens/sec, VRAM.
 - `persistence/` — YAML/JSON read+write of prompts and history, plus `evals.rs`
   (custom tool-call eval collections: one `.json` per collection, name-sanitised,

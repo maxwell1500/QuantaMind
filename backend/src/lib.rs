@@ -25,6 +25,7 @@ pub fn run() {
         .manage(commands::stt::stt_server_types::SttServerState::default())
         .manage(commands::stt::stt_download::SttInstallState::default())
         .manage(commands::stt::mlx::mlx_stt_server_types::MlxSttServerState::default())
+        .manage(commands::audio::capture::CaptureState::default())
         .manage(commands::workspace::workspaces::WorkspaceState::default())
         .manage(commands::settings::user_settings::UserSettingsState::default())
         .manage(commands::eval::batch_cmd::BatchRunState::default())
@@ -100,8 +101,10 @@ pub fn run() {
             commands::stt::mlx::mlx_stt_models::list_installed_mlx_stt_models,
             commands::stt::mlx::mlx_stt_models::delete_mlx_stt_model,
             commands::stt::transcribe::transcribe_audio,
-            commands::stt::transcribe::save_recording,
             commands::stt::transcribe::load_transcript,
+            commands::audio::capture::start_recording,
+            commands::audio::capture::stop_recording,
+            commands::audio::capture::recording_level,
             commands::settings::settings::get_storage_path,
             commands::settings::settings::validate_storage_path,
             commands::storage::storage::get_installed_models_with_stats,

@@ -87,17 +87,16 @@ pub async fn transcribe_audio(
     Ok(transcript)
 }
 
-/// Write frontend-captured WAV bytes to a scratch file; the **returned path is
-/// the atomic "ready-to-transcribe" signal** (await it before transcribing).
-/// `BufWriter` minimizes the I/O block while the webview hands over the bytes.
-#[tauri::command]
-pub fn save_recording(app: AppHandle, bytes: Vec<u8>) -> Result<String, AppError> {
-    let dir = scratch_dir(&app)?;
+/// Write captured WAV bytes to a scratch file via `BufWriter`; the returned path
+/// is the atomic "ready-to-transcribe" signal. Shared by the (Rust cpal) mic
+/// capture's stop and any caller handing over WAV bytes.
+pub(crate) fn write_scratch_wav(app: &AppHandle, bytes: &[u8]) -> AppResult<String> {
+    let dir = scratch_dir(app)?;
     std::fs::create_dir_all(&dir).map_err(|e| AppError::Io(e.to_string()))?;
     let path = dir.join(format!("{}.wav", Uuid::new_v4()));
     let f = std::fs::File::create(&path).map_err(|e| AppError::Io(e.to_string()))?;
     let mut w = BufWriter::new(f);
-    w.write_all(&bytes).map_err(|e| AppError::Io(e.to_string()))?;
+    w.write_all(bytes).map_err(|e| AppError::Io(e.to_string()))?;
     w.flush().map_err(|e| AppError::Io(e.to_string()))?;
     Ok(path.to_string_lossy().into_owned())
 }

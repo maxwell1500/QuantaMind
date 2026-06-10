@@ -1,7 +1,6 @@
 import { useState } from "react";
 import { open } from "@tauri-apps/plugin-dialog";
 import { useMicRecorder } from "../hooks/useMicRecorder";
-import { saveRecording } from "../../../shared/ipc/stt/transcribe";
 import { useTranscriptStore } from "../state/transcriptStore";
 
 /// Record (mic) or Upload (file) — both converge to an audio path that `onRun`
@@ -16,12 +15,13 @@ export function RecordControls({ onRun }: { onRun: (path: string) => void }) {
     const res = await stop();
     if (!res) return; // double-stop / not recording
     if (!res.hadAudio) {
-      setNotice("No audio detected — check your microphone isn't muted.");
+      setNotice(
+        "No audio detected — check the mic isn't muted and QuantaMind has microphone access (System Settings → Privacy & Security → Microphone).",
+      );
       return;
     }
     setNotice(null);
-    const path = await saveRecording(res.bytes); // returned path = ready-to-transcribe
-    onRun(path);
+    onRun(res.path); // returned path = ready-to-transcribe
   };
 
   const onUpload = async () => {
