@@ -10,7 +10,8 @@ pub struct SttReadinessProfile {
     pub name: String,
     /// Speed floor — RTF below this blocks (a slow model is a hard fail, not a vague one).
     pub min_rtf: Option<f64>,
-    /// Accuracy ceiling — only gates when WER is actually measured (reference present).
+    /// **Weighted** WER ceiling (a "weighted error budget" — critical-token errors
+    /// count extra). Only gates when WER is measured (reference present).
     pub max_wer: Option<f64>,
     pub max_repeat_rate: Option<f64>,
     pub max_silence_rate: Option<f64>,
@@ -18,12 +19,15 @@ pub struct SttReadinessProfile {
     pub require_vram_fit: bool,
 }
 
-/// One model's measured inputs (aggregated from its `SttReport` rows). `wer` is
-/// `None` when the run had no reference — accuracy is unverified, never fabricated.
+/// One model's measured inputs (aggregated from its `SttReport` rows).
+/// `weighted_wer` is the **critical-token-weighted** WER — the figure `max_wer`
+/// gates on (a wrong dollar amount/payee dominates; equals the raw WER when a task
+/// has no critical tokens). `None` when the run had no reference — accuracy is
+/// unverified, never fabricated.
 #[derive(Clone, Debug, PartialEq, Default)]
 pub struct SttReadinessInputs {
     pub rtf: Option<f64>,
-    pub wer: Option<f64>,
+    pub weighted_wer: Option<f64>,
     pub repeat_rate: Option<f64>,
     pub silence_rate: Option<f64>,
     pub confidence: Option<f64>,
@@ -56,13 +60,16 @@ pub fn assess(i: &SttReadinessInputs, p: &SttReadinessProfile) -> SttReadinessVe
         }
     }
 
-    // Accuracy (hard, **reference-gated**): the gate fires ONLY when WER is measured.
-    // A `None` WER (no reference) can never pass or fail on accuracy — when the
-    // profile wants accuracy but there's no reference it's an honest Conditional
-    // note, never a block and never a silent pass.
+    // Accuracy (hard, **reference-gated**): gates on the **weighted** WER (a wrong
+    // critical token — a dollar amount, a payee — dominates). Fires ONLY when WER is
+    // measured: a `None` (no reference) can never pass or fail on accuracy — when the
+    // profile wants accuracy but there's no reference it's an honest Conditional note,
+    // never a block and never a silent pass.
     if let Some(max) = p.max_wer {
-        match i.wer {
-            Some(w) if w > max => blocking.push(format!("WER {:.1}% > {:.1}% allowed", w * 100.0, max * 100.0)),
+        match i.weighted_wer {
+            Some(w) if w > max => {
+                blocking.push(format!("weighted WER {:.1}% > {:.1}% allowed", w * 100.0, max * 100.0))
+            }
             Some(_) => {}
             None => conditions.push("accuracy unverified (no reference text)".into()),
         }
@@ -113,7 +120,10 @@ pub struct SttModelVerdict {
     pub model: String,
     pub verdict: SttReadinessVerdict,
     pub rtf: Option<f64>,
+    /// Raw WER (for display).
     pub wer: Option<f64>,
+    /// The weighted WER the verdict actually gated on.
+    pub weighted_wer: Option<f64>,
     pub repeat_rate: Option<f64>,
     pub silence_rate: Option<f64>,
     pub confidence: Option<f64>,
@@ -175,7 +185,7 @@ mod tests {
     fn clean() -> SttReadinessInputs {
         SttReadinessInputs {
             rtf: Some(2.0),
-            wer: Some(0.0),
+            weighted_wer: Some(0.0),
             repeat_rate: Some(0.0),
             silence_rate: Some(0.0),
             confidence: Some(0.9),
@@ -193,7 +203,7 @@ mod tests {
     fn no_reference_is_accuracy_unverified_not_a_fail_and_doesnt_bleed() {
         // The crux: WER None must NOT block, must NOT pass on accuracy, and must NOT
         // flip other (clean) gates. It downgrades to Conditional with an honest note.
-        let i = SttReadinessInputs { wer: None, ..clean() };
+        let i = SttReadinessInputs { weighted_wer: None, ..clean() };
         let v = assess(&i, &profile());
         assert_eq!(v.status, Readiness::Conditional);
         assert!(v.blocking.is_empty(), "missing accuracy never blocks: {:?}", v.blocking);
@@ -210,10 +220,10 @@ mod tests {
 
     #[test]
     fn wer_above_the_ceiling_blocks_only_when_measured() {
-        let i = SttReadinessInputs { wer: Some(0.30), ..clean() };
+        let i = SttReadinessInputs { weighted_wer: Some(0.30), ..clean() };
         let v = assess(&i, &profile());
         assert_eq!(v.status, Readiness::NotReady);
-        assert!(v.blocking.iter().any(|b| b.contains("WER")), "{:?}", v.blocking);
+        assert!(v.blocking.iter().any(|b| b.contains("weighted WER")), "{:?}", v.blocking);
     }
 
     #[test]
