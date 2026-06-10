@@ -1,5 +1,6 @@
 import { useSttResultStore } from "../state/sttResultStore";
 import { wordsPerSec } from "../format/sttMetrics";
+import { SttExportButtons } from "./SttExportButtons";
 
 // One value against a tick ruler — same monospace ▓-bar idiom as the LLM
 // MetricsChart. A null value renders "Not available", never a fabricated 0.
@@ -85,6 +86,7 @@ export function SttAnalysisSection() {
           {text || <span className="text-gray-400 italic">No speech transcribed</span>}
         </div>
       </div>
+      <SttExportButtons />
     </section>
   );
 }
