@@ -39,6 +39,7 @@ Phase 3 additions (locked; installed when their step lands):
 | llama.cpp backend | `llama-server` (Tauri sidecar binary) | Local GGUF inference over HTTP, mirroring the Ollama path. Subprocess, not in-process FFI. |
 | STT engine (Phase 0) | `whisper-server` (whisper.cpp `server` example; bundled sidecar) | Local speech-to-text over HTTP on `:8093`, mirroring the `llama-server` lifecycle; reuses the bundled `libggml-*` dylibs. Subprocess, not FFI. State-aware `/health`; silero VAD bundled with each model. |
 | STT engine (MLX) | `mlx_audio.server` (Blaizzy/mlx-audio; `pip install "mlx-audio[server]"` — the `[server]` extra is mandatory) | Apple-Silicon-native speech-to-text, spawned on a free loopback port `8094..=8104` (mirrors `mlx_lm.server`). `mlx-community/whisper-*` models. **Strictly local** — binds `127.0.0.1` only, never an OpenAI fallback. `faster-whisper` is deferred — see [Future considerations](#future-considerations). |
+| STT audio preprocessing (P1) | `hound` (WAV decode/encode) + `rubato` (resample) + `reqwest` `multipart` feature | Decode audio → downmix → resample to 16 kHz mono **in Rust** (explicit, logged) → POST per ~30 s window to whisper-server `/inference` (`verbose_json`). Pure-Rust, not FFI; lets the seam stream + bound memory + assert the resample/duration in our own code. WAV-first; `symphonia` (compressed formats) deferred. |
 
 Phase 4 additions (locked; installed when their step lands):
 

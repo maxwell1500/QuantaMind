@@ -5,3 +5,4 @@ pub mod stt_catalog;
 pub mod stt_format;
 pub mod stt_mlx_catalog;
 pub mod stt_probe;
+pub mod transcribe;

@@ -91,6 +91,13 @@ HTTP to a local Ollama server.
   resources → dev tree — so a user's `brew install whisper-cpp` is found with no setup
   (mirrors `ollama_runtime::resolve_ollama`); `check_whisper_env` then `--help`-dry-runs it
   so "found" never masquerades as "runnable" when its dylibs are broken.
+  `inference/stt/transcribe/` is the **transcription seam** (P1): decode WAV →
+  downmix → resample to 16 kHz mono in Rust (`audio.rs`, hound + rubato) →
+  one whisper-server `/inference` call per ~30 s window → stream segments through
+  the Tauri-free `TranscribeSink` (parallel to `BatchSink`) → assemble the canonical
+  `Transcript`. Engine choice is enum-dispatched (`SttTranscribeEngine`, no `dyn`).
+  The artifact persists via `persistence/stt/transcripts.rs` (atomic; refuses an
+  incomplete run). Every `TranscribeStats` field is `Option` (no fabricated RTF).
 - `metrics/` — measurements: TTFT, tokens/sec, VRAM.
 - `persistence/` — YAML/JSON read+write of prompts and history, plus `evals.rs`
   (custom tool-call eval collections: one `.json` per collection, name-sanitised,
