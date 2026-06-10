@@ -2,5 +2,7 @@
 // `Transcript` artifact + an `eval_spec`, joins by id, and does math — it never
 // owns transcription (no sidecar, retries, or timeouts), so a sweep is reproducible
 // and re-scorable in milliseconds. Pure/domain: no AppHandle, no `crate::commands`.
+pub mod report;
+pub mod scorer;
 pub mod spec;
 pub mod wer;
