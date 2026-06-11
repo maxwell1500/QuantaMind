@@ -1,5 +1,6 @@
 use crate::commands::llama::llama_server_types::LlamaServerState;
 use crate::commands::mlx::mlx_server_types::MlxServerState;
+use crate::commands::ollama::ollama_start::OllamaStartState;
 use crate::commands::stt::stt_server_types::SttServerState;
 use sysinfo::{ProcessRefreshKind, ProcessesToUpdate, Signal, System};
 use tauri::{AppHandle, Manager, RunEvent};
@@ -28,6 +29,10 @@ fn reap_managed(app: &AppHandle) {
     }
     if let Err(e) = app.state::<SttServerState>().stop() {
         eprintln!("whisper reap failed: {e}");
+    }
+    // The Ollama WE spawned (never a pre-existing user daemon).
+    if let Err(e) = app.state::<OllamaStartState>().stop_owned() {
+        eprintln!("ollama reap failed: {e}");
     }
 }
 

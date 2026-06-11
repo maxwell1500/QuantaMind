@@ -1,5 +1,5 @@
 use crate::commands::ollama::ollama_runtime::{
-    is_reachable, kill_serve, resolve_ollama, spawn_serve, wait_until_ready,
+    is_reachable, kill_pid, kill_serve, resolve_ollama, spawn_serve, wait_until_ready,
     PROBE_TIMEOUT_MS,
 };
 use crate::errors::AppError;
@@ -23,6 +23,32 @@ pub enum OllamaStartResult {
 #[derive(Default)]
 pub struct OllamaStartState {
     in_progress: Mutex<bool>,
+    /// PID of an `ollama serve` **this app spawned** — `None` when Ollama was
+    /// already running (a user's own daemon) so we never kill what we didn't start.
+    started_pid: Mutex<Option<u32>>,
+}
+
+impl OllamaStartState {
+    fn remember(&self, pid: u32) {
+        *self.started_pid.lock_recover() = Some(pid);
+    }
+
+    /// Stop the **app-spawned** Ollama (if any) and forget it. Idempotent —
+    /// used by `stop_ollama`, the exit reap, and the signal reaper. A pre-existing
+    /// user daemon is left untouched.
+    pub fn stop_owned(&self) -> Result<(), String> {
+        if let Some(pid) = self.started_pid.lock_recover().take() {
+            kill_pid(pid)?;
+        }
+        Ok(())
+    }
+}
+
+/// Backstop: reap the app-spawned Ollama if the managed state is torn down.
+impl Drop for OllamaStartState {
+    fn drop(&mut self) {
+        let _ = self.stop_owned();
+    }
 }
 
 #[tauri::command]
@@ -37,6 +63,11 @@ pub async fn start_ollama(
         *g = true;
     }
     let result = start_ollama_inner().await;
+    // Track only an Ollama WE spawned — `AlreadyRunning` means a user daemon we
+    // must never reap. The exit/signal reaper kills this pid on app close.
+    if let OllamaStartResult::Started { pid } = &result {
+        state.remember(*pid);
+    }
     *state.in_progress.lock_recover() = false;
     Ok(result)
 }
