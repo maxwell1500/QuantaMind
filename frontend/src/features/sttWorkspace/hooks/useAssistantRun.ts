@@ -7,6 +7,7 @@ import {
   EVENT_CANCELLED,
   TokenPayloadSchema,
   DonePayloadSchema,
+  type DonePayload,
 } from "../../../shared/ipc/events/events";
 import { useBackendStore } from "../../../shared/state/backendStore";
 import { useAssistantResultStore } from "../../sttInspector/state/assistantResultStore";
@@ -30,10 +31,18 @@ export function useAssistantRun() {
   const [output, setOutput] = useState("");
   const [status, setStatus] = useState<AssistantStatus>("idle");
   const [error, setError] = useState<string | null>(null);
+  // The full done payload (timeline + stats) of the last run, so the Analysis /
+  // Inspector can render the LLM stage through the same rich compare path as a
+  // main-Workspace run — see VoiceAssistant's compareStore mirror.
+  const [metrics, setMetrics] = useState<DonePayload | null>(null);
   // Refs so the once-mounted EVENT_DONE listener sees the latest run's data.
   const outputRef = useRef("");
   const startRef = useRef(0);
   const metaRef = useRef<{ model: string; system: string | null; ctx: RunCtx } | null>(null);
+  // True only between this hook's own run() and the run's terminal event. The
+  // run_prompt event stream is global (the Workspace hook listens too), so we
+  // react only to the run we initiated.
+  const initiatedRef = useRef(false);
 
   useEffect(() => {
     let cancelled = false;
@@ -41,6 +50,7 @@ export function useAssistantRun() {
     void (async () => {
       const subs = await Promise.all([
         listen<unknown>(EVENT_TOKEN, (e) => {
+          if (!initiatedRef.current) return;
           const p = TokenPayloadSchema.safeParse(e.payload);
           if (p.success) {
             outputRef.current += p.data.text;
@@ -48,12 +58,15 @@ export function useAssistantRun() {
           }
         }),
         listen<unknown>(EVENT_DONE, (e) => {
+          if (!initiatedRef.current) return;
+          initiatedRef.current = false;
           setStatus((s) => (s === "running" ? "done" : s));
           const meta = metaRef.current;
           if (!meta) return;
           const wallMs = performance.now() - startRef.current;
           const d = DonePayloadSchema.safeParse(e.payload);
           const done = d.success ? d.data : null;
+          setMetrics(done);
           useAssistantResultStore.getState().setResult({
             transcriptId: meta.ctx.transcriptId,
             model: meta.model,
@@ -67,7 +80,11 @@ export function useAssistantRun() {
             auto: meta.ctx.auto,
           });
         }),
-        listen<unknown>(EVENT_CANCELLED, () => setStatus((s) => (s === "running" ? "cancelled" : s))),
+        listen<unknown>(EVENT_CANCELLED, () => {
+          if (!initiatedRef.current) return;
+          initiatedRef.current = false;
+          setStatus((s) => (s === "running" ? "cancelled" : s));
+        }),
       ]);
       if (cancelled) {
         subs.forEach((u) => u());
@@ -85,7 +102,9 @@ export function useAssistantRun() {
     setOutput("");
     outputRef.current = "";
     setError(null);
+    setMetrics(null);
     setStatus("running");
+    initiatedRef.current = true;
     startRef.current = performance.now();
     const trimmedSystem = system?.trim() || null;
     metaRef.current = { model, system: trimmedSystem, ctx: ctx ?? { transcriptId: null, auto: false } };
@@ -98,6 +117,7 @@ export function useAssistantRun() {
       if (trimmedSystem) args.system = trimmedSystem;
       await invoke("run_prompt", args);
     } catch (e) {
+      initiatedRef.current = false;
       setError(formatIpcError(e));
       setStatus("error");
     }
@@ -111,5 +131,5 @@ export function useAssistantRun() {
     }
   }, []);
 
-  return { output, status, error, run, stop };
+  return { output, status, error, metrics, run, stop };
 }
