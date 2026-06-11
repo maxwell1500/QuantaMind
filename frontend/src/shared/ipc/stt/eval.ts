@@ -14,6 +14,11 @@ export type SttEvalTask = z.infer<typeof SttEvalTaskSchema>;
 export const SttEvalSpecSchema = z.object({ tasks: z.array(SttEvalTaskSchema) });
 export type SttEvalSpec = z.infer<typeof SttEvalSpecSchema>;
 
+/// A stored transcript for the editor's picker: id (the join key), model, and the
+/// transcribed text (to prefill a reference / self-reference a starter spec).
+export const TranscriptSummarySchema = z.object({ id: z.string(), model: z.string(), text: z.string() });
+export type TranscriptSummary = z.infer<typeof TranscriptSummarySchema>;
+
 export const MisreadSchema = z.object({ reference: z.string(), heard: z.string(), probability: z.number() });
 
 export const WerResultSchema = z.object({
@@ -79,6 +84,9 @@ export type SttModelVerdict = z.infer<typeof SttModelVerdictSchema>;
 /// Run an eval spec against the stored transcripts → a scored report.
 export async function runSttEval(spec: string): Promise<SttReport> {
   return SttReportSchema.parse(await invoke("run_stt_eval", { spec }));
+}
+export async function listTranscripts(): Promise<TranscriptSummary[]> {
+  return z.array(TranscriptSummarySchema).parse(await invoke("list_transcripts"));
 }
 export async function listSttEvals(): Promise<string[]> {
   return z.array(z.string()).parse(await invoke("list_stt_evals"));

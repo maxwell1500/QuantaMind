@@ -43,6 +43,9 @@ export function SttHeaderControl() {
           stopTestId="stt-stop"
         />
         <span className={dotClass(healthy)} aria-hidden />
+        <span className="text-xs font-medium text-gray-500" data-testid="header-stt-engine">
+          Whisper.cpp
+        </span>
         <select
           data-testid="header-stt-select"
           aria-label="Speech-to-text model"

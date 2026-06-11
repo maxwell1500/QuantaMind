@@ -7,6 +7,7 @@ vi.mock("@tauri-apps/api/core", () => ({ invoke: invokeMock }));
 import { EvalReportTable } from "../components/EvalReportTable";
 import { EvalVerdictTable } from "../components/EvalVerdictTable";
 import { SttEvalPanel } from "../components/SttEvalPanel";
+import { SttEvalEditor } from "../components/SttEvalEditor";
 import type { SttReportRow, SttModelVerdict } from "../../../shared/ipc/stt/eval";
 
 const wer = (over: Partial<SttReportRow["wer"] & object> = {}) => ({
@@ -73,5 +74,61 @@ describe("SttEvalPanel", () => {
     invokeMock.mockResolvedValue([]);
     render(<SttEvalPanel />);
     expect(await screen.findByTestId("stt-eval-no-specs")).toBeInTheDocument();
+  });
+
+  it("'+ New spec' opens the editor", async () => {
+    invokeMock.mockImplementation(async (cmd: string) => {
+      if (cmd === "list_transcripts") return [];
+      return [];
+    });
+    render(<SttEvalPanel />);
+    await act(async () => {
+      fireEvent.click(await screen.findByTestId("stt-eval-new"));
+    });
+    expect(screen.getByTestId("stt-eval-editor")).toBeInTheDocument();
+  });
+});
+
+describe("SttEvalEditor", () => {
+  it("generate-starter builds a self-referenced task per transcript and saves it", async () => {
+    invokeMock.mockImplementation(async (cmd: string) => {
+      if (cmd === "list_transcripts") return [{ id: "clip-1", model: "m", text: "hello world" }];
+      return undefined;
+    });
+    const onSaved = vi.fn();
+    render(<SttEvalEditor onSaved={onSaved} onCancel={() => {}} />);
+    await waitFor(() => expect(screen.getByTestId("stt-eval-starter")).toBeInTheDocument());
+    fireEvent.click(screen.getByTestId("stt-eval-starter"));
+    expect(screen.getByTestId("stt-eval-ref-0")).toHaveValue("hello world"); // reference prefilled
+    expect(screen.getByTestId("stt-eval-name")).toHaveValue("starter");
+    await act(async () => {
+      fireEvent.click(screen.getByTestId("stt-eval-save"));
+    });
+    const call = invokeMock.mock.calls.find((c) => c[0] === "save_stt_eval");
+    expect(call?.[1]).toEqual({
+      name: "starter",
+      spec: { tasks: [{ id: "clip-1", reference: "hello world", critical_tokens: [] }] },
+    });
+    expect(onSaved).toHaveBeenCalledWith("starter");
+  });
+
+  it("parses critical tokens and turns a blank reference into null", async () => {
+    invokeMock.mockImplementation(async (cmd: string) => {
+      if (cmd === "list_transcripts") return [{ id: "clip-1", model: "m", text: "hi" }];
+      return undefined;
+    });
+    render(<SttEvalEditor initialName="legal-test" onSaved={vi.fn()} onCancel={() => {}} />);
+    await waitFor(() => expect(screen.getByTestId("stt-eval-add")).toBeInTheDocument());
+    fireEvent.click(screen.getByTestId("stt-eval-add"));
+    fireEvent.change(screen.getByTestId("stt-eval-ref-0"), { target: { value: "   " } });
+    fireEvent.change(screen.getByTestId("stt-eval-crit-0"), { target: { value: "$100, ruben" } });
+    await act(async () => {
+      fireEvent.click(screen.getByTestId("stt-eval-save"));
+    });
+    const call = invokeMock.mock.calls.find((c) => c[0] === "save_stt_eval");
+    expect(call?.[1]).toEqual({
+      name: "legal-test",
+      spec: { tasks: [{ id: "clip-1", reference: null, critical_tokens: ["$100", "ruben"] }] },
+    });
   });
 });
