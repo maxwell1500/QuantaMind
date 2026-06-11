@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { useTranscriptStore } from "../state/transcriptStore";
 import { useAssistantRun } from "../hooks/useAssistantRun";
 import { useSelectedModelStore } from "../../../shared/state/selectedModelStore";
@@ -6,21 +6,37 @@ import { useSelectedModelStore } from "../../../shared/state/selectedModelStore"
 /// Voice → assistant: the transcript becomes the user's message; an optional
 /// typed prompt is the system/context (e.g. "You are a customer support agent").
 /// Sends both to the selected LLM and streams its reasoned reply. The prompt is
-/// optional — without it the model just answers the transcript.
+/// optional — without it the model just answers the transcript. With
+/// **Auto-summarize** on, the LLM fires automatically when a transcription
+/// completes (the STT→LLM auto-pipe), so the user just records.
 export function VoiceAssistant() {
   const segments = useTranscriptStore((s) => s.segments);
   const sttStatus = useTranscriptStore((s) => s.status);
+  const currentId = useTranscriptStore((s) => s.currentId);
   const model = useSelectedModelStore((s) => s.selectedModels[0]?.name ?? null);
   const { output, status, error, run, stop } = useAssistantRun();
   const [prompt, setPrompt] = useState("");
+  const [autoSummarize, setAutoSummarize] = useState(false);
+  // The transcript we last auto-summarized — so the auto-pipe fires once per clip.
+  const lastAutoId = useRef<string | null>(null);
 
   const transcript = segments.map((s) => s.text.trim()).filter(Boolean).join(" ");
   const ready = sttStatus === "done" && transcript.length > 0;
   const canAsk = ready && !!model && status !== "running";
 
   const onAsk = () => {
-    if (model) void run(model, transcript, prompt);
+    if (model) void run(model, transcript, prompt, { transcriptId: currentId, auto: false });
   };
+
+  // Auto-pipe: when a fresh transcript completes and a model is selected, summarize
+  // it automatically (once). The raw transcript feeds the LLM, so the end-to-end
+  // time is production-faithful.
+  useEffect(() => {
+    if (autoSummarize && ready && model && currentId && lastAutoId.current !== currentId && status !== "running") {
+      lastAutoId.current = currentId;
+      void run(model, transcript, prompt, { transcriptId: currentId, auto: true });
+    }
+  }, [autoSummarize, ready, model, currentId, status, transcript, prompt, run]);
 
   return (
     <div className="flex flex-col gap-2 border rounded p-3" data-testid="stt-assistant">
@@ -53,6 +69,15 @@ export function VoiceAssistant() {
             Ask the assistant
           </button>
         )}
+        <label className="flex items-center gap-1.5 text-xs text-gray-600 cursor-pointer" title="Run the LLM automatically when a recording finishes (pick an STT model in the header and an LLM model too)">
+          <input
+            type="checkbox"
+            checked={autoSummarize}
+            onChange={(e) => setAutoSummarize(e.target.checked)}
+            data-testid="stt-auto-summarize"
+          />
+          Auto-summarize
+        </label>
         {!ready && <span className="text-xs text-gray-400">Record or upload audio first.</span>}
         {ready && !model && (
           <span className="text-xs text-amber-700" data-testid="stt-assistant-no-model">

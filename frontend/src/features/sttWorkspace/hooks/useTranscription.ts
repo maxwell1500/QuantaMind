@@ -10,6 +10,7 @@ import {
 import { formatIpcError } from "../../../shared/ipc/core/error";
 import { useTranscriptStore } from "../state/transcriptStore";
 import { useSttResultStore } from "../../sttInspector/state/sttResultStore";
+import { useAssistantResultStore } from "../../sttInspector/state/assistantResultStore";
 
 /// Subscribe to live segment/progress events (unregistered on unmount — no
 /// stacked listeners across enter/leave of STT mode) and drive a transcription.
@@ -51,6 +52,8 @@ export function useTranscription() {
     store.reset();
     store.setCurrentId(id);
     store.setStatus("transcribing");
+    // Drop any prior LLM summary so its metrics never linger over a new clip.
+    useAssistantResultStore.getState().clear();
     try {
       const transcript = await transcribeAudio(path, id);
       // Reconcile the live view with the persisted truth (deduped, canonical).

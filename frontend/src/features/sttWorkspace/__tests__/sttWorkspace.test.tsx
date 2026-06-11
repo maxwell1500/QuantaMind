@@ -167,4 +167,17 @@ describe("VoiceAssistant", () => {
     expect(screen.getByTestId("stt-assistant-ask")).toBeDisabled();
     expect(screen.getByTestId("stt-assistant-no-model")).toBeInTheDocument();
   });
+
+  it("auto-summarize fires the LLM on a completed transcript without a click", async () => {
+    invokeMock.mockResolvedValue(undefined);
+    useSelectedModelStore.setState({ selectedModels: [{ name: "llama3.2:1b", backend: "ollama", size_bytes: 1 }] });
+    useTranscriptStore.setState({ status: "done", currentId: "clip-7", segments: [seg("my bike is broken")] });
+    render(<VoiceAssistant />);
+    expect(invokeMock).not.toHaveBeenCalledWith("run_prompt", expect.anything()); // not yet
+    await act(async () => {
+      fireEvent.click(screen.getByTestId("stt-auto-summarize")); // turn the auto-pipe on
+    });
+    const call = invokeMock.mock.calls.find((c) => c[0] === "run_prompt");
+    expect(call?.[1]).toMatchObject({ model: "llama3.2:1b", prompt: "my bike is broken" });
+  });
 });

@@ -1,6 +1,8 @@
 import { useSttResultStore } from "../state/sttResultStore";
 import { wordsPerSec } from "../format/sttMetrics";
 import { SttExportButtons } from "./SttExportButtons";
+import { LlmStageMetrics } from "./LlmStageMetrics";
+import { PipelineSummary } from "./PipelineSummary";
 
 // One value against a tick ruler — same monospace ▓-bar idiom as the LLM
 // MetricsChart. A null value renders "Not available", never a fabricated 0.
@@ -87,6 +89,8 @@ export function SttAnalysisSection() {
         </div>
       </div>
       <SttExportButtons />
+      <LlmStageMetrics showOutput />
+      <PipelineSummary />
     </section>
   );
 }
