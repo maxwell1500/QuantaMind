@@ -649,6 +649,18 @@ transcript):
   was emitted — the per-segment hallucination signal that complements the run-level *Output during
   silence* rate above.
 
+**The voice pipeline (STT → LLM).** When an LLM runs on the transcript — the **Auto-summarize**
+toggle (the STT→LLM auto-pipe), the voice panel's **Ask**, or a plain **Workspace** run after a
+transcription — its metrics render through the **same rich LLM views** as any other run: the full
+per-token `ModelTimeline` (phase bar, VRAM, context budget, token-latency chart) in the Inspector and
+the throughput / TTFT bars in the Analysis tab. The STT section sits **directly below** it, so both
+stages of the pipeline read top-to-bottom on one page. There is no separate, thinner LLM card — the
+LLM run is mirrored into the normal compare rows, so it stays the single source of those numbers.
+For the auto-pipe (where the two stages are linked by transcript id), an **end-to-end one-liner**
+`Audio → Transcript → LLM · end-to-end` is appended with an `auto` badge; the time is the *processing*
+total (STT wall + LLM wall, not the audio length), and it appears only when the LLM ran for the
+transcript currently shown, so the two stages are never mismatched.
+
 ## STT Eval & Readiness {#stt-eval}
 
 Beyond the per-transcript Inspector, the **Analysis** tab has an **STT Eval & Readiness** panel that
