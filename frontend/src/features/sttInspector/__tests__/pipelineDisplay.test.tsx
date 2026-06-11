@@ -1,6 +1,5 @@
 import { describe, it, expect, beforeEach } from "vitest";
 import { render, screen } from "@testing-library/react";
-import { LlmStageMetrics } from "../components/LlmStageMetrics";
 import { PipelineSummary } from "../components/PipelineSummary";
 import { useAssistantResultStore, type AssistantResult } from "../state/assistantResultStore";
 import { useSttResultStore } from "../state/sttResultStore";
@@ -36,29 +35,6 @@ const transcript = (over: Partial<Transcript> = {}): Transcript =>
 beforeEach(() => {
   useAssistantResultStore.getState().clear();
   useSttResultStore.getState().clear();
-});
-
-describe("LlmStageMetrics", () => {
-  it("renders nothing until a summary exists", () => {
-    const { container } = render(<LlmStageMetrics />);
-    expect(container).toBeEmptyDOMElement();
-  });
-
-  it("shows the measured LLM metrics and the summary output", () => {
-    useAssistantResultStore.getState().setResult(llm());
-    render(<LlmStageMetrics showOutput />);
-    expect(screen.getByTestId("stt-llm-ttft").textContent).toContain("120 ms");
-    expect(screen.getByTestId("stt-llm-throughput").textContent).toContain("50.0 tok/s");
-    expect(screen.getByTestId("stt-llm-tokens").textContent).toContain("42");
-    expect(screen.getByTestId("stt-llm-output").textContent).toContain("bike is broken");
-  });
-
-  it("renders N/A for a missing metric, never a fabricated 0", () => {
-    useAssistantResultStore.getState().setResult(llm({ ttftMs: null, tokensPerSec: null }));
-    render(<LlmStageMetrics />);
-    expect(screen.getByTestId("stt-llm-ttft").textContent).toContain("N/A");
-    expect(screen.getByTestId("stt-llm-throughput").textContent).toContain("N/A");
-  });
 });
 
 describe("PipelineSummary", () => {

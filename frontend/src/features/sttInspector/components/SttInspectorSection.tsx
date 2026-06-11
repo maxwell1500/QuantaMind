@@ -5,7 +5,6 @@ import { ConfidenceTimeline, SEG_COLOR } from "./ConfidenceTimeline";
 import { ConfidenceHistogram } from "./ConfidenceHistogram";
 import { SttPhaseBar } from "./SttPhaseBar";
 import { SttMetricCards } from "./SttMetricCards";
-import { LlmStageMetrics } from "./LlmStageMetrics";
 import { PipelineSummary } from "./PipelineSummary";
 
 const LEGEND = [
@@ -56,7 +55,6 @@ export function SttInspectorSection({ width }: { width: number }) {
 
       <SttMetricCards transcript={t} />
 
-      <LlmStageMetrics />
       <PipelineSummary />
     </section>
   );

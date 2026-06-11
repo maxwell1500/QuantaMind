@@ -1,7 +1,6 @@
 import { useSttResultStore } from "../state/sttResultStore";
 import { wordsPerSec } from "../format/sttMetrics";
 import { SttExportButtons } from "./SttExportButtons";
-import { LlmStageMetrics } from "./LlmStageMetrics";
 import { PipelineSummary } from "./PipelineSummary";
 
 // One value against a tick ruler — same monospace ▓-bar idiom as the LLM
@@ -89,7 +88,6 @@ export function SttAnalysisSection() {
         </div>
       </div>
       <SttExportButtons />
-      <LlmStageMetrics showOutput />
       <PipelineSummary />
     </section>
   );
