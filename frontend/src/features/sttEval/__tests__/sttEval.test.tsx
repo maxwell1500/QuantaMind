@@ -98,7 +98,9 @@ describe("SttEvalEditor", () => {
     const onSaved = vi.fn();
     render(<SttEvalEditor onSaved={onSaved} onCancel={() => {}} />);
     await waitFor(() => expect(screen.getByTestId("stt-eval-starter")).toBeInTheDocument());
-    fireEvent.click(screen.getByTestId("stt-eval-starter"));
+    await act(async () => {
+      fireEvent.click(screen.getByTestId("stt-eval-starter")); // flush setRows + setName before reading
+    });
     expect(screen.getByTestId("stt-eval-ref-0")).toHaveValue("hello world"); // reference prefilled
     expect(screen.getByTestId("stt-eval-name")).toHaveValue("starter");
     await act(async () => {

@@ -91,9 +91,11 @@ describe("useStreamingRun", () => {
 
   it("on Done, mirrors metrics into workspaceStore.lastRunMetrics", async () => {
     vi.mocked(invoke).mockResolvedValue(undefined);
-    renderHook(() => useStreamingRun());
+    const { result } = renderHook(() => useStreamingRun());
 
     await waitFor(() => expect(handlers["prompt-done"]).toBeDefined());
+    // A done event always follows a start() — the hook only mirrors the run it began.
+    await act(async () => { await result.current.start("m", "p"); });
 
     const payload = { ttft_ms: 200, tokens_per_sec: 30.5, token_count: 12, timeline: [] };
     act(() => {
