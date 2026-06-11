@@ -104,6 +104,7 @@ pub fn run() {
             commands::stt::transcribe::transcribe_audio,
             commands::stt::transcribe::load_transcript,
             commands::stt::eval::eval_cmd::run_stt_eval,
+            commands::stt::eval::eval_cmd::list_transcripts,
             commands::stt::eval::eval_cmd::list_stt_evals,
             commands::stt::eval::eval_cmd::load_stt_eval,
             commands::stt::eval::eval_cmd::save_stt_eval,

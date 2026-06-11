@@ -3,6 +3,7 @@ use crate::errors::{AppError, AppResult};
 use crate::inference::stt::eval::report::SttReport;
 use crate::inference::stt::eval::scorer::{SttScorer, WerScorer};
 use crate::inference::stt::eval::spec::SttEvalSpec;
+use crate::persistence::stt::transcripts::TranscriptSummary;
 use crate::persistence::stt::{eval_reports, eval_specs, transcripts};
 use std::path::Path;
 use tauri::AppHandle;
@@ -33,6 +34,13 @@ pub(crate) fn run(
 pub fn run_stt_eval(app: AppHandle, spec: String) -> Result<SttReport, AppError> {
     let s = eval_specs::load(&evals_dir(&app)?, &spec)?;
     run(&transcripts_dir(&app)?, &reports_dir(&app)?, &spec, &s)
+}
+
+/// Stored transcripts (id + model + text) for the spec editor's picker and the
+/// "generate starter" action — the editor never reads transcript files itself.
+#[tauri::command]
+pub fn list_transcripts(app: AppHandle) -> Result<Vec<TranscriptSummary>, AppError> {
+    transcripts::list_summaries(&transcripts_dir(&app)?)
 }
 
 #[tauri::command]
