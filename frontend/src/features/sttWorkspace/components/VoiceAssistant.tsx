@@ -2,6 +2,7 @@ import { useEffect, useRef, useState } from "react";
 import { useTranscriptStore } from "../state/transcriptStore";
 import { useAssistantRun } from "../hooks/useAssistantRun";
 import { useSelectedModelStore } from "../../../shared/state/selectedModelStore";
+import { useCompareStore } from "../../compare/state/compareStore";
 
 /// Voice → assistant: the transcript becomes the user's message; an optional
 /// typed prompt is the system/context (e.g. "You are a customer support agent").
@@ -14,7 +15,8 @@ export function VoiceAssistant() {
   const sttStatus = useTranscriptStore((s) => s.status);
   const currentId = useTranscriptStore((s) => s.currentId);
   const model = useSelectedModelStore((s) => s.selectedModels[0]?.name ?? null);
-  const { output, status, error, run, stop } = useAssistantRun();
+  const setSingleRun = useCompareStore((s) => s.setSingleRun);
+  const { output, status, error, metrics, run, stop } = useAssistantRun();
   const [prompt, setPrompt] = useState("");
   const [autoSummarize, setAutoSummarize] = useState(false);
   // The transcript we last auto-summarized — so the auto-pipe fires once per clip.
@@ -37,6 +39,18 @@ export function VoiceAssistant() {
       void run(model, transcript, prompt, { transcriptId: currentId, auto: true });
     }
   }, [autoSummarize, ready, model, currentId, status, transcript, prompt, run]);
+
+  // Mirror the assistant run into the rows the Analysis/Inspector read, so the LLM
+  // stage renders through the same rich path as a main-Workspace run (the STT
+  // metrics render below it). Same bridge pattern as SingleRun.
+  useEffect(() => {
+    if (status === "idle" || !model) return;
+    setSingleRun({
+      model, modelId: null, status, output, metrics,
+      error: error ? { kind: "error", message: error } : null,
+      startedAt: null, endedAt: null,
+    });
+  }, [status, output, metrics, error, model, setSingleRun]);
 
   return (
     <div className="flex flex-col gap-2 border rounded p-3" data-testid="stt-assistant">
