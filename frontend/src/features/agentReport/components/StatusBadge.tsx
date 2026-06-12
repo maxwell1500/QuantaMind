@@ -27,7 +27,7 @@ export function StatusBadge({ status }: { status: Readiness }) {
   return (
     <span
       data-testid="readiness-badge-conditional"
-      className="inline-flex items-center font-mono font-bold text-amber-700 bg-amber-50/70 border border-amber-255 px-3 py-1 rounded-md text-xs select-none shadow-sm"
+      className="inline-flex items-center font-mono font-bold text-amber-700 bg-amber-50/70 border border-amber-200 px-3 py-1 rounded-md text-xs select-none shadow-sm"
     >
       [ 🟡 WARN ]
       <span className="hidden">CONDITIONAL</span>

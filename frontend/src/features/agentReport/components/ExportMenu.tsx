@@ -72,7 +72,7 @@ export function ExportMenu({ verdicts, profile, collectionId, hardware, cardRef 
       <button
         type="button"
         data-testid="readiness-export"
-        className="inline-flex items-center gap-2 bg-slate-950 hover:bg-slate-900 text-white rounded-lg text-sm font-semibold py-2.5 px-4 shadow-sm transition-all cursor-pointer"
+        className="inline-flex items-center gap-2 bg-blue-600 hover:bg-blue-500 text-white rounded-lg text-sm font-semibold py-2.5 px-4 shadow-sm transition-all cursor-pointer"
         onClick={() => setOpen((v) => !v)}
       >
         <span>⬇ Export HTML Report</span>
