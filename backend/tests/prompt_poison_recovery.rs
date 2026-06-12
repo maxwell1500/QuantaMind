@@ -1,15 +1,22 @@
-use quantamind_lib::commands::prompt_payloads::done_payload_or_zero;
+use quantamind_lib::commands::prompt::prompt_payloads::done_payload;
+use quantamind_lib::inference::generate::generate_stats::GenerateStats;
 use quantamind_lib::metrics::timing::RunTiming;
 use quantamind_lib::sync::MutexExt;
 use std::sync::{Arc, Mutex};
 use std::thread;
 
 /// F4: poisoning the timing mutex (e.g. a panic in the per-token callback)
-/// must not crash subsequent reads. The DonePayload degrades to zero
-/// metrics rather than returning poisoned-but-readable data or panicking.
+/// must not crash subsequent reads, and the payload must reflect the data
+/// actually recorded before the panic — never a fabricated zero, which is
+/// indistinguishable from a real empty run (see docs/architecture.md#robustness).
 #[test]
-fn poisoned_timing_yields_zero_metrics_not_panic() {
+fn poisoned_timing_recovers_recorded_metrics_not_zero() {
     let timing = Arc::new(Mutex::new(RunTiming::start()));
+    {
+        let mut g = timing.lock().expect("setup");
+        g.record_token("a");
+        g.record_token("b");
+    }
     let t_for_panic = timing.clone();
 
     // Simulate a panic while holding the lock — poisons the mutex.
@@ -21,10 +28,9 @@ fn poisoned_timing_yields_zero_metrics_not_panic() {
 
     assert!(timing.is_poisoned(), "test precondition: mutex must be poisoned");
 
-    let payload = done_payload_or_zero(&timing);
-    assert_eq!(payload.token_count, 0, "poison degrades token_count to 0");
-    assert!(payload.ttft_ms.is_none(), "poison degrades ttft_ms to None");
-    assert!(payload.tokens_per_sec.is_none(), "poison degrades tokens_per_sec to None");
+    let payload = done_payload(&timing, &GenerateStats::default());
+    assert_eq!(payload.token_count, 2, "recovers the real recorded count, not a fabricated 0");
+    assert!(payload.ttft_ms.is_some(), "recovers the recorded ttft, not None");
 }
 
 /// F4: lock_recover() must NOT panic on a poisoned mutex; it returns

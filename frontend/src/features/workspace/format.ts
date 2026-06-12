@@ -1,4 +1,4 @@
-import type { DonePayload } from "../../shared/ipc/events";
+import type { DonePayload } from "../../shared/ipc/events/events";
 
 export function formatMetrics(m: DonePayload): string {
   const ttft = m.ttft_ms ?? "—";

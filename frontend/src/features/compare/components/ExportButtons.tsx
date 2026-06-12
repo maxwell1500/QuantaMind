@@ -1,20 +1,22 @@
 import { useState } from "react";
 import { save } from "@tauri-apps/plugin-dialog";
-import { saveCompareReport, type CompareReportFormat } from "../../../shared/ipc/compare";
-import { formatIpcError } from "../../../shared/ipc/error";
+import { saveCompareReport } from "../../../shared/ipc/compare/compare";
+import { formatIpcError } from "../../../shared/ipc/core/error";
 import { useCompareStore } from "../state/compareStore";
+import { useSelectedModelStore } from "../../../shared/state/selectedModelStore";
+import { useInstalledModelsStore } from "../../models/state/installedModelsStore";
 import { buildReport } from "../format/buildReport";
 import { toMarkdown } from "../format/markdownReport";
 import { toJson } from "../format/jsonReport";
 
-const FORMAT_LABEL: Record<CompareReportFormat, string> = { md: "MD", json: "JSON" };
+const FORMAT_LABEL: Record<"md" | "json", string> = { md: "MD", json: "JSON" };
 
 export function ExportButtons() {
   const [error, setError] = useState<string | null>(null);
   const rows = useCompareStore((s) => s.rows);
   const disabled = rows.length === 0;
 
-  const exportAs = async (format: CompareReportFormat) => {
+  const exportAs = async (format: "md" | "json") => {
     setError(null);
     const path = await save({
       defaultPath: `quantamind-compare-${Date.now()}.${format}`,
@@ -23,9 +25,10 @@ export function ExportButtons() {
     if (!path) return;
     const s = useCompareStore.getState();
     const report = buildReport({
-      prompt: s.prompt, strategy: s.strategy,
+      prompt: s.prompt, systemPrompt: s.systemPrompt, strategy: s.strategy,
       hardwareSnapshot: s.hardwareSnapshot,
-      selectedModels: s.selectedModels, rows: s.rows,
+      selectedModels: useSelectedModelStore.getState().selectedModels, rows: s.rows,
+      installed: useInstalledModelsStore.getState().list,
     });
     const contents = format === "md" ? toMarkdown(report) : toJson(report);
     try {

@@ -15,7 +15,7 @@ import { __resetDownloadEventBusForTests } from "../../../state/downloadEventBus
 
 const STATS = (names: string[]) => names.map((n) => ({
   name: n, size_bytes: 1_000_000, modified_at: "",
-  family: "x", parameter_size: "", quantization: "",
+  family: "x", parameter_size: "", quantization: "", backend: "ollama" as const,
 }));
 
 const handlers: Record<string, EventCallback<unknown>> = {};

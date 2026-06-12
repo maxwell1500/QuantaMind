@@ -13,6 +13,8 @@ import App from "../App";
 import { useCompareStore } from "../features/compare/state/compareStore";
 import { useNavStore } from "../shared/state/navStore";
 import { useModelStore } from "../features/models/state/modelStore";
+import { useWorkspacesStore } from "../features/workspaces/state/workspaceStore";
+import { seedCurrentPrompt } from "./helpers/seedWorkspace";
 
 beforeEach(() => {
   vi.mocked(invoke).mockReset();
@@ -25,17 +27,19 @@ beforeEach(() => {
       return Promise.resolve({ total_bytes: 1, free_bytes: 1, ollama_models_bytes: 0 });
     if (cmd === "get_storage_path")
       return Promise.resolve({ current_path: "/tmp", from_env: false });
+    if (cmd === "save_prompt") return Promise.resolve(useWorkspacesStore.getState().current);
     return Promise.reject(new Error(`unknown ${cmd}`));
   });
   useCompareStore.getState().reset();
   useNavStore.setState({ topView: "workspace" });
   useModelStore.setState({ downloads: {}, pullNames: {}, activeHfName: null, hfSearchQuery: "", hfSelectedRepo: null });
+  seedCurrentPrompt();
 });
 
-const ALL = ["workspace", "compare", "models", "downloads", "storage"] as const;
+const ALL = ["workspace", "inspector", "models", "downloads", "settings"] as const;
 
-describe("App tab strip (5 top tabs)", () => {
-  it("renders all five tabs with Workspace active by default", () => {
+describe("App tab strip", () => {
+  it("renders the tabs with Workspace active by default", () => {
     render(<App />);
     for (const id of ALL) {
       expect(screen.getByTestId(`view-tab-${id}`))
@@ -45,6 +49,14 @@ describe("App tab strip (5 top tabs)", () => {
     for (const id of ALL.filter((x) => x !== "workspace")) {
       expect(screen.getByTestId(`view-${id}`)).toHaveAttribute("hidden");
     }
+  });
+
+  it("exposes the two-zone nav: a Compare tab and an Audit tab", () => {
+    render(<App />);
+    // Zone 1 (Manual Playground) renamed Analysis → Compare; Zone 2 (Automated
+    // Pipeline) gains a dedicated Audit tab alongside Eval.
+    expect(screen.getByTestId("view-tab-compare")).toBeInTheDocument();
+    expect(screen.getByTestId("view-tab-audit")).toBeInTheDocument();
   });
 
   it.each(ALL.filter((x) => x !== "workspace"))(
@@ -59,23 +71,12 @@ describe("App tab strip (5 top tabs)", () => {
     },
   );
 
-  it("Compare prompt survives a Workspace round-trip (Zustand-backed)", () => {
-    render(<App />);
-    fireEvent.click(screen.getByTestId("view-tab-compare"));
-    const input = screen.getByTestId("compare-prompt") as HTMLTextAreaElement;
-    fireEvent.change(input, { target: { value: "Explain CRDTs." } });
-    fireEvent.click(screen.getByTestId("view-tab-workspace"));
-    fireEvent.click(screen.getByTestId("view-tab-compare"));
-    expect((screen.getByTestId("compare-prompt") as HTMLTextAreaElement).value)
-      .toBe("Explain CRDTs.");
-  });
-
-  it("Workspace's own React state also survives the toggle (both views kept mounted)", () => {
+  it("Workspace prompt survives the toggle (kept mounted via hidden)", () => {
     render(<App />);
     const userEditor = within(screen.getByTestId("user-prompt-editor"))
       .getByTestId("prompt-input") as HTMLTextAreaElement;
     fireEvent.change(userEditor, { target: { value: "ws value" } });
-    fireEvent.click(screen.getByTestId("view-tab-compare"));
+    fireEvent.click(screen.getByTestId("view-tab-models"));
     fireEvent.click(screen.getByTestId("view-tab-workspace"));
     const afterToggle = within(screen.getByTestId("user-prompt-editor"))
       .getByTestId("prompt-input") as HTMLTextAreaElement;

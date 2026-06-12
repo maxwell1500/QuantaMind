@@ -1,5 +1,5 @@
 use mockito::Server;
-use quantamind_lib::commands::models::fetch_models;
+use quantamind_lib::commands::models::models::fetch_models;
 use quantamind_lib::errors::AppError;
 
 #[tokio::test]

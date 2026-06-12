@@ -16,6 +16,18 @@ describe("compareStore reducer", () => {
       .toEqual([{ model: "a", status: "pending" }, { model: "b", status: "pending" }]);
   });
 
+  it("setSingleRun replaces rows with the one bridged run row", () => {
+    useCompareStore.getState().initRun([M("a"), M("b")]); // a prior multi run
+    useCompareStore.getState().setSingleRun({
+      model: "solo", modelId: null, status: "running", output: "hi",
+      metrics: null, error: null, startedAt: null, endedAt: null,
+    });
+    const s = useCompareStore.getState();
+    expect(s.rows).toHaveLength(1);
+    expect(s.rows[0]).toMatchObject({ model: "solo", status: "running", output: "hi" });
+    expect(s.isRunning).toBe(true);
+  });
+
   it("appendToken transitions a pending row to running and accumulates output", () => {
     useCompareStore.getState().initRun([M("a")]);
     useCompareStore.getState().appendToken("a", "uuid-1", "hi ");
@@ -27,15 +39,22 @@ describe("compareStore reducer", () => {
     expect(row.startedAt).toBeTypeOf("string");
   });
 
-  it("setRowDone records metrics and sets endedAt", () => {
+  it("setRowDone records metrics (incl. timeline) and sets endedAt", () => {
     useCompareStore.getState().initRun([M("a")]);
+    const timeline = [{ text: "hi", t_ms: 12, n: 1 }];
     useCompareStore.getState().setRowDone({
-      model: "a", ttft_ms: 42, tokens_per_sec: 38.2, token_count: 218,
+      model: "a", ttft_ms: 42, tokens_per_sec: 38.2, token_count: 1, timeline,
     });
     const row = useCompareStore.getState().rows[0];
     expect(row.status).toBe("done");
-    expect(row.metrics).toEqual({ ttft_ms: 42, tokens_per_sec: 38.2, token_count: 218 });
+    expect(row.metrics).toEqual({ ttft_ms: 42, tokens_per_sec: 38.2, token_count: 1, timeline });
     expect(row.endedAt).toBeTypeOf("string");
+  });
+
+  it("setRowDone defaults timeline to [] when omitted", () => {
+    useCompareStore.getState().initRun([M("a")]);
+    useCompareStore.getState().setRowDone({ model: "a", ttft_ms: 1, tokens_per_sec: 10, token_count: 0 });
+    expect(useCompareStore.getState().rows[0].metrics?.timeline).toEqual([]);
   });
 
   it("setRowError stores kind + message and ends the row", () => {
@@ -57,13 +76,11 @@ describe("compareStore reducer", () => {
   });
 
   it("reset clears everything", () => {
-    useCompareStore.getState().setSelectedModels([M("a")]);
     useCompareStore.getState().setPrompt("hi");
     useCompareStore.getState().setSystemPrompt("you are concise");
     useCompareStore.getState().initRun([M("a")]);
     useCompareStore.getState().reset();
     const s = useCompareStore.getState();
-    expect(s.selectedModels).toEqual([]);
     expect(s.prompt).toBe("");
     expect(s.systemPrompt).toBe("");
     expect(s.rows).toEqual([]);
@@ -74,5 +91,35 @@ describe("compareStore reducer", () => {
     expect(useCompareStore.getState().systemPrompt).toBe("");
     useCompareStore.getState().setSystemPrompt("be terse");
     expect(useCompareStore.getState().systemPrompt).toBe("be terse");
+  });
+});
+
+describe("compareStore loading transitions", () => {
+  it("setRowLoading transitions pending → loading and assigns modelId", () => {
+    useCompareStore.getState().initRun([M("a"), M("b")]);
+    useCompareStore.getState().setRowLoading("a", "uuid-a");
+    const rows = useCompareStore.getState().rows;
+    expect(rows.find((r) => r.model === "a")).toMatchObject({
+      status: "loading", modelId: "uuid-a", output: "",
+    });
+    expect(rows.find((r) => r.model === "b")).toMatchObject({
+      status: "pending", modelId: null,
+    });
+  });
+
+  it("appendToken after setRowLoading transitions loading → running", () => {
+    useCompareStore.getState().initRun([M("a")]);
+    useCompareStore.getState().setRowLoading("a", "uuid-a");
+    useCompareStore.getState().appendToken("a", "uuid-a", "first ");
+    expect(useCompareStore.getState().rows[0]).toMatchObject({
+      status: "running", output: "first ", modelId: "uuid-a",
+    });
+  });
+
+  it("setRowLoading is a no-op on a row that already moved past pending", () => {
+    useCompareStore.getState().initRun([M("a")]);
+    useCompareStore.getState().appendToken("a", "uuid-a", "tok");
+    useCompareStore.getState().setRowLoading("a", "uuid-a");
+    expect(useCompareStore.getState().rows[0].status).toBe("running");
   });
 });

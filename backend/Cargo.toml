@@ -1,6 +1,6 @@
 [package]
 name = "quantamind"
-version = "0.1.0"
+version = "0.2.0"
 description = "QuantaMind — local LLM workspace"
 authors = ["quantamind-dev"]
 edition = "2021"
@@ -12,15 +12,23 @@ crate-type = ["staticlib", "cdylib", "rlib"]
 [build-dependencies]
 tauri-build = { version = "2", features = [] }
 
+[features]
+# Enterprise/air-gapped build: compile OUT the entire publish/auth surface
+# (commands/publish/{auth,preview_cmd,publish_cmd,cohort}). The offline share
+# export (commands/publish/export_cmd) stays IN every build.
+enterprise = []
+
 [dependencies]
 tauri = { version = "2", features = [] }
 tauri-plugin-dialog = "2"
+tauri-plugin-process = "2"
 tauri-plugin-shell = "2"
+tauri-plugin-updater = "2"
 serde = { version = "1", features = ["derive"] }
 serde_json = "1"
 serde_yaml = "0.9"
 thiserror = "2"
-reqwest = { version = "0.12", features = ["json", "stream"] }
+reqwest = { version = "0.12", features = ["json", "multipart", "stream"] }
 tokio = { version = "1", features = ["macros", "rt-multi-thread", "sync", "fs", "io-util"] }
 tokio-util = { version = "0.7", features = ["io"] }
 futures-util = "0.3"
@@ -28,6 +36,16 @@ uuid = { version = "1", features = ["v4"] }
 sysinfo = { version = "0.32", default-features = false, features = ["disk", "system"] }
 sha2 = "0.10"
 bytes = "1"
+# Publish auth (compiled out of enterprise builds): OS secure store for the
+# refresh token. Native backends only — Linux without a secret service falls
+# back to an in-memory session token (see commands/publish/auth.rs).
+keyring = { version = "3", features = ["apple-native", "windows-native"] }
+# PKCE S256 challenge encoding (publish auth; out of enterprise builds).
+base64 = "0.22"
+hound = "3"
+rubato = "0.16"
+symphonia = { version = "0.5", default-features = false, features = ["mp3", "pcm", "wav"] }
+cpal = "0.15"
 
 [dev-dependencies]
 mockito = "1"

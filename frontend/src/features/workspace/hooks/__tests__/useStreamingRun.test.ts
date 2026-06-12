@@ -8,6 +8,7 @@ import { invoke } from "@tauri-apps/api/core";
 import { listen, type EventCallback } from "@tauri-apps/api/event";
 import { useStreamingRun } from "../useStreamingRun";
 import { useWorkspaceStore } from "../../state/workspaceStore";
+import { useBackendStore } from "../../../../shared/state/backendStore";
 
 const handlers: Record<string, EventCallback<unknown>> = {};
 
@@ -31,6 +32,7 @@ describe("useStreamingRun", () => {
     vi.mocked(listen).mockReset();
     installListenMock();
     useWorkspaceStore.setState({ lastRunMetrics: null });
+    useBackendStore.setState({ selectedBackend: "ollama" });
   });
 
   it("tokens append in order, no dup, no drop; status -> done", async () => {
@@ -54,7 +56,7 @@ describe("useStreamingRun", () => {
     });
 
     act(() => {
-      fire("prompt-done", { ttft_ms: 12, tokens_per_sec: 50.0, token_count: 4 });
+      fire("prompt-done", { ttft_ms: 12, tokens_per_sec: 50.0, token_count: 4, timeline: [] });
     });
 
     expect(result.current.output).toBe("The sky is blue.");
@@ -63,10 +65,27 @@ describe("useStreamingRun", () => {
       ttft_ms: 12,
       tokens_per_sec: 50.0,
       token_count: 4,
+      timeline: [],
     });
     expect(invoke).toHaveBeenCalledWith("run_prompt", {
       model: "llama3.2:1b",
       prompt: "Why is the sky blue?",
+      backend: "ollama",
+    });
+  });
+
+  it("sends the active backend with the run", async () => {
+    vi.mocked(invoke).mockResolvedValue(undefined);
+    useBackendStore.setState({ selectedBackend: "llama_cpp" });
+    const { result } = renderHook(() => useStreamingRun());
+    await waitFor(() => expect(handlers["prompt-token"]).toBeDefined());
+    await act(async () => {
+      await result.current.start("phi3", "hi");
+    });
+    expect(invoke).toHaveBeenCalledWith("run_prompt", {
+      model: "phi3",
+      prompt: "hi",
+      backend: "llama_cpp",
     });
   });
 
@@ -76,7 +95,7 @@ describe("useStreamingRun", () => {
 
     await waitFor(() => expect(handlers["prompt-done"]).toBeDefined());
 
-    const payload = { ttft_ms: 200, tokens_per_sec: 30.5, token_count: 12 };
+    const payload = { ttft_ms: 200, tokens_per_sec: 30.5, token_count: 12, timeline: [] };
     act(() => {
       fire("prompt-done", payload);
     });

@@ -1,5 +1,5 @@
 import { describe, it, expect, vi } from "vitest";
-import { TimeoutError, withTimeout } from "../timeout";
+import { TimeoutError, withTimeout } from "../core/timeout";
 
 describe("withTimeout (F7)", () => {
   it("rejects with TimeoutError exactly after the given ms", async () => {

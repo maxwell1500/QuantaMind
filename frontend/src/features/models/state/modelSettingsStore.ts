@@ -4,7 +4,7 @@ import {
   getModelSettings,
   setModelTemperature,
   type ModelSettingsMap,
-} from "../../../shared/ipc/model_settings";
+} from "../../../shared/ipc/models/model_settings";
 
 export interface ModelSettingsStoreState {
   byModel: ModelSettingsMap;

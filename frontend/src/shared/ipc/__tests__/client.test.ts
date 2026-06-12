@@ -5,7 +5,7 @@ vi.mock("@tauri-apps/api/core", () => ({
 }));
 
 import { invoke } from "@tauri-apps/api/core";
-import { listModels, checkOllamaHealth } from "../client";
+import { listModels, checkOllamaHealth, checkMlxHealth } from "../core/client";
 
 describe("ipc client", () => {
   beforeEach(() => {
@@ -25,5 +25,12 @@ describe("ipc client", () => {
     const result = await checkOllamaHealth();
     expect(invoke).toHaveBeenCalledWith("check_ollama_health");
     expect(result).toEqual({ available: true, version: "0.1.32" });
+  });
+
+  it("checkMlxHealth invokes check_mlx_health and returns HealthStatus", async () => {
+    vi.mocked(invoke).mockResolvedValue({ available: false, version: null });
+    const result = await checkMlxHealth();
+    expect(invoke).toHaveBeenCalledWith("check_mlx_health");
+    expect(result).toEqual({ available: false, version: null });
   });
 });

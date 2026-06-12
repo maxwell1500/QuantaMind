@@ -1,4 +1,4 @@
-use quantamind_lib::commands::feasibility::{assess, InstallFeasibility};
+use quantamind_lib::commands::system::feasibility::{assess, InstallFeasibility};
 
 const GB: u64 = 1024 * 1024 * 1024;
 

@@ -24,6 +24,10 @@ pnpm-debug.log*
 # Rust target dirs (also covered by src-tauri/.gitignore)
 target/
 
+# llama-server sidecar binaries — fetched by scripts/fetch-llama-server.sh,
+# never committed (multi-MB build artifacts). See docs/cross-platform-builds.md.
+backend/binaries/
+
 # Env
 .env
 .env.local

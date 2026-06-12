@@ -1,22 +1,24 @@
 import type { CompareRow, RowStatus } from "../state/compareStore";
-import { useCompareStore } from "../state/compareStore";
-import { useCompareRun } from "../hooks/useCompareRun";
+import { useModelLabel } from "../../models/hooks/useModelLabel";
 
 type Props = { row: CompareRow };
 
 const STATUS_LABEL: Record<RowStatus, string> = {
   pending: "Waiting",
+  loading: "Loading model…",
   running: "Running",
   done: "Done",
   cancelled: "Cancelled",
   error: "Error",
 };
+
 const STATUS_CLASS: Record<RowStatus, string> = {
-  pending: "bg-gray-100 text-gray-700",
-  running: "bg-blue-100 text-blue-800",
-  done: "bg-green-100 text-green-800",
-  cancelled: "bg-amber-100 text-amber-800",
-  error: "bg-red-100 text-red-800",
+  pending: "text-gray-500",
+  loading: "text-blue-600 animate-pulse",
+  running: "text-blue-600 animate-pulse",
+  done: "text-green-600 font-semibold",
+  cancelled: "text-amber-600",
+  error: "text-red-600 font-semibold",
 };
 
 const formatMetrics = (m: NonNullable<CompareRow["metrics"]>): string => {
@@ -27,45 +29,44 @@ const formatMetrics = (m: NonNullable<CompareRow["metrics"]>): string => {
 };
 
 export function CompareColumn({ row }: Props) {
-  const strategy = useCompareStore((s) => s.strategy);
-  const { skip } = useCompareRun();
-  const showSkip = strategy === "sequential_skippable" && row.status === "running" && row.modelId !== null;
+  const label = useModelLabel();
   return (
     <div
       data-testid={`compare-column-${row.model}`}
-      className="border rounded p-2 flex flex-col gap-1 min-w-[260px] max-w-[420px]"
+      className="border border-gray-100 rounded-lg p-3 flex flex-col gap-2 min-w-[300px] max-w-[500px] flex-1 bg-gray-50 font-mono"
     >
-      <div className="flex items-center justify-between gap-2">
-        <span className="text-sm font-medium break-all">{row.model}</span>
-        <div className="flex items-center gap-2">
-          {showSkip && (
-            <button
-              type="button"
-              onClick={() => row.modelId && void skip(row.modelId)}
-              className="text-xs border rounded px-2 py-0.5"
-              data-testid={`compare-skip-${row.model}`}
-            >
-              Skip
-            </button>
-          )}
-          <span data-testid={`compare-status-${row.model}`} className={`text-xs px-2 py-0.5 rounded ${STATUS_CLASS[row.status]}`}>
-            {STATUS_LABEL[row.status]}
-          </span>
-        </div>
+      <div className="flex items-center justify-between gap-4 border-b border-gray-100 pb-1.5">
+        <span className="text-xs font-bold text-gray-700 break-all">{label(row.model)}</span>
+        <span
+          data-testid={`compare-status-${row.model}`}
+          className={`text-xs ${STATUS_CLASS[row.status]}`}
+        >
+          [{STATUS_LABEL[row.status]}]
+        </span>
       </div>
-      <pre
-        data-testid={`compare-output-${row.model}`}
-        className="text-xs whitespace-pre-wrap break-words font-mono bg-gray-50 rounded p-2 min-h-[80px] max-h-[280px] overflow-auto"
-      >
-        {row.output || (row.status === "pending" ? "" : " ")}
-      </pre>
+      {row.status === "loading" && !row.output ? (
+        <div
+          data-testid={`compare-loading-${row.model}`}
+          className="flex items-center gap-2 text-xs text-gray-500 bg-gray-100 border border-gray-100 rounded p-2.5 min-h-[90px] select-none"
+        >
+          <span aria-hidden className="inline-block w-3 h-3 border-2 border-gray-400 border-t-transparent rounded-full animate-spin" />
+          <span>Loading model… (up to 30s)</span>
+        </div>
+      ) : (
+        <pre
+          data-testid={`compare-output-${row.model}`}
+          className="text-xs whitespace-pre-wrap break-words font-mono bg-gray-100 border border-gray-100 rounded p-2.5 min-h-[90px] max-h-[220px] overflow-auto text-gray-900"
+        >
+          {row.output || (row.status === "pending" ? "" : " ")}
+        </pre>
+      )}
       {row.metrics && row.status === "done" && (
-        <div className="text-xs text-gray-600" data-testid={`compare-metrics-${row.model}`}>
+        <div className="text-xs text-gray-500 pt-1 select-none font-semibold" data-testid={`compare-metrics-${row.model}`}>
           {formatMetrics(row.metrics)}
         </div>
       )}
       {row.error && (
-        <div role="alert" data-testid={`compare-error-${row.model}`} className="text-xs text-red-600">
+        <div role="alert" data-testid={`compare-error-${row.model}`} className="text-xs text-red-600 font-semibold pt-1">
           {row.error.kind}: {row.error.message}
         </div>
       )}

@@ -10,8 +10,12 @@
       "identifier": "shell:allow-open",
       "allow": [
         { "url": "https://ollama.com/download" },
-        { "url": "https://ollama.com/library" }
+        { "url": "https://ollama.com/library" },
+        { "url": "https://quantamind.co/docs/**" },
+        { "url": "mailto:**" }
       ]
-    }
+    },
+    "updater:default",
+    "process:default"
   ]
 }

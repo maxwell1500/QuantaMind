@@ -18,11 +18,12 @@ beforeEach(() => {
     if (cmd === "hf_search")
       return Promise.resolve([HIT("bartowski/Llama-GGUF", 1234), HIT("other/Repo-GGUF", 42)]);
     if (cmd === "hf_repo_files") return Promise.resolve([]);
+    if (cmd === "hf_model_card") return Promise.resolve(null);
     if (cmd === "list_models") return Promise.resolve([]);
     return Promise.reject(new Error(`unknown ${cmd}`));
   });
   // Reset the persisted HF state so tests don't leak query/selected across runs.
-  useModelStore.setState({ hfSearchQuery: "", hfSelectedRepo: null });
+  useModelStore.setState({ hfSearchQuery: "", hfSelectedRepo: null, hfRepoKind: "gguf" });
 });
 
 describe("HuggingFaceTab (live search)", () => {
@@ -36,7 +37,7 @@ describe("HuggingFaceTab (live search)", () => {
     render(<HuggingFaceTab />);
     fireEvent.change(screen.getByLabelText("Search Hugging Face"), { target: { value: "llama" } });
     await waitFor(
-      () => expect(invoke).toHaveBeenCalledWith("hf_search", { query: "llama", limit: 30 }),
+      () => expect(invoke).toHaveBeenCalledWith("hf_search", { query: "llama", limit: 30, kind: "gguf" }),
       { timeout: 1000 },
     );
     await screen.findByTestId("hf-card-bartowski/Llama-GGUF");
@@ -62,6 +63,40 @@ describe("HuggingFaceTab (live search)", () => {
     expect(screen.getByTestId("hf-repo-detail")).toBeInTheDocument();
     expect(screen.getByTestId("hf-repo-detail")).toHaveTextContent("bartowski/Llama-GGUF");
     expect(useModelStore.getState().hfSelectedRepo).toBe("bartowski/Llama-GGUF");
+  });
+
+  it("switching to MLX re-searches with kind=mlx", async () => {
+    render(<HuggingFaceTab />);
+    fireEvent.change(screen.getByLabelText("Search Hugging Face"), { target: { value: "llama" } });
+    await waitFor(
+      () => expect(invoke).toHaveBeenCalledWith("hf_search", { query: "llama", limit: 30, kind: "gguf" }),
+      { timeout: 1000 },
+    );
+    fireEvent.click(screen.getByTestId("hf-kind-mlx"));
+    await waitFor(
+      () => expect(invoke).toHaveBeenCalledWith("hf_search", { query: "llama", limit: 30, kind: "mlx" }),
+      { timeout: 1000 },
+    );
+  });
+
+  it("an mlx-tagged repo opens the MLX download detail even under GGUF search", async () => {
+    // Routing is by the repo's tags, not the toggle: a user in (unfiltered)
+    // GGUF search who clicks an MLX repo gets the MLX download detail.
+    vi.mocked(invoke).mockImplementation((cmd: string) => {
+      if (cmd === "hf_search")
+        return Promise.resolve([
+          { id: "mlx-community/DeepSeek-MLX-4bit", downloads: 9, likes: 1, tags: ["mlx", "safetensors"], last_modified: null },
+        ]);
+      if (cmd === "hf_model_card") return Promise.resolve(null);
+      return Promise.resolve([]);
+    });
+    render(<HuggingFaceTab />);
+    // Stay on the default GGUF toggle on purpose.
+    fireEvent.change(screen.getByLabelText("Search Hugging Face"), { target: { value: "deepseek" } });
+    const card = await screen.findByTestId("hf-card-mlx-community/DeepSeek-MLX-4bit", undefined, { timeout: 1000 });
+    fireEvent.click(card);
+    expect(await screen.findByTestId("mlx-repo-detail")).toBeInTheDocument();
+    expect(screen.getByTestId("mlx-download-button")).toBeInTheDocument();
   });
 
   it("the search query survives a select-then-back round-trip", async () => {

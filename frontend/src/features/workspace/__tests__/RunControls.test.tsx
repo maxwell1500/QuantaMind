@@ -1,6 +1,6 @@
 import { describe, it, expect, vi } from "vitest";
 import { render, screen, fireEvent } from "@testing-library/react";
-import { RunControls } from "../components/RunControls";
+import { RunControls } from "../components/run/RunControls";
 
 describe("RunControls", () => {
   it("Run is enabled when idle + canRun; Cancel is disabled", () => {
@@ -60,5 +60,37 @@ describe("RunControls", () => {
       />,
     );
     expect(screen.getByTestId("run-status")).toHaveTextContent("done");
+  });
+
+  it("Run is disabled with a blockedHint shown as the title + inline text", () => {
+    const onRun = vi.fn();
+    render(
+      <RunControls
+        status="idle"
+        canRun={true}
+        blockedHint="Start the MLX backend to run this model"
+        onRun={onRun}
+        onCancel={() => {}}
+      />,
+    );
+    const run = screen.getByRole("button", { name: /run/i });
+    expect(run).toBeDisabled();
+    expect(run).toHaveAttribute("title", "Start the MLX backend to run this model");
+    expect(screen.getByTestId("run-blocked-hint")).toHaveTextContent("Start the MLX backend");
+    fireEvent.click(run);
+    expect(onRun).not.toHaveBeenCalled();
+  });
+
+  it("Run re-enables when blockedHint clears", () => {
+    const { rerender } = render(
+      <RunControls status="idle" canRun={true} blockedHint="Start Ollama first"
+        onRun={() => {}} onCancel={() => {}} />,
+    );
+    expect(screen.getByRole("button", { name: /run/i })).toBeDisabled();
+    rerender(
+      <RunControls status="idle" canRun={true} blockedHint={null}
+        onRun={() => {}} onCancel={() => {}} />,
+    );
+    expect(screen.getByRole("button", { name: /run/i })).not.toBeDisabled();
   });
 });

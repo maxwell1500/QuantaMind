@@ -1,7 +1,7 @@
-use quantamind_lib::inference::chat_template_data::{
+use quantamind_lib::inference::chat::chat_template_data::{
     ChatTemplate, COMMAND_R, DEEPSEEK, GEMMA, LLAMA3, MISTRAL, PHI3, QWEN_CHATML, YI,
 };
-use quantamind_lib::inference::chat_templates::detect_template;
+use quantamind_lib::inference::chat::chat_templates::detect_template;
 
 const ALL: &[ChatTemplate] = &[LLAMA3, QWEN_CHATML, MISTRAL, PHI3, GEMMA, COMMAND_R, DEEPSEEK, YI];
 

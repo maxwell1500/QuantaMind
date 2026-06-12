@@ -1,72 +1,79 @@
-import { useRef, useState } from "react";
-import { ModelPicker } from "./ModelPicker";
-import { PromptEditor } from "./PromptEditor";
-import { OutputStream } from "./OutputStream";
-import { RunControls } from "./RunControls";
-import { WorkspaceIO } from "./WorkspaceIO";
-import { StatusBar } from "./StatusBar";
-import { useStreamingRun } from "../hooks/useStreamingRun";
-import { useWorkspaceStore } from "../state/workspaceStore";
-import { formatMetrics } from "../format";
+import { PromptEditor } from "./prompt/PromptEditor";
+import { StatusBar } from "./status/StatusBar";
+import { ModelSelectBar } from "./model-select/ModelSelectBar";
+import { SingleRun } from "./run/SingleRun";
+import { HardwareSummary } from "../../compare/components/controls/HardwareSummary";
+import { RunStrategyPicker } from "../../compare/components/controls/RunStrategyPicker";
+import { MultiRun } from "../../compare/components/controls/MultiRun";
+import { PromptTemplatePicker } from "./PromptTemplatePicker";
+import { BackendSetupGuide } from "./BackendSetupGuide";
+import { useWorkspacesStore } from "../../workspaces/state/workspaceStore";
+import { useSelectedModelStore } from "../../../shared/state/selectedModelStore";
+import { useBackendStore } from "../../../shared/state/backendStore";
+import { useSttRuntimeStore, runningSttEngine } from "../../stt/state/sttRuntimeStore";
+import { SttWorkspace } from "../../sttWorkspace/components/SttWorkspace";
 
+/// The run surface, driven by the global header selection. One model → a single
+/// streaming run; 2+ (Ollama) → a sequential/parallel compare whose results land
+/// on the Analysis tab. When no LLM backend is running, the setup guide takes
+/// over until a server comes up (StatusBar stays mounted so health keeps polling).
 export function Workspace() {
-  const model = useWorkspaceStore((s) => s.selectedModel);
-  const setModel = useWorkspaceStore((s) => s.setSelectedModel);
-  const [systemPrompt, setSystemPrompt] = useState("");
-  const [prompt, setPrompt] = useState("");
-  const { output, status, error, metrics, cancelledInfo, start, cancel } =
-    useStreamingRun();
-  const pickerRef = useRef<HTMLDivElement>(null);
+  const current = useWorkspacesStore((s) => s.current);
+  const patch = useWorkspacesStore((s) => s.patch);
+  const selectedModels = useSelectedModelStore((s) => s.selectedModels);
+  const noLlmRunning = useBackendStore(
+    (s) => s.ollamaHealthy !== true && s.llamaHealthy !== true && s.mlxHealthy !== true,
+  );
+  // STT takes precedence when its server is running → two-pane transcribe mode.
+  const sttEngine = useSttRuntimeStore(runningSttEngine);
+  const multi = selectedModels.length >= 2;
+  const model = selectedModels[0]?.name ?? null;
+
   return (
     <div className="space-y-3">
-      <div ref={pickerRef}>
-        <ModelPicker value={model} onChange={setModel} />
-      </div>
-      <PromptEditor
-        value={systemPrompt}
-        onChange={setSystemPrompt}
-        label="System prompt (optional)"
-        testId="system-prompt-editor"
-        height="120px"
-      />
-      <PromptEditor
-        value={prompt}
-        onChange={setPrompt}
-        label="User prompt"
-        testId="user-prompt-editor"
-      />
-      <RunControls
-        status={status}
-        canRun={!!model && prompt.trim().length > 0}
-        onRun={() => model && start(model, prompt, systemPrompt)}
-        onCancel={cancel}
-      />
-      <OutputStream output={output} />
-      {metrics && (
-        <p className="text-xs text-gray-600" data-testid="metrics">
-          {formatMetrics(metrics)}
+      {sttEngine ? (
+        <SttWorkspace engine={sttEngine} />
+      ) : noLlmRunning ? (
+        <BackendSetupGuide />
+      ) : (
+        <>
+          <ModelSelectBar />
+          {!current ? (
+        <p data-testid="workspace-empty" className="text-sm text-gray-500 px-2 py-8 text-center">
+          Select a prompt from the Files panel, or click <strong>+ New</strong> to create one.
         </p>
+      ) : (
+        <>
+          <PromptEditor
+            value={current.system}
+            onChange={(v) => patch({ system: v })}
+            label="System prompt (optional)"
+            testId="system-prompt-editor"
+            height="120px"
+          />
+          <div className="flex items-center justify-between">
+            <span className="text-xs text-gray-600">User prompt</span>
+            <PromptTemplatePicker onInsert={(body) => patch({ user: body })} />
+          </div>
+          <PromptEditor
+            value={current.user}
+            onChange={(v) => patch({ user: v })}
+            testId="user-prompt-editor"
+          />
+          {multi ? (
+            <>
+              <HardwareSummary />
+              <RunStrategyPicker />
+              <MultiRun />
+            </>
+          ) : (
+            <SingleRun model={model} />
+          )}
+            </>
+          )}
+        </>
       )}
-      {cancelledInfo && (
-        <p className="text-xs text-amber-700" data-testid="cancelled-info">
-          Cancelled · {cancelledInfo.token_count} tokens
-        </p>
-      )}
-      {error && <p className="text-red-600 text-sm">{error}</p>}
-      <WorkspaceIO
-        model={model}
-        prompt={prompt}
-        onLoad={(m, p) => {
-          setModel(m);
-          setPrompt(p);
-        }}
-      />
-      <StatusBar
-        model={model}
-        onModelClick={() =>
-          pickerRef.current?.scrollIntoView({ behavior: "smooth" })
-        }
-      />
+      <StatusBar model={model} onModelClick={() => undefined} />
     </div>
   );
 }

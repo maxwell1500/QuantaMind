@@ -1,6 +1,6 @@
 use mockito::{Matcher, Server};
 use quantamind_lib::errors::AppError;
-use quantamind_lib::inference::hf_browse::repo_gguf_files;
+use quantamind_lib::inference::hf::hf_browse::{repo_all_files, repo_gguf_files};
 
 #[tokio::test]
 async fn returns_only_gguf_files_with_sizes() {
@@ -48,6 +48,33 @@ async fn invalid_repo_rejected_before_network() {
             other => panic!("expected Validation for {bad:?}, got {other:?}"),
         }
     }
+}
+
+#[tokio::test]
+async fn repo_all_files_keeps_weights_and_config_drops_docs() {
+    // The MLX snapshot keeps everything mlx_lm needs and drops repo/doc junk
+    // (.gitattributes, *.md, LICENSE), including nested paths.
+    let mut s = Server::new_async().await;
+    let _m = s
+        .mock("GET", "/api/models/mlx-community/X-4bit/tree/main")
+        .match_query(Matcher::UrlEncoded("recursive".into(), "true".into()))
+        .with_status(200)
+        .with_body(r#"[
+            {"type":"file","path":".gitattributes","size":1},
+            {"type":"file","path":"README.md","size":2048},
+            {"type":"file","path":"LICENSE","size":1024},
+            {"type":"file","path":"config.json","size":700},
+            {"type":"file","path":"model.safetensors","size":4900000000},
+            {"type":"file","path":"tokenizer.json","size":1700000},
+            {"type":"directory","path":"nested"},
+            {"type":"file","path":"nested/extra.json","size":42}
+        ]"#)
+        .create_async()
+        .await;
+    let files = repo_all_files(&s.url(), "mlx-community/X-4bit").await.expect("ok");
+    let paths: Vec<&str> = files.iter().map(|f| f.path.as_str()).collect();
+    assert_eq!(paths, vec!["config.json", "model.safetensors", "tokenizer.json", "nested/extra.json"]);
+    assert_eq!(files[1].size_bytes, 4900000000, "real LFS size carried through");
 }
 
 #[tokio::test]

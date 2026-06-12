@@ -8,16 +8,34 @@ import { create } from "zustand";
 export type TopView =
   | "workspace"
   | "compare"
+  | "inspector"
   | "models"
   | "downloads"
-  | "storage";
+  | "eval"
+  | "audit"
+  | "quant"
+  | "agentReport"
+  | "settings"
+  | "help";
 
 interface NavStore {
   topView: TopView;
+  history: TopView[];
   setTopView: (v: TopView) => void;
+  goBack: () => void;
 }
 
 export const useNavStore = create<NavStore>((set) => ({
   topView: "workspace",
-  setTopView: (topView) => set({ topView }),
+  history: [],
+  setTopView: (v) =>
+    set((s) =>
+      v === s.topView ? s : { topView: v, history: [...s.history, s.topView].slice(-20) },
+    ),
+  goBack: () =>
+    set((s) =>
+      s.history.length === 0
+        ? s
+        : { topView: s.history[s.history.length - 1], history: s.history.slice(0, -1) },
+    ),
 }));

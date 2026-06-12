@@ -1,7 +1,7 @@
 import { describe, it, expect, vi } from "vitest";
 import { render, screen, fireEvent } from "@testing-library/react";
 import { LocalFilePreview } from "../LocalFilePreview";
-import type { GgufMetadata } from "../../../../shared/ipc/gguf";
+import type { GgufMetadata } from "../../../../shared/ipc/models/gguf";
 
 const META: GgufMetadata = {
   architecture: "llama",
@@ -66,6 +66,16 @@ describe("LocalFilePreview (M.8)", () => {
   it("error prop renders alert with the message", () => {
     setup({ error: "M.12 not implemented" });
     expect(screen.getByTestId("import-error")).toHaveTextContent("M.12 not implemented");
+  });
+
+  it("a truncated-GGUF error renders actionable guidance, not just the raw parser text", () => {
+    setup({ error: "GGUF truncated: need 8 bytes at offset 8388601, have 7" });
+    const alert = screen.getByTestId("import-error");
+    expect(alert).toHaveTextContent("This GGUF file is incomplete");
+    expect(alert).toHaveTextContent("Re-download the complete .gguf");
+    expect(alert).toHaveTextContent("Git LFS");
+    // raw detail is still available, just demoted
+    expect(alert).toHaveTextContent("offset 8388601");
   });
 
   it("Cancel and Import invoke their callbacks; name edit reaches onNameChange", () => {

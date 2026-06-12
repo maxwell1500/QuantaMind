@@ -1,23 +1,16 @@
 import { create } from "zustand";
-import type { DonePayload } from "../../../shared/ipc/events";
+import type { DonePayload } from "../../../shared/ipc/events/events";
 
-// Shared cross-component state only. Per-action/ephemeral state (run
-// status, output buffer, install progress) lives in hooks. See
-// architecture.md rule 6.
+// The last run's final metrics — shared so the StatusBar can show them after a
+// run completes (the run hook writes here on Done). Backend selection + server
+// health moved to shared/state/backendStore (architecture.md rule 7). Per-action
+// state lives in hooks. See architecture.md rule 6.
 export interface WorkspaceStore {
   lastRunMetrics: DonePayload | null;
-  ollamaHealthy: boolean | null;
-  selectedModel: string | null;
   setLastRunMetrics: (m: DonePayload) => void;
-  setOllamaHealthy: (h: boolean) => void;
-  setSelectedModel: (m: string | null) => void;
 }
 
 export const useWorkspaceStore = create<WorkspaceStore>((set) => ({
   lastRunMetrics: null,
-  ollamaHealthy: null,
-  selectedModel: null,
   setLastRunMetrics: (m) => set({ lastRunMetrics: m }),
-  setOllamaHealthy: (h) => set({ ollamaHealthy: h }),
-  setSelectedModel: (m) => set({ selectedModel: m }),
 }));

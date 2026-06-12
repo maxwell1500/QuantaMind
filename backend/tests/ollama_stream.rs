@@ -1,6 +1,6 @@
 use mockito::{Matcher, Server};
 use quantamind_lib::errors::AppError;
-use quantamind_lib::inference::ollama::stream_generate;
+use quantamind_lib::inference::ollama::ollama::stream_generate;
 use tokio_util::sync::CancellationToken;
 
 #[tokio::test]
@@ -16,7 +16,7 @@ async fn streams_ordered_utf8_chunks_until_done() {
         .with_status(200).with_body(body).create_async().await;
 
     let mut tokens: Vec<String> = Vec::new();
-    stream_generate(&server.url(), "x", "p", None, None, CancellationToken::new(),
+    stream_generate(&server.url(), "x", "p", None, None, None, CancellationToken::new(),
         |t| tokens.push(t.to_string())).await.unwrap();
 
     mock.assert_async().await;
@@ -25,11 +25,44 @@ async fn streams_ordered_utf8_chunks_until_done() {
 }
 
 #[tokio::test]
+async fn final_chunk_metrics_are_returned_as_ms() {
+    let mut server = Server::new_async().await;
+    // Ollama reports nanosecond durations on the final chunk.
+    let body = "{\"response\":\"hi\",\"done\":false}\n\
+                {\"response\":\"\",\"done\":true,\"load_duration\":540000000,\
+                \"prompt_eval_count\":128,\"prompt_eval_duration\":210000000,\
+                \"eval_count\":42,\"eval_duration\":900000000,\"total_duration\":1700000000}\n";
+    let _mock = server.mock("POST", "/api/generate")
+        .with_status(200).with_body(body).create_async().await;
+
+    let stats = stream_generate(&server.url(), "x", "p", None, None, None,
+        CancellationToken::new(), |_| {}).await.unwrap();
+    assert_eq!(stats.load_ms, Some(540));
+    assert_eq!(stats.prompt_eval_count, Some(128));
+    assert_eq!(stats.prompt_eval_ms, Some(210));
+    assert_eq!(stats.eval_count, Some(42));
+    assert_eq!(stats.eval_ms, Some(900));
+    assert_eq!(stats.total_ms, Some(1700));
+}
+
+#[tokio::test]
+async fn missing_final_metrics_stay_none_not_zero() {
+    let mut server = Server::new_async().await;
+    let body = "{\"response\":\"hi\",\"done\":false}\n{\"response\":\"\",\"done\":true}\n";
+    let _mock = server.mock("POST", "/api/generate")
+        .with_status(200).with_body(body).create_async().await;
+    let stats = stream_generate(&server.url(), "x", "p", None, None, None,
+        CancellationToken::new(), |_| {}).await.unwrap();
+    assert_eq!(stats.prompt_eval_ms, None);
+    assert_eq!(stats.load_ms, None);
+}
+
+#[tokio::test]
 async fn http_error_returns_inference_app_error() {
     let mut server = Server::new_async().await;
     let _mock = server.mock("POST", "/api/generate")
         .with_status(503).create_async().await;
-    let result = stream_generate(&server.url(), "x", "p", None, None,
+    let result = stream_generate(&server.url(), "x", "p", None, None, None,
         CancellationToken::new(), |_| {}).await;
     match result {
         Err(AppError::Inference(msg)) => assert!(msg.contains("503"), "msg: {msg}"),
@@ -45,7 +78,7 @@ async fn http_400_includes_ollama_response_body() {
         .with_body(r#"{"error":"model is an embedding model and does not support /api/generate"}"#)
         .create_async().await;
     let result = stream_generate(&server.url(), "snowflake-arctic-embed:l", "p",
-        None, None, CancellationToken::new(), |_| {}).await;
+        None, None, None, CancellationToken::new(), |_| {}).await;
     match result {
         Err(AppError::Inference(msg)) => {
             assert!(msg.contains("400"), "msg: {msg}");
@@ -68,7 +101,7 @@ async fn cancellation_mid_stream_stops_emission_no_orphans() {
     let cancel = CancellationToken::new();
     let cancel_cb = cancel.clone();
     let mut tokens: Vec<String> = Vec::new();
-    stream_generate(&server.url(), "x", "p", None, None, cancel, |t| {
+    stream_generate(&server.url(), "x", "p", None, None, None, cancel, |t| {
         tokens.push(t.to_string());
         if tokens.len() == 2 { cancel_cb.cancel(); }
     }).await.unwrap();
@@ -86,7 +119,7 @@ async fn system_prompt_is_sent_to_ollama_when_provided() {
         .with_body("{\"response\":\"\",\"done\":true}\n")
         .create_async().await;
     stream_generate(&server.url(), "x", "hi", Some("You are a terse assistant."),
-        None, CancellationToken::new(), |_| {}).await.unwrap();
+        None, None, CancellationToken::new(), |_| {}).await.unwrap();
     mock.assert_async().await;
 }
 
@@ -101,7 +134,7 @@ async fn system_field_is_omitted_when_no_system_prompt() {
         .with_status(200)
         .with_body("{\"response\":\"\",\"done\":true}\n")
         .create_async().await;
-    stream_generate(&server.url(), "x", "hi", None, None,
+    stream_generate(&server.url(), "x", "hi", None, None, None,
         CancellationToken::new(), |_| {}).await.unwrap();
     mock.assert_async().await;
 }

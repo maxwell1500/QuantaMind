@@ -1,5 +1,5 @@
 import { describe, it, expect } from "vitest";
-import { formatIpcError } from "../error";
+import { formatIpcError } from "../core/error";
 
 describe("formatIpcError", () => {
   it("returns Error.message for Error instances", () => {

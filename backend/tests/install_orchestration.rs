@@ -1,4 +1,4 @@
-use quantamind_lib::commands::gguf_cmd::install_local_gguf_inner;
+use quantamind_lib::commands::gguf::gguf_cmd::install_local_gguf_inner;
 use quantamind_lib::errors::AppError;
 
 #[tokio::test]

@@ -1,22 +1,11 @@
+mod common;
+use common::recording_sink;
 use mockito::{Matcher, Server};
-use quantamind_lib::commands::compare::CompareRunState;
-use quantamind_lib::commands::compare_payloads::{
+use quantamind_lib::commands::compare::compare::CompareRunState;
+use quantamind_lib::commands::compare::compare_payloads::{
     EVENT_COMPARE_DONE, EVENT_COMPARE_ERROR, EVENT_COMPARE_RUN_DONE, EVENT_COMPARE_TOKEN,
 };
-use quantamind_lib::inference::compare_runner::{rows_for, run_sequential};
-use quantamind_lib::inference::compare_runner_finalize::CompareEmit;
-use std::sync::{Arc, Mutex};
-
-type EventLog = Arc<Mutex<Vec<(String, serde_json::Value)>>>;
-
-fn collector() -> (CompareEmit, EventLog) {
-    let log: EventLog = Arc::new(Mutex::new(Vec::new()));
-    let cap = log.clone();
-    let emit: CompareEmit = Arc::new(move |event: &str, payload: serde_json::Value| {
-        cap.lock().unwrap().push((event.to_string(), payload));
-    });
-    (emit, log)
-}
+use quantamind_lib::inference::compare::compare_runner::{rows_for, run_sequential};
 
 const OK_BODY: &str = "{\"response\":\"hi\",\"done\":false}\n{\"response\":\"\",\"done\":true}\n";
 
@@ -29,9 +18,9 @@ async fn sequential_two_models_emits_token_done_per_row_then_final_run_done() {
         .expect(2)
         .create_async().await;
 
-    let (emit, log) = collector();
+    let (sink, log) = recording_sink();
     let state = CompareRunState::default();
-    run_sequential(emit, &state, &s.url(), rows_for(&["a".into(), "b".into()], |_| None), "ping", None)
+    run_sequential(sink, &state, &s.url(), rows_for(&["a".into(), "b".into()], &[], |_| None), "ping", None, None)
         .await.expect("run_sequential ok");
 
     let names: Vec<String> = log.lock().unwrap().iter().map(|(n, _)| n.clone()).collect();
@@ -55,9 +44,9 @@ async fn sequential_error_in_one_row_continues_to_next() {
         .match_body(Matcher::PartialJsonString(r#"{"model":"b"}"#.into()))
         .with_status(500).create_async().await;
 
-    let (emit, log) = collector();
+    let (sink, log) = recording_sink();
     let state = CompareRunState::default();
-    run_sequential(emit, &state, &s.url(), rows_for(&["a".into(), "b".into()], |_| None), "ping", None)
+    run_sequential(sink, &state, &s.url(), rows_for(&["a".into(), "b".into()], &[], |_| None), "ping", None, None)
         .await.expect("run_sequential ok");
 
     let log = log.lock().unwrap();
@@ -71,13 +60,32 @@ async fn sequential_error_in_one_row_continues_to_next() {
 }
 
 #[tokio::test]
+async fn done_payload_carries_a_timeline_matching_token_count() {
+    let mut s = Server::new_async().await;
+    let _m = s.mock("POST", "/api/generate")
+        .with_status(200).with_body(OK_BODY).create_async().await;
+    let (sink, log) = recording_sink();
+    let state = CompareRunState::default();
+    run_sequential(sink, &state, &s.url(), rows_for(&["a".into()], &[], |_| None), "ping", None, None)
+        .await.expect("ok");
+    let log = log.lock().unwrap();
+    let done = log.iter().find(|(n, _)| n == EVENT_COMPARE_DONE).expect("done");
+    let timeline = done.1["timeline"].as_array().expect("timeline array");
+    assert_eq!(timeline.len(), done.1["token_count"].as_u64().unwrap() as usize);
+    assert_eq!(timeline.len(), 1, "OK_BODY streams one token");
+    assert_eq!(timeline[0]["text"], "hi");
+    assert_eq!(timeline[0]["n"], 1);
+    assert!(done.1.get("stats").is_some(), "done payload carries a stats object");
+}
+
+#[tokio::test]
 async fn token_payload_carries_model_id_and_model_name() {
     let mut s = Server::new_async().await;
     let _m = s.mock("POST", "/api/generate")
         .with_status(200).with_body(OK_BODY).create_async().await;
-    let (emit, log) = collector();
+    let (sink, log) = recording_sink();
     let state = CompareRunState::default();
-    run_sequential(emit, &state, &s.url(), rows_for(&["llama3.2:1b".into()], |_| None), "ping", None)
+    run_sequential(sink, &state, &s.url(), rows_for(&["llama3.2:1b".into()], &[], |_| None), "ping", None, None)
         .await.expect("ok");
     let log = log.lock().unwrap();
     let tok = log.iter().find(|(n, _)| n == EVENT_COMPARE_TOKEN).expect("token");
