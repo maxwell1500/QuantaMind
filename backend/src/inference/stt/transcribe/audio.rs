@@ -97,6 +97,16 @@ pub struct WindowReader {
     done: bool,
 }
 
+impl WindowReader {
+    /// True decoded length in seconds: the **de-overlapped** count of mono frames
+    /// actually pulled from the decoder ÷ the input rate. A hardware fact (not the
+    /// container's declared/`0.0` header), so RTF is reproducible across formats.
+    /// Only meaningful once the reader is fully consumed.
+    pub fn decoded_secs(&self) -> f64 {
+        self.next_new_frame as f64 / self.in_rate.max(1) as f64
+    }
+}
+
 impl Iterator for WindowReader {
     type Item = AppResult<AudioWindow>;
 

@@ -1,11 +1,56 @@
 use crate::errors::{AppError, AppResult};
 use crate::inference::stt::transcribe::transcript::Transcript;
 use crate::persistence::readiness::safe_filename::safe_filename;
+use serde::Serialize;
 use std::path::{Path, PathBuf};
 
 /// Transcripts of long audio can exceed the 1 MB report cap; 8 MB still guards a
 /// corrupt/huge file from OOMing the process.
 pub const MAX_BYTES: u64 = 8 * 1024 * 1024;
+
+/// A lightweight transcript row for the eval spec editor: the id (the eval join
+/// key), the model that produced it, and the full transcribed text (so the editor
+/// can prefill a reference and the starter spec can self-reference).
+#[derive(Serialize, Clone, Debug, PartialEq)]
+pub struct TranscriptSummary {
+    pub id: String,
+    pub model: String,
+    pub text: String,
+}
+
+/// Joined, trimmed transcript text — the same shape the exports use.
+fn transcript_text(t: &Transcript) -> String {
+    t.segments
+        .iter()
+        .map(|s| s.text.trim())
+        .filter(|s| !s.is_empty())
+        .collect::<Vec<_>>()
+        .join(" ")
+}
+
+/// Summaries of every stored transcript, sorted by id. A missing dir is empty (not
+/// an error); an unreadable/corrupt file is skipped, never fatal — the editor must
+/// still list the good ones.
+pub fn list_summaries(dir: &Path) -> AppResult<Vec<TranscriptSummary>> {
+    let mut out = Vec::new();
+    if !dir.exists() {
+        return Ok(out);
+    }
+    for entry in std::fs::read_dir(dir)? {
+        let path = entry?.path();
+        if path.extension().is_some_and(|e| e == "json") {
+            let len = std::fs::metadata(&path)?.len();
+            if len > MAX_BYTES {
+                continue;
+            }
+            if let Ok(t) = serde_json::from_str::<Transcript>(&std::fs::read_to_string(&path)?) {
+                out.push(TranscriptSummary { id: t.id.clone(), model: t.model.clone(), text: transcript_text(&t) });
+            }
+        }
+    }
+    out.sort_by(|a, b| a.id.cmp(&b.id));
+    Ok(out)
+}
 
 fn transcript_path(dir: &Path, id: &str) -> PathBuf {
     dir.join(format!("{}.json", safe_filename(id)))
@@ -90,5 +135,23 @@ mod tests {
     fn missing_transcript_is_none_not_error() {
         let dir = tempfile::tempdir().unwrap();
         assert!(load(dir.path(), "nope").unwrap().is_none());
+    }
+
+    #[test]
+    fn list_summaries_returns_id_model_and_joined_text_sorted() {
+        let dir = tempfile::tempdir().unwrap();
+        save(dir.path(), &transcript("clip-b", true)).unwrap();
+        save(dir.path(), &transcript("clip-a", true)).unwrap();
+        let s = list_summaries(dir.path()).unwrap();
+        assert_eq!(s.len(), 2);
+        assert_eq!(s[0].id, "clip-a", "sorted by id");
+        assert_eq!(s[0].model, "ggml-tiny.en.bin");
+        assert_eq!(s[0].text, "hi", "joined + trimmed (the segment was ' hi')");
+    }
+
+    #[test]
+    fn list_summaries_is_empty_for_a_missing_dir() {
+        let dir = tempfile::tempdir().unwrap();
+        assert!(list_summaries(&dir.path().join("nope")).unwrap().is_empty());
     }
 }

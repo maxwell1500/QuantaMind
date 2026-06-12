@@ -1,8 +1,8 @@
 // Speech-to-text (whisper.cpp) command handlers: model acquisition + sidecar
 // lifecycle, a parallel capability to the text backends (see
-// docs/architecture.md#architecture). STT engine selection is its own state
-// axis, never derived from the selected LLM backend.
-pub mod mlx;
+// docs/architecture.md#architecture). STT is its own state axis, never derived
+// from the selected LLM backend.
+pub mod eval;
 pub mod stt_disk;
 pub mod stt_download;
 pub mod stt_health;

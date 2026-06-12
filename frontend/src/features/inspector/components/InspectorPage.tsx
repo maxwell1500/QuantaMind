@@ -9,6 +9,8 @@ import { pickLoaded } from "../format/vram";
 import { ModelTimeline } from "./ModelTimeline";
 import { LeakBanner } from "./LeakBanner";
 import { ExportReportButton } from "../report/ExportReportButton";
+import { SttInspectorSection } from "../../sttInspector/components/SttInspectorSection";
+import { useSttResultStore } from "../../sttInspector/state/sttResultStore";
 
 // Per-token event colours (the latency bars) and the run-phase colours (the
 // breakdown track + the chart's vertical phase lines). Disjoint palettes so a
@@ -44,11 +46,12 @@ export function InspectorPage() {
     }
   }, [topView, refresh, refreshHistory]);
   const charted = rows.filter((r) => (r.metrics?.timeline?.length ?? 0) > 0);
+  const hasStt = useSttResultStore((s) => s.result != null);
 
-  if (charted.length === 0) {
+  if (charted.length === 0 && !hasStt) {
     return (
-      <div className="text-sm text-gray-500 border rounded p-6 text-center" data-testid="inspector-empty">
-        Run a prompt in the Workspace to inspect its token timing.
+      <div className="text-sm text-gray-500 border rounded p-6 text-center" data-testid="inspector-empty" ref={ref}>
+        Run a prompt — or transcribe audio — in the Workspace to inspect timing.
       </div>
     );
   }
@@ -56,35 +59,40 @@ export function InspectorPage() {
   return (
     <div className="space-y-4" data-testid="inspector" ref={ref}>
       <LeakBanner />
-      <div className="flex items-center justify-between">
-        <div className="flex flex-wrap gap-x-3 gap-y-1 text-xs text-gray-500">
-          <span className="text-gray-400">Phases:</span>
-          {PHASE_SWATCH.map((s) => (
-            <span key={s.label} className="flex items-center gap-1">
-              <span className="inline-block h-2 w-2 rounded-sm" style={{ background: s.color }} />
-              {s.label}
-            </span>
+      {charted.length > 0 && (
+        <>
+          <div className="flex items-center justify-between">
+            <div className="flex flex-wrap gap-x-3 gap-y-1 text-xs text-gray-500">
+              <span className="text-gray-400">Phases:</span>
+              {PHASE_SWATCH.map((s) => (
+                <span key={s.label} className="flex items-center gap-1">
+                  <span className="inline-block h-2 w-2 rounded-sm" style={{ background: s.color }} />
+                  {s.label}
+                </span>
+              ))}
+              <span className="text-gray-400 ml-1">Tokens:</span>
+              {SWATCH.map((s) => (
+                <span key={s.kind} className="flex items-center gap-1">
+                  <span className="inline-block h-2 w-2 rounded-sm" style={{ background: s.color }} />
+                  {s.label}
+                </span>
+              ))}
+            </div>
+            <div className="flex items-center gap-3">
+              <button type="button" onClick={() => void refresh()}
+                className="text-xs text-blue-600 hover:text-blue-800" data-testid="vram-refresh">
+                Refresh VRAM
+              </button>
+              <ExportReportButton />
+            </div>
+          </div>
+          {charted.map((row) => (
+            <ModelTimeline key={row.model} row={row} width={width} vram={pickLoaded(byName, row.model)}
+              history={entries} deviceTotalBytes={dev.totalBytes} unified={dev.unified} hw={hw} />
           ))}
-          <span className="text-gray-400 ml-1">Tokens:</span>
-          {SWATCH.map((s) => (
-            <span key={s.kind} className="flex items-center gap-1">
-              <span className="inline-block h-2 w-2 rounded-sm" style={{ background: s.color }} />
-              {s.label}
-            </span>
-          ))}
-        </div>
-        <div className="flex items-center gap-3">
-          <button type="button" onClick={() => void refresh()}
-            className="text-xs text-blue-600 hover:text-blue-800" data-testid="vram-refresh">
-            Refresh VRAM
-          </button>
-          <ExportReportButton />
-        </div>
-      </div>
-      {charted.map((row) => (
-        <ModelTimeline key={row.model} row={row} width={width} vram={pickLoaded(byName, row.model)}
-          history={entries} deviceTotalBytes={dev.totalBytes} unified={dev.unified} hw={hw} />
-      ))}
+        </>
+      )}
+      <SttInspectorSection width={width} />
     </div>
   );
 }

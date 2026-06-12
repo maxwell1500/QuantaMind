@@ -6,7 +6,7 @@ use std::path::Path;
 
 /// Which transcription engine to drive. **Enum dispatch — no `Box<dyn>` /
 /// `async-trait`** in the domain, mirroring `BackendKind`. whisper.cpp today;
-/// mlx-audio / faster-whisper become further variants.
+/// `faster-whisper` could become a further variant.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum SttTranscribeEngine {
     WhisperCpp,

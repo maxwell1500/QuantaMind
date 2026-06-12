@@ -56,8 +56,8 @@ fn model_label(model_path: &str) -> String {
 }
 
 /// Transcribe an audio file with the **running whisper.cpp** server, streaming
-/// segments to the frontend and persisting the canonical `Transcript`. mlx-audio
-/// transcription isn't supported yet — returns a clear notice (not a crash).
+/// segments to the frontend and persisting the canonical `Transcript`. With no
+/// whisper.cpp server running, a clear notice (not a crash).
 #[tauri::command]
 pub async fn transcribe_audio(
     app: AppHandle,
@@ -67,17 +67,15 @@ pub async fn transcribe_audio(
 ) -> Result<Transcript, AppError> {
     let Some(model_path) = stt.running_model() else {
         return Err(AppError::Validation(
-            "no whisper.cpp STT server is running — start one (mlx-audio transcription is coming in a later phase)"
-                .into(),
+            "no whisper.cpp STT server is running — start one to transcribe.".into(),
         ));
     };
-    let model = model_label(&model_path);
     let sink = TauriTranscribeSink { app: app.clone() };
     let transcript = run_transcribe(
         SttTranscribeEngine::WhisperCpp,
         WHISPER_BASE,
         Path::new(&path),
-        &model,
+        &model_label(&model_path),
         &id,
         &sink,
     )

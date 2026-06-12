@@ -14,14 +14,27 @@ export function TranscriptPane() {
   const processed = useTranscriptStore((s) => s.processed);
   const total = useTranscriptStore((s) => s.total);
   const error = useTranscriptStore((s) => s.error);
+  const reset = useTranscriptStore((s) => s.reset);
 
   return (
     <div className="flex flex-col gap-2 border rounded p-3 min-h-[300px]" data-testid="stt-transcript-pane">
       <div className="text-xs text-gray-500 flex items-center justify-between">
         <span>Transcript</span>
-        {status === "transcribing" && (
-          <span data-testid="stt-progress">{total > 0 ? `${Math.round((processed / total) * 100)}%` : "…"}</span>
-        )}
+        <div className="flex items-center gap-2">
+          {status === "transcribing" && (
+            <span data-testid="stt-progress">{total > 0 ? `${Math.round((processed / total) * 100)}%` : "…"}</span>
+          )}
+          {segments.length > 0 && status !== "transcribing" && (
+            <button
+              type="button"
+              onClick={reset}
+              data-testid="stt-transcript-clear"
+              className="border rounded px-1.5 py-0.5 text-gray-600 hover:bg-gray-50"
+            >
+              Clear
+            </button>
+          )}
+        </div>
       </div>
       {error && <div role="alert" className="text-xs text-red-600">{error}</div>}
       {segments.length === 0 && status !== "transcribing" ? (

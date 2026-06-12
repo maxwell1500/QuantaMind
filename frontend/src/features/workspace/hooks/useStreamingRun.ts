@@ -37,16 +37,23 @@ export function useStreamingRun() {
   const [cancelledInfo, setCancelledInfo] = useState<CancelledPayload | null>(null);
   const outputRef = useRef("");
   const ctxRef = useRef<RunContext | null>(null);
+  // True only between this hook's own start() and the run's terminal event. The
+  // run_prompt event stream is global and other hooks (e.g. the STT assistant)
+  // also listen, so we react only to the run we initiated — no stray history,
+  // leak samples, or compareStore writes for someone else's run.
+  const initiatedRef = useRef(false);
 
   useEffect(() => {
     let cancelled = false;
     const unsubs: Array<() => void> = [];
     const fail = (label: string, issues: unknown) => {
+      initiatedRef.current = false;
       console.error(`invalid ${label} payload`, issues);
       setError("invalid backend payload"); setStatus("error");
     };
     (async () => {
       const ut = await listen<unknown>(EVENT_TOKEN, (e) => {
+        if (!initiatedRef.current) return;
         const p = TokenPayloadSchema.safeParse(e.payload);
         if (!p.success) return fail("prompt-token", p.error.issues);
         outputRef.current += p.data.text;
@@ -55,8 +62,10 @@ export function useStreamingRun() {
       if (cancelled) { ut(); return; }
       unsubs.push(ut);
       const ud = await listen<unknown>(EVENT_DONE, (e) => {
+        if (!initiatedRef.current) return;
         const p = DonePayloadSchema.safeParse(e.payload);
         if (!p.success) return fail("prompt-done", p.error.issues);
+        initiatedRef.current = false;
         setMetrics(p.data); setStatus("done");
         useWorkspaceStore.getState().setLastRunMetrics(p.data);
         void recordRun(ctxRef.current, outputRef.current, {
@@ -70,8 +79,10 @@ export function useStreamingRun() {
       if (cancelled) { ud(); return; }
       unsubs.push(ud);
       const uc = await listen<unknown>(EVENT_CANCELLED, (e) => {
+        if (!initiatedRef.current) return;
         const p = CancelledPayloadSchema.safeParse(e.payload);
         if (!p.success) return fail("prompt-cancelled", p.error.issues);
+        initiatedRef.current = false;
         setCancelledInfo(p.data); setStatus("cancelled");
       });
       if (cancelled) { uc(); return; }
@@ -84,6 +95,7 @@ export function useStreamingRun() {
     async (model: string, prompt: string, system?: string, params?: InferenceParams, promptPath?: string | null, name?: string) => {
       setOutput(""); setMetrics(null); setCancelledInfo(null); setError(null);
       outputRef.current = ""; ctxRef.current = { name, model, prompt, system, params, promptPath };
+      initiatedRef.current = true;
       setStatus("running");
       try {
         const args: Record<string, unknown> = { model, prompt };
@@ -98,6 +110,7 @@ export function useStreamingRun() {
         if (useParamsStore.getState().keepLoaded) args.keepAlive = -1;
         await invoke("run_prompt", args);
       } catch (e) {
+        initiatedRef.current = false;
         setError(formatIpcError(e)); setStatus("error");
       }
     },
