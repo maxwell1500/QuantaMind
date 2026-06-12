@@ -6,7 +6,7 @@
 
 Built with Tauri, Rust, React, and Ollama. Local-first. No telemetry. No cloud.
 
-<sub>Workspace · Analysis · Inspector · Models · Eval · Quant · Agent Readiness · one ~30 MB binary</sub>
+<sub>Workspace · Voice (STT) · Analysis · Inspector · Models · Eval · Quant · Agent Readiness · one ~30 MB binary</sub>
 
 <br/>
 
@@ -36,6 +36,7 @@ Built with Tauri, Rust, React, and Ollama. Local-first. No telemetry. No cloud.
 - [Building from source](#building-from-source)
 - [Project layout](#project-layout)
 - [Deep dive — Workspace](#deep-dive--workspace)
+- [Deep dive — Speech-to-Text](#deep-dive--speech-to-text)
 - [Deep dive — Model Management](#deep-dive--model-management)
 - [Deep dive — Compare](#deep-dive--compare)
 - [Install pipeline internals](#install-pipeline-internals)
@@ -58,6 +59,7 @@ Built with Tauri, Rust, React, and Ollama. Local-first. No telemetry. No cloud.
 | Tool | What it does |
 |---|---|
 | **Workspace** | Write a prompt, pick a model, stream the answer back with timing metrics, save/load the prompt as YAML. |
+| **Voice (Speech-to-Text)** | Record or upload audio, transcribe it locally with **whisper.cpp**, and pipe the transcript straight into the selected LLM — a full voice → assistant loop, all offline. |
 | **Analysis** (Compare) | Run the same prompt through multiple models side-by-side, with a hardware feasibility check up front and Markdown/JSON export. |
 | **Inspector** | Per-token timing forensics for a run — TTFT phase breakdown, a per-token latency timeline, and an inter-token latency histogram. |
 | **Model Management** | Install, inspect, and uninstall models from three sources — Ollama library, Hugging Face GGUF, local files — without touching a terminal. |
@@ -65,7 +67,7 @@ Built with Tauri, Rust, React, and Ollama. Local-first. No telemetry. No cloud.
 | **Quant** | Compare quantizations of one model family — size vs quality vs whether it fits in memory. |
 | **Agent Report** | Turn the measurements into a per-model **Ready / Conditional / Not Ready** verdict against a chosen readiness profile and your hardware. |
 
-Under the hood: a ~30 MB Tauri binary — a native shell wrapped around a Rust backend and a React/TypeScript frontend, talking to local model servers over HTTP: **Ollama**, **llama.cpp** (`llama-server`), and **MLX** (`mlx_lm`, Apple Silicon) behind a single `InferenceBackend` trait.
+Under the hood: a ~30 MB Tauri binary — a native shell wrapped around a Rust backend and a React/TypeScript frontend, talking to local model servers over HTTP: **Ollama**, **llama.cpp** (`llama-server`), and **MLX** (`mlx_lm`, Apple Silicon) behind a single `InferenceBackend` trait. Speech-to-text runs on its own parallel axis — a **whisper.cpp** (`whisper-server`) sidecar on `:8093` — so one STT engine runs alongside one LLM without ever touching the text-inference path.
 
 > [!IMPORTANT]
 > Everything runs on your machine. There is no QuantaMind cloud, no account, no telemetry. Your prompts and your model outputs never leave your hardware.
@@ -102,6 +104,16 @@ Three design commitments shape every decision:
 - Save and load prompts as YAML with byte-identical round-trip
 - Per-run metrics: TTFT in ms, sustained tokens/sec, token count
 - Persistent status bar: model name, Ollama health pill, latest run metrics
+
+### Speech-to-Text (Voice)
+- Local transcription via **whisper.cpp** (`whisper-server`) — its own engine axis, parallel to the LLM backend, on a fixed port `:8093`
+- One-time setup walked through in **Models → Speech-to-Text**: `brew install whisper-cpp`, then download a model — QuantaMind finds the engine automatically on `PATH`/Homebrew (no path setup), with a `--help` dry-run so "found" never masquerades as "runnable"
+- Curated model catalog: tiny / base / small / medium (English + multilingual), large-v3 and large-v3-turbo, plus quantized variants — real Hugging Face download sizes shown up front
+- Each download is atomic — the whisper ggml **and** the shared silero VAD are promoted both-or-none; half-installs are swept at startup
+- Start the engine from the header **Speech-to-Text** control (`▶` + model picker + health dot); the Workspace switches to a two-pane transcribe view while it runs
+- **Record** from the mic or **upload** a WAV; audio is decoded → downmixed → resampled to 16 kHz mono **in Rust**, then sent to whisper-server one ~30 s window at a time
+- **Voice → assistant**: the transcript becomes the user message, an optional typed prompt sets the system/context, and the selected LLM streams a reply — flip on **Auto-summarize** to fire the LLM automatically when a recording finishes (a production-faithful end-to-end timing)
+- Offline-only by construction: a loopback-only probe means transcription never silently reaches the cloud — a down local server fails loud instead
 
 ### Model Management
 - One modal, three tabs: Ollama Library, Hugging Face, Local File
@@ -167,6 +179,9 @@ Three design commitments shape every decision:
 | State management | **Zustand** | ~1 KB, no boilerplate, scales |
 | Editor | **`@monaco-editor/react`** | Same editor as VS Code |
 | HTTP client (Rust) | **`reqwest` + `tokio`** | Battle-tested |
+| Speech-to-text engine | **whisper.cpp** (`whisper-server` sidecar) | Local STT over HTTP on `:8093`, mirroring the `llama-server` lifecycle; subprocess, not FFI |
+| Audio preprocessing (Rust) | **`hound` + `rubato`** | Decode WAV → downmix → resample to 16 kHz mono in-process, explicit and logged |
+| Voice-activity detection | **`webrtc-vad`** | Independent, non-ML VAD for the silence-hallucination metric (never the STT model's own opinion) |
 | Serialization | **`serde` + `serde_json` / `serde_yaml`** | Type-safe across IPC |
 | Validation (TS) | **`zod`** | Runtime schema validation at IPC boundary |
 | Validation (Rust) | **`validator` + `serde`** | Type-level + custom validators |
@@ -249,6 +264,7 @@ The two halves talk JSON over Tauri's IPC. Contracts are explicit in `shared/ipc
 | **Ollama** | latest | Primary backend |
 | **llama.cpp** (`llama-server`) | optional | Run GGUF models directly |
 | **MLX** (`pip install mlx-lm`) | optional | Apple Silicon only |
+| **whisper.cpp** (`brew install whisper-cpp`) | optional | Speech-to-text; set up in-app under Models → Speech-to-Text |
 
 ### Install
 
@@ -286,6 +302,13 @@ The first run opens a native window. Editing `frontend/src/App.tsx` and saving t
    - **Hugging Face** — search a GGUF repo, click a result, pick a variant.
    - **Local File** — drag a `.gguf` onto the modal or click Browse.
 3. Confirm any disk-space warnings, click Install, watch the progress bar.
+
+### First transcription (voice)
+1. Open **Models → Speech-to-Text**. If whisper.cpp isn't found, run `brew install whisper-cpp` (the tab has a copy button) and click **Re-check**.
+2. Download a model from the catalog — **Base (English)** is a good first pick (~148 MB). The shared silero VAD comes with it automatically.
+3. In the header **Speech-to-Text** control, pick the model and press **▶** to start the engine. The Workspace switches to the two-pane transcribe view.
+4. Press **Record** (or upload a WAV), speak, then stop. The transcript streams into the left pane.
+5. Optionally type an assistant prompt, pick an LLM in the header, and click **Ask the assistant** — or flip on **Auto-summarize** to have it run automatically.
 
 ---
 
@@ -415,6 +438,60 @@ Every cross-process call has a budget:
 | `list_models` | 5 s |
 
 Timeouts surface as `AppError::Timeout` with a human-readable label.
+
+---
+
+## Deep dive — Speech-to-Text
+
+Speech-to-text is an **additive, parallel capability**. It never touches the `InferenceBackend` trait or `run_prompt` — the STT engine is its own state axis, so one whisper.cpp engine runs alongside one LLM.
+
+### Setting up the engine
+The **Models → Speech-to-Text** tab drives a three-state flow off a single engine check:
+
+| Engine state | What you see |
+|---|---|
+| Not installed | A setup card: install [Homebrew](https://brew.sh), run `brew install whisper-cpp`, click **Re-check** |
+| Installed but not runnable | A reinstall card (`brew reinstall whisper-cpp`) — the binary is present but its dylibs are missing/mismatched |
+| Ready | The model catalog + server controls |
+
+The binary is discovered **most-explicit-first**: `UserSettings.stt_engine_dir` → `QUANTAMIND_WHISPER_DIR` → `PATH`/Homebrew → bundled resources → dev tree. So a plain `brew install whisper-cpp` is found with no path setup; installed it elsewhere? **Choose its folder** (remembered across launches). QuantaMind only reports ready after a `--help` dry-run proves the engine actually executes — "found" never masquerades as "runnable".
+
+### Models
+All whisper ggml models come from `ggerganov/whisper.cpp`; the shared silero VAD (`ggml-silero-v6.2.0.bin`) comes from `ggml-org/whisper-vad`. The curated catalog (real HF sizes shown before download):
+
+| Model | Size | Languages |
+|---|---|---|
+| Tiny / Base / Small / Medium (`.en`) | 78 MB – 1.5 GB | English |
+| Tiny / Base / Small / Medium | 78 MB – 1.5 GB | Multilingual |
+| Large v3 / Large v3 Turbo | 3.1 GB / 1.6 GB | Multilingual |
+| Quantized variants (`q5_0` / `q5_1`) | 32 MB – 1.1 GB | much smaller, near-identical accuracy |
+
+`download_stt_model` stages the whisper ggml **and** the VAD, validates both, and promotes **both-or-none**; `reconcile_stt_dir` sweeps half-installs at startup. Runtime VRAM isn't measured yet, so the UI shows **"Not available"** rather than a fabricated figure.
+
+### The transcription seam
+```
+record / upload WAV
+  ↓  hound (decode) → downmix → rubato (resample → 16 kHz mono), in Rust, logged
+whisper-server /inference   (one call per ~30 s window, verbose_json)
+  ↓  stream segments through TranscribeSink
+canonical Transcript        (persisted atomically; an incomplete run is refused)
+```
+Every `TranscribeStats` field is `Option` — no fabricated metric.
+
+### Voice → assistant
+The transcript becomes the **user message**; an optional typed prompt is the **system/context** (e.g. *"You are a customer support agent"*). Both go to the selected LLM, which streams its reply through the same rich metrics path as a normal Workspace run. With **Auto-summarize** on, the LLM fires automatically the moment a transcription completes (the STT→LLM auto-pipe), so the end-to-end time is production-faithful.
+
+### Server lifecycle & failure states
+The sidecar runs on a fixed `:8093` (clear of MLX's `8082..=8092` scan range) with **`/health`-gated readiness** — HTTP 200 once the model is loaded, 503 while loading — graceful-then-hard kill, and reaping on app exit alongside the LLM sidecars. Start failures (`start_whisper_server`) return a tagged result so the UI says exactly what to fix:
+
+| Tag | Meaning |
+|---|---|
+| `not_bundled` | No `whisper-server` found — install whisper.cpp |
+| `model_missing` | The whisper model file isn't on disk — download one first |
+| `vad_missing` | The silero VAD is absent — re-run the download |
+| `port_conflict` | Something else holds `:8093`; QuantaMind won't take over a process it didn't start |
+
+A server that won't answer on `127.0.0.1` fails **loud** — STT is offline-only and never falls back to the cloud.
 
 ---
 
@@ -740,7 +817,8 @@ Contributions welcome. Before you open a PR:
 |---|---|
 | **No telemetry** | No analytics SDK; no crash reporting service; no tracking pixels |
 | **No account required** | App runs offline once a model is installed |
-| **Network calls limited to** | `http://localhost:11434` (Ollama) and `https://huggingface.co` (only when you actively browse/install) |
+| **Network calls limited to** | Local model servers (`http://localhost:11434` Ollama, `127.0.0.1:8093` whisper.cpp STT, the dynamic llama/MLX ports) and `https://huggingface.co` (only when you actively browse/install/download) |
+| **Speech-to-text is offline-only** | Transcription uses a loopback-only probe — it never reaches the cloud; a down local STT server fails loud rather than silently falling back |
 | **No silent shell edits** | Changing `OLLAMA_MODELS` *generates* the export command for you; never edits your shell profile |
 | **Tauri sandboxing** | Capabilities declared in `backend/capabilities/`; webview can only call IPC commands explicitly registered |
 | **Schema validation at every IPC boundary** | Zod on TS side, serde + `validator` on Rust side; malformed payloads rejected with typed errors |
@@ -768,6 +846,13 @@ No. QuantaMind consumes pre-trained models. Training is out of scope.
 </details>
 
 <details>
+<summary><b>How does speech-to-text work, and does my audio leave the machine?</b></summary>
+
+Speech-to-text runs entirely locally on **whisper.cpp** (`whisper-server`), a sidecar on `127.0.0.1:8093` — its own engine axis, parallel to the LLM backend. Install it once with `brew install whisper-cpp` and download a model under **Models → Speech-to-Text**. Your audio is decoded and resampled in Rust and sent only to the local server; a loopback-only probe means it never reaches the cloud, and a down server fails loud instead of silently falling back. You can pipe the transcript straight into the selected LLM (optionally automatically) for a full voice → assistant loop.
+
+</details>
+
+<details>
 <summary><b>Why Ollama and not llama.cpp directly?</b></summary>
 
 Ollama gives us a clean HTTP API, a stable model storage convention, and handles a lot of platform-specific GPU plumbing. It's no longer the only backend, though: a llama.cpp (`llama-server`) adapter and an MLX (`mlx_lm`, Apple Silicon) adapter now ship alongside it, all behind a single `InferenceBackend` trait.
@@ -784,7 +869,7 @@ Long files hide their dependencies, smuggle in second concerns, and make every r
 <details>
 <summary><b>Can I run QuantaMind without an internet connection?</b></summary>
 
-Yes, once you've installed at least one model. The Workspace and Compare tabs are fully offline. The Hugging Face tab obviously needs connectivity.
+Yes, once you've installed at least one model. The Workspace, Voice (Speech-to-Text), and Compare tabs are fully offline. Only the Hugging Face tab — and downloading new LLM or whisper models — needs connectivity.
 
 </details>
 
@@ -825,6 +910,7 @@ QuantaMind stands on the shoulders of:
 - **[Ollama](https://ollama.com/)** — the local model runtime
 - **[Hugging Face](https://huggingface.co/)** — the GGUF ecosystem
 - **[llama.cpp](https://github.com/ggerganov/llama.cpp)** — the GGUF format and inference primitives
+- **[whisper.cpp](https://github.com/ggerganov/whisper.cpp)** — the local speech-to-text engine and ggml models
 - **[Monaco Editor](https://microsoft.github.io/monaco-editor/)** — the prompt editor
 - **[Zustand](https://github.com/pmndrs/zustand)**, **[Zod](https://zod.dev/)**, **[Vite](https://vitejs.dev/)**, **[React](https://react.dev/)**, **[Tailwind CSS](https://tailwindcss.com/)** — the frontend stack
 - **[reqwest](https://github.com/seanmonstar/reqwest)**, **[tokio](https://tokio.rs/)**, **[serde](https://serde.rs/)** — the backend stack
