@@ -194,7 +194,7 @@ describe("PerformanceMatrix", () => {
     fireEvent.click(screen.getByTestId("matrix-native-toggle"));
     const naCell = screen.getByTestId("matrix-native-tinyllama.gguf");
     expect(naCell).toHaveTextContent("—"); // N/A renders as an em-dash badge
-    expect(naCell.getAttribute("title")).toMatch(/native tool-calling not measured|non-Ollama backend|no tools capability/i);
+    expect(naCell.getAttribute("title")).toMatch(/tools.*capability|N\/A for this model/i);
   });
 
   it("always offers the Native-FC toggle and explains how to populate it when it was not measured", () => {

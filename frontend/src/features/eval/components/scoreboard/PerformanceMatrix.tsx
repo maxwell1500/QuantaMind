@@ -227,9 +227,11 @@ export function PerformanceMatrix({
             data-testid="native-fc-empty-hint"
             style={{ margin: "0 16px 10px", padding: "8px 12px", fontSize: 12, lineHeight: 1.5, color: "#475569", background: "#f8fafc", border: "1px solid #e2e8f0", borderRadius: 8, fontFamily: "Inter, sans-serif" }}
           >
-            Native-FC wasn't measured in this run, so the column is N/A. Turn on{" "}
-            <strong>"Measure native tool-calling (Ollama)"</strong> in the run config and re-run to
-            populate it (Ollama only — llama.cpp / MLX stay N/A).
+            No model here exposes native tool-calling, so the column is all N/A. It's measured only
+            for <strong>Ollama</strong> models whose chat template advertises tool support — many
+            fine-tuned or heavily-quantized models (and all llama.cpp / MLX models) don't, so they stay
+            N/A even with <strong>"Measure native tool-calling (Ollama)"</strong> enabled. If you
+            haven't turned that on in the run config yet, do so and re-run.
           </div>
         )}
         <div style={{ overflowX: "auto" }}>
@@ -270,14 +272,14 @@ export function PerformanceMatrix({
                       <td
                         style={{ ...td, fontWeight: 700 }}
                         data-testid={`matrix-native-${r.model}`}
-                        // Explain an N/A rather than leave a silent wall: either native FC
-                        // wasn't measured this run at all, or this specific model was skipped.
+                        // Explain an N/A rather than leave a silent wall. The reason is the
+                        // model, not the toggle: native FC needs an Ollama model whose
+                        // /api/show lists the `tools` capability (gemma/most fine-tuned &
+                        // quantized models don't); llama.cpp / MLX are always N/A.
                         title={
-                          r.passKNative !== "N/A"
-                            ? undefined
-                            : anyNative
-                              ? "Native tool-calling not measured for this model — non-Ollama backend, or the model has no tools capability."
-                              : "Native tool-calling wasn't measured in this run — enable it in the run config and re-run (Ollama only)."
+                          r.passKNative === "N/A"
+                            ? "Native tool-calling is N/A for this model — it's measured only for Ollama models whose /api/show lists the `tools` capability (gemma & many fine-tuned / quantized models don't); llama.cpp / MLX are always N/A."
+                            : undefined
                         }
                       >
                         {getPassKBadge(r.passKNative)}
