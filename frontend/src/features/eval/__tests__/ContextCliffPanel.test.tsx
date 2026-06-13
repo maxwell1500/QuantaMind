@@ -2,7 +2,12 @@ import { describe, it, expect, vi, beforeEach } from "vitest";
 import { render, screen, fireEvent, waitFor, act } from "@testing-library/react";
 
 vi.mock("@tauri-apps/api/core", () => ({ invoke: vi.fn() }));
-vi.mock("../../../shared/ipc/eval/toolcall", () => ({ runToolcallEval: vi.fn() }));
+vi.mock("@tauri-apps/api/event", () => ({ listen: vi.fn().mockResolvedValue(() => {}) }));
+vi.mock("../../../shared/ipc/eval/cliff", () => ({
+  runContextCliff: vi.fn(),
+  getCliffResults: vi.fn().mockResolvedValue({}),
+  EVENT_CLIFF_PROGRESS: "cliff-progress",
+}));
 vi.mock("../../../shared/ipc/eval/registry", () => ({
   getBuiltinCollection: vi.fn(),
   loadCustomCollection: vi.fn(),
@@ -12,7 +17,7 @@ vi.mock("../../../shared/ipc/system/inspect", () => ({
   estimateKvCacheBytes: vi.fn(),
 }));
 
-import { runToolcallEval } from "../../../shared/ipc/eval/toolcall";
+import { runContextCliff } from "../../../shared/ipc/eval/cliff";
 import { getBuiltinCollection } from "../../../shared/ipc/eval/registry";
 import { inspectModel, estimateKvCacheBytes } from "../../../shared/ipc/system/inspect";
 import { ContextCliffPanel } from "../components/ContextCliffPanel";
@@ -27,10 +32,12 @@ const tasks = [{
   expected: { type: "call", name: "w", args: {} },
 }];
 
-const report = (composite: number, promptTokens: number | null = null) => ({
-  n: 1, parse_rate: composite, tool_selection_acc: composite, arg_acc: composite,
-  abstain_acc: null, composite, prompt_tokens: promptTokens, per_task: [],
+// Backend CliffPoint / CliffReport: one rung = (verified depth, worst composite).
+const rung = (verified_tokens: number, composite: number | null) => ({
+  target_tokens: verified_tokens, verified_tokens, composite, per_depth: [],
 });
+type Status = { status: "Collapsed"; depth: number } | { status: "NoCliff"; tested: number } | { status: "Broken"; tested: number };
+const reportOf = (status: Status, points: ReturnType<typeof rung>[], cliff_tokens: number | null = null) => ({ points, status, cliff_tokens });
 
 const dims = (context_length: number) => ({
   available: true, note: null, template: "", capabilities: [], family: null,
@@ -59,20 +66,17 @@ beforeEach(() => {
 });
 
 describe("ContextCliffPanel", () => {
-  it("defaults the Greedy (reproducible) toggle to on", () => {
+  it("defaults the padding source to the Corporate Policy preset", () => {
     render(<ContextCliffPanel />);
-    expect(screen.getByTestId("cliff-greedy")).toBeChecked();
+    expect((screen.getByTestId("cliff-source-select") as HTMLSelectElement).value).toBe("corporate_policy");
   });
 
-  it("loads its own dataset and plots the cliff at the model's REAL measured token depth", async () => {
-    // (composite, measured prompt_eval_count) per rung — accuracy collapses at
-    // the rung the model measured at ~8300 prompt tokens.
-    const seq: [number, number][] = [[1.0, 120], [1.0, 4200], [0.5, 8300], [0.4, 12400], [0.3, 16500]];
-    let i = 0;
-    vi.mocked(runToolcallEval).mockImplementation(() => {
-      const [c, t] = seq[i++];
-      return Promise.resolve(report(c, t) as never);
-    });
+  it("plots the cliff at the model's REAL measured token depth from the backend report", async () => {
+    // The backend already padded, swept, verified, and classified — the panel just
+    // charts the returned rungs (collapse at the rung verified at ~8300 tokens).
+    vi.mocked(runContextCliff).mockResolvedValue(
+      reportOf({ status: "Collapsed", depth: 8300 }, [rung(120, 1.0), rung(4200, 1.0), rung(8300, 0.5), rung(12400, 0.4), rung(16500, 0.3)], 4200) as never,
+    );
     render(<ContextCliffPanel />);
     await waitFor(() => expect(getBuiltinCollection).toHaveBeenCalledWith("curated"));
 
@@ -84,7 +88,7 @@ describe("ContextCliffPanel", () => {
   });
 
   it("shows 'Not available' for a rung the backend reported no token count for", async () => {
-    vi.mocked(runToolcallEval).mockResolvedValue(report(1.0, null) as never);
+    vi.mocked(runContextCliff).mockResolvedValue(reportOf({ status: "NoCliff", tested: 0 }, [rung(0, 1.0)]) as never);
     render(<ContextCliffPanel />);
     await waitFor(() => expect(getBuiltinCollection).toHaveBeenCalled());
     await waitFor(() => expect(screen.getByTestId("cliff-run")).not.toBeDisabled());
@@ -94,7 +98,7 @@ describe("ContextCliffPanel", () => {
   });
 
   it("never claims accuracy maintained to a fake '≈0 tokens' when token depth is unreported", async () => {
-    vi.mocked(runToolcallEval).mockResolvedValue(report(1.0, null) as never);
+    vi.mocked(runContextCliff).mockResolvedValue(reportOf({ status: "NoCliff", tested: 0 }, [rung(0, 1.0)]) as never);
     render(<ContextCliffPanel />);
     await waitFor(() => expect(getBuiltinCollection).toHaveBeenCalled());
     await waitFor(() => expect(screen.getByTestId("cliff-run")).not.toBeDisabled());
@@ -105,7 +109,7 @@ describe("ContextCliffPanel", () => {
   });
 
   it("surfaces a backend error instead of a silent blank chart", async () => {
-    vi.mocked(runToolcallEval).mockRejectedValue(new Error("server down"));
+    vi.mocked(runContextCliff).mockRejectedValue(new Error("server down"));
     render(<ContextCliffPanel />);
     await waitFor(() => expect(getBuiltinCollection).toHaveBeenCalled());
     await waitFor(() => expect(screen.getByTestId("cliff-run")).not.toBeDisabled());
@@ -115,7 +119,9 @@ describe("ContextCliffPanel", () => {
   });
 
   it("reports 'accuracy maintained' when accuracy never collapses", async () => {
-    vi.mocked(runToolcallEval).mockResolvedValue(report(1.0, 5000) as never);
+    vi.mocked(runContextCliff).mockResolvedValue(
+      reportOf({ status: "NoCliff", tested: 5000 }, [rung(1000, 1.0), rung(5000, 1.0)], 5000) as never,
+    );
     render(<ContextCliffPanel />);
     await waitFor(() => expect(getBuiltinCollection).toHaveBeenCalled());
     await waitFor(() => expect(screen.getByTestId("cliff-run")).not.toBeDisabled());
@@ -125,9 +131,9 @@ describe("ContextCliffPanel", () => {
   });
 
   it("reports a broken baseline instead of falsely 'maintaining' 0% accuracy", async () => {
-    // Every rung at 0% (the reported bug): the read-out must NOT claim accuracy was
-    // maintained — it must flag the baseline as broken.
-    vi.mocked(runToolcallEval).mockResolvedValue(report(0.0, 5000) as never);
+    vi.mocked(runContextCliff).mockResolvedValue(
+      reportOf({ status: "Broken", tested: 5000 }, [rung(1000, 0.0), rung(5000, 0.0)]) as never,
+    );
     render(<ContextCliffPanel />);
     await waitFor(() => expect(getBuiltinCollection).toHaveBeenCalled());
     await waitFor(() => expect(screen.getByTestId("cliff-run")).not.toBeDisabled());
@@ -137,35 +143,22 @@ describe("ContextCliffPanel", () => {
     expect(screen.getByTestId("cliff-read")).not.toHaveTextContent(/maintained/i);
   });
 
-  it("runs the global model with the global params (no local picker)", async () => {
+  it("runs the global model + params and forwards the chosen padding source to the backend", async () => {
     useParamsStore.setState({ globalParams: { temperature: 0.2 } });
-    vi.mocked(runToolcallEval).mockResolvedValue(report(1.0, 5000) as never);
+    vi.mocked(runContextCliff).mockResolvedValue(reportOf({ status: "NoCliff", tested: 5000 }, [rung(5000, 1.0)], 5000) as never);
     render(<ContextCliffPanel />);
     await waitFor(() => expect(getBuiltinCollection).toHaveBeenCalled());
     expect(screen.queryByTestId("cliff-model-select")).toBeNull();
     expect(screen.getByTestId("cliff-model")).toHaveTextContent("m");
     await waitFor(() => expect(screen.getByTestId("cliff-run")).not.toBeDisabled());
     fireEvent.click(screen.getByTestId("cliff-run"));
-    await waitFor(() => expect(runToolcallEval).toHaveBeenCalled());
-    const call = vi.mocked(runToolcallEval).mock.calls[0];
+    await waitFor(() => expect(runContextCliff).toHaveBeenCalled());
+    const call = vi.mocked(runContextCliff).mock.calls[0];
     expect(call[0]).toBe("m"); // model
     expect(call[1]).toBe("ollama"); // backend
-    // Greedy is ON by default → temperature pinned 0 (reproducible diagnostic),
-    // overriding the global 0.2; global params still flow (num_ctx is raised so the
-    // prompt isn't truncated at Ollama's 4096 default).
-    expect((call[4] as { temperature?: number }).temperature).toBe(0);
-    expect((call[4] as { num_ctx?: number }).num_ctx).toBeGreaterThan(4096);
-  });
-
-  it("uses the global temperature when Greedy is turned off", async () => {
-    useParamsStore.setState({ globalParams: { temperature: 0.2 } });
-    vi.mocked(runToolcallEval).mockResolvedValue(report(1.0, 5000) as never);
-    render(<ContextCliffPanel />);
-    await waitFor(() => expect(screen.getByTestId("cliff-run")).not.toBeDisabled());
-    fireEvent.click(screen.getByTestId("cliff-greedy")); // turn greedy OFF
-    fireEvent.click(screen.getByTestId("cliff-run"));
-    await waitFor(() => expect(runToolcallEval).toHaveBeenCalled());
-    expect((vi.mocked(runToolcallEval).mock.calls[0][4] as { temperature?: number }).temperature).toBe(0.2);
+    expect(call[4]).toEqual({ kind: "preset", preset: "corporate_policy" }); // source
+    // Global params flow through; the backend pins greedy (temp 0) + num_ctx — not the panel.
+    expect(call[7]).toEqual({ temperature: 0.2 });
   });
 
   it("with 2+ selected Ollama models, a dropdown picks which one the probe runs", async () => {
@@ -173,15 +166,15 @@ describe("ContextCliffPanel", () => {
       { name: "m", backend: "ollama", size_bytes: 1 },
       { name: "m2", backend: "ollama", size_bytes: 1 },
     ] });
-    vi.mocked(runToolcallEval).mockResolvedValue(report(1.0, 5000) as never);
+    vi.mocked(runContextCliff).mockResolvedValue(reportOf({ status: "NoCliff", tested: 5000 }, [rung(5000, 1.0)], 5000) as never);
     render(<ContextCliffPanel />);
     await waitFor(() => expect(getBuiltinCollection).toHaveBeenCalled());
     // dropdown appears, listing the selected models; pick the second
     fireEvent.change(screen.getByTestId("cliff-model-select"), { target: { value: "m2" } });
     await waitFor(() => expect(screen.getByTestId("cliff-run")).not.toBeDisabled());
     fireEvent.click(screen.getByTestId("cliff-run"));
-    await waitFor(() => expect(runToolcallEval).toHaveBeenCalled());
-    expect(vi.mocked(runToolcallEval).mock.calls[0][0]).toBe("m2");
+    await waitFor(() => expect(runContextCliff).toHaveBeenCalled());
+    expect(vi.mocked(runContextCliff).mock.calls[0][0]).toBe("m2");
   });
 
   it("caps the Max Tokens slider at the model's context window", async () => {
@@ -195,7 +188,6 @@ describe("ContextCliffPanel", () => {
     const { useCliffStore } = await import("../state/cliffStore");
     // The Matrix sets this before navigating to Audit.
     useCliffStore.setState({ request: { model: "m2", backend: "ollama", collectionId: "curated", maxTokens: 8192, steps: 7 } });
-    vi.mocked(runToolcallEval).mockResolvedValue(report(1.0, 5000) as never);
 
     render(<ContextCliffPanel />);
     await waitFor(() => expect(getBuiltinCollection).toHaveBeenCalledWith("curated"));
@@ -207,7 +199,7 @@ describe("ContextCliffPanel", () => {
     // Request is one-shot.
     expect(useCliffStore.getState().request).toBeNull();
     // GUARDRAIL 1: pre-fill only — the probe never starts on navigation.
-    expect(runToolcallEval).not.toHaveBeenCalled();
+    expect(runContextCliff).not.toHaveBeenCalled();
   });
 
   it("re-pre-fills when a NEW request arrives after mount (always-mounted Audit panel)", async () => {

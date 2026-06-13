@@ -1,26 +1,10 @@
 import { describe, it, expect } from "vitest";
-import { padTask, buildLadder, cliffPoint, classifyCliff } from "../cliff";
-import type { ToolTask } from "../../../shared/ipc/eval/registry";
+import { cliffPoint, classifyCliff } from "../cliff";
 
-const task: ToolTask = {
-  id: "t", category: "single", prompt: "Weather in Paris?",
-  tools: [{ name: "w", description: "", parameters: { type: "object", properties: {} } }],
-  expected: { type: "call", name: "w", args: {} },
-};
-
+// The padding ladder + needle sweep + verify-and-adjust now live in the backend
+// engine (`inference/eval/cliff/`, tested in Rust); the frontend only classifies the
+// verified series the backend returns. These cover that classification.
 describe("cliff helpers", () => {
-  it("buildLadder is ascending and starts at the unpadded baseline", () => {
-    expect(buildLadder(16000, 5)).toEqual([0, 4000, 8000, 12000, 16000]);
-    expect(buildLadder(100, 1)).toEqual([0]);
-  });
-
-  it("padTask grows the prompt and keeps the original instruction at the end", () => {
-    const padded = padTask(task, 1000);
-    expect(padded.prompt.length).toBeGreaterThan(task.prompt.length);
-    expect(padded.prompt.endsWith(task.prompt)).toBe(true);
-    expect(padTask(task, 0)).toBe(task); // no padding → unchanged
-  });
-
   it("cliffPoint reports the cliff rung's REAL measured token depth (baseline = rung 0)", () => {
     const points = [
       { promptTokens: 120, composite: 1.0 },

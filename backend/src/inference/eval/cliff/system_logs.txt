@@ -1,0 +1,20 @@
+2024-01-01T00:00:01Z INFO  scheduler        node=worker-01 msg="heartbeat accepted" latency_ms=4 queue_depth=0
+2024-01-01T00:00:02Z INFO  ingest           node=worker-03 msg="batch committed" records=512 bytes=1048576 partition=7
+2024-01-01T00:00:03Z DEBUG cache            node=worker-01 msg="entry evicted" key=session:af19 reason=ttl size=2048
+2024-01-01T00:00:04Z WARN  ratelimiter      node=edge-02 msg="threshold approached" client=10.4.2.9 window=60s count=940
+2024-01-01T00:00:05Z INFO  auth             node=edge-01 msg="token refreshed" subject=svc-report ttl=3600 scope=read
+2024-01-01T00:00:06Z ERROR storage          node=worker-05 msg="write retry" attempt=2 volume=vol-12 errno=11 backoff_ms=200
+2024-01-01T00:00:07Z INFO  storage          node=worker-05 msg="write committed" attempt=3 volume=vol-12 offset=88210
+2024-01-01T00:00:08Z DEBUG planner          node=worker-02 msg="plan selected" cost=12.4 strategy=hash_join rows=4096
+2024-01-01T00:00:09Z INFO  gc               node=worker-04 msg="cycle complete" reclaimed_mb=128 pause_ms=6 generation=2
+2024-01-01T00:00:10Z WARN  replication      node=worker-03 msg="lag detected" peer=worker-06 lag_ms=820 threshold_ms=500
+2024-01-01T00:00:11Z INFO  replication      node=worker-03 msg="lag recovered" peer=worker-06 lag_ms=120 threshold_ms=500
+2024-01-01T00:00:12Z INFO  api              node=edge-01 msg="request served" route=/v1/status code=200 dur_ms=8 bytes=312
+2024-01-01T00:00:13Z DEBUG metrics          node=worker-01 msg="sample flushed" series=2048 sink=tsdb dropped=0 dur_ms=3
+2024-01-01T00:00:14Z INFO  scheduler        node=worker-02 msg="task dispatched" task=reindex shard=14 priority=normal
+2024-01-01T00:00:15Z ERROR api              node=edge-03 msg="upstream timeout" route=/v1/search code=504 dur_ms=3001
+2024-01-01T00:00:16Z INFO  api              node=edge-03 msg="circuit half-open" route=/v1/search probes=1 cooldown_s=30
+2024-01-01T00:00:17Z INFO  config           node=worker-01 msg="reload applied" version=418 source=central checksum=ok
+2024-01-01T00:00:18Z DEBUG cache            node=worker-04 msg="entry promoted" key=catalog:items tier=hot hits=1290
+2024-01-01T00:00:19Z WARN  disk             node=worker-05 msg="utilization high" volume=vol-09 used_pct=87 quota_pct=90
+2024-01-01T00:00:20Z INFO  health           node=control-01 msg="cluster nominal" healthy=6 degraded=0 unreachable=0

@@ -768,20 +768,36 @@ the micro "why did this one fail?" trace.
 ## Context-cliff probe {#context-cliff}
 
 Runs a dataset at increasing prompt lengths and graphs where tool-call accuracy collapses
-— the "context cliff" many local models hit well before their advertised window. The x-axis is the
-model's **real measured prompt-token depth** (`prompt_eval_count` reported by the backend, averaged
-over the rung's tasks) — **not** a chars/4 estimate. The padding amount is a knob (benign filler
-sized in chars); the plotted depth is always measured. A rung the backend reports no token count for
-shows **"Not available"** and is dropped from the chart rather than placed at a made-up x.
+— the "context cliff" many local models hit well before their advertised window. The engine is the
+**Tauri-free** `inference/eval/cliff/` module (`run_context_cliff` command), so the ladder, padding,
+needle sweep, verify-and-adjust, and classification are all unit-tested without a window; the frontend
+only charts the verified series it returns. The x-axis is the model's **real measured prompt-token
+depth** (`prompt_eval_count` reported by the backend, averaged over the rung's tasks) — **not** a
+chars/4 estimate. A rung the backend reports no token count for shows **"Not available"** rather than a
+made-up x.
+
+**Padding (license-clean, char-boundary-safe).** Filler comes from one of three embedded synthetic
+presets — **Corporate Policy** (prose), **System Logs** (structured), **Financial Ledger** (tabular),
+each `include_str!`-bundled — or the user's own text. The engine cycles the source in 4 KB chunks to a
+byte target and slices only at UTF-8 char boundaries (`safe_boundary`), so a multi-byte preset/file can
+never panic the probe. The instruction (the **needle**) is injected at swept fractional depths
+**[0.1, 0.3, 0.5, 0.7, 0.9]** — never tail-appended, because the tail tests recency (the model's
+strongest position); mid-document is where models actually fail. A rung's "Accuracy" is the **worst
+composite across those positions** — "passes across positions" means robust everywhere.
+
+**Verify-and-adjust (the depth is measured, never requested).** Each rung seeds padding at
+`target × 4` bytes, measures the real `prompt_eval_count`, and — if it lands more than **±5%** off the
+target — rebuilds the padding proportionally and reruns (bounded retries). The **reported depth is the
+verified token count**, never the requested one. `cliff_tokens` is the largest verified context where
+the task still passed across all positions.
 
 The probe owns its own **Active Collection** picker (independent of the EvalManager editor), so it
-always has a real dataset to run. The **Max Tokens** control sets the padding target (how much filler
-to add) and is capped at the model's reported **context window** when known (Ollama `/api/show` dims),
-falling back to a fixed ceiling otherwise. A **Greedy (temp 0)** toggle (default **on**) forces
-deterministic decoding so the verdict reproduces for a given (collection, model); a cliff is a
-*diagnostic*, so the greedy path is the canonical benchmark. Turning it off samples at the **global
-temperature** instead (useful to eyeball run-to-run variance, never the recorded baseline).
-A run that errors surfaces a **"Not available — …"** banner rather than a silent blank chart.
+always has a real dataset to run. The **Max Tokens** control sets the deepest rung and is capped at the
+model's reported **context window** when known (Ollama `/api/show` dims), falling back to a fixed
+ceiling otherwise; the backend forces `num_ctx` above the deepest rung so the padding isn't truncated.
+A **Padding** picker chooses the preset. Decoding is **always greedy (temp 0)** — a cliff is a
+*diagnostic* and must reproduce for a given (collection, model), so the engine pins it; there is no
+local toggle. A run that errors surfaces a **"Not available — …"** banner rather than a silent blank chart.
 
 **How each rung's "Accuracy" is scored.** Each rung re-runs the dataset and reports the **composite
 tool-call score** (0–100%) — the mean of the available sub-metrics defined in
@@ -792,8 +808,9 @@ denominator** so a format failure doesn't bleed into the reasoning metrics, and 
 zero denominator is **n/a (excluded)**, not 0. A per-step status of **Pass / Failure** is just that
 composite vs a **50%** bar.
 
-**The four probe verdicts** (computed in `frontend/src/features/eval/cliff.ts::classifyCliff`, so the
-persisted depth and the displayed verdict can never disagree):
+**The four probe verdicts** (the backend engine classifies into the persisted `CliffStatus`;
+`frontend/src/features/eval/cliff.ts::classifyCliff` mirrors the same rules over the returned series for
+the read-out, so the persisted status and the displayed verdict can never disagree):
 
 | Verdict | Condition | Matrix cell |
 |---|---|---|

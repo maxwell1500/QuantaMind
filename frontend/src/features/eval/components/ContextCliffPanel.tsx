@@ -11,6 +11,7 @@ import { TOOL_HELP } from "../help";
 import { classifyCliff } from "../cliff";
 import { ContextCliffChart } from "./ContextCliffChart";
 import type { BackendKind } from "../../../shared/ipc/models/storage";
+import type { CliffPreset } from "../../../shared/ipc/eval/cliff";
 
 interface ProbeModel {
   name: string;
@@ -29,9 +30,10 @@ export function ContextCliffPanel() {
   const [tasks, setTasks] = useState<ToolTask[]>([]);
   const [maxTokens, setMaxTokens] = useState(16384);
   const [testSteps, setTestSteps] = useState(5);
-  // Greedy (temp 0) by default → a probe is a DIAGNOSTIC and must reproduce for a given
-  // (model, collection). Off to sample at the global temperature.
-  const [greedy, setGreedy] = useState(true);
+  // Which embedded synthetic preset fills the context (the backend cycles it to each
+  // verified depth, char-boundary-safe). The probe is always greedy (temp 0) — a
+  // diagnostic must reproduce — so the backend pins it; there is no local toggle.
+  const [preset, setPreset] = useState<CliffPreset>("corporate_policy");
   // The probe runs ONE of the global header models + global params. With 2+
   // selected (Ollama), a small dropdown picks which one; default the first. A
   // pre-fill request from the Matrix can OVERRIDE that with any batch-target model.
@@ -135,8 +137,8 @@ export function ContextCliffPanel() {
       tasks,
       maxTokens,
       steps: testSteps,
+      source: { kind: "preset", preset },
       params: globalParams,
-      greedy,
     });
   };
   const handleStop = () => stopProbe();
@@ -498,19 +500,23 @@ export function ContextCliffPanel() {
           </span>
         </div>
 
-        {/* Greedy (reproducible) toggle — a diagnostic should repeat for a given run. */}
+        {/* Padding source — which license-clean synthetic preset fills the context.
+            The backend cycles it, char-boundary-safe, to each verified token depth. */}
         <label
-          style={{ display: "flex", alignItems: "center", gap: 8, marginTop: 14, fontSize: 12, color: "#475569", cursor: "pointer", fontFamily: "Inter, ui-sans-serif, system-ui, sans-serif" }}
-          title="Greedy decoding (temperature 0) makes the cliff verdict reproducible for the same model + collection. Turn off to sample at your global temperature."
+          style={{ display: "flex", alignItems: "center", gap: 8, marginTop: 14, fontSize: 12, color: "#475569", fontFamily: "Inter, ui-sans-serif, system-ui, sans-serif" }}
+          title="The filler the probe pads the context with before the real instruction. Greedy (temp 0) is always on — a diagnostic must reproduce."
         >
-          <input
-            type="checkbox"
-            data-testid="cliff-greedy"
-            checked={greedy}
-            onChange={(e) => setGreedy(e.target.checked)}
-            style={{ cursor: "pointer" }}
-          />
-          Greedy (temp 0 — reproducible)
+          Padding
+          <select
+            value={preset}
+            onChange={(e) => setPreset(e.target.value as CliffPreset)}
+            data-testid="cliff-source-select"
+            style={{ fontSize: 12, color: "#334155", background: "#f1f5f9", border: "1px solid #e2e8f0", borderRadius: 6, padding: "3px 8px", outline: "none", cursor: "pointer", fontFamily: "Inter, ui-sans-serif, system-ui, sans-serif" }}
+          >
+            <option value="corporate_policy">Corporate Policy (prose)</option>
+            <option value="system_logs">System Logs (structured)</option>
+            <option value="financial_ledger">Financial Ledger (tabular)</option>
+          </select>
         </label>
       </div>
 
