@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { modelLabel } from "../../../shared/models/modelLabel";
 import { useSelectedModelStore } from "../../../shared/state/selectedModelStore";
 import { useParamsStore } from "../../../shared/state/paramsStore";
@@ -108,6 +108,19 @@ export function ContextCliffPanel() {
   // (Ollama /api/show dims); fall back to a fixed ceiling otherwise.
   const { dims } = useVramFit(selected?.name, selected?.backend, maxTokens);
   const sliderMax = dims?.context_length ? Math.max(4096, dims.context_length) : FALLBACK_MAX_TOKENS;
+  // Default Max Tokens to the model's FULL context window once it's known — a model's
+  // cliff can sit anywhere up to its real window, so the probe should sweep the whole
+  // thing by default (Run probe ↗ lands here pre-filled). Done once per model so a
+  // manual slider change is never clobbered; you can still dial it down for speed.
+  const defaultedFor = useRef<string | null>(null);
+  useEffect(() => {
+    const m = selected?.name ?? null;
+    if (m && dims?.context_length && defaultedFor.current !== m) {
+      setMaxTokens(sliderMax);
+      defaultedFor.current = m;
+    }
+  }, [selected?.name, dims?.context_length, sliderMax]);
+  // Keep the value within the window after a model switch (a smaller window clamps down).
   useEffect(() => {
     setMaxTokens((m) => Math.min(m, sliderMax));
   }, [sliderMax]);

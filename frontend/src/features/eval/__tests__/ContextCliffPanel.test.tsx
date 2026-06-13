@@ -184,6 +184,14 @@ describe("ContextCliffPanel", () => {
     await waitFor(() => expect(screen.getByTestId("cliff-max-tokens")).toHaveAttribute("max", "8192"));
   });
 
+  it("defaults Max Tokens to the model's FULL context window once known", async () => {
+    vi.mocked(inspectModel).mockResolvedValue(dims(32768) as never);
+    render(<ContextCliffPanel />);
+    await waitFor(() => expect(getBuiltinCollection).toHaveBeenCalled());
+    // The probe should sweep the whole window by default, not a fixed 16384.
+    await waitFor(() => expect((screen.getByTestId("cliff-max-tokens") as HTMLInputElement).value).toBe("32768"));
+  });
+
   it("pre-fills model + collection + max tokens + steps from a Matrix request and does NOT auto-run", async () => {
     const { useCliffStore } = await import("../state/cliffStore");
     // The Matrix sets this before navigating to Audit.
