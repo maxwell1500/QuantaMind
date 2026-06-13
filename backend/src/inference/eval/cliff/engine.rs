@@ -16,8 +16,10 @@ use serde::{Deserialize, Serialize};
 /// afterward and the padding rebuilt proportionally — this 4:1 ratio is only the
 /// starting estimate, never the reported depth.
 const BYTES_PER_TOKEN: usize = 4;
-/// Max proportional rebuilds after the first attempt (verify-and-adjust).
-const MAX_ADJUST_ATTEMPTS: usize = 2;
+/// Max proportional rebuilds after the first sweep (verify-and-adjust). Kept at 1:
+/// once the byte→token rate is learned (see `run_cliff_with`), each rung sizes
+/// correctly on the first sweep, so a rebuild is a rare safety net, not the norm.
+const MAX_ADJUST_ATTEMPTS: usize = 1;
 /// Accept a rung when the measured depth is within ±5% of the requested target.
 const ADJUST_TOLERANCE: f64 = 0.05;
 /// Output token cap per probe turn — only a tool call is expected, never prose.
@@ -27,9 +29,10 @@ const MAX_OUTPUT: u32 = 256;
 const BASELINE_PASS: f64 = 0.5;
 /// A deeper rung is a cliff when its composite falls this far below the baseline.
 const COLLAPSE_MARGIN: f64 = 0.2;
-/// The needle is injected at these fractional depths — never tail-appended (that
-/// tests recency, the model's strongest position). Mid-document is where it fails.
-pub const DEFAULT_DEPTHS: [f32; 5] = [0.1, 0.3, 0.5, 0.7, 0.9];
+/// The needle is injected at these fractional depths — front / middle / back, never
+/// tail-only (the tail tests recency, the model's strongest position). Three
+/// positions keep the probe affordable; mid-document is where models actually fail.
+pub const DEFAULT_DEPTHS: [f32; 3] = [0.1, 0.5, 0.9];
 
 /// One needle position within a rung: the composite there and the verified depth.
 #[derive(Serialize, Deserialize, Clone, Debug, PartialEq)]
@@ -133,6 +136,11 @@ async fn sweep<M: ModelTurn>(
 /// Probe one rung: build padding for `target` tokens, verify the measured depth is
 /// within ±5%, rebuilding proportionally up to `MAX_ADJUST_ATTEMPTS` times, then
 /// report the rung at its VERIFIED token count (never the requested one).
+///
+/// `rate` is the learned bytes-per-token for this (model, source): seeded from it so
+/// each rung lands within tolerance on the FIRST sweep, and updated from this rung's
+/// own measurement. That turns verify-and-adjust from "re-sweep until close" into one
+/// sweep per rung in the common case — the main speed win.
 async fn probe_rung<M: ModelTurn>(
     turn: &M,
     model: &str,
@@ -140,6 +148,7 @@ async fn probe_rung<M: ModelTurn>(
     source_text: &str,
     target: u32,
     depths: &[f32],
+    rate: &mut Option<f64>,
 ) -> AppResult<CliffPoint> {
     if target == 0 {
         // Baseline: unpadded, single position.
@@ -153,11 +162,18 @@ async fn probe_rung<M: ModelTurn>(
             per_depth: vec![DepthScore { depth: 0.0, composite: report.composite, verified_tokens: vt }],
         });
     }
-    let mut bytes = target as usize * BYTES_PER_TOKEN;
+    // Seed from the learned rate (accurate) or the 4:1 fallback on the first padded rung.
+    let mut bytes = match *rate {
+        Some(r) => ((target as f64) * r).round() as usize,
+        None => target as usize * BYTES_PER_TOKEN,
+    };
     let mut last: Option<(Vec<DepthScore>, u32, Option<f64>)> = None;
     for attempt in 0..=MAX_ADJUST_ATTEMPTS {
         let padding = build_padding(source_text, bytes);
         let (per_depth, mean_tokens, worst) = sweep(turn, model, tasks, &padding, depths).await?;
+        if mean_tokens > 0 {
+            *rate = Some(bytes as f64 / mean_tokens as f64); // learn for the next rung
+        }
         let off = if target > 0 { (mean_tokens as f64 - target as f64).abs() / target as f64 } else { 0.0 };
         last = Some((per_depth, mean_tokens, worst));
         if mean_tokens == 0 || off <= ADJUST_TOLERANCE || attempt == MAX_ADJUST_ATTEMPTS {
@@ -237,10 +253,31 @@ pub async fn run_cliff_with<M: ModelTurn>(
     let source_text = source.text();
     let total = ladder.len();
     let mut points = Vec::with_capacity(total);
+    // Learned bytes-per-token, shared across rungs so each sizes on one sweep.
+    let mut rate: Option<f64> = None;
+    // The baseline (first rung) composite — the plateau a cliff falls off.
+    let mut baseline_comp: Option<f64> = None;
     for (i, &target) in ladder.iter().enumerate() {
-        let point = probe_rung(turn, model, tasks, source_text, target, depths).await?;
+        let point = probe_rung(turn, model, tasks, source_text, target, depths, &mut rate).await?;
         on_rung(i + 1, total, &point);
+        let comp = point.composite;
         points.push(point);
+
+        // Early-stop — skip the slowest deep rungs once the outcome is decided:
+        if i == 0 {
+            baseline_comp = comp;
+            // A broken / unmeasurable baseline can't have a "cliff" — stop before
+            // paying for any padded rung.
+            if comp.map_or(true, |c| c < BASELINE_PASS) {
+                break;
+            }
+        } else if let (Some(b), Some(c)) = (baseline_comp, comp) {
+            // First collapse IS the cliff (classify takes the first drop); deeper
+            // rungs would only re-confirm failure at the highest context cost.
+            if c <= b - COLLAPSE_MARGIN {
+                break;
+            }
+        }
     }
     let (status, cliff_tokens) = classify(&points);
     Ok(CliffReport { points, status, cliff_tokens })

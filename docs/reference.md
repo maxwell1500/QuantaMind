@@ -781,15 +781,22 @@ presets — **Corporate Policy** (prose), **System Logs** (structured), **Financ
 each `include_str!`-bundled — or the user's own text. The engine cycles the source in 4 KB chunks to a
 byte target and slices only at UTF-8 char boundaries (`safe_boundary`), so a multi-byte preset/file can
 never panic the probe. The instruction (the **needle**) is injected at swept fractional depths
-**[0.1, 0.3, 0.5, 0.7, 0.9]** — never tail-appended, because the tail tests recency (the model's
-strongest position); mid-document is where models actually fail. A rung's "Accuracy" is the **worst
-composite across those positions** — "passes across positions" means robust everywhere.
+**[0.1, 0.5, 0.9]** (front / middle / back) — never tail-only, because the tail tests recency (the
+model's strongest position); mid-document is where models actually fail. A rung's "Accuracy" is the
+**worst composite across those positions** — "passes across positions" means robust everywhere.
 
-**Verify-and-adjust (the depth is measured, never requested).** Each rung seeds padding at
-`target × 4` bytes, measures the real `prompt_eval_count`, and — if it lands more than **±5%** off the
-target — rebuilds the padding proportionally and reruns (bounded retries). The **reported depth is the
-verified token count**, never the requested one. `cliff_tokens` is the largest verified context where
-the task still passed across all positions.
+**Verify-and-adjust (the depth is measured, never requested).** Each rung seeds padding from the
+**learned bytes-per-token rate** for this (model, source) — measured on the first padded rung, so every
+later rung lands within tolerance on a single sweep — then checks the real `prompt_eval_count` and, only
+if it's more than **±5%** off, rebuilds proportionally once. The **reported depth is the verified token
+count**, never the requested one. `cliff_tokens` is the largest verified context where the task still
+passed across all positions.
+
+**Cost control (early-stop).** The deepest rungs are the slowest (the model must process the whole
+padded prompt), so the engine stops as soon as the outcome is decided: a **broken baseline** stops
+before any padded rung runs, and the **first collapse** stops the ladder (deeper rungs would only
+re-confirm failure at the highest cost). Three needle positions, one sweep per rung, and early-stop keep
+a probe affordable; lowering **Test Steps** / **Max Tokens** trims it further.
 
 The probe owns its own **Active Collection** picker (independent of the EvalManager editor), so it
 always has a real dataset to run. The **Max Tokens** control sets the deepest rung and is capped at the

@@ -71,6 +71,29 @@ async fn detects_the_cliff_and_reports_the_last_passing_depth() {
 }
 
 #[tokio::test]
+async fn early_stop_skips_the_slow_deep_rungs_once_a_cliff_is_found() {
+    // Collapses past ~5000 tokens. The 16000/32000 rungs are the slowest, and once
+    // the 8000 rung collapses they add nothing — they must NOT be probed.
+    let model = CliffModel { threshold: 5000, good: GOOD.into() };
+    let tasks = [task()];
+    let ladder = [0u32, 2000, 8000, 16000, 32000];
+    let report = run_cliff(&model, "m", &tasks, &source(), &ladder, &DEFAULT_DEPTHS).await.unwrap();
+    let probed: Vec<u32> = report.points.iter().map(|p| p.target_tokens).collect();
+    assert_eq!(probed, vec![0, 2000, 8000]); // stopped at the collapse; deep rungs skipped
+    assert!(matches!(report.status, CliffStatus::Collapsed { .. }));
+}
+
+#[tokio::test]
+async fn early_stop_on_a_broken_baseline_probes_no_padded_rung() {
+    let model = CliffModel { threshold: 0, good: GOOD.into() }; // fails even unpadded
+    let tasks = [task()];
+    let ladder = [0u32, 2000, 8000, 16000];
+    let report = run_cliff(&model, "m", &tasks, &source(), &ladder, &DEFAULT_DEPTHS).await.unwrap();
+    assert_eq!(report.points.len(), 1); // only the baseline — no expensive padded rung
+    assert!(matches!(report.status, CliffStatus::Broken { .. }));
+}
+
+#[tokio::test]
 async fn a_model_that_holds_throughout_reports_no_cliff() {
     let model = CliffModel { threshold: u32::MAX, good: GOOD.into() };
     let tasks = [task()];
