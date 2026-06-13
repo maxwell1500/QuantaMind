@@ -193,7 +193,7 @@ export function PerformanceMatrix({
           {rows.length > 1 ? " (per-model summary — click a row to inspect model details)" : " (per-model summary)"}
         </span>
         <span style={{ marginLeft: "auto", display: "inline-flex", alignItems: "center", gap: 10 }}>
-          {anyNative && (
+          {rows.length > 0 && (
             <button
               type="button"
               data-testid="matrix-native-toggle"
@@ -221,6 +221,17 @@ export function PerformanceMatrix({
           Pick one or more target models and Run Batch to compare them here.
         </div>
       ) : (
+        <>
+        {showNative && !anyNative && (
+          <div
+            data-testid="native-fc-empty-hint"
+            style={{ margin: "0 16px 10px", padding: "8px 12px", fontSize: 12, lineHeight: 1.5, color: "#475569", background: "#f8fafc", border: "1px solid #e2e8f0", borderRadius: 8, fontFamily: "Inter, sans-serif" }}
+          >
+            Native-FC wasn't measured in this run, so the column is N/A. Turn on{" "}
+            <strong>"Measure native tool-calling (Ollama)"</strong> in the run config and re-run to
+            populate it (Ollama only — llama.cpp / MLX stay N/A).
+          </div>
+        )}
         <div style={{ overflowX: "auto" }}>
           <table style={{ width: "100%", borderCollapse: "collapse" }} data-testid="performance-matrix-table">
             <thead>
@@ -259,13 +270,14 @@ export function PerformanceMatrix({
                       <td
                         style={{ ...td, fontWeight: 700 }}
                         data-testid={`matrix-native-${r.model}`}
-                        // The column only appears because native WAS measured this run, so an
-                        // N/A here means this model was skipped — explain why rather than leave
-                        // a developer who followed the "enable native FC" nudge at a silent wall.
+                        // Explain an N/A rather than leave a silent wall: either native FC
+                        // wasn't measured this run at all, or this specific model was skipped.
                         title={
-                          r.passKNative === "N/A"
-                            ? "Native tool-calling not measured for this model — non-Ollama backend, or the model has no tools capability."
-                            : undefined
+                          r.passKNative !== "N/A"
+                            ? undefined
+                            : anyNative
+                              ? "Native tool-calling not measured for this model — non-Ollama backend, or the model has no tools capability."
+                              : "Native tool-calling wasn't measured in this run — enable it in the run config and re-run (Ollama only)."
                         }
                       >
                         {getPassKBadge(r.passKNative)}
@@ -358,6 +370,7 @@ export function PerformanceMatrix({
             </tbody>
           </table>
         </div>
+        </>
       )}
       {rows.length > 0 && (
         <div style={legendStyle} data-testid="matrix-legend">

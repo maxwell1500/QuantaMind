@@ -197,9 +197,14 @@ describe("PerformanceMatrix", () => {
     expect(naCell.getAttribute("title")).toMatch(/native tool-calling not measured|non-Ollama backend|no tools capability/i);
   });
 
-  it("offers no Native-FC toggle when native was not measured", () => {
-    useBatchStore.setState({ report });
+  it("always offers the Native-FC toggle and explains how to populate it when it was not measured", () => {
+    useBatchStore.setState({ report }); // no agentic_native_fc on any column
     render(<PerformanceMatrix focusedModel="qwen" onFocusModel={() => {}} />);
-    expect(screen.queryByTestId("matrix-native-toggle")).toBeNull();
+    // The toggle is always available — clicking it must DO something, not vanish.
+    const toggle = screen.getByTestId("matrix-native-toggle");
+    fireEvent.click(toggle);
+    // Reveals the column (N/A here) plus a hint pointing at the run-config checkbox.
+    expect(screen.getByTestId("native-fc-empty-hint")).toHaveTextContent(/Measure native tool-calling/i);
+    expect(screen.getByTestId("matrix-native-qwen")).toHaveTextContent("—"); // N/A renders as an em-dash badge
   });
 });
