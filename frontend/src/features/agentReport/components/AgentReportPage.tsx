@@ -82,18 +82,10 @@ export function AgentReportPage() {
         </div>
 
         <div className="flex items-center gap-4">
-          {/* User Avatar */}
-          <div className="flex items-center gap-2">
-            <div className="w-7 h-7 rounded-full bg-blue-600 border border-blue-400 flex items-center justify-center text-xs font-bold text-white shadow-sm select-none">
-              DM
-            </div>
-            <span className="text-xs text-slate-500 hidden sm:inline font-medium">Dhanu Mind</span>
-          </div>
-
           {/* Help Action */}
           <div className="flex items-center gap-1.5 text-xs font-medium text-slate-500 hover:text-slate-700 transition-all cursor-pointer">
             <span className="hidden sm:inline">Help</span>
-            <InfoButton {...READINESS_HELP.page} align="left" testId="readiness-page" />
+            <InfoButton {...READINESS_HELP.page} align="right" testId="readiness-page" />
           </div>
         </div>
       </header>
