@@ -179,7 +179,7 @@ fn agg_agentic_sums_failure_breakdown_not_just_top_error() {
     assert_eq!(agg.failures.hallucinated_completions, 9);
 }
 
-use crate::inference::eval::agentic::report::{AgenticReport, RunOutcome};
+use crate::inference::eval::agentic::report::{AgenticReport, FailureKind, RunOutcome};
 use std::sync::Mutex as StdMutex;
 
 /// A gate that always fails — to prove the run halts (assert-and-fail) rather than
@@ -272,4 +272,38 @@ async fn cancellation_stops_the_queue_early() {
 
     assert_eq!(*sink.done.lock().unwrap(), 0);
     assert_eq!(report.columns.len(), 1); // the column is still emitted (empty)
+}
+
+// ── Pass^k aggregation: a task is credited only when ALL k runs pass (spec §3.3) ──
+
+/// One task's report: `p` of `k` runs reached the end state, the rest hallucinated.
+fn task_report(p: u32, k: u32) -> AgenticReport {
+    let outcomes: Vec<RunOutcome> = (0..k)
+        .map(|i| if i < p { RunOutcome::success(2, 10) } else { RunOutcome::failure(2, 10, FailureKind::Hallucinated) })
+        .collect();
+    AgenticReport::from_outcomes(&outcomes)
+}
+
+#[test]
+fn pass_k_credits_a_task_only_when_all_k_runs_pass() {
+    // Two flaky tasks (3/5 and 4/5): pass@k would read 7/10 = 0.7, but neither task
+    // passed ALL k, so strict Pass^k is 0 — the whole point of the metric.
+    let agg = agg_agentic(&[task_report(3, 5), task_report(4, 5)]);
+    assert_eq!(agg.tasks_passed, 0);
+    assert_eq!(agg.tasks_total, 2);
+    assert_eq!(agg.pass_k(), Some(0.0));
+    // Run-level sums survive as the secondary per-run rate (pass@k 0.7).
+    assert_eq!(agg.passes, 7);
+    assert_eq!(agg.total_runs, 10);
+}
+
+#[test]
+fn pass_k_is_the_fraction_of_fully_passing_tasks() {
+    // One task clean (5/5), one fully failing (0/5): one of two tasks credited → 0.5.
+    let agg = agg_agentic(&[task_report(5, 5), task_report(0, 5)]);
+    assert_eq!(agg.tasks_passed, 1);
+    assert_eq!(agg.tasks_total, 2);
+    assert_eq!(agg.pass_k(), Some(0.5));
+    // Both tasks clean → 1.0.
+    assert_eq!(agg_agentic(&[task_report(5, 5), task_report(5, 5)]).pass_k(), Some(1.0));
 }

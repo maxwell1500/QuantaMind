@@ -410,11 +410,16 @@ Error), with a click-through Trace Debugger. See [the workspace](#eval-runner).
   plain-text refusal with **no** tool call (so a robust planner that declines an
   unsafe/unnecessary action isn't mis-scored as lazy); acting anyway fails.
 - **Pass^k consistency.** The loop runs `k` times (default 5) with absolute
-  isolation between runs. The `AgenticReport` carries `passes/total_runs`, a
+  isolation between runs. The per-task `AgenticReport` carries `passes/total_runs`, a
   `FailureTracker` with **distinct** tallies (`infinite_loop_hits` = hit the step
   cap, `hallucinated_completions` = fake done, `malformed_json_calls` = broken
   JSON, `schema_unrecovered_calls` = exhausted the recovery budget), and a
-  `top_error` headline.
+  `top_error` headline. The **collection-level Pass^k** (the Matrix headline and
+  the readiness/leaderboard gate) is **strict**: `AggAgentic` credits a task only
+  when **all k** of its runs reached the end state (`tasks_passed/tasks_total`), so a
+  flaky 3/5 task counts as a failure, not 0.6 — reliability compounds and a model
+  that "usually works" is not agent-ready. The run-level sums (`passes/total_runs`)
+  are retained only as the secondary per-run rate behind the "Partial *p/k*" badge.
 - **Lazy-agent traps (Driver B fault injection).** A task may attach `faults` —
   per-call `TransientError { status_code, clears_after }` or
   `PersistentError { status_code }`, keyed by the same canonical call form as the

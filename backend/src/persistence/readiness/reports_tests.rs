@@ -13,6 +13,8 @@ fn report(collection_id: &str, passes: u32) -> BatchReport {
             backend: BackendKind::Ollama,
             toolcall: None,
             agentic: Some(AggAgentic {
+                tasks_passed: passes,
+                tasks_total: 5,
                 passes,
                 total_runs: 5,
                 avg_steps: Some(2.4),

@@ -100,10 +100,23 @@ pub trait BatchSink: Send + Sync {
     fn task_done(&self, model: &str, task_id: &str, outcome: &TaskOutcome);
 }
 
-/// Per-model aggregate of the collection's agentic tasks: summed Pass^k, mean
+/// Per-model aggregate of the collection's agentic tasks: Pass^k, mean
 /// steps/effort, dominant failure. Null metrics render "N/A", never fabricated.
+///
+/// Pass^k semantics (spec §3.3): a task is credited only when **all k of its runs
+/// succeed** — reliability compounds, so a model that passes 3/5 on a task is not
+/// "60% reliable", it is unreliable. `tasks_passed`/`tasks_total` carry that strict
+/// metric; `passes`/`total_runs` keep the run-level sums for the secondary per-run
+/// rate (pass@k) shown alongside the Partial badge.
 #[derive(Serialize, Deserialize, Clone, Debug, PartialEq)]
 pub struct AggAgentic {
+    /// Tasks where every one of the k runs reached the end state (strict Pass^k numerator).
+    #[serde(default)]
+    pub tasks_passed: u32,
+    /// Agentic tasks aggregated into this column (strict Pass^k denominator).
+    #[serde(default)]
+    pub tasks_total: u32,
+    /// Run-level sums across all tasks — the secondary per-run rate (pass@k), NOT the headline.
     pub passes: u32,
     pub total_runs: u32,
     pub avg_steps: Option<f64>,
@@ -117,6 +130,14 @@ pub struct AggAgentic {
     /// would hide a 1-loop/9-hallucination model from a `forbid_infinite_loop` profile.
     #[serde(default)]
     pub failures: FailureTracker,
+}
+
+impl AggAgentic {
+    /// Strict Pass^k: fraction of tasks whose every run succeeded. `None` when no
+    /// task was aggregated (the row then renders "N/A", never a fabricated 0).
+    pub fn pass_k(&self) -> Option<f64> {
+        (self.tasks_total > 0).then(|| self.tasks_passed as f64 / self.tasks_total as f64)
+    }
 }
 
 /// One model's row in the Matrix Scoreboard: single-turn report and/or agentic
@@ -171,7 +192,7 @@ pub fn batch_summaries(report: &BatchReport, ts: &str) -> Vec<RunSummary> {
                 abstain_acc: tc.and_then(|r| r.abstain_acc),
                 composite: tc.and_then(|r| r.composite),
                 n: tc.map(|r| r.n).unwrap_or(0),
-                pass_k: ag.map(|a| if a.total_runs > 0 { a.passes as f64 / a.total_runs as f64 } else { 0.0 }),
+                pass_k: ag.and_then(|a| a.pass_k()),
                 agentic_avg_steps: ag.and_then(|a| a.avg_steps),
                 effort: ag.and_then(|a| a.avg_output_tokens_success),
             }
@@ -201,6 +222,8 @@ fn agg_agentic(reports: &[AgenticReport]) -> AggAgentic {
     let eff: Vec<f64> = reports.iter().filter_map(|r| r.avg_output_tokens_success).collect();
     let resil: Vec<f64> = reports.iter().filter_map(|r| r.schema_resilience).collect();
     AggAgentic {
+        tasks_passed: reports.iter().filter(|r| r.total_runs > 0 && r.passes == r.total_runs).count() as u32,
+        tasks_total: reports.len() as u32,
         passes: reports.iter().map(|r| r.passes).sum(),
         total_runs: reports.iter().map(|r| r.total_runs).sum(),
         avg_steps: mean_f64(&steps),

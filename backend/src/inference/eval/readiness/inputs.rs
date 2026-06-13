@@ -19,10 +19,10 @@ pub fn from_column(
     // from it and label the path NativeFc; otherwise the prompt-based proxy.
     let native = col.agentic_native_fc.as_ref().filter(|a| a.total_runs > 0);
     let (source, native_fc) = match native {
-        Some(n) => (Some(n), NativeFcStatus::Tested { pass_k: n.passes as f64 / n.total_runs as f64 }),
+        Some(n) => (Some(n), NativeFcStatus::Tested { pass_k: n.pass_k().unwrap_or(0.0) }),
         None => (col.agentic.as_ref(), NativeFcStatus::NotSupported),
     };
-    let pass_k = source.and_then(|a| (a.total_runs > 0).then(|| a.passes as f64 / a.total_runs as f64));
+    let pass_k = source.and_then(|a| a.pass_k());
     let (loops, hallucinated) = source
         .map(|a| (a.failures.infinite_loop_hits, a.failures.hallucinated_completions))
         .unwrap_or((0, 0));
@@ -85,7 +85,7 @@ pub fn pass_k_of(col: &BatchColumn) -> Option<f64> {
         .as_ref()
         .filter(|a| a.total_runs > 0)
         .or(col.agentic.as_ref());
-    source.and_then(|a| (a.total_runs > 0).then(|| a.passes as f64 / a.total_runs as f64))
+    source.and_then(|a| a.pass_k())
 }
 
 /// Assess every model in a persisted batch report against a profile, with no

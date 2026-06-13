@@ -12,8 +12,8 @@ import type { BatchReport } from "../../../shared/ipc/eval/batch";
 const report: BatchReport = {
   collection_id: "c",
   columns: [
-    { model: "qwen", backend: "ollama", toolcall: null, agentic: { passes: 5, total_runs: 5, avg_steps: 2.4, avg_output_tokens_success: 112, schema_resilience: null, top_error: "none", failures: { infinite_loop_hits: 0, hallucinated_completions: 0, malformed_json_calls: 0, schema_unrecovered_calls: 0 } }, error: null },
-    { model: "loopy", backend: "ollama", toolcall: null, agentic: { passes: 1, total_runs: 5, avg_steps: null, avg_output_tokens_success: null, schema_resilience: null, top_error: "infinite_loop", failures: { infinite_loop_hits: 4, hallucinated_completions: 0, malformed_json_calls: 0, schema_unrecovered_calls: 0 } }, error: null },
+    { model: "qwen", backend: "ollama", toolcall: null, agentic: { tasks_passed: 5, tasks_total: 5, passes: 5, total_runs: 5, avg_steps: 2.4, avg_output_tokens_success: 112, schema_resilience: null, top_error: "none", failures: { infinite_loop_hits: 0, hallucinated_completions: 0, malformed_json_calls: 0, schema_unrecovered_calls: 0 } }, error: null },
+    { model: "loopy", backend: "ollama", toolcall: null, agentic: { tasks_passed: 1, tasks_total: 5, passes: 1, total_runs: 5, avg_steps: null, avg_output_tokens_success: null, schema_resilience: null, top_error: "infinite_loop", failures: { infinite_loop_hits: 4, hallucinated_completions: 0, malformed_json_calls: 0, schema_unrecovered_calls: 0 } }, error: null },
   ],
 };
 
@@ -157,8 +157,8 @@ describe("PerformanceMatrix", () => {
         model: "qwen",
         backend: "ollama",
         toolcall: null,
-        agentic: { passes: 5, total_runs: 5, avg_steps: 2.4, avg_output_tokens_success: 112, schema_resilience: null, top_error: "none", failures },
-        agentic_native_fc: { passes: 2, total_runs: 5, avg_steps: 3.0, avg_output_tokens_success: 90, schema_resilience: null, top_error: "hallucinated", failures: { ...failures, hallucinated_completions: 3 } },
+        agentic: { tasks_passed: 5, tasks_total: 5, passes: 5, total_runs: 5, avg_steps: 2.4, avg_output_tokens_success: 112, schema_resilience: null, top_error: "none", failures },
+        agentic_native_fc: { tasks_passed: 2, tasks_total: 5, passes: 2, total_runs: 5, avg_steps: 3.0, avg_output_tokens_success: 90, schema_resilience: null, top_error: "hallucinated", failures: { ...failures, hallucinated_completions: 3 } },
         error: null,
       },
     ],
@@ -186,7 +186,7 @@ describe("PerformanceMatrix", () => {
       collection_id: "c",
       columns: [
         nativeReport.columns[0],
-        { model: "tinyllama.gguf", backend: "llama_cpp", toolcall: null, agentic: { passes: 3, total_runs: 5, avg_steps: 2, avg_output_tokens_success: 80, schema_resilience: null, top_error: "none", failures }, agentic_native_fc: null, error: null },
+        { model: "tinyllama.gguf", backend: "llama_cpp", toolcall: null, agentic: { tasks_passed: 3, tasks_total: 5, passes: 3, total_runs: 5, avg_steps: 2, avg_output_tokens_success: 80, schema_resilience: null, top_error: "none", failures }, agentic_native_fc: null, error: null },
       ],
     };
     useBatchStore.setState({ report: mixed });
