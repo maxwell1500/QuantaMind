@@ -59,6 +59,9 @@ export function AuditPage() {
 
   return (
     <section data-testid="tab-audit" className="space-y-4">
+      {/* The Context-Cliff probe sits on top; the Audit & Compliance history follows below it. */}
+      <ContextCliffPanel />
+
       <h2 className="text-lg font-semibold text-slate-900">Audit &amp; Compliance</h2>
 
       <div style={card} data-testid="audit-history">
@@ -96,9 +99,6 @@ export function AuditPage() {
         </div>
         <HistoryTimeline history={backendHistory} />
       </div>
-
-
-      <ContextCliffPanel />
     </section>
   );
 }

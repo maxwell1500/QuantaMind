@@ -1,8 +1,14 @@
 import { create } from "zustand";
-import { runToolcallEval } from "../../../shared/ipc/eval/toolcall";
-import { saveCliffResult, getCliffResults } from "../../../shared/ipc/eval/cliff";
+import { listen, type UnlistenFn } from "@tauri-apps/api/event";
+import {
+  runContextCliff,
+  getCliffResults,
+  EVENT_CLIFF_PROGRESS,
+  type CliffSource,
+  type CliffProgress,
+} from "../../../shared/ipc/eval/cliff";
 import { formatIpcError } from "../../../shared/ipc/core/error";
-import { buildLadder, padTask, classifyCliff, type CliffPoint } from "../cliff";
+import { type CliffPoint } from "../cliff";
 import type { ToolTask } from "../../../shared/ipc/eval/registry";
 import type { BackendKind } from "../../../shared/ipc/models/storage";
 import type { InferenceParams } from "../../../shared/ipc/workspace/prompts";
@@ -26,11 +32,10 @@ export interface RunProbeArgs {
   tasks: ToolTask[];
   maxTokens: number;
   steps: number;
+  /// Which padding fills the context: an embedded synthetic preset or the user's
+  /// own text. The backend engine cycles it, char-boundary-safe, to each verified depth.
+  source: CliffSource;
   params?: InferenceParams;
-  /// Pin temperature 0 (greedy) so the verdict is REPRODUCIBLE for a given (model,
-  /// collection) — a diagnostic must not flip run-to-run. Off → sample at the global
-  /// temperature. Everything else still comes from `params`.
-  greedy?: boolean;
 }
 
 interface CliffStore {
@@ -130,82 +135,54 @@ export const useCliffStore = create<CliffStore>((set, get) => ({
   wasProbed: (collectionId, model) => get().probed[collectionId]?.[model] === true,
   hasBrokenBaseline: (collectionId, model) => get().brokenBaseline[collectionId]?.[model] === true,
 
-  runProbe: async ({ model, backend, collectionId, tasks, maxTokens, steps, params, greedy }) => {
+  runProbe: async ({ model, backend, collectionId, tasks, maxTokens, steps, source, params }) => {
     // GUARDRAIL 2: clear all prior state BEFORE dispatching — never append to a
     // stale series (that corrupts the chart and the persisted cliff).
     const myRun = ++activeRun;
-    const ladder = buildLadder(maxTokens, steps);
-    set({ points: [], error: null, running: true, runningModel: model, progress: { done: 0, total: ladder.length } });
+    set({ points: [], error: null, running: true, runningModel: model, progress: { done: 0, total: steps } });
 
-    // The probe IS about context depth — give Ollama a window for the largest rung
-    // (+ headroom), respecting a higher user num_ctx. No-op for llama.cpp/MLX.
-    const probeParams = {
-      ...params,
-      num_ctx: Math.max(params?.num_ctx ?? 0, maxTokens + 2048),
-      // Greedy → reproducible: pin temp 0 so the same (model, collection) yields the
-      // same verdict on a re-run. Off → keep the global temperature.
-      ...(greedy ? { temperature: 0 } : {}),
-    };
+    // Live per-rung points stream from the backend engine over `cliff-progress`; the
+    // engine owns the ladder, padding, verify-and-adjust, classification, and
+    // persistence (the Matrix/verdict read the stored status afterward).
+    let unlisten: UnlistenFn | undefined;
     try {
-      for (const padUnits of ladder) {
-        if (activeRun !== myRun) return; // stopped or superseded
-        try {
-          const r = await runToolcallEval(model, backend, tasks.map((t) => padTask(t, padUnits)), "", probeParams);
-          if (activeRun !== myRun) return;
-          set((s) => ({
-            points: [...s.points, { promptTokens: r.prompt_tokens, composite: r.composite }],
-            progress: { ...s.progress, done: s.progress.done + 1 },
-          }));
-        } catch (e) {
-          if (activeRun !== myRun) return;
-          set((s) => ({
-            points: [...s.points, { promptTokens: null, composite: null }],
-            error: s.error ?? formatIpcError(e),
-            progress: { ...s.progress, done: s.progress.done + 1 },
-          }));
-        }
-      }
-      // Completed (not cancelled): compute + persist the cliff depth. Re-check the
-      // generation token first — a stop() in the micro-window between the last rung
-      // and here must abandon the run WITHOUT persisting a partial cliff.
-      if (activeRun !== myRun) return;
-      const verdict = classifyCliff(get().points);
-      const broken = verdict.kind === "broken-baseline";
-      // Mark this (collection, model) as probed REGARDLESS of whether a cliff was found,
-      // so the Matrix shows "✓ no cliff" (probed, accuracy held) instead of an unmeasured
-      // "Run probe ↗" when accuracy never collapsed. Record the broken-baseline verdict
-      // explicitly (true OR false) so a healthy re-run clears a stale broken flag.
-      set((s) => ({
-        probed: { ...s.probed, [collectionId]: { ...(s.probed[collectionId] ?? {}), [model]: true } },
-        brokenBaseline: { ...s.brokenBaseline, [collectionId]: { ...(s.brokenBaseline[collectionId] ?? {}), [model]: broken } },
-      }));
-      // Persist the outcome so the Agent Report + a reloaded Matrix reflect it, not just
-      // this session: cliff → Collapsed{depth}; no-cliff → NoCliff{tested}; broken →
-      // Broken{tested} (a distinct state, never a fake depth); no-baseline → not
-      // persisted (stays NotProbed).
-      const tested = Math.max(0, ...get().points.map((pt) => pt.promptTokens ?? 0));
-      let out: { depth: number | null; broken: boolean } | undefined; // undefined ⇒ skip
-      if (verdict.kind === "cliff") out = { depth: verdict.depth ?? tested, broken: false };
-      else if (verdict.kind === "no-cliff") out = { depth: null, broken: false };
-      else if (verdict.kind === "broken-baseline") out = { depth: null, broken: true };
-      if (out && tested > 0) {
-        const persisted = out;
-        try {
-          await saveCliffResult(collectionId, model, persisted.depth, tested, persisted.broken);
-          // `results` holds GENUINE collapse depths only (the Matrix's numeric source):
-          // set it for a real cliff, clear it otherwise (no-cliff / broken render via
-          // their own flags, never a misleading number).
-          set((s) => {
-            const col = { ...(s.results[collectionId] ?? {}) };
-            if (verdict.kind === "cliff" && persisted.depth != null) col[model] = persisted.depth;
-            else delete col[model];
-            return { results: { ...s.results, [collectionId]: col } };
-          });
-        } catch (e) {
-          set((s) => ({ error: s.error ?? formatIpcError(e) }));
-        }
-      }
+      unlisten = await listen<CliffProgress>(EVENT_CLIFF_PROGRESS, (ev) => {
+        const p = ev.payload;
+        if (activeRun !== myRun || p.model !== model) return; // stale / superseded run
+        set((s) => ({
+          // verified_tokens 0 ⇒ the backend reported no count for this rung — render
+          // it as "not reported", never a fake ≈0-token depth.
+          points: [...s.points, { promptTokens: p.point.verified_tokens || null, composite: p.point.composite }],
+          progress: { done: p.done, total: p.total },
+        }));
+      });
+
+      const report = await runContextCliff(model, backend, collectionId, tasks, source, maxTokens, steps, params);
+      if (activeRun !== myRun) return; // stopped or superseded mid-run
+
+      // The report is authoritative — replace the live series with its verified rungs
+      // so the chart and the (backend-persisted) status can never disagree.
+      const points: CliffPoint[] = report.points.map((p) => ({ promptTokens: p.verified_tokens || null, composite: p.composite }));
+      const broken = report.status.status === "Broken";
+      set((s) => {
+        const col = { ...(s.results[collectionId] ?? {}) };
+        // `results` holds GENUINE collapse depths only — set it for a real cliff, clear
+        // it otherwise (no-cliff / broken render via their own flags, never a number).
+        if (report.status.status === "Collapsed") col[model] = report.status.depth;
+        else delete col[model];
+        return {
+          points,
+          // Mark probed REGARDLESS of outcome so the Matrix shows "✓ no cliff" rather than
+          // an unmeasured "Run probe ↗"; record broken explicitly so a healthy re-run clears it.
+          probed: { ...s.probed, [collectionId]: { ...(s.probed[collectionId] ?? {}), [model]: true } },
+          brokenBaseline: { ...s.brokenBaseline, [collectionId]: { ...(s.brokenBaseline[collectionId] ?? {}), [model]: broken } },
+          results: { ...s.results, [collectionId]: col },
+        };
+      });
+    } catch (e) {
+      if (activeRun === myRun) set((s) => ({ error: s.error ?? formatIpcError(e) }));
     } finally {
+      unlisten?.();
       if (activeRun === myRun) set({ running: false, runningModel: null });
     }
   },

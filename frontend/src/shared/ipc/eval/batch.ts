@@ -62,6 +62,11 @@ export type AgenticReport = z.infer<typeof AgenticReportSchema>;
 /// Per-model aggregate across the collection's agentic tasks. Null metrics render
 /// "N/A"/"—" — never a fabricated number.
 export const AggAgenticSchema = z.object({
+  // Strict Pass^k (spec §3.3): tasks whose every k run passed, over total tasks.
+  // `.default(0)` mirrors the Rust `#[serde(default)]` so pre-fix reports still parse.
+  tasks_passed: z.number().int().default(0),
+  tasks_total: z.number().int().default(0),
+  // Run-level sums — the secondary per-run rate (pass@k), NOT the headline.
   passes: z.number().int(),
   total_runs: z.number().int(),
   avg_steps: z.number().nullable(),

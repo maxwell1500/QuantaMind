@@ -1,34 +1,11 @@
-import type { ToolTask } from "../../shared/ipc/eval/registry";
-
-/// Filler chars per ladder unit — used only to SIZE the benign padding string we
-/// inject (a knob, not a reported metric). The plotted depth is the model's real
-/// measured `prompt_eval_count`, never this estimate.
-const CHARS_PER_UNIT = 4;
-const FILLER = "The quick brown fox jumps over the lazy dog. ";
-
+/// The cliff series the chart + read-out consume. The PADDING, ladder, needle
+/// sweep, and verify-and-adjust now live in the backend engine
+/// (`inference/eval/cliff/`); the frontend only classifies the verified series it
+/// returns. `promptTokens` is the rung's REAL measured `prompt_eval_count` (mean),
+/// or null when the backend reported none.
 export interface CliffPoint {
-  /// The model's REAL reported prompt-token depth for this rung (mean
-  /// `prompt_eval_count`), or null when the backend didn't report it.
   promptTokens: number | null;
   composite: number | null;
-}
-
-/// Prepend `padUnits`×4 chars of benign filler to a task's prompt to inflate the
-/// context the model must read before the real instruction. `padUnits` is just
-/// the ladder knob; the resulting prompt's real token count is measured, not
-/// assumed.
-export function padTask(task: ToolTask, padUnits: number): ToolTask {
-  if (padUnits <= 0) return task;
-  const chars = padUnits * CHARS_PER_UNIT;
-  const filler = FILLER.repeat(Math.ceil(chars / FILLER.length)).slice(0, chars);
-  return { ...task, prompt: `${filler}\n\n${task.prompt}` };
-}
-
-/// Ascending padding amounts (ladder units), always starting at 0 (the unpadded
-/// baseline) and ending at `maxUnits`.
-export function buildLadder(maxUnits: number, steps: number): number[] {
-  if (steps <= 1) return [0];
-  return Array.from({ length: steps }, (_, i) => Math.round((maxUnits * i) / (steps - 1)));
 }
 
 /// Minimum baseline (unpadded, rung 0) composite for a probe to be a valid
