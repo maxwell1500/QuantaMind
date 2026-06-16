@@ -1,6 +1,6 @@
 use super::padding::{build_padding, inject_at_depth};
 use super::presets::CliffSource;
-use crate::errors::AppResult;
+use crate::errors::{AppError, AppResult};
 use crate::inference::eval::agentic::model_turn::ModelTurn;
 use crate::inference::eval::readiness::types::CliffStatus;
 use crate::inference::eval::toolcall::eval::{aggregate, TaskResult};
@@ -253,6 +253,26 @@ fn classify(points: &[CliffPoint]) -> (CliffStatus, Option<u32>) {
     }
     let tested = points.last().map(|p| p.verified_tokens).unwrap_or(base.verified_tokens);
     (CliffStatus::NoCliff { tested }, Some(largest_pass))
+}
+
+/// Keep only the SINGLE-TURN tasks a context-cliff can actually probe. The cliff is a
+/// single-turn diagnostic — it pads one prompt, injects the needle, and scores the one
+/// reply against `task.expected`. An `agentic` task carries only a placeholder
+/// `expected: no_call` (its real criterion is the multi-turn `agentic.end_state`, scored
+/// by the sandbox loop, not here), so single-turn scoring would read that literally and
+/// fail every correct tool call as a bad abstention — a fabricated `Broken` 0%. So drop
+/// agentic tasks, and REFUSE the run if that leaves nothing, rather than mis-scoring.
+pub fn single_turn_tasks(tasks: &[ToolTask]) -> AppResult<Vec<ToolTask>> {
+    let kept: Vec<ToolTask> = tasks.iter().filter(|t| t.category != "agentic").cloned().collect();
+    if kept.is_empty() {
+        return Err(AppError::InvalidTaskSchema(
+            "the context-cliff probe is single-turn, but this collection has no single-turn tasks \
+             (all are agentic / multi-step, which the probe cannot score). Pick a single-turn \
+             collection — e.g. Curated or Finance — to measure its context cliff."
+                .into(),
+        ));
+    }
+    Ok(kept)
 }
 
 /// Build an ascending token ladder from 0 (the unpadded baseline) up to

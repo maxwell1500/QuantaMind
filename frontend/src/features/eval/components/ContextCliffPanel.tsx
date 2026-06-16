@@ -128,6 +128,12 @@ export function ContextCliffPanel() {
   const verdict = classifyCliff(points);
   const cliff = verdict.kind === "cliff" ? verdict.depth : null;
 
+  // The cliff probe is SINGLE-TURN: agentic (multi-step) presets carry a placeholder
+  // `expected: no_call` the single-turn scorer would mis-read as a forced abstention,
+  // fabricating a "Broken" 0%. Hide them from the picker (the backend also refuses an
+  // all-agentic run) so the probe only ever offers a dataset it can actually score.
+  const cliffPresets = presets.filter((p) => !p.id.startsWith("agentic"));
+
   // Clear a stale chart when the selection changes (and nothing is running), so the
   // graph always reflects the currently-selected model/collection.
   useEffect(() => {
@@ -196,7 +202,7 @@ export function ContextCliffPanel() {
               marginTop: 3,
             }}
           >
-            {presets.map((p) => <option key={p.id} value={p.id}>{p.label}</option>)}
+            {cliffPresets.map((p) => <option key={p.id} value={p.id}>{p.label}</option>)}
             {collections.map((c) => <option key={c} value={c}>{c}</option>)}
           </select>
         </div>

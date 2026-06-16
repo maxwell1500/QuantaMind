@@ -7,7 +7,7 @@ use crate::errors::AppError;
 use crate::inference::backend::backend_kind::BackendKind;
 use crate::inference::backend::endpoint;
 use crate::inference::eval::agentic::model_turn::BackendTurn;
-use crate::inference::eval::cliff::{build_ladder, run_cliff_with, CliffPoint, CliffReport, CliffSource, DEFAULT_DEPTHS};
+use crate::inference::eval::cliff::{build_ladder, run_cliff_with, single_turn_tasks, CliffPoint, CliffReport, CliffSource, DEFAULT_DEPTHS};
 use crate::inference::eval::readiness::inputs::{agentic_metrics, pass_k_of, verdict_for};
 use crate::inference::eval::readiness::recommend;
 use crate::inference::eval::readiness::profile::ReadinessProfile;
@@ -120,6 +120,10 @@ pub async fn run_context_cliff(
     params: Option<InferenceParams>,
 ) -> Result<CliffReport, AppError> {
     validate_tasks(&tasks)?;
+    // The cliff is single-turn: drop agentic tasks (their `expected` is a placeholder the
+    // single-turn scorer would mis-read as a forced abstention) and refuse an all-agentic
+    // collection outright, rather than fabricating a `Broken` 0% baseline.
+    let tasks = single_turn_tasks(&tasks)?;
     let backend = backend.unwrap_or_default();
 
     // Start from the global header params, then force greedy (temp 0) and a context

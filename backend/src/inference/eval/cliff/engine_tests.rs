@@ -144,6 +144,38 @@ async fn passing_rungs_capture_no_samples() {
     }
 }
 
+fn agentic_task(id: &str) -> ToolTask {
+    let mut t = task();
+    t.id = id.into();
+    t.category = "agentic".into();
+    t
+}
+
+#[test]
+fn single_turn_filter_drops_agentic_tasks() {
+    // A mixed collection keeps its single-turn tasks and silently drops the agentic ones
+    // (which the single-turn cliff scorer would mis-read as forced abstentions).
+    let mixed = [task(), agentic_task("multi-step-1")];
+    let kept = single_turn_tasks(&mixed).unwrap();
+    assert_eq!(kept.len(), 1);
+    assert_eq!(kept[0].id, "t1");
+}
+
+#[test]
+fn single_turn_filter_refuses_an_all_agentic_collection() {
+    // The exact trap that fabricated a "Broken" 0%: an all-agentic preset must be REFUSED
+    // with a clear message, never run through single-turn scoring.
+    let all_agentic = [agentic_task("a"), agentic_task("b")];
+    let err = single_turn_tasks(&all_agentic).unwrap_err();
+    assert!(format!("{err}").contains("single-turn"), "error must explain the single-turn constraint: {err}");
+}
+
+#[test]
+fn single_turn_filter_passes_an_all_single_turn_collection_through() {
+    let single = [task()];
+    assert_eq!(single_turn_tasks(&single).unwrap().len(), 1);
+}
+
 #[test]
 fn build_ladder_spans_zero_to_max_across_steps() {
     assert_eq!(build_ladder(16000, 5), vec![0, 4000, 8000, 12000, 16000]);

@@ -676,6 +676,17 @@ Parking lot for ideas, libraries, and changes deliberately deferred. Nothing
 here is in the current phase — see [Phase roadmap](#phase-roadmap). If something
 here becomes relevant, move it into a phase plan first.
 
+### Agentic context-cliff probe
+
+The context-cliff probe is **single-turn** (see `reference.md#context-cliff`): it pads one prompt and
+scores one reply, and now *refuses* agentic collections rather than mis-scoring their placeholder
+`expected: no_call` as a fabricated `Broken` 0%. A genuinely useful probe — "at what context length does
+**multi-step** agentic accuracy collapse?" — would pad across the sandbox conversation, decide where the
+needle lands among turns, and aggregate Pass^k per rung against `agentic.end_state`. **Activate when:** a
+phase wants context-headroom signal for agentic workloads. **Why deferred:** it's a new multi-turn engine
+(padding placement across turns, per-rung Pass^k), not a tweak to the single-turn probe — out of scope
+for the bug fix that surfaced it.
+
 ### Additional STT engines (faster-whisper)
 
 **Removed:** `mlx-audio` was trialed as a second STT engine but removed — its

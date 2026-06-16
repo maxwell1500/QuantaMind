@@ -806,6 +806,17 @@ A **Padding** picker chooses the preset. Decoding is **always greedy (temp 0)** 
 *diagnostic* and must reproduce for a given (collection, model), so the engine pins it; there is no
 local toggle. A run that errors surfaces a **"Not available — …"** banner rather than a silent blank chart.
 
+**Single-turn only (agentic collections are refused, not mis-scored).** The probe pads ONE prompt,
+injects the needle, and scores the model's ONE reply against `task.expected` — it never runs the
+multi-turn sandbox. An **agentic** task carries only a placeholder `expected: no_call` (its real
+criterion is `agentic.end_state`, scored by the batch agentic loop), so feeding it to the single-turn
+cliff scorer would read that literally and fail every correct tool call as a forced abstention — a
+fabricated **Broken 0%**. So the engine's `single_turn_tasks` filter drops agentic tasks before probing
+and **refuses an all-agentic collection** with a clear "pick a single-turn collection" error (surfaced
+as the *Not available* banner); the panel also hides agentic presets from its collection picker. Running
+a real context-cliff over multi-step agentic tasks (padding across turns, Pass^k per rung) is a separate
+future probe, not this one — see `process.md#future-considerations`.
+
 **How each rung's "Accuracy" is scored.** Each rung re-runs the dataset and reports the **composite
 tool-call score** (0–100%) — the mean of the available sub-metrics defined in
 [#toolcall-eval](#toolcall-eval): `parse_rate` (emitted a parseable call when one was
