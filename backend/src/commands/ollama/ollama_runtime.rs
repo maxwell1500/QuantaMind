@@ -90,3 +90,14 @@ pub fn kill_serve() -> Result<(), String> {
 
 #[cfg(not(target_os = "macos"))]
 pub fn kill_serve() -> Result<(), String> { Err(UNSUPPORTED_OS_MSG.into()) }
+
+/// Kill the **specific** `ollama serve` PID this app spawned — targeted, so a
+/// user's pre-existing daemon (which we never started) is left untouched. A
+/// non-zero status (already gone) is success: the caller wanted it stopped.
+#[cfg(target_os = "macos")]
+pub fn kill_pid(pid: u32) -> Result<(), String> {
+    Command::new("kill").arg(pid.to_string()).status().map(|_| ()).map_err(|e| e.to_string())
+}
+
+#[cfg(not(target_os = "macos"))]
+pub fn kill_pid(_pid: u32) -> Result<(), String> { Err(UNSUPPORTED_OS_MSG.into()) }

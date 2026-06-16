@@ -16,6 +16,10 @@ interface TranscriptStore {
   total: number;
   error: string | null;
   currentId: string | null;
+  /// Measured run stats + P3 profile of the finished transcript (null until a run
+  /// completes). The Inspector panel renders these; null fields → "N/A".
+  stats: Transcript["stats"] | null;
+  profile: Transcript["stt_profile"];
   reset: () => void;
   setStatus: (s: TranscribeStatus) => void;
   appendSegments: (segs: Segment[]) => void;
@@ -35,13 +39,23 @@ export const useTranscriptStore = create<TranscriptStore>((set) => ({
   total: 0,
   error: null,
   currentId: null,
-  reset: () => set({ status: "idle", segments: [], language: null, processed: 0, total: 0, error: null }),
+  stats: null,
+  profile: null,
+  reset: () =>
+    set({ status: "idle", segments: [], language: null, processed: 0, total: 0, error: null, stats: null, profile: null }),
   setStatus: (status) => set({ status }),
   appendSegments: (segs) => set((s) => ({ segments: [...s.segments, ...segs] })),
   setProgress: (processed, total) => set({ processed, total }),
   setReference: (text) => set({ reference: text === "" ? null : text }),
   setError: (error) => set({ error, status: "error" }),
   loadFrom: (t) =>
-    set({ segments: t.segments, language: t.language, status: "done", currentId: t.id }),
+    set({
+      segments: t.segments,
+      language: t.language,
+      status: "done",
+      currentId: t.id,
+      stats: t.stats,
+      profile: t.stt_profile,
+    }),
   setCurrentId: (currentId) => set({ currentId }),
 }));

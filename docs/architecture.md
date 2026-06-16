@@ -97,7 +97,39 @@ HTTP to a local Ollama server.
   the Tauri-free `TranscribeSink` (parallel to `BatchSink`) → assemble the canonical
   `Transcript`. Engine choice is enum-dispatched (`SttTranscribeEngine`, no `dyn`).
   The artifact persists via `persistence/stt/transcripts.rs` (atomic; refuses an
-  incomplete run). Every `TranscribeStats` field is `Option` (no fabricated RTF).
+  incomplete run). Every `TranscribeStats` field is `Option` (no fabricated metric).
+  `inference/stt/profile/` is the **measurement layer** (P3): it fills `SttProfile`
+  (every field `Option` → "N/A", never a guess). RTF = decoded sample-count seconds
+  (`WindowReader::decoded_secs`, a hardware fact — not the container header) ÷ wall
+  seconds (stopped on loop exit, before any finalize work). First-segment latency is
+  the TTFT analog; the encode/decode split is `None` (whisper-server reports none).
+  The **behavioral** fold (repeated-segment rate; word-level `Confidence`, `None`
+  when the backend emits no probabilities; silence-hallucination) runs **off the
+  timed path** on a `spawn_blocking` thread fed by a bounded channel, so its cost
+  can't inflate RTF. Silence uses an **independent** `webrtc-vad` over the raw PCM
+  (never the model's own `no_speech_prob` — that would be circular; an `assert_ne!`
+  on the engine id enforces it). The `Profiler` is dropped (channel closed, thread
+  drains) on any error `?`, so no partial profiling state lingers. The frontend
+  renders it in the **Analysis & Inspector tabs** (`features/sttInspector`, fed by a
+  durable `sttResultStore`) with the text-Inspector's N/A framing — see
+  `reference.md#stt-inspector`.
+  `inference/stt/eval/` is the **eval + readiness layer** (P4): a **dumb, decoupled
+  scorer** over *stored* transcripts (it reads a `Transcript` JSON + an `eval_spec`,
+  joins **by id**, and does math — it never owns transcription, so a sweep is
+  reproducible and re-scorable in milliseconds). An `eval_spec` task is pure text
+  (`{ id, reference: Option, critical_tokens }`); scoring goes through an `SttScorer`
+  trait (`WerScorer` today — alignment WER + **critical-token-weighted** WER + a
+  **misread flag** for confident substitutions, so a reader's slip on a read-aloud
+  clip doesn't smear the model). `readiness.rs` mirrors the text pipeline: a **pure
+  `assess()`** (reusing the `Readiness` enum + `MemoryProfile`) gates `min_rtf`
+  (hard, explicit speed gate), `max_wer` (hard but **reference-gated** + keyed on the
+  *weighted* WER for the financial/legal case — inert when WER is `None`, so "no
+  reference" can neither pass nor fail on accuracy, only note "accuracy unverified"),
+  behavioral soft conditions, and VRAM fit; `verdicts()` aggregates per model
+  (means; a `None` never drags the mean). I/O is in `commands/stt/eval/` (the dumb
+  runner streams one row at a time to a JSONL so a 1000-row sweep never holds every
+  transcript/matrix); persistence leaves are `persistence/stt/eval_*`. Frontend:
+  `features/sttEval/` in the Analysis tab.
   `commands/stt/transcribe.rs` is the **only** `AppHandle` seam: `transcribe_audio`
   streams segments to the UI (a `TauriTranscribeSink`) + persists; `write_scratch_wav`
   lands captured WAV bytes in a scratch dir (the returned path is the atomic
@@ -108,6 +140,10 @@ HTTP to a local Ollama server.
   meter, `stop_recording` encodes the take (16-bit WAV at native rate — P1 resamples)
   into the scratch dir and reports `had_audio` so a silent take (muted mic / TCC
   denial, which records silence rather than erroring) surfaces "no audio detected".
+  A micless machine maps to a clean "no microphone found" — CoreAudio hands back a
+  phantom default input whose every query fails with an unknown OSStatus (e.g. a
+  Mac mini with no mic), so the failure is classified by whether any input device
+  exists, not by the opaque backend error.
   The macOS mic prompt is driven by `NSMicrophoneUsageDescription` in
   `backend/Info.plist`, embedded by Tauri's `generate_context!` (dev binary included).
   Frontend IPC mirrors the module in `shared/ipc/audio/capture.ts`

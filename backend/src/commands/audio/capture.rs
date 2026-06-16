@@ -101,6 +101,23 @@ fn build_stream(
     res.map_err(|e| format!("couldn't open the microphone: {e}"))
 }
 
+const NO_MIC: &str =
+    "No microphone found — connect one (System Settings → Sound → Input), then retry. Or use Upload.";
+
+/// Map a default-config failure to an actionable error. CoreAudio reports a
+/// phantom default device when no input hardware exists at all (e.g. a Mac mini
+/// with no mic): the handle exists but every query on it fails with an unknown
+/// OSStatus — that case is "no microphone", not an internal fault.
+fn classify_config_failure(any_input_device: bool, e: &cpal::DefaultStreamConfigError) -> AppError {
+    if any_input_device {
+        AppError::Internal(format!(
+            "mic config: {e} — if a mic is connected, check System Settings → Privacy & Security → Microphone"
+        ))
+    } else {
+        AppError::Validation(NO_MIC.into())
+    }
+}
+
 /// Start capturing the default input device. The mic's TCC prompt is driven by
 /// `NSMicrophoneUsageDescription` from `Info.plist`, which Tauri's
 /// `generate_context!` embeds into the binary (covers `tauri dev` too).
@@ -113,10 +130,11 @@ pub fn start_recording(state: tauri::State<'_, CaptureState>) -> Result<(), AppE
     let host = cpal::default_host();
     let device = host
         .default_input_device()
-        .ok_or_else(|| AppError::Validation("no microphone found".into()))?;
-    let supported = device
-        .default_input_config()
-        .map_err(|e| AppError::Internal(format!("mic config: {e}")))?;
+        .ok_or_else(|| AppError::Validation(NO_MIC.into()))?;
+    let supported = device.default_input_config().map_err(|e| {
+        let any_input = host.input_devices().map(|mut d| d.next().is_some()).unwrap_or(true);
+        classify_config_failure(any_input, &e)
+    })?;
     let sample_rate = supported.sample_rate().0;
     let channels = supported.channels();
     let sample_format = supported.sample_format();
@@ -226,5 +244,26 @@ mod tests {
     fn level_is_zero_when_idle() {
         let st = CaptureState::default();
         assert_eq!(st.inner.lock_recover().as_ref().map(|_| 1).unwrap_or(0), 0);
+    }
+
+    #[test]
+    fn config_failure_with_no_input_devices_is_no_microphone() {
+        let e = cpal::DefaultStreamConfigError::DeviceNotAvailable;
+        match classify_config_failure(false, &e) {
+            AppError::Validation(msg) => assert!(msg.contains("No microphone found")),
+            other => panic!("expected Validation, got {other:?}"),
+        }
+    }
+
+    #[test]
+    fn config_failure_with_a_mic_present_keeps_the_cause_and_hints_permissions() {
+        let e = cpal::DefaultStreamConfigError::DeviceNotAvailable;
+        match classify_config_failure(true, &e) {
+            AppError::Internal(msg) => {
+                assert!(msg.contains("mic config:"));
+                assert!(msg.contains("Privacy & Security"));
+            }
+            other => panic!("expected Internal, got {other:?}"),
+        }
     }
 }

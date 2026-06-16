@@ -290,23 +290,12 @@ it reads as fixable, not broken. The classifier (`ImportError` in
 
 The raw parser detail is kept (demoted) under **Details:** for diagnosis.
 
-### Setting up speech-to-text (whisper.cpp / mlx-audio) {#stt-server}
+### Setting up speech-to-text (whisper.cpp) {#stt-server}
 
-STT has two engines, picked in the header's STT group (and the Speech-to-Text
-tab toggle), parallel to the LLM backend — one STT runs alongside one LLM:
-
-- **whisper.cpp** (everywhere) — the default; see below.
-- **mlx-audio** (Apple Silicon only) — Apple-Silicon-native MLX whisper. Install
-  with `pip install "mlx-audio[server]"` (the `[server]` extra is required — bare
-  `mlx-audio` omits fastapi/uvicorn/webrtcvad and the server won't start);
-  QuantaMind locates `mlx_audio.server` on
-  `PATH`/venv/Homebrew (`check_mlx_stt_env`) and spawns it on a free loopback
-  port in `8094..=8104`. Models are `mlx-community/whisper-*` snapshots,
-  downloaded into `~/.quantamind/mlx-stt` (they also show in **Downloads** with an
-  **STT** tag). The engine is **strictly local** — the server binds `127.0.0.1`
-  only and never calls any cloud API. The engine option is hidden entirely off
-  Apple Silicon. (Live transcription is a later phase; this sets up the engine +
-  models + start/stop.)
+STT runs on **whisper.cpp**, its own axis parallel to the LLM backend — one STT
+runs alongside one LLM. Install it (`brew install whisper-cpp`), download a model
+in Models → Speech-to-Text, then pick it in the header STT group and press ▶. See
+below for details.
 
 The whisper.cpp engine. On macOS, install it once with Homebrew — the
 **Speech-to-Text** tab walks you through it:
@@ -421,11 +410,16 @@ Error), with a click-through Trace Debugger. See [the workspace](#eval-runner).
   plain-text refusal with **no** tool call (so a robust planner that declines an
   unsafe/unnecessary action isn't mis-scored as lazy); acting anyway fails.
 - **Pass^k consistency.** The loop runs `k` times (default 5) with absolute
-  isolation between runs. The `AgenticReport` carries `passes/total_runs`, a
+  isolation between runs. The per-task `AgenticReport` carries `passes/total_runs`, a
   `FailureTracker` with **distinct** tallies (`infinite_loop_hits` = hit the step
   cap, `hallucinated_completions` = fake done, `malformed_json_calls` = broken
   JSON, `schema_unrecovered_calls` = exhausted the recovery budget), and a
-  `top_error` headline.
+  `top_error` headline. The **collection-level Pass^k** (the Matrix headline and
+  the readiness/leaderboard gate) is **strict**: `AggAgentic` credits a task only
+  when **all k** of its runs reached the end state (`tasks_passed/tasks_total`), so a
+  flaky 3/5 task counts as a failure, not 0.6 — reliability compounds and a model
+  that "usually works" is not agent-ready. The run-level sums (`passes/total_runs`)
+  are retained only as the secondary per-run rate behind the "Partial *p/k*" badge.
 - **Lazy-agent traps (Driver B fault injection).** A task may attach `faults` —
   per-call `TransientError { status_code, clears_after }` or
   `PersistentError { status_code }`, keyed by the same canonical call form as the
@@ -609,6 +603,99 @@ The Inspector shows how much of the context window a run consumed — the exact 
 `prompt_eval_count` over the model's `context_length` — turning red at ≥95% (past which earlier
 tokens are silently dropped). Exact counts only; "Not available" when either number is missing.
 
+## STT Inspector {#stt-inspector}
+
+After a transcription finishes, the STT workspace shows a measured profile of the run. Like the
+text Inspector, it never fabricates a number — any metric the backend can't supply reads **"N/A"**:
+
+- **Real-time factor (RTF)** — decoded audio seconds ÷ wall-clock seconds; `> 1×` is faster than
+  real time. The denominator is the **decoded sample count** (a hardware fact), so it's the same
+  across WAV / MP3 / OGG of the same audio, not biased by container metadata.
+- **First-segment latency** — time to the first streamed segment (the speech analog of TTFT).
+- **Encode / decode split** — **N/A**: whisper-server reports no per-phase timing (the total is the
+  RTF wall above). Never split by a guess.
+- **Repeated-token rate** — adjacent duplicate segments (a stuck/looping decode). `0%` is a real
+  measurement (counted, none found).
+- **Mean confidence** — average of whisper's word-level probabilities, with the low (5th-percentile)
+  tail. **N/A** when the backend emits no probabilities — never shown as 0% or 100%.
+- **Output during silence** — fraction of segments the model emitted where an **independent** voice
+  detector (`webrtc-vad`, never the model's own judgement) found no speech and the model was itself
+  unsure. The highest-value behavioral signal for hallucination.
+- **VRAM** — **"Not available for this backend"**: whisper.cpp doesn't report runtime VRAM.
+
+The behavioral analysis runs off the transcription's timed path, so measuring it never inflates the
+RTF it reports.
+
+### In the Analysis & Inspector tabs {#stt-inspector-tabs}
+
+The same measured profile is surfaced with the visual density of the LLM views. Once a
+transcription completes, an **STT section auto-appears** in both the **Analysis** and **Inspector**
+tabs (alongside any LLM run — neither clobbers the other). It survives tab navigation because the
+finished transcript is held in a durable store, not the transient live-transcript store.
+
+- **Analysis** — RTF, words/sec, and first-segment latency as ruler bars (the speech analog of the
+  throughput / TTFT bars), the full transcript text, and **Export Markdown / JSON** of the metrics +
+  raw segments. **words/sec** is a *measured* count (real whitespace words ÷ wall seconds), **N/A**
+  when wall time is missing — never an estimate.
+- **Inspector** — a wall-time **phase bar** `[ first segment | transcription ]` (the only honest
+  split — whisper-server reports no model-load / encode / decode breakdown), the **confidence
+  timeline**, a **confidence distribution** histogram, and the **metric-card grid**.
+
+**Confidence timeline (the per-token-latency analog).** whisper-server reports no per-segment
+*processing* time, so the latency chart can't be mirrored literally. Instead the hero chart plots
+**per-segment confidence over the audio timeline** — x = audio time, y = `exp(avg_logprob)` ∈ 0..1,
+each bar spanning its segment's audio extent. A segment with no logprob is a **gap**, never a
+guessed 0. Two scrutiny flags colour a bar, using **whisper's own quality gates** (stable and
+interpretable, not a per-run relative threshold that would mislabel the worst segment of a clean
+transcript):
+
+- **low confidence** — `avg_logprob < -1.0` (whisper's decode-failure cut).
+- **speech over silence** — `no_speech_prob > 0.6` (whisper's default `no_speech_threshold`) yet text
+  was emitted — the per-segment hallucination signal that complements the run-level *Output during
+  silence* rate above.
+
+**The voice pipeline (STT → LLM).** When an LLM runs on the transcript — the **Auto-summarize**
+toggle (the STT→LLM auto-pipe), the voice panel's **Ask**, or a plain **Workspace** run after a
+transcription — its metrics render through the **same rich LLM views** as any other run: the full
+per-token `ModelTimeline` (phase bar, VRAM, context budget, token-latency chart) in the Inspector and
+the throughput / TTFT bars in the Analysis tab. The STT section sits **directly below** it, so both
+stages of the pipeline read top-to-bottom on one page. There is no separate, thinner LLM card — the
+LLM run is mirrored into the normal compare rows, so it stays the single source of those numbers.
+For the auto-pipe (where the two stages are linked by transcript id), an **end-to-end one-liner**
+`Audio → Transcript → LLM · end-to-end` is appended with an `auto` badge; the time is the *processing*
+total (STT wall + LLM wall, not the audio length), and it appears only when the LLM ran for the
+transcript currently shown, so the two stages are never mismatched.
+
+## STT Eval & Readiness {#stt-eval}
+
+Beyond the per-transcript Inspector, the **Analysis** tab has an **STT Eval & Readiness** panel that
+scores transcription *accuracy* across a batch and gives a go/no-go verdict. It is **decoupled from
+transcription**: it scores transcripts you've **already** produced (read from disk), so a sidecar
+crash can't kill a sweep, and you can re-score with a new metric in milliseconds without re-running
+the model.
+
+**The eval spec** is a small text file — one task per transcript, joined **by id**:
+`{ id, reference, critical_tokens }`. `reference` is the ground-truth text; `critical_tokens` are the
+words that *must* be right.
+
+- **Reference present** → **WER** via word alignment (insertions/deletions don't smear into
+  substitutions), plus **weighted WER** and **critical-token accuracy**.
+- **Reference absent** → **behavioral-only**: WER reads **"N/A — accuracy unverified"**, never a
+  fabricated number, and it can neither pass nor fail the accuracy gate.
+
+**Weighted WER (financial/legal).** A critical token counts **5×** in the weighted figure — so a
+mis-transcribed dollar amount or payee dominates the score while a missed "the" barely registers. The
+readiness gate keys on this weighted figure (it equals the plain WER when a task has no critical
+tokens). A **confident** substitution (the model was sure, e.g. the reader said "reuben" for "ruben")
+is flagged as a likely **human misread** and shown separately, so a reader's slip on a read-aloud
+clip isn't blamed on the model.
+
+**Readiness verdict.** Pick a profile (built-ins: **Production dictation**, **High accuracy
+(legal/financial)**, **Fast draft**) and Assess. Each model gets **Ready / Conditional / Not ready**
+(ranked best-first), gating on: **speed** (`min_rtf` — too slow is an explicit hard fail, not a vague
+one), **weighted WER** (`max_wer`), and behavioral targets (repeats / output-during-silence /
+confidence, as soft conditions). The verdict spells out every blocking reason and condition verbatim.
+
 ## Built-in presets & the finance set {#builtin-presets}
 
 The tool-call eval ships built-in presets — **Curated Suite** and **Finance (preset)** — selectable
@@ -681,20 +768,43 @@ the micro "why did this one fail?" trace.
 ## Context-cliff probe {#context-cliff}
 
 Runs a dataset at increasing prompt lengths and graphs where tool-call accuracy collapses
-— the "context cliff" many local models hit well before their advertised window. The x-axis is the
-model's **real measured prompt-token depth** (`prompt_eval_count` reported by the backend, averaged
-over the rung's tasks) — **not** a chars/4 estimate. The padding amount is a knob (benign filler
-sized in chars); the plotted depth is always measured. A rung the backend reports no token count for
-shows **"Not available"** and is dropped from the chart rather than placed at a made-up x.
+— the "context cliff" many local models hit well before their advertised window. The engine is the
+**Tauri-free** `inference/eval/cliff/` module (`run_context_cliff` command), so the ladder, padding,
+needle sweep, verify-and-adjust, and classification are all unit-tested without a window; the frontend
+only charts the verified series it returns. The x-axis is the model's **real measured prompt-token
+depth** (`prompt_eval_count` reported by the backend, averaged over the rung's tasks) — **not** a
+chars/4 estimate. A rung the backend reports no token count for shows **"Not available"** rather than a
+made-up x.
+
+**Padding (license-clean, char-boundary-safe).** Filler comes from one of three embedded synthetic
+presets — **Corporate Policy** (prose), **System Logs** (structured), **Financial Ledger** (tabular),
+each `include_str!`-bundled — or the user's own text. The engine cycles the source in 4 KB chunks to a
+byte target and slices only at UTF-8 char boundaries (`safe_boundary`), so a multi-byte preset/file can
+never panic the probe. The instruction (the **needle**) is injected at swept fractional depths
+**[0.1, 0.5, 0.9]** (front / middle / back) — never tail-only, because the tail tests recency (the
+model's strongest position); mid-document is where models actually fail. A rung's "Accuracy" is the
+**worst composite across those positions** — "passes across positions" means robust everywhere.
+
+**Verify-and-adjust (the depth is measured, never requested).** Each rung seeds padding from the
+**learned bytes-per-token rate** for this (model, source) — measured on the first padded rung, so every
+later rung lands within tolerance on a single sweep — then checks the real `prompt_eval_count` and, only
+if it's more than **±5%** off, rebuilds proportionally once. The **reported depth is the verified token
+count**, never the requested one. `cliff_tokens` is the largest verified context where the task still
+passed across all positions.
+
+**Cost control (early-stop).** The deepest rungs are the slowest (the model must process the whole
+padded prompt), so the engine stops as soon as the outcome is decided: a **broken baseline** stops
+before any padded rung runs, and the **first collapse** stops the ladder (deeper rungs would only
+re-confirm failure at the highest cost). Three needle positions, one sweep per rung, and early-stop keep
+a probe affordable; lowering **Test Steps** / **Max Tokens** trims it further.
 
 The probe owns its own **Active Collection** picker (independent of the EvalManager editor), so it
-always has a real dataset to run. The **Max Tokens** control sets the padding target (how much filler
-to add) and is capped at the model's reported **context window** when known (Ollama `/api/show` dims),
-falling back to a fixed ceiling otherwise. A **Greedy (temp 0)** toggle (default **on**) forces
-deterministic decoding so the verdict reproduces for a given (collection, model); a cliff is a
-*diagnostic*, so the greedy path is the canonical benchmark. Turning it off samples at the **global
-temperature** instead (useful to eyeball run-to-run variance, never the recorded baseline).
-A run that errors surfaces a **"Not available — …"** banner rather than a silent blank chart.
+always has a real dataset to run. The **Max Tokens** control sets the deepest rung and is capped at the
+model's reported **context window** when known (Ollama `/api/show` dims), falling back to a fixed
+ceiling otherwise; the backend forces `num_ctx` above the deepest rung so the padding isn't truncated.
+A **Padding** picker chooses the preset. Decoding is **always greedy (temp 0)** — a cliff is a
+*diagnostic* and must reproduce for a given (collection, model), so the engine pins it; there is no
+local toggle. A run that errors surfaces a **"Not available — …"** banner rather than a silent blank chart.
 
 **How each rung's "Accuracy" is scored.** Each rung re-runs the dataset and reports the **composite
 tool-call score** (0–100%) — the mean of the available sub-metrics defined in
@@ -705,8 +815,9 @@ denominator** so a format failure doesn't bleed into the reasoning metrics, and 
 zero denominator is **n/a (excluded)**, not 0. A per-step status of **Pass / Failure** is just that
 composite vs a **50%** bar.
 
-**The four probe verdicts** (computed in `frontend/src/features/eval/cliff.ts::classifyCliff`, so the
-persisted depth and the displayed verdict can never disagree):
+**The four probe verdicts** (the backend engine classifies into the persisted `CliffStatus`;
+`frontend/src/features/eval/cliff.ts::classifyCliff` mirrors the same rules over the returned series for
+the read-out, so the persisted status and the displayed verdict can never disagree):
 
 | Verdict | Condition | Matrix cell |
 |---|---|---|

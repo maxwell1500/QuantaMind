@@ -38,6 +38,33 @@ export const TranscribeStatsSchema = z.object({
   rtf: z.number().nullable(),
 });
 
+/// Word-level confidence (0..1). Mirrors Rust `Confidence`; the enclosing field
+/// is null when the backend emits no probabilities (never 0/1 — see no-fake-metrics).
+export const ConfidenceSchema = z.object({
+  mean: z.number(),
+  low_percentile: z.number(),
+});
+
+export const PerfProfileSchema = z.object({
+  first_segment_ms: z.number().nullable(),
+  encode_ms: z.number().nullable(),
+  decode_ms: z.number().nullable(),
+});
+
+export const BehavioralProfileSchema = z.object({
+  repeat_rate: z.number().nullable(),
+  confidence: ConfidenceSchema.nullable(),
+  silence_hallucination_rate: z.number().nullable(),
+});
+
+/// The measured STT profile (P3). Every field nullable → the panel renders "N/A".
+export const SttProfileSchema = z.object({
+  perf: PerfProfileSchema.nullable(),
+  behavioral: BehavioralProfileSchema.nullable(),
+  vram_bytes: z.number().nullable(),
+});
+export type SttProfile = z.infer<typeof SttProfileSchema>;
+
 export const TranscriptSchema = z.object({
   id: z.string(),
   model: z.string(),
@@ -46,7 +73,7 @@ export const TranscriptSchema = z.object({
   segments: z.array(SegmentSchema),
   complete: z.boolean(),
   stats: TranscribeStatsSchema,
-  stt_profile: z.unknown().nullable(),
+  stt_profile: SttProfileSchema.nullable(),
 });
 export type Transcript = z.infer<typeof TranscriptSchema>;
 
@@ -54,8 +81,8 @@ export type Transcript = z.infer<typeof TranscriptSchema>;
 export const SegmentsPayloadSchema = z.object({ segments: z.array(SegmentSchema) });
 export const ProgressPayloadSchema = z.object({ processed_secs: z.number(), total_secs: z.number() });
 
-/// Transcribe an audio file (the running whisper.cpp server); persists + returns
-/// the canonical Transcript. Segments also stream via EVENT_STT_SEGMENTS.
+/// Transcribe an audio file with the running whisper.cpp server; persists +
+/// returns the canonical Transcript. Segments also stream via EVENT_STT_SEGMENTS.
 export async function transcribeAudio(path: string, id: string): Promise<Transcript> {
   return TranscriptSchema.parse(await invoke("transcribe_audio", { path, id }));
 }

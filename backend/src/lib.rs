@@ -24,13 +24,22 @@ pub fn run() {
         .manage(commands::mlx::mlx_server_types::MlxServerState::default())
         .manage(commands::stt::stt_server_types::SttServerState::default())
         .manage(commands::stt::stt_download::SttInstallState::default())
-        .manage(commands::stt::mlx::mlx_stt_server_types::MlxSttServerState::default())
         .manage(commands::audio::capture::CaptureState::default())
         .manage(commands::workspace::workspaces::WorkspaceState::default())
         .manage(commands::settings::user_settings::UserSettingsState::default())
         .manage(commands::eval::batch_cmd::BatchRunState::default())
         .manage(commands::publish::auth_state::AuthState::default())
         .setup(|app| {
+            // Reclaim any sidecars a previous instance orphaned by dying without
+            // reaping (a crash or dev-restart SIGKILL), so a stale server can't
+            // keep holding a port. Conservative: only our-signature processes.
+            let reclaimed = commands::app_lifecycle::sweep_orphans();
+            if reclaimed > 0 {
+                eprintln!("[reap] reclaimed {reclaimed} orphaned server(s) at startup");
+            }
+            // Reap our servers on SIGINT/SIGTERM too — ExitRequested only fires on
+            // a graceful quit (Cmd+Q), not when a signal kills the process.
+            commands::app_lifecycle::install_signal_reaper(app.handle().clone());
             // Sweep any half-installed STT artifacts left by a prior crash, so a
             // model reads installed only when its real files are present (R3).
             let _ = commands::stt::stt_disk::reconcile_stt_dir(&commands::stt::stt_disk::stt_dir());
@@ -92,16 +101,19 @@ pub fn run() {
             commands::stt::stt_download::list_stt_catalog,
             commands::stt::stt_models::list_installed_stt_models,
             commands::stt::stt_models::delete_stt_model,
-            commands::stt::mlx::mlx_stt_start::start_mlx_stt_server,
-            commands::stt::mlx::mlx_stt_start::stop_mlx_stt_server,
-            commands::stt::mlx::mlx_stt_start::mlx_stt_status,
-            commands::stt::mlx::mlx_stt_start::check_mlx_stt_env,
-            commands::stt::mlx::mlx_stt_download::download_mlx_stt_model,
-            commands::stt::mlx::mlx_stt_models::list_mlx_stt_catalog,
-            commands::stt::mlx::mlx_stt_models::list_installed_mlx_stt_models,
-            commands::stt::mlx::mlx_stt_models::delete_mlx_stt_model,
             commands::stt::transcribe::transcribe_audio,
             commands::stt::transcribe::load_transcript,
+            commands::stt::eval::eval_cmd::run_stt_eval,
+            commands::stt::eval::eval_cmd::list_transcripts,
+            commands::stt::eval::eval_cmd::list_stt_evals,
+            commands::stt::eval::eval_cmd::load_stt_eval,
+            commands::stt::eval::eval_cmd::save_stt_eval,
+            commands::stt::eval::eval_cmd::delete_stt_eval,
+            commands::stt::eval::eval_cmd::load_stt_report,
+            commands::stt::eval::readiness_cmd::assess_stt_readiness,
+            commands::stt::eval::readiness_cmd::list_stt_readiness_profiles,
+            commands::stt::eval::readiness_cmd::save_stt_readiness_profile,
+            commands::stt::eval::readiness_cmd::delete_stt_readiness_profile,
             commands::audio::capture::start_recording,
             commands::audio::capture::stop_recording,
             commands::audio::capture::recording_level,
@@ -146,6 +158,7 @@ pub fn run() {
             commands::eval::readiness_cmd::assess_readiness,
             commands::eval::readiness_cmd::save_cliff_result,
             commands::eval::readiness_cmd::get_cliff_results,
+            commands::eval::readiness_cmd::run_context_cliff,
             commands::workspace::workspace_prompts::load_prompt,
             commands::workspace::workspace_prompts::save_prompt,
             commands::workspace::workspace_prompts::create_prompt,

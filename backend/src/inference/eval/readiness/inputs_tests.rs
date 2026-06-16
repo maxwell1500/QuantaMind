@@ -12,6 +12,8 @@ fn col(passes: u32, total: u32, loops: u32, hall: u32, steps: Option<f64>) -> Ba
         backend: BackendKind::Ollama,
         toolcall: None,
         agentic: Some(AggAgentic {
+            tasks_passed: passes,
+            tasks_total: total,
             passes,
             total_runs: total,
             avg_steps: steps,
@@ -107,6 +109,8 @@ fn context_cliff_gate_is_opt_in_and_blocks_only_below_or_unmeasured() {
 
 fn agg(passes: u32, total: u32, loops: u32) -> AggAgentic {
     AggAgentic {
+        tasks_passed: passes,
+        tasks_total: total,
         passes,
         total_runs: total,
         avg_steps: Some(2.0),
@@ -182,6 +186,8 @@ fn pass_k_of_is_native_first_then_prompt_then_none() {
     // Native present → native pass^k (3/5 = 0.6), even with a different prompt rate.
     let mut c = col(5, 5, 0, 0, Some(2.0)); // prompt 5/5
     c.agentic_native_fc = Some(AggAgentic {
+        tasks_passed: 3,
+        tasks_total: 5,
         passes: 3,
         total_runs: 5,
         avg_steps: Some(4.0),
@@ -205,6 +211,8 @@ fn agentic_metrics_prefers_native_then_falls_back_to_prompt() {
     // Prompt aggregate: avg_steps 2.0. Native aggregate: avg_steps 4.0, effort 120.
     let mut c = col(5, 5, 0, 0, Some(2.0));
     c.agentic_native_fc = Some(AggAgentic {
+        tasks_passed: 3,
+        tasks_total: 5,
         passes: 3,
         total_runs: 5,
         avg_steps: Some(4.0),
