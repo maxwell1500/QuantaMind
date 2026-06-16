@@ -147,7 +147,7 @@ Three design commitments shape every decision:
 ### Eval
 - Score models on **single-turn tool-calling** and **multi-step agentic** tasks
 - Deterministic, sandbox-free scoring: composite tool-call accuracy (parse · tool · args · abstain), **Pass^k** reliability, avg steps, effort, **schema resilience**, dominant failure mode
-- **Context-cliff** probe — backend engine that pads tasks with license-clean synthetic presets, sweeps the instruction across mid-document depths, and verifies each rung to ±5% of the target, finding the prompt length where tool-call accuracy collapses (real measured prompt tokens, never an estimate)
+- **Context-cliff** probe — backend engine that pads tasks with license-clean synthetic presets, sweeps the instruction across mid-document depths, and verifies each rung to ±5% of the target, finding the prompt length where tool-call accuracy collapses (real measured prompt tokens, never an estimate); a failing rung keeps the model's verbatim completion so a red "0% / Broken" shows *what* the model emitted, not just that it failed
 - Author custom collections by hand or bulk-load single-turn tasks via CSV import
 - Optional native function-calling path (Ollama `/api/chat` `tools`) alongside the prompt-based proxy
 
@@ -534,6 +534,8 @@ QuantaMind reads the first 64 KB of the `.gguf` file with a pure-Rust GGUF v3 he
 - context length
 - quantization (from `general.file_type`, with filename fallback)
 - family (derived from architecture)
+
+The parser handles the full GGUF value-type set (`UINT8`…`FLOAT64`, including `UINT16`/`INT16`/`FLOAT64`), so models that store scalar metadata in narrow integer types — e.g. some Qwen 2.5 Coder exports — parse instead of failing on an unsupported value tag.
 
 The user reviews metadata, picks a name (validated by regex + against existing models), clicks Import.
 

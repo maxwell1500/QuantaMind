@@ -152,7 +152,7 @@ export const useCliffStore = create<CliffStore>((set, get) => ({
         set((s) => ({
           // verified_tokens 0 ⇒ the backend reported no count for this rung — render
           // it as "not reported", never a fake ≈0-token depth.
-          points: [...s.points, { promptTokens: p.point.verified_tokens || null, composite: p.point.composite }],
+          points: [...s.points, { promptTokens: p.point.verified_tokens || null, composite: p.point.composite, samples: p.point.samples }],
           progress: { done: p.done, total: p.total },
         }));
       });
@@ -162,7 +162,7 @@ export const useCliffStore = create<CliffStore>((set, get) => ({
 
       // The report is authoritative — replace the live series with its verified rungs
       // so the chart and the (backend-persisted) status can never disagree.
-      const points: CliffPoint[] = report.points.map((p) => ({ promptTokens: p.verified_tokens || null, composite: p.composite }));
+      const points: CliffPoint[] = report.points.map((p) => ({ promptTokens: p.verified_tokens || null, composite: p.composite, samples: p.samples }));
       const broken = report.status.status === "Broken";
       set((s) => {
         const col = { ...(s.results[collectionId] ?? {}) };

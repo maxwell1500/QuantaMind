@@ -676,6 +676,17 @@ Parking lot for ideas, libraries, and changes deliberately deferred. Nothing
 here is in the current phase — see [Phase roadmap](#phase-roadmap). If something
 here becomes relevant, move it into a phase plan first.
 
+### Full end-state agentic context-cliff
+
+The context-cliff probe now *includes* agentic collections, but scores them on JSON **well-formedness**
+only — does the model still emit a parseable tool call as context grows (see `reference.md#context-cliff`).
+That catches a real failure mode (the tool-call FORMAT degrading with context) but **not** task
+correctness. A fuller probe — "at what context length does **multi-step** agentic accuracy collapse?" —
+would run the sandbox conversation under padding, decide where the needle lands among turns, and
+aggregate **Pass^k per rung** against `agentic.end_state`. **Activate when:** a phase wants correctness
+(not just format) context-headroom signal for agentic workloads. **Why deferred:** it's a new multi-turn
+engine (padding placement across turns, per-rung Pass^k), not a tweak to the single-turn probe.
+
 ### Additional STT engines (faster-whisper)
 
 **Removed:** `mlx-audio` was trialed as a second STT engine but removed — its

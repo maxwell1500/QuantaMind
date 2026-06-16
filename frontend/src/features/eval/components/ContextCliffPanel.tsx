@@ -135,6 +135,12 @@ export function ContextCliffPanel() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [model, active]);
 
+  // Raw completions behind the failing rungs — the evidence that turns a bare "0% /
+  // Broken" into "here's what the model actually emitted". Empty when nothing failed.
+  const failureSamples = points.flatMap((p) =>
+    (p.samples ?? []).map((s) => ({ ...s, promptTokens: p.promptTokens })),
+  );
+
   const maintainedTo = points.reduce(
     (mx, p) => (p.composite != null && p.promptTokens != null && p.promptTokens > mx ? p.promptTokens : mx),
     0,
@@ -332,6 +338,68 @@ export function ContextCliffPanel() {
               })}
             </tbody>
           </table>
+        </div>
+      )}
+
+      {/* ── Failure evidence: what the model actually emitted on the failing rungs ──
+          Turns a bare "0% / Broken" into an inspectable cause (prose, refusal, wrong
+          schema). Only shown when something failed; raw output is verbatim from the
+          backend (already char-capped), never re-interpreted here. */}
+      {!running && failureSamples.length > 0 && (
+        <div style={{ padding: "0 20px 14px" }} data-testid="cliff-failure-samples">
+          <div
+            style={{
+              fontSize: 11,
+              color: "#64748b",
+              marginBottom: 8,
+              fontFamily: "Inter, ui-sans-serif, system-ui, sans-serif",
+              letterSpacing: "0.04em",
+              textTransform: "uppercase",
+              fontWeight: 650,
+            }}
+          >
+            What the model emitted — failing tasks
+          </div>
+          <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
+            {failureSamples.map((s, i) => (
+              <div
+                key={i}
+                style={{
+                  border: "1px solid rgba(220,38,38,0.15)",
+                  background: "rgba(220,38,38,0.03)",
+                  borderRadius: 8,
+                  padding: "8px 10px",
+                }}
+              >
+                <div
+                  style={{
+                    fontSize: 11,
+                    color: "#64748b",
+                    marginBottom: 5,
+                    fontFamily: "Inter, ui-sans-serif, system-ui, sans-serif",
+                  }}
+                >
+                  <span style={{ fontWeight: 650, color: "#475569" }}>{s.task_id}</span>
+                  {s.promptTokens != null ? ` · ≈${Math.round(s.promptTokens).toLocaleString()} tokens` : ""}
+                </div>
+                <pre
+                  style={{
+                    margin: 0,
+                    whiteSpace: "pre-wrap",
+                    wordBreak: "break-word",
+                    fontSize: 12,
+                    lineHeight: 1.45,
+                    color: "#334155",
+                    fontFamily: "ui-monospace, SFMono-Regular, Menlo, monospace",
+                    maxHeight: 160,
+                    overflow: "auto",
+                  }}
+                >
+                  {s.output.trim() === "" ? "(empty output)" : s.output}
+                </pre>
+              </div>
+            ))}
+          </div>
         </div>
       )}
 
