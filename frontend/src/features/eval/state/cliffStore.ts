@@ -2,6 +2,7 @@ import { create } from "zustand";
 import { listen, type UnlistenFn } from "@tauri-apps/api/event";
 import {
   runContextCliff,
+  stopContextCliff,
   getCliffResults,
   EVENT_CLIFF_PROGRESS,
   type CliffSource,
@@ -148,21 +149,24 @@ export const useCliffStore = create<CliffStore>((set, get) => ({
     try {
       unlisten = await listen<CliffProgress>(EVENT_CLIFF_PROGRESS, (ev) => {
         const p = ev.payload;
-        if (activeRun !== myRun || p.model !== model) return; // stale / superseded run
+        // Filter by run token, not model: two runs of the SAME model must not bleed into
+        // each other. A superseded run's late (often cancelled/partial) events carry the
+        // OLD run_id and are dropped here, so they never pollute the new run's chart.
+        if (activeRun !== myRun || p.run_id !== myRun) return;
         set((s) => ({
           // verified_tokens 0 ⇒ the backend reported no count for this rung — render
           // it as "not reported", never a fake ≈0-token depth.
-          points: [...s.points, { promptTokens: p.point.verified_tokens || null, composite: p.point.composite, samples: p.point.samples }],
+          points: [...s.points, { promptTokens: p.point.verified_tokens || null, composite: p.point.composite, trace: p.point.trace }],
           progress: { done: p.done, total: p.total },
         }));
       });
 
-      const report = await runContextCliff(model, backend, collectionId, tasks, source, maxTokens, steps, params);
+      const report = await runContextCliff(model, backend, collectionId, tasks, source, maxTokens, steps, params, myRun);
       if (activeRun !== myRun) return; // stopped or superseded mid-run
 
       // The report is authoritative — replace the live series with its verified rungs
       // so the chart and the (backend-persisted) status can never disagree.
-      const points: CliffPoint[] = report.points.map((p) => ({ promptTokens: p.verified_tokens || null, composite: p.composite, samples: p.samples }));
+      const points: CliffPoint[] = report.points.map((p) => ({ promptTokens: p.verified_tokens || null, composite: p.composite, trace: p.trace }));
       const broken = report.status.status === "Broken";
       set((s) => {
         const col = { ...(s.results[collectionId] ?? {}) };
@@ -188,12 +192,21 @@ export const useCliffStore = create<CliffStore>((set, get) => ({
   },
 
   stop: () => {
-    activeRun++; // invalidate the in-flight run
+    activeRun++; // invalidate the in-flight run (the awaited result is ignored)
+    // Actually cancel the backend probe — without this the model kept being called
+    // through the whole ladder; bumping activeRun only hid the result in the UI.
+    void stopContextCliff().catch((e) => console.error("stop context-cliff failed:", e));
     set({ running: false, runningModel: null });
   },
 
   reset: () => {
     activeRun++;
+    // Reset abandons any in-flight run too — cancel the backend so it doesn't keep
+    // calling the model. Only when actually running, so idle selection-change resets
+    // don't fire a spurious IPC.
+    if (get().running) {
+      void stopContextCliff().catch((e) => console.error("stop context-cliff failed:", e));
+    }
     set({ points: [], error: null, running: false, runningModel: null, progress: { done: 0, total: 0 } });
   },
 }));

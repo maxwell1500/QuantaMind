@@ -3,11 +3,13 @@ import { describe, it, expect, vi, beforeEach } from "vitest";
 vi.mock("@tauri-apps/api/event", () => ({ listen: vi.fn().mockResolvedValue(() => {}) }));
 vi.mock("../../../shared/ipc/eval/cliff", () => ({
   runContextCliff: vi.fn(),
+  stopContextCliff: vi.fn().mockResolvedValue(undefined),
   getCliffResults: vi.fn(),
   EVENT_CLIFF_PROGRESS: "cliff-progress",
 }));
 
-import { runContextCliff, getCliffResults } from "../../../shared/ipc/eval/cliff";
+import { listen } from "@tauri-apps/api/event";
+import { runContextCliff, stopContextCliff, getCliffResults } from "../../../shared/ipc/eval/cliff";
 import { useCliffStore } from "../state/cliffStore";
 import type { RunProbeArgs } from "../state/cliffStore";
 import type { ToolTask } from "../../../shared/ipc/eval/registry";
@@ -109,11 +111,41 @@ describe("cliffStore", () => {
     await flush(); // probe in flight
     useCliffStore.getState().stop();
     expect(useCliffStore.getState().running).toBe(false);
+    // Stop must actually cancel the BACKEND probe — not just hide the result in the UI.
+    expect(stopContextCliff).toHaveBeenCalledTimes(1);
     resolveRun(reportOf({ status: "Collapsed", depth: 8000 }, 4000, [rung(8000, 0.5)])); // resolves AFTER stop
     await p;
     // Superseded run must not write results/probed.
     expect(useCliffStore.getState().cliffFor("finance", "qwen2.5-coder:7b")).toBeNull();
     expect(useCliffStore.getState().wasProbed("finance", "qwen2.5-coder:7b")).toBe(false);
+  });
+
+  it("drops cliff-progress events from a superseded run (run_id mismatch)", async () => {
+    // Capture the progress listener so we can fire events at it directly.
+    type ProgressCb = (ev: { payload: unknown }) => void;
+    const h: { cb: ProgressCb | null } = { cb: null };
+    vi.mocked(listen).mockImplementation((_e, fn) => {
+      h.cb = fn as unknown as ProgressCb;
+      return Promise.resolve(() => {});
+    });
+    let resolveRun: (v: unknown) => void = () => {};
+    vi.mocked(runContextCliff).mockImplementation(() => new Promise((r) => (resolveRun = r)) as never);
+
+    const p = useCliffStore.getState().runProbe(args({ steps: 3 }));
+    await flush(); // listener registered
+    // The run token handed to the backend is runContextCliff's last argument.
+    const myRunId = vi.mocked(runContextCliff).mock.calls[0][8] as number;
+
+    // An event tagged with THIS run's id is folded into the series…
+    h.cb?.({ payload: { run_id: myRunId, model: "qwen2.5-coder:7b", done: 1, total: 3, point: rung(1000, 1.0) } });
+    expect(useCliffStore.getState().points).toHaveLength(1);
+
+    // …but a (same-model) event from a DIFFERENT run is ignored — no cross-run pollution.
+    h.cb?.({ payload: { run_id: myRunId + 999, model: "qwen2.5-coder:7b", done: 2, total: 3, point: rung(2000, 0.1) } });
+    expect(useCliffStore.getState().points).toHaveLength(1);
+
+    resolveRun(reportOf({ status: "NoCliff", tested: 1000 }, 1000, [rung(1000, 1.0)]));
+    await p;
   });
 
   it("surfaces a backend error instead of a silent blank chart", async () => {

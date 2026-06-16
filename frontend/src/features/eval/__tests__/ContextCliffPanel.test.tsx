@@ -5,6 +5,7 @@ vi.mock("@tauri-apps/api/core", () => ({ invoke: vi.fn() }));
 vi.mock("@tauri-apps/api/event", () => ({ listen: vi.fn().mockResolvedValue(() => {}) }));
 vi.mock("../../../shared/ipc/eval/cliff", () => ({
   runContextCliff: vi.fn(),
+  stopContextCliff: vi.fn().mockResolvedValue(undefined),
   getCliffResults: vi.fn().mockResolvedValue({}),
   EVENT_CLIFF_PROGRESS: "cliff-progress",
 }));
@@ -208,6 +209,59 @@ describe("ContextCliffPanel", () => {
     expect(useCliffStore.getState().request).toBeNull();
     // GUARDRAIL 1: pre-fill only — the probe never starts on navigation.
     expect(runContextCliff).not.toHaveBeenCalled();
+  });
+
+  it("explains how Accuracy is calculated via an info button on the column header", async () => {
+    vi.mocked(runContextCliff).mockResolvedValue(reportOf({ status: "NoCliff", tested: 5000 }, [rung(5000, 1.0)], 5000) as never);
+    render(<ContextCliffPanel />);
+    await waitFor(() => expect(getBuiltinCollection).toHaveBeenCalled());
+    await waitFor(() => expect(screen.getByTestId("cliff-run")).not.toBeDisabled());
+    fireEvent.click(screen.getByTestId("cliff-run"));
+    // The Accuracy header carries an ⓘ; hovering reveals the composite-score explanation.
+    const info = await screen.findByTestId("info-cliff-accuracy");
+    fireEvent.mouseEnter(info.parentElement as HTMLElement);
+    expect(screen.getByTestId("info-popup-cliff-accuracy")).toHaveTextContent(/composite tool-call score/i);
+  });
+
+  it("reveals the system prompt + padded input + output per step via 'View trace' (collapsed until clicked)", async () => {
+    vi.mocked(runContextCliff).mockResolvedValue(
+      reportOf({ status: "NoCliff", tested: 4096 }, [
+        // Rung 0 is the unpadded baseline; rung 1 carries the injected padding.
+        {
+          target_tokens: 0, verified_tokens: 343, composite: 1.0, per_depth: [],
+          trace: [{ task_id: "t", outputs: [{ depth: 0.0, prompt: "BARE-INSTRUCTION", output: "OUT-0", passed: true }] }],
+        } as never,
+        {
+          target_tokens: 4096, verified_tokens: 4096, composite: 1.0, per_depth: [],
+          trace: [{ task_id: "t", outputs: [{ depth: 0.1, prompt: "PADDED-INPUT-MARKER", output: "OUT-1", passed: true }] }],
+        } as never,
+      ], 4096) as never,
+    );
+    render(<ContextCliffPanel />);
+    await waitFor(() => expect(getBuiltinCollection).toHaveBeenCalled());
+    await waitFor(() => expect(screen.getByTestId("cliff-run")).not.toBeDisabled());
+    fireEvent.click(screen.getByTestId("cliff-run"));
+
+    // Each row offers a per-step trace toggle, but nothing is dumped until the user asks.
+    await waitFor(() => expect(screen.getByTestId("cliff-trace-toggle-1")).toBeInTheDocument());
+    expect(screen.queryByText("PADDED-INPUT-MARKER")).toBeNull();
+
+    // The padded rung shows the injected context under a "padded input" label.
+    fireEvent.click(screen.getByTestId("cliff-trace-toggle-1"));
+    const padded = screen.getByTestId("cliff-trace-1");
+    expect(padded).toHaveTextContent(/Padded input/i);
+    expect(padded).toHaveTextContent("PADDED-INPUT-MARKER");
+    expect(padded).toHaveTextContent("OUT-1");
+    // The system prompt (boilerplate + tool JSON) is intentionally not shown.
+    expect(padded).not.toHaveTextContent(/System prompt/i);
+
+    // The baseline rung is labelled honestly as unpadded — no "padded input" claim there.
+    fireEvent.click(screen.getByTestId("cliff-trace-toggle-0"));
+    const base = screen.getByTestId("cliff-trace-0");
+    expect(base).toHaveTextContent(/Unpadded baseline/i);
+    expect(base).toHaveTextContent(/Input \(no padding\)/i);
+    expect(base).toHaveTextContent("BARE-INSTRUCTION");
+    expect(base).not.toHaveTextContent(/Padded input/i);
   });
 
   it("re-pre-fills when a NEW request arrives after mount (always-mounted Audit panel)", async () => {

@@ -1,6 +1,6 @@
 use super::padding::{build_padding, inject_at_depth};
 use super::presets::CliffSource;
-use crate::errors::AppResult;
+use crate::errors::{AppError, AppResult};
 use crate::inference::eval::agentic::model_turn::ModelTurn;
 use crate::inference::eval::readiness::types::CliffStatus;
 use crate::inference::eval::toolcall::eval::{aggregate, TaskResult};
@@ -11,6 +11,7 @@ use crate::inference::eval::toolcall::tasks::ToolTask;
 use crate::inference::generate::generate_options::GenerateOptions;
 use crate::inference::generate::generate_spec::GenerateSpec;
 use serde::{Deserialize, Serialize};
+use tokio_util::sync::CancellationToken;
 
 /// Byte seed per target token. The model's REAL `prompt_eval_count` is measured
 /// afterward and the padding rebuilt proportionally — this 4:1 ratio is only the
@@ -33,30 +34,85 @@ const COLLAPSE_MARGIN: f64 = 0.2;
 /// tail-only (the tail tests recency, the model's strongest position). Three
 /// positions keep the probe affordable; mid-document is where models actually fail.
 pub const DEFAULT_DEPTHS: [f32; 3] = [0.1, 0.5, 0.9];
-/// Cap on retained failure samples per rung, and on each sample's char length. Enough
-/// to see WHAT the model emitted (prose, refusal, wrong schema) so a 0% rung explains
-/// itself, without hauling a full transcript per rung × depth × task through IPC.
-const MAX_SAMPLES_PER_RUNG: usize = 6;
-const MAX_SAMPLE_CHARS: usize = 600;
+/// Caps on the per-rung trace: how many tasks to retain, and the char length of each
+/// captured system prompt / model output. The probe keeps a trace for EVERY task at
+/// EVERY rung (pass and fail) so the UI's per-step "View trace" can show the exact
+/// system prompt + output — bounded here so a large collection can't haul unbounded
+/// text through IPC.
+const MAX_TRACE_TASKS: usize = 30;
+const MAX_OUTPUT_CHARS: usize = 2000;
+/// The padded user prompt is huge by design; keep its head + tail (eliding the middle)
+/// so the user can see the padding that was injected — and the needle, whether it sits
+/// at the front or the back — without hauling the full multi-KB context through IPC.
+const MAX_PROMPT_CHARS: usize = 6000;
 
-/// The raw model completion behind one FAILED probe position — captured so a Broken or
-/// collapsed rung shows the user what the model actually said instead of only a 0%
-/// score. Only failing tasks are kept (a pass needs no explanation); the text is
-/// char-capped to `MAX_SAMPLE_CHARS`. A diagnostic crumb, not a full trace.
+/// One model output at one needle position within a rung.
 #[derive(Serialize, Deserialize, Clone, Debug, PartialEq)]
-pub struct FailureSample {
-    pub task_id: String,
+pub struct TraceOutput {
+    /// Fractional needle position (front/middle/back); `0.0` for the unpadded baseline.
     pub depth: f32,
+    /// The exact user prompt sent at this position: the synthetic padding with the task
+    /// instruction (the "needle") injected at `depth`. Head+tail-capped — this is what
+    /// the model actually read, so "View trace" shows the padding, not just the output.
+    pub prompt: String,
+    /// The raw model completion (char-capped), verbatim — prose, refusal, JSON, anything.
     pub output: String,
+    /// Did this output PASS the cliff yardstick (single-turn: fully correct; agentic:
+    /// emitted a well-formed tool call)?
+    pub passed: bool,
 }
 
-/// Char-safe truncation: keep the first `MAX_SAMPLE_CHARS` chars, append `…` when cut.
-fn truncate_sample(s: &str) -> String {
-    if s.chars().count() <= MAX_SAMPLE_CHARS {
+/// The full trace for one task at one rung: every needle position's padded input +
+/// output. Captured for every task (pass and fail) so a rung's "View trace" shows what
+/// the model saw and emitted, not only the failures. The system prompt is the same
+/// boilerplate + tool schemas every turn, so it's deliberately NOT carried here.
+#[derive(Serialize, Deserialize, Clone, Debug, PartialEq)]
+pub struct TaskTrace {
+    pub task_id: String,
+    pub outputs: Vec<TraceOutput>,
+}
+
+/// One generation's raw trace at a single position, before grouping by task.
+struct PosTrace {
+    task_id: String,
+    prompt: String,
+    output: String,
+    passed: bool,
+}
+
+/// Char-safe truncation: keep the first `max` chars, append `…` when cut.
+fn truncate(s: &str, max: usize) -> String {
+    if s.chars().count() <= max {
         return s.to_string();
     }
-    let cut: String = s.chars().take(MAX_SAMPLE_CHARS).collect();
+    let cut: String = s.chars().take(max).collect();
     format!("{cut}…")
+}
+
+/// Keep the head and tail when a string exceeds `max`, eliding the middle — so a needle
+/// injected at the FRONT or BACK of the padding stays visible even when the padded prompt
+/// dwarfs the cap. Used for the padded user prompt, which is intentionally enormous.
+fn truncate_middle(s: &str, max: usize) -> String {
+    let n = s.chars().count();
+    if n <= max {
+        return s.to_string();
+    }
+    let half = max / 2;
+    let head: String = s.chars().take(half).collect();
+    let tail: String = s.chars().skip(n - half).collect();
+    format!("{head}\n…[{} chars omitted]…\n{tail}", n - 2 * half)
+}
+
+/// Fold a position's per-task generations into the rung's grouped trace: append each
+/// output under its task (preserving first-seen order), setting the system prompt once.
+fn merge_pos_into_trace(trace: &mut Vec<TaskTrace>, depth: f32, pos: Vec<PosTrace>) {
+    for pt in pos {
+        let out = TraceOutput { depth, prompt: pt.prompt, output: pt.output, passed: pt.passed };
+        match trace.iter_mut().find(|t| t.task_id == pt.task_id) {
+            Some(t) => t.outputs.push(out),
+            None => trace.push(TaskTrace { task_id: pt.task_id, outputs: vec![out] }),
+        }
+    }
 }
 
 /// One needle position within a rung: the composite there and the verified depth.
@@ -78,9 +134,9 @@ pub struct CliffPoint {
     /// robust everywhere, so the cliff is found at the weakest spot, not the average.
     pub composite: Option<f64>,
     pub per_depth: Vec<DepthScore>,
-    /// Raw completions for the FAILING tasks at this rung (capped). Empty when every
-    /// task passed — so a Broken/collapsed rung carries its own explanation to the UI.
-    pub samples: Vec<FailureSample>,
+    /// Per-task trace (system prompt + per-position outputs) for THIS rung — every task,
+    /// pass or fail (capped). Powers the per-step "View trace" in the UI.
+    pub trace: Vec<TaskTrace>,
 }
 
 /// The probe result: every rung, the classified status (mirrors the persisted
@@ -151,19 +207,20 @@ async fn run_position<M: ModelTurn>(
     tasks: &[ToolTask],
     padding: &str,
     depth: f32,
-) -> AppResult<(Vec<TaskResult>, Vec<FailureSample>)> {
+) -> AppResult<(Vec<TaskResult>, Vec<PosTrace>)> {
     let mut results = Vec::with_capacity(tasks.len());
-    let mut samples = Vec::new();
+    let mut traces = Vec::with_capacity(tasks.len());
     for task in tasks {
         let prompt = if padding.is_empty() {
             task.prompt.clone()
         } else {
             inject_at_depth(padding, &task.prompt, depth)
         };
+        let system = build_system_for(&task.tools);
         let spec = GenerateSpec {
             model: model.to_string(),
             prompt,
-            system: Some(build_system_for(&task.tools)),
+            system: Some(system.clone()),
             // Greedy (temp 0) — a probe is a diagnostic and must reproduce. The live
             // command's BackendTurn carries num_ctx (so the padding isn't truncated);
             // this temp 0 is the seam fallback the scripted test model also sees.
@@ -172,12 +229,16 @@ async fn run_position<M: ModelTurn>(
         };
         let (raw, stats) = turn.run(&spec).await?;
         let verdict = score(&task.expected, extract_calls(&raw).as_deref());
-        // Keep the raw completion ONLY for a failing task (by the cliff's yardstick —
-        // see `cliff_failed`): the evidence a Broken/collapsed rung needs ("it emitted
-        // prose / a refusal / broken JSON"). A pass needs no explanation.
-        if cliff_failed(task, &verdict) {
-            samples.push(FailureSample { task_id: task.id.clone(), depth, output: truncate_sample(&raw) });
-        }
+        // Keep the padded input + raw completion for EVERY task (pass or fail), so the
+        // rung's "View trace" shows exactly what the model saw and emitted at this step.
+        // `passed` is the cliff yardstick (`cliff_failed`). The system prompt is the same
+        // boilerplate each turn, so it's intentionally not retained.
+        traces.push(PosTrace {
+            task_id: task.id.clone(),
+            prompt: truncate_middle(&spec.prompt, MAX_PROMPT_CHARS),
+            output: truncate(&raw, MAX_OUTPUT_CHARS),
+            passed: !cliff_failed(task, &verdict),
+        });
         results.push(TaskResult {
             id: task.id.clone(),
             category: task.category.clone(),
@@ -185,7 +246,7 @@ async fn run_position<M: ModelTurn>(
             prompt_tokens: stats.prompt_eval_count,
         });
     }
-    Ok((results, samples))
+    Ok((results, traces))
 }
 
 /// Sweep every needle depth for one fixed padding. Returns the per-depth scores,
@@ -196,14 +257,14 @@ async fn sweep<M: ModelTurn>(
     tasks: &[ToolTask],
     padding: &str,
     depths: &[f32],
-) -> AppResult<(Vec<DepthScore>, u32, Option<f64>, Vec<FailureSample>)> {
+) -> AppResult<(Vec<DepthScore>, u32, Option<f64>, Vec<TaskTrace>)> {
     let mut per_depth = Vec::with_capacity(depths.len());
     let mut tok_sum: u64 = 0;
     let mut tok_n: u64 = 0;
     let mut worst: Option<f64> = None;
-    let mut samples: Vec<FailureSample> = Vec::new();
+    let mut trace: Vec<TaskTrace> = Vec::new();
     for &depth in depths {
-        let (results, mut pos_samples) = run_position(turn, model, tasks, padding, depth).await?;
+        let (results, pos_traces) = run_position(turn, model, tasks, padding, depth).await?;
         let (composite, prompt_tokens) = cliff_score(tasks, &results);
         let vt = prompt_tokens.map(|t| t.round() as u32).unwrap_or(0);
         if let Some(t) = prompt_tokens {
@@ -214,11 +275,11 @@ async fn sweep<M: ModelTurn>(
             worst = Some(worst.map_or(c, |w: f64| w.min(c)));
         }
         per_depth.push(DepthScore { depth, composite, verified_tokens: vt });
-        samples.append(&mut pos_samples);
+        merge_pos_into_trace(&mut trace, depth, pos_traces);
     }
-    samples.truncate(MAX_SAMPLES_PER_RUNG);
+    trace.truncate(MAX_TRACE_TASKS);
     let mean_tokens = if tok_n > 0 { (tok_sum / tok_n) as u32 } else { 0 };
-    Ok((per_depth, mean_tokens, worst, samples))
+    Ok((per_depth, mean_tokens, worst, trace))
 }
 
 /// Probe one rung: build padding for `target` tokens, verify the measured depth is
@@ -240,16 +301,18 @@ async fn probe_rung<M: ModelTurn>(
 ) -> AppResult<CliffPoint> {
     if target == 0 {
         // Baseline: unpadded, single position.
-        let (results, mut samples) = run_position(turn, model, tasks, "", 0.0).await?;
+        let (results, pos_traces) = run_position(turn, model, tasks, "", 0.0).await?;
         let (composite, prompt_tokens) = cliff_score(tasks, &results);
         let vt = prompt_tokens.map(|t| t.round() as u32).unwrap_or(0);
-        samples.truncate(MAX_SAMPLES_PER_RUNG);
+        let mut trace: Vec<TaskTrace> = Vec::new();
+        merge_pos_into_trace(&mut trace, 0.0, pos_traces);
+        trace.truncate(MAX_TRACE_TASKS);
         return Ok(CliffPoint {
             target_tokens: 0,
             verified_tokens: vt,
             composite,
             per_depth: vec![DepthScore { depth: 0.0, composite, verified_tokens: vt }],
-            samples,
+            trace,
         });
     }
     // Seed from the learned rate (accurate) or the 4:1 fallback on the first padded rung.
@@ -257,23 +320,23 @@ async fn probe_rung<M: ModelTurn>(
         Some(r) => ((target as f64) * r).round() as usize,
         None => target as usize * BYTES_PER_TOKEN,
     };
-    let mut last: Option<(Vec<DepthScore>, u32, Option<f64>, Vec<FailureSample>)> = None;
+    let mut last: Option<(Vec<DepthScore>, u32, Option<f64>, Vec<TaskTrace>)> = None;
     for attempt in 0..=MAX_ADJUST_ATTEMPTS {
         let padding = build_padding(source_text, bytes);
-        let (per_depth, mean_tokens, worst, samples) = sweep(turn, model, tasks, &padding, depths).await?;
+        let (per_depth, mean_tokens, worst, trace) = sweep(turn, model, tasks, &padding, depths).await?;
         if mean_tokens > 0 {
             *rate = Some(bytes as f64 / mean_tokens as f64); // learn for the next rung
         }
         let off = if target > 0 { (mean_tokens as f64 - target as f64).abs() / target as f64 } else { 0.0 };
-        last = Some((per_depth, mean_tokens, worst, samples));
+        last = Some((per_depth, mean_tokens, worst, trace));
         if mean_tokens == 0 || off <= ADJUST_TOLERANCE || attempt == MAX_ADJUST_ATTEMPTS {
             break;
         }
         // Rebuild proportionally: scale the byte seed toward the target.
         bytes = ((bytes as f64) * (target as f64) / (mean_tokens as f64)).round() as usize;
     }
-    let (per_depth, mean_tokens, worst, samples) = last.expect("loop runs at least once");
-    Ok(CliffPoint { target_tokens: target, verified_tokens: mean_tokens, composite: worst, per_depth, samples })
+    let (per_depth, mean_tokens, worst, trace) = last.expect("loop runs at least once");
+    Ok(CliffPoint { target_tokens: target, verified_tokens: mean_tokens, composite: worst, per_depth, trace })
 }
 
 /// Classify the ladder into a `CliffStatus` plus `cliff_tokens` (largest verified
@@ -325,12 +388,14 @@ pub async fn run_cliff<M: ModelTurn>(
     ladder: &[u32],
     depths: &[f32],
 ) -> AppResult<CliffReport> {
-    run_cliff_with(turn, model, tasks, source, ladder, depths, &mut |_, _, _| {}).await
+    run_cliff_with(turn, model, tasks, source, ladder, depths, &CancellationToken::new(), &mut |_, _, _| {}).await
 }
 
 /// Same as [`run_cliff`] but invokes `on_rung(done, total, point)` after each rung
 /// completes — the seam the command layer uses to emit live progress events while
-/// the engine stays UI-free.
+/// the engine stays UI-free. `cancel` lets the Stop button abort the sweep: it's
+/// checked before each (costly) rung and before classification, so a cancelled probe
+/// returns an error WITHOUT classifying or persisting a bogus outcome.
 pub async fn run_cliff_with<M: ModelTurn>(
     turn: &M,
     model: &str,
@@ -338,6 +403,7 @@ pub async fn run_cliff_with<M: ModelTurn>(
     source: &CliffSource,
     ladder: &[u32],
     depths: &[f32],
+    cancel: &CancellationToken,
     on_rung: &mut (dyn FnMut(usize, usize, &CliffPoint) + Send),
 ) -> AppResult<CliffReport> {
     let source_text = source.text();
@@ -348,7 +414,18 @@ pub async fn run_cliff_with<M: ModelTurn>(
     // The baseline (first rung) composite — the plateau a cliff falls off.
     let mut baseline_comp: Option<f64> = None;
     for (i, &target) in ladder.iter().enumerate() {
+        // Honour a user Stop: a cancelled token aborts BEFORE the next (costly) rung,
+        // so the model stops being called instead of grinding through the whole ladder.
+        if cancel.is_cancelled() {
+            return Err(AppError::Inference("context-cliff probe cancelled".into()));
+        }
         let point = probe_rung(turn, model, tasks, source_text, target, depths, &mut rate).await?;
+        // A Stop that fired DURING this rung leaves it half-generated (cancelled turns
+        // return empty/partial text). Abort before emitting it, so a stopped/superseded
+        // run never pushes a garbage rung into the chart or the report.
+        if cancel.is_cancelled() {
+            return Err(AppError::Inference("context-cliff probe cancelled".into()));
+        }
         on_rung(i + 1, total, &point);
         let comp = point.composite;
         points.push(point);
@@ -368,6 +445,11 @@ pub async fn run_cliff_with<M: ModelTurn>(
                 break;
             }
         }
+    }
+    // A Stop during the final rung lands here — abort before classify/persist so the
+    // cancelled run never overwrites a real saved cliff status with a half-run one.
+    if cancel.is_cancelled() {
+        return Err(AppError::Inference("context-cliff probe cancelled".into()));
     }
     let (status, cliff_tokens) = classify(&points);
     Ok(CliffReport { points, status, cliff_tokens })

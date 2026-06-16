@@ -28,6 +28,7 @@ pub fn run() {
         .manage(commands::workspace::workspaces::WorkspaceState::default())
         .manage(commands::settings::user_settings::UserSettingsState::default())
         .manage(commands::eval::batch_cmd::BatchRunState::default())
+        .manage(commands::eval::readiness_cmd::CliffRunState::default())
         .manage(commands::publish::auth_state::AuthState::default())
         .setup(|app| {
             // Reclaim any sidecars a previous instance orphaned by dying without
@@ -159,6 +160,7 @@ pub fn run() {
             commands::eval::readiness_cmd::save_cliff_result,
             commands::eval::readiness_cmd::get_cliff_results,
             commands::eval::readiness_cmd::run_context_cliff,
+            commands::eval::readiness_cmd::stop_context_cliff,
             commands::workspace::workspace_prompts::load_prompt,
             commands::workspace::workspace_prompts::save_prompt,
             commands::workspace::workspace_prompts::create_prompt,

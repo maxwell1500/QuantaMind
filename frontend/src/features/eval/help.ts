@@ -70,6 +70,10 @@ export const METRIC_HELP = {
     title: "Pass rate",
     body: "Aggregate passes ÷ total runs across the whole collection, as a percentage.",
   },
+  cliffAccuracy: {
+    title: "Accuracy (per rung)",
+    body: "The composite tool-call score at this context depth, 0–100%. Single-turn tasks score the mean of four sub-metrics — parse rate (valid JSON call), tool selection (right tool), argument accuracy (right parameters), and abstention (correctly made no call when none was needed); agentic tasks score on JSON well-formedness alone (did the model emit a parseable tool call). The two groups are blended by task count. Each rung is measured at three needle positions (start/middle/end of the padding) and the row shows the WORST position — robust means correct everywhere. A rung is a Pass at ≥50%; the cliff is the first rung that drops ≥20 percentage points below the unpadded baseline.",
+  },
 } satisfies Record<string, Help>;
 
 /// "Title — body" for a clip-safe Tooltip label on a metric column header.

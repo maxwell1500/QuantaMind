@@ -20,14 +20,26 @@ export const DepthScoreSchema = z.object({
   verified_tokens: z.number().int(),
 });
 
-/// The raw completion behind one FAILED probe position (backend `FailureSample`) —
-/// what the model actually emitted, so a Broken/collapsed rung explains itself.
-export const FailureSampleSchema = z.object({
-  task_id: z.string(),
+/// One model output at one needle position within a rung (backend `TraceOutput`).
+export const TraceOutputSchema = z.object({
   depth: z.number(),
+  /// The exact padded user prompt sent at this position (padding + injected needle),
+  /// head+tail-capped — so the trace shows the context the model actually read.
+  prompt: z.string(),
   output: z.string(),
+  passed: z.boolean(),
 });
-export type FailureSample = z.infer<typeof FailureSampleSchema>;
+export type TraceOutput = z.infer<typeof TraceOutputSchema>;
+
+/// One task's full trace at a rung (backend `TaskTrace`): every needle position's padded
+/// input + output, pass or fail — what the model saw and emitted at this step. Powers the
+/// per-step "View trace". The system prompt is the same boilerplate each turn, so it's
+/// intentionally not included.
+export const TaskTraceSchema = z.object({
+  task_id: z.string(),
+  outputs: z.array(TraceOutputSchema).default([]),
+});
+export type TaskTrace = z.infer<typeof TaskTraceSchema>;
 
 /// One ladder rung (backend `CliffPoint`): requested vs VERIFIED depth, the
 /// worst-position composite, and the per-position breakdown.
@@ -36,8 +48,8 @@ export const CliffRungSchema = z.object({
   verified_tokens: z.number().int(),
   composite: z.number().nullable(),
   per_depth: z.array(DepthScoreSchema),
-  /// Raw completions for the failing tasks at this rung (capped, may be empty).
-  samples: z.array(FailureSampleSchema).default([]),
+  /// Per-task trace (system prompt + per-position outputs) for this rung, pass or fail.
+  trace: z.array(TaskTraceSchema).default([]),
 });
 export type CliffRung = z.infer<typeof CliffRungSchema>;
 
@@ -50,8 +62,10 @@ export const CliffReportSchema = z.object({
 });
 export type CliffReport = z.infer<typeof CliffReportSchema>;
 
-/// The `cliff-progress` event: the rung that just finished, with done/total.
+/// The `cliff-progress` event: the rung that just finished, with done/total. `run_id`
+/// echoes the caller's run token so a superseded run's late events can be discarded.
 export const CliffProgressSchema = z.object({
+  run_id: z.number().int(),
   model: z.string(),
   done: z.number().int(),
   total: z.number().int(),
@@ -71,11 +85,21 @@ export async function runContextCliff(
   source: CliffSource,
   maxTokens: number,
   steps: number,
-  params?: InferenceParams,
+  params: InferenceParams | undefined,
+  /// The caller's run token, echoed on every `cliff-progress` event so a superseded
+  /// run's late events can be filtered out of the new run's series.
+  runId: number,
 ): Promise<CliffReport> {
   return CliffReportSchema.parse(
-    await invoke("run_context_cliff", { model, backend, collectionId, tasks, source, maxTokens: Math.round(maxTokens), steps, params }),
+    await invoke("run_context_cliff", { runId, model, backend, collectionId, tasks, source, maxTokens: Math.round(maxTokens), steps, params }),
   );
+}
+
+/// Cancel the in-flight context-cliff probe (the Stop button). The backend cancels the
+/// shared run token, which aborts the model calls and the rung loop; the partial result
+/// is NOT persisted. A no-op when nothing is running.
+export async function stopContextCliff(): Promise<void> {
+  await invoke("stop_context_cliff");
 }
 
 // Re-export so callers building a source picker get the backend kind locally.

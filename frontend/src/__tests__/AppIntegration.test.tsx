@@ -67,6 +67,27 @@ beforeEach(() => {
   seedCurrentPrompt();
 });
 
+describe("Top navigation layout", () => {
+  it("has no standalone Quant tab; Quant lives as a sub-tab under Analysis", async () => {
+    render(<App />);
+    await waitFor(() => expect(handlers["prompt-token"]).toBeDefined());
+    expect(screen.queryByTestId("view-tab-quant")).toBeNull();
+    // Quant is reachable as a sub-tab once the Analysis top tab is open.
+    fireEvent.click(screen.getByTestId("view-tab-compare"));
+    expect(screen.getByTestId("analysis-tab-quant")).toBeInTheDocument();
+  });
+
+  it("orders Models & Downloads after Agent Report", async () => {
+    render(<App />);
+    await waitFor(() => expect(handlers["prompt-token"]).toBeDefined());
+    const order = ["workspace", "compare", "inspector", "eval", "audit", "agentReport", "models", "downloads", "settings", "help"];
+    const ids = order.map((id) => screen.getByTestId(`view-tab-${id}`));
+    for (let i = 1; i < ids.length; i++) {
+      expect(ids[i - 1].compareDocumentPosition(ids[i]) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+    }
+  });
+});
+
 describe("Phase 1 E2E smoke — edit → run → re-run", () => {
   it("walks the full workspace flow with all four exit criteria", async () => {
     render(<App />);
