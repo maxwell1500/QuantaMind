@@ -1,9 +1,8 @@
 import { create } from "zustand";
 
-/// Top-level view of the app. Each value corresponds to one of the five
-/// top tabs in `App.tsx`. The store is the single source of truth so the
-/// Workspace's "Add Model" button can navigate to the Models tab without
-/// prop-drilling.
+/// Top-level view of the app. Each value corresponds to one of the top tabs in
+/// `App.tsx`. The store is the single source of truth so the Workspace's
+/// "Add Model" button can navigate to the Models tab without prop-drilling.
 
 export type TopView =
   | "workspace"
@@ -13,7 +12,6 @@ export type TopView =
   | "downloads"
   | "eval"
   | "audit"
-  | "quant"
   | "agentReport"
   | "settings"
   | "help";

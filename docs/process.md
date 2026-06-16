@@ -463,7 +463,8 @@ one. Built one step at a time.
   required keys + top-level types. Honest framing: a quality *smoke test*, not a
   rigorous benchmark. `inference/eval` (pure scoring, Tauri-free) + `commands/eval`
   (`list_evals`, `run_eval_task` — runs temp-0, accumulates output, scores).
-- **5.5 Smart quant recommender (done).** A **Quant** tab: pick a model that has
+- **5.5 Smart quant recommender (done).** A **Quant** view — reached via the
+  **Analysis → Quant** sub-tab: pick a model that has
   several installed quantizations (grouped by family + size in `quantPick.ts`)
   and a use case (fast-chat / quality-writing / coding / reasoning) → a
   recommended quant + plain-language why. Pure `recommendQuant` combines the
