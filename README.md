@@ -535,6 +535,8 @@ QuantaMind reads the first 64 KB of the `.gguf` file with a pure-Rust GGUF v3 he
 - quantization (from `general.file_type`, with filename fallback)
 - family (derived from architecture)
 
+The parser handles the full GGUF value-type set (`UINT8`…`FLOAT64`, including `UINT16`/`INT16`/`FLOAT64`), so models that store scalar metadata in narrow integer types — e.g. some Qwen 2.5 Coder exports — parse instead of failing on an unsupported value tag.
+
 The user reviews metadata, picks a name (validated by regex + against existing models), clicks Import.
 
 </details>
