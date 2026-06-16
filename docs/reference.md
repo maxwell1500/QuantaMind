@@ -806,6 +806,20 @@ A **Padding** picker chooses the preset. Decoding is **always greedy (temp 0)** 
 *diagnostic* and must reproduce for a given (collection, model), so the engine pins it; there is no
 local toggle. A run that errors surfaces a **"Not available — …"** banner rather than a silent blank chart.
 
+**Agentic tasks are scored on JSON well-formedness, not abstention.** The probe pads ONE prompt, injects
+the needle, and scores the model's ONE reply — it never runs the multi-turn sandbox. An **agentic** task
+carries only a placeholder `expected: no_call` (its real criterion is `agentic.end_state`, scored by the
+batch agentic loop), so scoring it against `expected` would read that literally and fail every correct
+tool call as a forced abstention — a fabricated **Broken 0%**. Instead the cliff **ignores** the
+placeholder and scores an agentic task purely on whether the model emitted a **well-formed, parseable
+tool call** at that depth (`verdict.parsed`); tool/arg correctness is the end-state's job, not the
+probe's (`engine::cliff_score` / `cliff_failed`). So an all-agentic collection yields a genuine
+**formatting cliff** — the context length where the model's tool-call JSON stops parsing — and a rung's
+composite **blends** single-turn correctness with agentic well-formedness by task count (both in [0,1]).
+Broken JSON at a depth is captured as a failure sample just like any other failing rung. Full end-state
+agentic scoring under padding (the sandbox loop, needle across turns, Pass^k per rung) remains a separate
+future probe — see `process.md#future-considerations`.
+
 **How each rung's "Accuracy" is scored.** Each rung re-runs the dataset and reports the **composite
 tool-call score** (0–100%) — the mean of the available sub-metrics defined in
 [#toolcall-eval](#toolcall-eval): `parse_rate` (emitted a parseable call when one was
@@ -830,6 +844,16 @@ The **broken-baseline** case is the important guardrail: a model stuck at 0% on 
 healthy plateau to "fall off", so it is **never** dressed up as "✓ no cliff" — it's flagged red as a
 tool-call failure (not a context-length limit). Single-turn, greedy — a failed rung is a gap, never a
 fabricated score.
+
+**Failure evidence (the raw completion, not just a 0%).** A bare "Broken" / 0% is undebuggable on its
+own — you can't tell a prose answer from a refusal from a wrong-schema call. So each rung now carries a
+capped list of **`FailureSample { task_id, depth, output }`** on `CliffPoint.samples`: the verbatim
+model completion for every *failing* task at that rung (a pass needs no explanation, so passing tasks add
+nothing). Output is char-capped (`MAX_SAMPLE_CHARS`) and the list is bounded (`MAX_SAMPLES_PER_RUNG`) so
+the diagnostic crumb never hauls a full transcript through IPC per rung × depth × task. The panel renders
+these under **"What the model emitted — failing tasks"**, turning a red 0% into an inspectable cause
+without re-running inference — the same transparency the standalone Tool-Call Trace Debugger gives, folded
+into the probe itself.
 
 **Persistence + the Agent Report (three-state cliff).** Every terminal probe outcome is now persisted
 (not just a found collapse): the store holds a `CliffStatus` per (collection, model) —

@@ -147,7 +147,7 @@ Three design commitments shape every decision:
 ### Eval
 - Score models on **single-turn tool-calling** and **multi-step agentic** tasks
 - Deterministic, sandbox-free scoring: composite tool-call accuracy (parse · tool · args · abstain), **Pass^k** reliability, avg steps, effort, **schema resilience**, dominant failure mode
-- **Context-cliff** probe — backend engine that pads tasks with license-clean synthetic presets, sweeps the instruction across mid-document depths, and verifies each rung to ±5% of the target, finding the prompt length where tool-call accuracy collapses (real measured prompt tokens, never an estimate)
+- **Context-cliff** probe — backend engine that pads tasks with license-clean synthetic presets, sweeps the instruction across mid-document depths, and verifies each rung to ±5% of the target, finding the prompt length where tool-call accuracy collapses (real measured prompt tokens, never an estimate); a failing rung keeps the model's verbatim completion so a red "0% / Broken" shows *what* the model emitted, not just that it failed
 - Author custom collections by hand or bulk-load single-turn tasks via CSV import
 - Optional native function-calling path (Ollama `/api/chat` `tools`) alongside the prompt-based proxy
 

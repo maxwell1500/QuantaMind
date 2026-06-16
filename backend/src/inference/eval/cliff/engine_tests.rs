@@ -116,6 +116,70 @@ async fn a_broken_baseline_is_never_a_fabricated_cliff() {
     assert_eq!(report.cliff_tokens, None);
 }
 
+#[tokio::test]
+async fn a_broken_baseline_captures_the_raw_failing_output() {
+    // The model refuses unpadded → Broken. The baseline rung must carry the raw
+    // completion so the UI can show WHY it failed, not just a bare 0%.
+    let model = CliffModel { threshold: 0, good: GOOD.into() };
+    let tasks = [task()];
+    let ladder = [0u32, 2000, 8000];
+    let report = run_cliff(&model, "m", &tasks, &source(), &ladder, &DEFAULT_DEPTHS).await.unwrap();
+    let base = &report.points[0];
+    assert!(matches!(report.status, CliffStatus::Broken { .. }));
+    assert_eq!(base.samples.len(), 1, "one failing task → one sample");
+    assert_eq!(base.samples[0].task_id, "t1");
+    assert!(base.samples[0].output.contains("cannot help"), "raw refusal text is kept verbatim: {:?}", base.samples[0].output);
+}
+
+#[tokio::test]
+async fn passing_rungs_capture_no_samples() {
+    // A model that holds throughout passes every task — there is nothing to explain,
+    // so no rung should carry a failure sample (samples are failure-only evidence).
+    let model = CliffModel { threshold: u32::MAX, good: GOOD.into() };
+    let tasks = [task()];
+    let report = run_cliff(&model, "m", &tasks, &source(), &[0u32, 4000, 8000], &DEFAULT_DEPTHS).await.unwrap();
+    assert!(matches!(report.status, CliffStatus::NoCliff { .. }));
+    for p in &report.points {
+        assert!(p.samples.is_empty(), "passing rung {} kept a sample: {:?}", p.target_tokens, p.samples);
+    }
+}
+
+fn agentic_task(id: &str) -> ToolTask {
+    // A real agentic task carries a PLACEHOLDER `expected: no_call`; its true criterion is
+    // the multi-turn `agentic.end_state`, which the single-turn cliff never scores.
+    let mut t = task();
+    t.id = id.into();
+    t.category = "agentic".into();
+    t.expected = Expected::NoCall;
+    t
+}
+
+#[tokio::test]
+async fn agentic_tasks_score_on_json_wellformedness_not_abstention() {
+    // The bug this replaces: a valid tool call was failed as a bad abstention → fake
+    // Broken 0%. Now an agentic task PASSES a rung whenever the model emits a well-formed
+    // call, so a model emitting clean JSON reads as no-cliff, not Broken.
+    let model = CliffModel { threshold: u32::MAX, good: GOOD.into() };
+    let report = run_cliff(&model, "m", &[agentic_task("multi-step")], &source(), &[0u32, 4000], &DEFAULT_DEPTHS).await.unwrap();
+    assert_eq!(report.points[0].composite, Some(1.0), "a well-formed JSON call passes the structural check");
+    assert!(matches!(report.status, CliffStatus::NoCliff { .. }));
+    assert!(report.points[0].samples.is_empty(), "a structural pass keeps no failure sample");
+}
+
+#[tokio::test]
+async fn an_agentic_task_with_broken_json_is_a_structural_failure() {
+    // Non-JSON output (no parseable call) IS a real cliff signal for an agentic task —
+    // the model's tool-call FORMAT broke at this depth — so it scores 0% and is captured.
+    let model = CliffModel { threshold: 0, good: GOOD.into() }; // always prose, never JSON
+    let report = run_cliff(&model, "m", &[agentic_task("multi-step")], &source(), &[0u32, 4000], &DEFAULT_DEPTHS).await.unwrap();
+    assert_eq!(report.points[0].composite, Some(0.0));
+    assert!(matches!(report.status, CliffStatus::Broken { .. }));
+    assert!(
+        report.points[0].samples.iter().any(|s| s.output.contains("cannot help")),
+        "the broken (non-JSON) output is captured as evidence",
+    );
+}
+
 #[test]
 fn build_ladder_spans_zero_to_max_across_steps() {
     assert_eq!(build_ladder(16000, 5), vec![0, 4000, 8000, 12000, 16000]);
