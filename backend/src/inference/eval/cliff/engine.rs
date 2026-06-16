@@ -1,12 +1,12 @@
 use super::padding::{build_padding, inject_at_depth};
 use super::presets::CliffSource;
-use crate::errors::{AppError, AppResult};
+use crate::errors::AppResult;
 use crate::inference::eval::agentic::model_turn::ModelTurn;
 use crate::inference::eval::readiness::types::CliffStatus;
 use crate::inference::eval::toolcall::eval::{aggregate, TaskResult};
 use crate::inference::eval::toolcall::parse::extract_calls;
 use crate::inference::eval::toolcall::prompt::build_system_for;
-use crate::inference::eval::toolcall::score::{score, verdict_passed};
+use crate::inference::eval::toolcall::score::{score, verdict_passed, Verdict};
 use crate::inference::eval::toolcall::tasks::ToolTask;
 use crate::inference::generate::generate_options::GenerateOptions;
 use crate::inference::generate::generate_spec::GenerateSpec;
@@ -93,6 +93,56 @@ pub struct CliffReport {
     pub cliff_tokens: Option<u32>,
 }
 
+/// Did `task` FAIL this rung by the cliff's yardstick? A single-turn task must be fully
+/// correct (`verdict_passed`). An **agentic** task carries only a placeholder `expected`
+/// (its real criterion is the multi-turn `agentic.end_state`), so the cliff ignores that
+/// and fails it only when the model emitted **no well-formed tool call** (`!verdict.parsed`)
+/// — tool/arg correctness is the end-state's job, not the probe's.
+fn cliff_failed(task: &ToolTask, v: &Verdict) -> bool {
+    if task.category == "agentic" {
+        !v.parsed
+    } else {
+        !verdict_passed(v)
+    }
+}
+
+/// Score one swept position the way the CLIFF needs it. Single-turn tasks keep the full
+/// cascaded tool-call composite (`aggregate`); agentic tasks — whose placeholder
+/// `expected` the single-turn scorer would mis-read as a forced abstention — are scored on
+/// JSON **well-formedness** alone: the fraction that emitted a parseable tool call at this
+/// depth. The position composite blends the two groups by task count (both in [0,1]);
+/// prompt tokens average over EVERY task, since the x-axis depth is category-blind.
+fn cliff_score(tasks: &[ToolTask], results: &[TaskResult]) -> (Option<f64>, Option<f64>) {
+    let mut single_tasks: Vec<ToolTask> = Vec::new();
+    let mut single_results: Vec<TaskResult> = Vec::new();
+    let (mut agentic_parsed, mut agentic_n) = (0usize, 0usize);
+    for (t, r) in tasks.iter().zip(results) {
+        if t.category == "agentic" {
+            agentic_n += 1;
+            if r.verdict.parsed {
+                agentic_parsed += 1;
+            }
+        } else {
+            single_tasks.push(t.clone());
+            single_results.push(r.clone());
+        }
+    }
+    let single_comp = (!single_tasks.is_empty()).then(|| aggregate(&single_tasks, single_results).composite).flatten();
+    let agentic_comp = (agentic_n > 0).then(|| agentic_parsed as f64 / agentic_n as f64);
+    let composite = match (single_comp, agentic_comp) {
+        (Some(s), Some(a)) => {
+            let (sn, an) = (single_tasks.len() as f64, agentic_n as f64);
+            Some((s * sn + a * an) / (sn + an))
+        }
+        (Some(s), None) => Some(s),
+        (None, Some(a)) => Some(a),
+        (None, None) => None,
+    };
+    let toks: Vec<u32> = results.iter().filter_map(|r| r.prompt_tokens).collect();
+    let prompt_tokens = (!toks.is_empty()).then(|| toks.iter().map(|&t| t as f64).sum::<f64>() / toks.len() as f64);
+    (composite, prompt_tokens)
+}
+
 /// Run all tasks at one padding + one needle depth, returning each task's verdict
 /// and measured prompt tokens. Empty padding ⇒ the unpadded baseline.
 async fn run_position<M: ModelTurn>(
@@ -122,10 +172,10 @@ async fn run_position<M: ModelTurn>(
         };
         let (raw, stats) = turn.run(&spec).await?;
         let verdict = score(&task.expected, extract_calls(&raw).as_deref());
-        // Keep the raw completion ONLY for a failing task — that's the evidence a
-        // Broken/collapsed rung needs ("it emitted prose / a refusal / wrong schema").
-        // A pass needs no explanation, so passing tasks leave `samples` untouched.
-        if !verdict_passed(&verdict) {
+        // Keep the raw completion ONLY for a failing task (by the cliff's yardstick —
+        // see `cliff_failed`): the evidence a Broken/collapsed rung needs ("it emitted
+        // prose / a refusal / broken JSON"). A pass needs no explanation.
+        if cliff_failed(task, &verdict) {
             samples.push(FailureSample { task_id: task.id.clone(), depth, output: truncate_sample(&raw) });
         }
         results.push(TaskResult {
@@ -154,16 +204,16 @@ async fn sweep<M: ModelTurn>(
     let mut samples: Vec<FailureSample> = Vec::new();
     for &depth in depths {
         let (results, mut pos_samples) = run_position(turn, model, tasks, padding, depth).await?;
-        let report = aggregate(tasks, results);
-        let vt = report.prompt_tokens.map(|t| t.round() as u32).unwrap_or(0);
-        if let Some(t) = report.prompt_tokens {
+        let (composite, prompt_tokens) = cliff_score(tasks, &results);
+        let vt = prompt_tokens.map(|t| t.round() as u32).unwrap_or(0);
+        if let Some(t) = prompt_tokens {
             tok_sum += t.round() as u64;
             tok_n += 1;
         }
-        if let Some(c) = report.composite {
+        if let Some(c) = composite {
             worst = Some(worst.map_or(c, |w: f64| w.min(c)));
         }
-        per_depth.push(DepthScore { depth, composite: report.composite, verified_tokens: vt });
+        per_depth.push(DepthScore { depth, composite, verified_tokens: vt });
         samples.append(&mut pos_samples);
     }
     samples.truncate(MAX_SAMPLES_PER_RUNG);
@@ -191,14 +241,14 @@ async fn probe_rung<M: ModelTurn>(
     if target == 0 {
         // Baseline: unpadded, single position.
         let (results, mut samples) = run_position(turn, model, tasks, "", 0.0).await?;
-        let report = aggregate(tasks, results);
-        let vt = report.prompt_tokens.map(|t| t.round() as u32).unwrap_or(0);
+        let (composite, prompt_tokens) = cliff_score(tasks, &results);
+        let vt = prompt_tokens.map(|t| t.round() as u32).unwrap_or(0);
         samples.truncate(MAX_SAMPLES_PER_RUNG);
         return Ok(CliffPoint {
             target_tokens: 0,
             verified_tokens: vt,
-            composite: report.composite,
-            per_depth: vec![DepthScore { depth: 0.0, composite: report.composite, verified_tokens: vt }],
+            composite,
+            per_depth: vec![DepthScore { depth: 0.0, composite, verified_tokens: vt }],
             samples,
         });
     }
@@ -253,26 +303,6 @@ fn classify(points: &[CliffPoint]) -> (CliffStatus, Option<u32>) {
     }
     let tested = points.last().map(|p| p.verified_tokens).unwrap_or(base.verified_tokens);
     (CliffStatus::NoCliff { tested }, Some(largest_pass))
-}
-
-/// Keep only the SINGLE-TURN tasks a context-cliff can actually probe. The cliff is a
-/// single-turn diagnostic — it pads one prompt, injects the needle, and scores the one
-/// reply against `task.expected`. An `agentic` task carries only a placeholder
-/// `expected: no_call` (its real criterion is the multi-turn `agentic.end_state`, scored
-/// by the sandbox loop, not here), so single-turn scoring would read that literally and
-/// fail every correct tool call as a bad abstention — a fabricated `Broken` 0%. So drop
-/// agentic tasks, and REFUSE the run if that leaves nothing, rather than mis-scoring.
-pub fn single_turn_tasks(tasks: &[ToolTask]) -> AppResult<Vec<ToolTask>> {
-    let kept: Vec<ToolTask> = tasks.iter().filter(|t| t.category != "agentic").cloned().collect();
-    if kept.is_empty() {
-        return Err(AppError::InvalidTaskSchema(
-            "the context-cliff probe is single-turn, but this collection has no single-turn tasks \
-             (all are agentic / multi-step, which the probe cannot score). Pick a single-turn \
-             collection — e.g. Curated or Finance — to measure its context cliff."
-                .into(),
-        ));
-    }
-    Ok(kept)
 }
 
 /// Build an ascending token ladder from 0 (the unpadded baseline) up to
