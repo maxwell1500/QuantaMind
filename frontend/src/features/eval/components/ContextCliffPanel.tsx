@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from "react";
+import { Fragment, useEffect, useRef, useState } from "react";
 import { modelLabel } from "../../../shared/models/modelLabel";
 import { useSelectedModelStore } from "../../../shared/state/selectedModelStore";
 import { useParamsStore } from "../../../shared/state/paramsStore";
@@ -7,7 +7,7 @@ import { getBuiltinCollection, loadCustomCollection, type ToolTask } from "../..
 import { useVramFit } from "../../quant/useVramFit";
 import { useCliffStore } from "../state/cliffStore";
 import { InfoButton } from "../../../shared/ui/InfoButton";
-import { TOOL_HELP } from "../help";
+import { TOOL_HELP, METRIC_HELP } from "../help";
 import { classifyCliff } from "../cliff";
 import { ContextCliffChart } from "./ContextCliffChart";
 import type { BackendKind } from "../../../shared/ipc/models/storage";
@@ -41,6 +41,8 @@ export function ContextCliffPanel() {
   const globalParams = useParamsStore((s) => s.globalParams);
   const [probeName, setProbeName] = useState("");
   const [override, setOverride] = useState<ProbeModel | null>(null);
+  // Which rung's per-step trace (system prompt + outputs) is expanded, by row index.
+  const [openTrace, setOpenTrace] = useState<number | null>(null);
   const selected: ProbeModel | null =
     override ?? selectedModels.find((m) => m.name === probeName) ?? selectedModels[0] ?? null;
   const model = selected?.name ?? "";
@@ -135,12 +137,6 @@ export function ContextCliffPanel() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [model, active]);
 
-  // Raw completions behind the failing rungs — the evidence that turns a bare "0% /
-  // Broken" into "here's what the model actually emitted". Empty when nothing failed.
-  const failureSamples = points.flatMap((p) =>
-    (p.samples ?? []).map((s) => ({ ...s, promptTokens: p.promptTokens })),
-  );
-
   const maintainedTo = points.reduce(
     (mx, p) => (p.composite != null && p.promptTokens != null && p.promptTokens > mx ? p.promptTokens : mx),
     0,
@@ -149,6 +145,7 @@ export function ContextCliffPanel() {
 
   const handleRun = () => {
     if (!selected) return;
+    setOpenTrace(null); // a fresh run rebuilds the rungs — drop any expanded trace
     void runProbe({
       model: selected.name,
       backend: selected.backend,
@@ -278,9 +275,15 @@ export function ContextCliffPanel() {
           <table style={{ width: "100%", borderCollapse: "separate", borderSpacing: 0 }}>
             <thead>
               <tr>
-                {["Step", "Tokens", "Accuracy", "Status"].map((h) => (
+                {[
+                  { label: "Step" },
+                  { label: "Tokens" },
+                  { label: "Accuracy", help: METRIC_HELP.cliffAccuracy },
+                  { label: "Status" },
+                  { label: "Trace" },
+                ].map((h) => (
                   <th
-                    key={h}
+                    key={h.label}
                     style={{
                       textAlign: "left",
                       padding: "6px 12px",
@@ -292,7 +295,10 @@ export function ContextCliffPanel() {
                       letterSpacing: "0.03em",
                     }}
                   >
-                    {h}
+                    <span style={{ display: "inline-flex", alignItems: "center", gap: 4 }}>
+                      {h.label}
+                      {h.help && <InfoButton {...h.help} testId="cliff-accuracy" />}
+                    </span>
                   </th>
                 ))}
               </tr>
@@ -303,103 +309,77 @@ export function ContextCliffPanel() {
                 const passed = p.composite != null && p.composite >= 0.5;
                 const failed = p.composite != null && p.composite < 0.5;
                 const isEven = i % 2 === 0;
+                const traceCount = p.trace?.length ?? 0;
+                const open = openTrace === i;
 
                 return (
-                  <tr
-                    key={i}
-                    style={{
-                      background: isEven
-                        ? "#f8fafc"
-                        : "transparent",
-                    }}
-                  >
-                    <td style={tdStyle}>{i + 1}</td>
-                    <td style={tdStyle}>
-                      {p.promptTokens != null ? Math.round(p.promptTokens).toLocaleString() : "Not available"}
-                    </td>
-                    <td style={{ ...tdStyle, fontWeight: 600, color: "#1e293b" }}>{pct}</td>
-                    <td style={tdStyle}>
-                      {passed && (
-                        <span style={passChipStyle}>
-                          Pass
-                        </span>
-                      )}
-                      {failed && (
-                        <span style={failChipStyle}>
-                          Failure
-                        </span>
-                      )}
-                      {p.composite == null && (
-                        <span style={{ color: "#64748b", fontSize: 12 }}>Error</span>
-                      )}
-                    </td>
-                  </tr>
+                  <Fragment key={i}>
+                    <tr style={{ background: isEven ? "#f8fafc" : "transparent" }}>
+                      <td style={tdStyle}>{i + 1}</td>
+                      <td style={tdStyle}>
+                        {p.promptTokens != null ? Math.round(p.promptTokens).toLocaleString() : "Not available"}
+                      </td>
+                      <td style={{ ...tdStyle, fontWeight: 600, color: "#1e293b" }}>{pct}</td>
+                      <td style={tdStyle}>
+                        {passed && (
+                          <span style={passChipStyle}>
+                            Pass
+                          </span>
+                        )}
+                        {failed && (
+                          <span style={failChipStyle}>
+                            Failure
+                          </span>
+                        )}
+                        {p.composite == null && (
+                          <span style={{ color: "#64748b", fontSize: 12 }}>Error</span>
+                        )}
+                      </td>
+                      <td style={tdStyle}>
+                        {traceCount > 0 ? (
+                          <button
+                            type="button"
+                            onClick={() => setOpenTrace(open ? null : i)}
+                            data-testid={`cliff-trace-toggle-${i}`}
+                            aria-expanded={open}
+                            style={traceBtnStyle}
+                          >
+                            {open ? "Hide trace" : "View trace"}
+                          </button>
+                        ) : (
+                          <span style={{ color: "#cbd5e1", fontSize: 12 }}>—</span>
+                        )}
+                      </td>
+                    </tr>
+                    {open && traceCount > 0 && (
+                      <tr data-testid={`cliff-trace-${i}`}>
+                        <td colSpan={5} style={{ padding: "4px 12px 12px", background: "#f1f5f9" }}>
+                          {(p.trace ?? []).map((t, ti) => (
+                            <div key={ti} style={traceCardStyle}>
+                              <div style={traceTaskStyle}>{t.task_id}</div>
+                              {t.outputs.map((o, oi) => (
+                                <div key={oi} style={{ marginTop: 8 }}>
+                                  <div style={traceLabelStyle}>
+                                    {/* Rung 0 is the unpadded baseline — no padding is injected there. */}
+                                    {i === 0 ? "Unpadded baseline" : `Needle at ${Math.round(o.depth * 100)}%`}{" "}
+                                    <span style={o.passed ? passChipStyle : failChipStyle}>{o.passed ? "Pass" : "Failure"}</span>
+                                  </div>
+                                  <div style={traceSubLabelStyle}>{i === 0 ? "Input (no padding)" : "Padded input (context + needle)"}</div>
+                                  <pre style={tracePreStyle}>{(o.prompt ?? "").trim() === "" ? "(none)" : o.prompt}</pre>
+                                  <div style={{ ...traceSubLabelStyle, marginTop: 6 }}>Output</div>
+                                  <pre style={tracePreStyle}>{o.output.trim() === "" ? "(empty output)" : o.output}</pre>
+                                </div>
+                              ))}
+                            </div>
+                          ))}
+                        </td>
+                      </tr>
+                    )}
+                  </Fragment>
                 );
               })}
             </tbody>
           </table>
-        </div>
-      )}
-
-      {/* ── Failure evidence: what the model actually emitted on the failing rungs ──
-          Turns a bare "0% / Broken" into an inspectable cause (prose, refusal, wrong
-          schema). Only shown when something failed; raw output is verbatim from the
-          backend (already char-capped), never re-interpreted here. */}
-      {!running && failureSamples.length > 0 && (
-        <div style={{ padding: "0 20px 14px" }} data-testid="cliff-failure-samples">
-          <div
-            style={{
-              fontSize: 11,
-              color: "#64748b",
-              marginBottom: 8,
-              fontFamily: "Inter, ui-sans-serif, system-ui, sans-serif",
-              letterSpacing: "0.04em",
-              textTransform: "uppercase",
-              fontWeight: 650,
-            }}
-          >
-            What the model emitted — failing tasks
-          </div>
-          <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
-            {failureSamples.map((s, i) => (
-              <div
-                key={i}
-                style={{
-                  border: "1px solid rgba(220,38,38,0.15)",
-                  background: "rgba(220,38,38,0.03)",
-                  borderRadius: 8,
-                  padding: "8px 10px",
-                }}
-              >
-                <div
-                  style={{
-                    fontSize: 11,
-                    color: "#64748b",
-                    marginBottom: 5,
-                    fontFamily: "Inter, ui-sans-serif, system-ui, sans-serif",
-                  }}
-                >
-                  <span style={{ fontWeight: 650, color: "#475569" }}>{s.task_id}</span>
-                  {s.promptTokens != null ? ` · ≈${Math.round(s.promptTokens).toLocaleString()} tokens` : ""}
-                </div>
-                <pre
-                  style={{
-                    margin: 0,
-                    whiteSpace: "pre-wrap",
-                    wordBreak: "break-word",
-                    fontSize: 12,
-                    lineHeight: 1.45,
-                    color: "#334155",
-                    fontFamily: "ui-monospace, SFMono-Regular, Menlo, monospace",
-                    maxHeight: 160,
-                    overflow: "auto",
-                  }}
-                >
-                  {s.output.trim() === "" ? "(empty output)" : s.output}
-                </pre>
-              </div>
-            ))}
-          </div>
         </div>
       )}
 
@@ -692,5 +672,71 @@ const sliderStyle: React.CSSProperties = {
   accentColor: "#2563eb",
   cursor: "pointer",
   height: 4,
+};
+
+// ── Per-step "View trace" expansion ──────────────────────────────────────────────
+
+const traceBtnStyle: React.CSSProperties = {
+  background: "#ffffff",
+  border: "1px solid #cbd5e1",
+  color: "#334155",
+  borderRadius: 6,
+  padding: "3px 10px",
+  fontSize: 12,
+  fontWeight: 600,
+  fontFamily: "Inter, ui-sans-serif, system-ui, sans-serif",
+  cursor: "pointer",
+};
+
+const traceCardStyle: React.CSSProperties = {
+  border: "1px solid #e2e8f0",
+  background: "#ffffff",
+  borderRadius: 8,
+  padding: "10px 12px",
+  marginTop: 8,
+};
+
+const traceTaskStyle: React.CSSProperties = {
+  fontSize: 12,
+  fontWeight: 650,
+  color: "#475569",
+  fontFamily: "Inter, ui-sans-serif, system-ui, sans-serif",
+  marginBottom: 6,
+};
+
+const traceLabelStyle: React.CSSProperties = {
+  fontSize: 11,
+  color: "#64748b",
+  fontFamily: "Inter, ui-sans-serif, system-ui, sans-serif",
+  letterSpacing: "0.03em",
+  textTransform: "uppercase",
+  fontWeight: 650,
+  marginBottom: 4,
+};
+
+const traceSubLabelStyle: React.CSSProperties = {
+  fontSize: 10,
+  color: "#94a3b8",
+  fontFamily: "Inter, ui-sans-serif, system-ui, sans-serif",
+  letterSpacing: "0.03em",
+  textTransform: "uppercase",
+  fontWeight: 600,
+  marginBottom: 3,
+};
+
+const tracePreStyle: React.CSSProperties = {
+  margin: 0,
+  whiteSpace: "pre-wrap",
+  wordBreak: "break-word",
+  fontSize: 12,
+  lineHeight: 1.45,
+  color: "#334155",
+  fontFamily: "ui-monospace, SFMono-Regular, Menlo, monospace",
+  background: "#f8fafc",
+  border: "1px solid #f1f5f9",
+  borderRadius: 6,
+  padding: "6px 8px",
+  maxHeight: 220,
+  overflow: "auto",
 };
 

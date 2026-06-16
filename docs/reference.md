@@ -816,7 +816,7 @@ tool call** at that depth (`verdict.parsed`); tool/arg correctness is the end-st
 probe's (`engine::cliff_score` / `cliff_failed`). So an all-agentic collection yields a genuine
 **formatting cliff** — the context length where the model's tool-call JSON stops parsing — and a rung's
 composite **blends** single-turn correctness with agentic well-formedness by task count (both in [0,1]).
-Broken JSON at a depth is captured as a failure sample just like any other failing rung. Full end-state
+Broken JSON at a depth is captured in the rung's trace (marked `passed: false`) like any other failing step. Full end-state
 agentic scoring under padding (the sandbox loop, needle across turns, Pass^k per rung) remains a separate
 future probe — see `process.md#future-considerations`.
 
@@ -845,15 +845,23 @@ healthy plateau to "fall off", so it is **never** dressed up as "✓ no cliff" �
 tool-call failure (not a context-length limit). Single-turn, greedy — a failed rung is a gap, never a
 fabricated score.
 
-**Failure evidence (the raw completion, not just a 0%).** A bare "Broken" / 0% is undebuggable on its
+**Per-step trace (padded input + output, not just a 0%).** A bare "Broken" / 0% is undebuggable on its
 own — you can't tell a prose answer from a refusal from a wrong-schema call. So each rung now carries a
-capped list of **`FailureSample { task_id, depth, output }`** on `CliffPoint.samples`: the verbatim
-model completion for every *failing* task at that rung (a pass needs no explanation, so passing tasks add
-nothing). Output is char-capped (`MAX_SAMPLE_CHARS`) and the list is bounded (`MAX_SAMPLES_PER_RUNG`) so
-the diagnostic crumb never hauls a full transcript through IPC per rung × depth × task. The panel renders
-these under **"What the model emitted — failing tasks"**, turning a red 0% into an inspectable cause
-without re-running inference — the same transparency the standalone Tool-Call Trace Debugger gives, folded
-into the probe itself.
+**`TaskTrace { task_id, outputs: TraceOutput[] }`** list on `CliffPoint.trace`, grouped by task: every needle
+position's `TraceOutput { depth, prompt, output, passed }` — captured for **every** task at that rung, pass
+*or* fail (not failure-only), so the trace shows what the model actually saw and emitted at each step.
+`prompt` is the **padded input** (the synthetic padding with the instruction injected at `depth`), head+tail-capped
+(`MAX_PROMPT_CHARS`) so the enormous context is visible — the needle at the front or back survives the cap —
+without hauling the full multi-KB prompt through IPC. The system prompt (the same boilerplate + tool-schema JSON
+every turn) is deliberately NOT carried — it's noise in a per-step trace. System/output are char-capped (`MAX_SYSTEM_CHARS` /
+`MAX_OUTPUT_CHARS`) and the task list is bounded (`MAX_TRACE_TASKS`) so it never hauls a full transcript
+through IPC. The trace **streams per rung** with the live `cliff-progress` events (not bundled only in the
+final report), so each completed row's trace is inspectable as the probe runs. The panel surfaces it as a
+per-row **"View trace"** toggle (the table is `[Step][Tokens][Accuracy][Status][Trace]`, with an ⓘ on
+*Accuracy* explaining the composite) that expands the system prompt + per-position outputs on demand —
+nothing is dumped all at once. The *Accuracy* composite itself: single-turn = mean of parse / tool-select /
+arg / abstain; agentic = JSON well-formedness; the two blended by task count; the row shows the worst of
+the three needle positions.
 
 **Persistence + the Agent Report (three-state cliff).** Every terminal probe outcome is now persisted
 (not just a found collapse): the store holds a `CliffStatus` per (collection, model) —

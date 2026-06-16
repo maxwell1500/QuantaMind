@@ -124,8 +124,8 @@ Three design commitments shape every decision:
 - One-click Uninstall guarded by an `alertdialog` confirmation
 - Storage path section that shows current `OLLAMA_MODELS` and *honestly* helps you change it
 
-### Compare (Analysis tab)
-- Top-level tab parallel to Workspace
+### Analysis
+- Top-level tab parallel to Workspace, with two sub-tabs: **Analysis** (compare) and **Quant**
 - Multi-select installed models, one prompt, three strategies
 - Hardware feasibility verdict: `ok` / `risky` / `wont_fit` — computed at click time
 - Per-model streaming column with its own metrics row
@@ -147,11 +147,11 @@ Three design commitments shape every decision:
 ### Eval
 - Score models on **single-turn tool-calling** and **multi-step agentic** tasks
 - Deterministic, sandbox-free scoring: composite tool-call accuracy (parse · tool · args · abstain), **Pass^k** reliability, avg steps, effort, **schema resilience**, dominant failure mode
-- **Context-cliff** probe — backend engine that pads tasks with license-clean synthetic presets, sweeps the instruction across mid-document depths, and verifies each rung to ±5% of the target, finding the prompt length where tool-call accuracy collapses (real measured prompt tokens, never an estimate); a failing rung keeps the model's verbatim completion so a red "0% / Broken" shows *what* the model emitted, not just that it failed
+- **Context-cliff** probe — backend engine that pads tasks with license-clean synthetic presets, sweeps the instruction across mid-document depths, and verifies each rung to ±5% of the target, finding the prompt length where tool-call accuracy collapses (real measured prompt tokens, never an estimate); every rung keeps a per-step trace — the exact system prompt + each needle position's output (pass or fail), streamed live per rung — surfaced as a per-row **View trace** in the results table (with an ⓘ explaining how Accuracy is scored) so a red "0% / Broken" shows *what* the model saw and emitted, not just that it failed
 - Author custom collections by hand or bulk-load single-turn tasks via CSV import
 - Optional native function-calling path (Ollama `/api/chat` `tools`) alongside the prompt-based proxy
 
-### Quant
+### Quant (Analysis → Quant sub-tab)
 - Compare a model family's installed quantizations side by side
 - Size · hardware fit (OOM risk) · quality (eval pass-rate) · tool-call composite
 - Recommends the best size↔quality↔fit trade-off for your use case and context length

@@ -17,17 +17,32 @@ use crate::inference::eval::toolcall::tasks::{validate_tasks, ToolTask};
 use crate::inference::generate::generate_options::GenerateOptions;
 use crate::persistence::prompts::schema::InferenceParams;
 use crate::persistence::readiness::{cliff, profiles, reports};
+use crate::sync::MutexExt;
 use serde::Serialize;
 use std::collections::HashMap;
 use std::path::PathBuf;
+use std::sync::Mutex;
 use tauri::{AppHandle, Manager};
 use tokio_util::sync::CancellationToken;
 
 /// Live per-rung progress for the context-cliff probe (the panel's progress bar).
 pub const EVENT_CLIFF_PROGRESS: &str = "cliff-progress";
 
+/// Run-level cancellation for the context-cliff probe (mirrors `BatchRunState`): the
+/// running probe stores its token here so `stop_context_cliff` can cancel it, and a
+/// fresh run supersedes a previous one. Without this, Stop only hid the result in the
+/// UI while the backend kept calling the model through the entire ladder.
+#[derive(Default)]
+pub struct CliffRunState {
+    cancel: Mutex<Option<CancellationToken>>,
+}
+
 #[derive(Serialize, Clone)]
 struct CliffProgress {
+    /// The frontend's run token, echoed so a superseded run's late events can't be
+    /// folded into the new run's series (model alone doesn't distinguish two runs of
+    /// the same model).
+    run_id: u32,
     model: String,
     done: usize,
     total: usize,
@@ -110,6 +125,8 @@ pub fn get_cliff_results(app: AppHandle, collection_id: String) -> Result<HashMa
 #[tauri::command]
 pub async fn run_context_cliff(
     app: AppHandle,
+    state: tauri::State<'_, CliffRunState>,
+    run_id: u32,
     model: String,
     backend: Option<BackendKind>,
     collection_id: String,
@@ -137,18 +154,31 @@ pub async fn run_context_cliff(
         options.num_ctx = Some(needed_ctx);
     }
 
+    // Register this run's cancel token so `stop_context_cliff` can abort it, and
+    // supersede any previous run (mirrors the batch dispatcher).
+    let cancel = CancellationToken::new();
+    {
+        let mut g = state.cancel.lock_recover();
+        if let Some(prev) = g.take() {
+            prev.cancel();
+        }
+        *g = Some(cancel.clone());
+    }
+
     let turn = BackendTurn {
         backend,
         endpoint: endpoint_for(backend),
         model: model.clone(),
-        cancel: CancellationToken::new(),
+        cancel: cancel.clone(),
         options: Some(options),
         keep_alive: None,
     };
 
     let ladder = build_ladder(max_tokens, steps);
-    let report = run_cliff_with(&turn, &model, &tasks, &source, &ladder, &DEFAULT_DEPTHS, &mut |done, total, point| {
-        log_emit(&app, EVENT_CLIFF_PROGRESS, CliffProgress { model: model.clone(), done, total, point: point.clone() });
+    // A Stop makes `run_cliff_with` return Err, so `?` short-circuits BEFORE the
+    // persistence below — a cancelled probe never overwrites the saved cliff status.
+    let report = run_cliff_with(&turn, &model, &tasks, &source, &ladder, &DEFAULT_DEPTHS, &cancel, &mut |done, total, point| {
+        log_emit(&app, EVENT_CLIFF_PROGRESS, CliffProgress { run_id, model: model.clone(), done, total, point: point.clone() });
     })
     .await?;
 
@@ -157,6 +187,17 @@ pub async fn run_context_cliff(
         let _ = cliff::save(&cliff_dir(&app)?, &collection_id, &model, report.status.clone());
     }
     Ok(report)
+}
+
+/// Cancel the in-flight context-cliff probe (the Stop Probe button). Cancelling the
+/// shared token aborts the current generation and the rung loop, so the model stops
+/// being called and the partial result is never persisted. A no-op when idle.
+#[tauri::command]
+pub fn stop_context_cliff(state: tauri::State<'_, CliffRunState>) -> Result<(), AppError> {
+    if let Some(t) = state.cancel.lock_recover().take() {
+        t.cancel();
+    }
+    Ok(())
 }
 
 #[tauri::command]

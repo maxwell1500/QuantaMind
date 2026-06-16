@@ -2,6 +2,7 @@ use super::*;
 use crate::inference::eval::toolcall::tasks::{Call, Expected, ToolSchema, ToolTask};
 use crate::inference::generate::generate_stats::GenerateStats;
 use serde_json::json;
+use tokio_util::sync::CancellationToken;
 
 /// A scripted model whose reported prompt tokens track the real prompt length
 /// (so verify-and-adjust converges) and which emits the correct call only while
@@ -118,30 +119,45 @@ async fn a_broken_baseline_is_never_a_fabricated_cliff() {
 
 #[tokio::test]
 async fn a_broken_baseline_captures_the_raw_failing_output() {
-    // The model refuses unpadded → Broken. The baseline rung must carry the raw
-    // completion so the UI can show WHY it failed, not just a bare 0%.
+    // The model refuses unpadded → Broken. The baseline rung must carry the system
+    // prompt + raw completion so the UI's "View trace" shows WHY it failed, not a bare 0%.
     let model = CliffModel { threshold: 0, good: GOOD.into() };
     let tasks = [task()];
     let ladder = [0u32, 2000, 8000];
     let report = run_cliff(&model, "m", &tasks, &source(), &ladder, &DEFAULT_DEPTHS).await.unwrap();
     let base = &report.points[0];
     assert!(matches!(report.status, CliffStatus::Broken { .. }));
-    assert_eq!(base.samples.len(), 1, "one failing task → one sample");
-    assert_eq!(base.samples[0].task_id, "t1");
-    assert!(base.samples[0].output.contains("cannot help"), "raw refusal text is kept verbatim: {:?}", base.samples[0].output);
+    assert_eq!(base.trace.len(), 1, "one task → one trace entry");
+    assert_eq!(base.trace[0].task_id, "t1");
+    let out = &base.trace[0].outputs[0];
+    assert!(out.output.contains("cannot help"), "raw refusal text is kept verbatim: {:?}", out.output);
+    assert!(!out.passed, "the refusal is marked as a failure");
+    // The unpadded baseline's input IS the bare instruction (no padding injected yet).
+    assert!(out.prompt.contains("Get the balance"), "the input prompt is captured: {:?}", out.prompt);
 }
 
 #[tokio::test]
-async fn passing_rungs_capture_no_samples() {
-    // A model that holds throughout passes every task — there is nothing to explain,
-    // so no rung should carry a failure sample (samples are failure-only evidence).
+async fn every_rung_captures_a_trace_for_each_task_pass_or_fail() {
+    // The trace is per-step evidence for EVERY task, not failure-only: a model that holds
+    // throughout still records each rung's system prompt + outputs (all marked passed).
     let model = CliffModel { threshold: u32::MAX, good: GOOD.into() };
     let tasks = [task()];
     let report = run_cliff(&model, "m", &tasks, &source(), &[0u32, 4000, 8000], &DEFAULT_DEPTHS).await.unwrap();
     assert!(matches!(report.status, CliffStatus::NoCliff { .. }));
     for p in &report.points {
-        assert!(p.samples.is_empty(), "passing rung {} kept a sample: {:?}", p.target_tokens, p.samples);
+        assert_eq!(p.trace.len(), 1, "rung {} should trace its one task", p.target_tokens);
+        let t = &p.trace[0];
+        assert!(!t.outputs.is_empty(), "rung {} captured no output", p.target_tokens);
+        assert!(t.outputs.iter().all(|o| o.passed), "a holding model's outputs are all passes");
     }
+    // The baseline sweeps one position; a padded rung sweeps all default needle depths.
+    assert_eq!(report.points[0].trace[0].outputs.len(), 1, "baseline is a single position");
+    assert_eq!(report.points[1].trace[0].outputs.len(), DEFAULT_DEPTHS.len(), "padded rungs sweep every needle position");
+    // A padded rung's input carries the injected padding — far larger than the bare
+    // baseline instruction — so "View trace" shows the context that was fed in.
+    let baseline_len = report.points[0].trace[0].outputs[0].prompt.chars().count();
+    let padded_len = report.points[1].trace[0].outputs[0].prompt.chars().count();
+    assert!(padded_len > baseline_len, "padded input ({padded_len}) should exceed the bare instruction ({baseline_len})");
 }
 
 fn agentic_task(id: &str) -> ToolTask {
@@ -163,7 +179,10 @@ async fn agentic_tasks_score_on_json_wellformedness_not_abstention() {
     let report = run_cliff(&model, "m", &[agentic_task("multi-step")], &source(), &[0u32, 4000], &DEFAULT_DEPTHS).await.unwrap();
     assert_eq!(report.points[0].composite, Some(1.0), "a well-formed JSON call passes the structural check");
     assert!(matches!(report.status, CliffStatus::NoCliff { .. }));
-    assert!(report.points[0].samples.is_empty(), "a structural pass keeps no failure sample");
+    assert!(
+        report.points[0].trace.iter().flat_map(|t| &t.outputs).all(|o| o.passed),
+        "a structural pass is traced as passed",
+    );
 }
 
 #[tokio::test]
@@ -175,9 +194,37 @@ async fn an_agentic_task_with_broken_json_is_a_structural_failure() {
     assert_eq!(report.points[0].composite, Some(0.0));
     assert!(matches!(report.status, CliffStatus::Broken { .. }));
     assert!(
-        report.points[0].samples.iter().any(|s| s.output.contains("cannot help")),
-        "the broken (non-JSON) output is captured as evidence",
+        report.points[0].trace.iter().flat_map(|t| &t.outputs).any(|o| o.output.contains("cannot help") && !o.passed),
+        "the broken (non-JSON) output is captured as a failed trace entry",
     );
+}
+
+/// A model that cancels the shared token the moment it's asked to generate — simulates
+/// a user Stop landing mid-rung (the in-flight turn aborts and returns partial text).
+struct CancelsMidRun {
+    cancel: CancellationToken,
+}
+impl ModelTurn for CancelsMidRun {
+    async fn run(&self, _spec: &GenerateSpec) -> AppResult<(String, GenerateStats)> {
+        self.cancel.cancel();
+        Ok((String::new(), GenerateStats { prompt_eval_count: None, ..Default::default() }))
+    }
+}
+
+#[tokio::test]
+async fn a_cancel_during_a_rung_aborts_before_emitting_that_rung() {
+    // The bug this guards: a cancelled (or superseded) run emitting its half-generated
+    // rung — which then pollutes the chart with garbage/empty outputs. The engine must
+    // abort with an error and emit nothing once the token is cancelled.
+    let cancel = CancellationToken::new();
+    let model = CancelsMidRun { cancel: cancel.clone() };
+    let mut emitted = 0usize;
+    let result = run_cliff_with(&model, "m", &[task()], &source(), &[0u32, 4000], &DEFAULT_DEPTHS, &cancel, &mut |_, _, _| {
+        emitted += 1;
+    })
+    .await;
+    assert!(result.is_err(), "a cancel mid-rung aborts with an error");
+    assert_eq!(emitted, 0, "the half-generated rung is never emitted");
 }
 
 #[test]
@@ -195,13 +242,31 @@ async fn progress_callback_fires_once_per_rung() {
     let tasks = [task()];
     let ladder = [0u32, 4000, 8000];
     let mut seen: Vec<(usize, usize)> = Vec::new();
-    let report = run_cliff_with(&model, "m", &tasks, &source(), &ladder, &DEFAULT_DEPTHS, &mut |done, total, _| {
+    let report = run_cliff_with(&model, "m", &tasks, &source(), &ladder, &DEFAULT_DEPTHS, &CancellationToken::new(), &mut |done, total, _| {
         seen.push((done, total));
     })
     .await
     .unwrap();
     assert_eq!(seen, vec![(1, 3), (2, 3), (3, 3)]);
     assert_eq!(report.points.len(), 3);
+}
+
+#[tokio::test]
+async fn a_cancelled_token_aborts_the_sweep_with_an_error_and_no_classification() {
+    // Already-cancelled before the first rung: the probe must error out immediately
+    // instead of running the ladder, so the command never persists a bogus status.
+    let model = CliffModel { threshold: u32::MAX, good: GOOD.into() };
+    let tasks = [task()];
+    let ladder = [0u32, 4000, 8000];
+    let cancel = CancellationToken::new();
+    cancel.cancel();
+    let mut rungs = 0usize;
+    let result = run_cliff_with(&model, "m", &tasks, &source(), &ladder, &DEFAULT_DEPTHS, &cancel, &mut |_, _, _| {
+        rungs += 1;
+    })
+    .await;
+    assert!(result.is_err(), "a cancelled probe must return an error, not a report");
+    assert_eq!(rungs, 0, "no rung should run once the token is cancelled");
 }
 
 #[tokio::test]
