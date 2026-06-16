@@ -116,6 +116,34 @@ async fn a_broken_baseline_is_never_a_fabricated_cliff() {
     assert_eq!(report.cliff_tokens, None);
 }
 
+#[tokio::test]
+async fn a_broken_baseline_captures_the_raw_failing_output() {
+    // The model refuses unpadded → Broken. The baseline rung must carry the raw
+    // completion so the UI can show WHY it failed, not just a bare 0%.
+    let model = CliffModel { threshold: 0, good: GOOD.into() };
+    let tasks = [task()];
+    let ladder = [0u32, 2000, 8000];
+    let report = run_cliff(&model, "m", &tasks, &source(), &ladder, &DEFAULT_DEPTHS).await.unwrap();
+    let base = &report.points[0];
+    assert!(matches!(report.status, CliffStatus::Broken { .. }));
+    assert_eq!(base.samples.len(), 1, "one failing task → one sample");
+    assert_eq!(base.samples[0].task_id, "t1");
+    assert!(base.samples[0].output.contains("cannot help"), "raw refusal text is kept verbatim: {:?}", base.samples[0].output);
+}
+
+#[tokio::test]
+async fn passing_rungs_capture_no_samples() {
+    // A model that holds throughout passes every task — there is nothing to explain,
+    // so no rung should carry a failure sample (samples are failure-only evidence).
+    let model = CliffModel { threshold: u32::MAX, good: GOOD.into() };
+    let tasks = [task()];
+    let report = run_cliff(&model, "m", &tasks, &source(), &[0u32, 4000, 8000], &DEFAULT_DEPTHS).await.unwrap();
+    assert!(matches!(report.status, CliffStatus::NoCliff { .. }));
+    for p in &report.points {
+        assert!(p.samples.is_empty(), "passing rung {} kept a sample: {:?}", p.target_tokens, p.samples);
+    }
+}
+
 #[test]
 fn build_ladder_spans_zero_to_max_across_steps() {
     assert_eq!(build_ladder(16000, 5), vec![0, 4000, 8000, 12000, 16000]);

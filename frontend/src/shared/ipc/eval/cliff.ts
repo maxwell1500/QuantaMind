@@ -20,6 +20,15 @@ export const DepthScoreSchema = z.object({
   verified_tokens: z.number().int(),
 });
 
+/// The raw completion behind one FAILED probe position (backend `FailureSample`) —
+/// what the model actually emitted, so a Broken/collapsed rung explains itself.
+export const FailureSampleSchema = z.object({
+  task_id: z.string(),
+  depth: z.number(),
+  output: z.string(),
+});
+export type FailureSample = z.infer<typeof FailureSampleSchema>;
+
 /// One ladder rung (backend `CliffPoint`): requested vs VERIFIED depth, the
 /// worst-position composite, and the per-position breakdown.
 export const CliffRungSchema = z.object({
@@ -27,6 +36,8 @@ export const CliffRungSchema = z.object({
   verified_tokens: z.number().int(),
   composite: z.number().nullable(),
   per_depth: z.array(DepthScoreSchema),
+  /// Raw completions for the failing tasks at this rung (capped, may be empty).
+  samples: z.array(FailureSampleSchema).default([]),
 });
 export type CliffRung = z.infer<typeof CliffRungSchema>;
 

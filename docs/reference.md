@@ -831,6 +831,16 @@ healthy plateau to "fall off", so it is **never** dressed up as "✓ no cliff" �
 tool-call failure (not a context-length limit). Single-turn, greedy — a failed rung is a gap, never a
 fabricated score.
 
+**Failure evidence (the raw completion, not just a 0%).** A bare "Broken" / 0% is undebuggable on its
+own — you can't tell a prose answer from a refusal from a wrong-schema call. So each rung now carries a
+capped list of **`FailureSample { task_id, depth, output }`** on `CliffPoint.samples`: the verbatim
+model completion for every *failing* task at that rung (a pass needs no explanation, so passing tasks add
+nothing). Output is char-capped (`MAX_SAMPLE_CHARS`) and the list is bounded (`MAX_SAMPLES_PER_RUNG`) so
+the diagnostic crumb never hauls a full transcript through IPC per rung × depth × task. The panel renders
+these under **"What the model emitted — failing tasks"**, turning a red 0% into an inspectable cause
+without re-running inference — the same transparency the standalone Tool-Call Trace Debugger gives, folded
+into the probe itself.
+
 **Persistence + the Agent Report (three-state cliff).** Every terminal probe outcome is now persisted
 (not just a found collapse): the store holds a `CliffStatus` per (collection, model) —
 `NoCliff { tested }` (held to that depth), `Collapsed { depth }`, or (broken-baseline) `Collapsed` at

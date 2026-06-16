@@ -6,7 +6,7 @@ use crate::inference::eval::readiness::types::CliffStatus;
 use crate::inference::eval::toolcall::eval::{aggregate, TaskResult};
 use crate::inference::eval::toolcall::parse::extract_calls;
 use crate::inference::eval::toolcall::prompt::build_system_for;
-use crate::inference::eval::toolcall::score::score;
+use crate::inference::eval::toolcall::score::{score, verdict_passed};
 use crate::inference::eval::toolcall::tasks::ToolTask;
 use crate::inference::generate::generate_options::GenerateOptions;
 use crate::inference::generate::generate_spec::GenerateSpec;
@@ -33,6 +33,31 @@ const COLLAPSE_MARGIN: f64 = 0.2;
 /// tail-only (the tail tests recency, the model's strongest position). Three
 /// positions keep the probe affordable; mid-document is where models actually fail.
 pub const DEFAULT_DEPTHS: [f32; 3] = [0.1, 0.5, 0.9];
+/// Cap on retained failure samples per rung, and on each sample's char length. Enough
+/// to see WHAT the model emitted (prose, refusal, wrong schema) so a 0% rung explains
+/// itself, without hauling a full transcript per rung × depth × task through IPC.
+const MAX_SAMPLES_PER_RUNG: usize = 6;
+const MAX_SAMPLE_CHARS: usize = 600;
+
+/// The raw model completion behind one FAILED probe position — captured so a Broken or
+/// collapsed rung shows the user what the model actually said instead of only a 0%
+/// score. Only failing tasks are kept (a pass needs no explanation); the text is
+/// char-capped to `MAX_SAMPLE_CHARS`. A diagnostic crumb, not a full trace.
+#[derive(Serialize, Deserialize, Clone, Debug, PartialEq)]
+pub struct FailureSample {
+    pub task_id: String,
+    pub depth: f32,
+    pub output: String,
+}
+
+/// Char-safe truncation: keep the first `MAX_SAMPLE_CHARS` chars, append `…` when cut.
+fn truncate_sample(s: &str) -> String {
+    if s.chars().count() <= MAX_SAMPLE_CHARS {
+        return s.to_string();
+    }
+    let cut: String = s.chars().take(MAX_SAMPLE_CHARS).collect();
+    format!("{cut}…")
+}
 
 /// One needle position within a rung: the composite there and the verified depth.
 #[derive(Serialize, Deserialize, Clone, Debug, PartialEq)]
@@ -53,6 +78,9 @@ pub struct CliffPoint {
     /// robust everywhere, so the cliff is found at the weakest spot, not the average.
     pub composite: Option<f64>,
     pub per_depth: Vec<DepthScore>,
+    /// Raw completions for the FAILING tasks at this rung (capped). Empty when every
+    /// task passed — so a Broken/collapsed rung carries its own explanation to the UI.
+    pub samples: Vec<FailureSample>,
 }
 
 /// The probe result: every rung, the classified status (mirrors the persisted
@@ -73,8 +101,9 @@ async fn run_position<M: ModelTurn>(
     tasks: &[ToolTask],
     padding: &str,
     depth: f32,
-) -> AppResult<Vec<TaskResult>> {
+) -> AppResult<(Vec<TaskResult>, Vec<FailureSample>)> {
     let mut results = Vec::with_capacity(tasks.len());
+    let mut samples = Vec::new();
     for task in tasks {
         let prompt = if padding.is_empty() {
             task.prompt.clone()
@@ -93,6 +122,12 @@ async fn run_position<M: ModelTurn>(
         };
         let (raw, stats) = turn.run(&spec).await?;
         let verdict = score(&task.expected, extract_calls(&raw).as_deref());
+        // Keep the raw completion ONLY for a failing task — that's the evidence a
+        // Broken/collapsed rung needs ("it emitted prose / a refusal / wrong schema").
+        // A pass needs no explanation, so passing tasks leave `samples` untouched.
+        if !verdict_passed(&verdict) {
+            samples.push(FailureSample { task_id: task.id.clone(), depth, output: truncate_sample(&raw) });
+        }
         results.push(TaskResult {
             id: task.id.clone(),
             category: task.category.clone(),
@@ -100,7 +135,7 @@ async fn run_position<M: ModelTurn>(
             prompt_tokens: stats.prompt_eval_count,
         });
     }
-    Ok(results)
+    Ok((results, samples))
 }
 
 /// Sweep every needle depth for one fixed padding. Returns the per-depth scores,
@@ -111,13 +146,14 @@ async fn sweep<M: ModelTurn>(
     tasks: &[ToolTask],
     padding: &str,
     depths: &[f32],
-) -> AppResult<(Vec<DepthScore>, u32, Option<f64>)> {
+) -> AppResult<(Vec<DepthScore>, u32, Option<f64>, Vec<FailureSample>)> {
     let mut per_depth = Vec::with_capacity(depths.len());
     let mut tok_sum: u64 = 0;
     let mut tok_n: u64 = 0;
     let mut worst: Option<f64> = None;
+    let mut samples: Vec<FailureSample> = Vec::new();
     for &depth in depths {
-        let results = run_position(turn, model, tasks, padding, depth).await?;
+        let (results, mut pos_samples) = run_position(turn, model, tasks, padding, depth).await?;
         let report = aggregate(tasks, results);
         let vt = report.prompt_tokens.map(|t| t.round() as u32).unwrap_or(0);
         if let Some(t) = report.prompt_tokens {
@@ -128,9 +164,11 @@ async fn sweep<M: ModelTurn>(
             worst = Some(worst.map_or(c, |w: f64| w.min(c)));
         }
         per_depth.push(DepthScore { depth, composite: report.composite, verified_tokens: vt });
+        samples.append(&mut pos_samples);
     }
+    samples.truncate(MAX_SAMPLES_PER_RUNG);
     let mean_tokens = if tok_n > 0 { (tok_sum / tok_n) as u32 } else { 0 };
-    Ok((per_depth, mean_tokens, worst))
+    Ok((per_depth, mean_tokens, worst, samples))
 }
 
 /// Probe one rung: build padding for `target` tokens, verify the measured depth is
@@ -152,14 +190,16 @@ async fn probe_rung<M: ModelTurn>(
 ) -> AppResult<CliffPoint> {
     if target == 0 {
         // Baseline: unpadded, single position.
-        let results = run_position(turn, model, tasks, "", 0.0).await?;
+        let (results, mut samples) = run_position(turn, model, tasks, "", 0.0).await?;
         let report = aggregate(tasks, results);
         let vt = report.prompt_tokens.map(|t| t.round() as u32).unwrap_or(0);
+        samples.truncate(MAX_SAMPLES_PER_RUNG);
         return Ok(CliffPoint {
             target_tokens: 0,
             verified_tokens: vt,
             composite: report.composite,
             per_depth: vec![DepthScore { depth: 0.0, composite: report.composite, verified_tokens: vt }],
+            samples,
         });
     }
     // Seed from the learned rate (accurate) or the 4:1 fallback on the first padded rung.
@@ -167,23 +207,23 @@ async fn probe_rung<M: ModelTurn>(
         Some(r) => ((target as f64) * r).round() as usize,
         None => target as usize * BYTES_PER_TOKEN,
     };
-    let mut last: Option<(Vec<DepthScore>, u32, Option<f64>)> = None;
+    let mut last: Option<(Vec<DepthScore>, u32, Option<f64>, Vec<FailureSample>)> = None;
     for attempt in 0..=MAX_ADJUST_ATTEMPTS {
         let padding = build_padding(source_text, bytes);
-        let (per_depth, mean_tokens, worst) = sweep(turn, model, tasks, &padding, depths).await?;
+        let (per_depth, mean_tokens, worst, samples) = sweep(turn, model, tasks, &padding, depths).await?;
         if mean_tokens > 0 {
             *rate = Some(bytes as f64 / mean_tokens as f64); // learn for the next rung
         }
         let off = if target > 0 { (mean_tokens as f64 - target as f64).abs() / target as f64 } else { 0.0 };
-        last = Some((per_depth, mean_tokens, worst));
+        last = Some((per_depth, mean_tokens, worst, samples));
         if mean_tokens == 0 || off <= ADJUST_TOLERANCE || attempt == MAX_ADJUST_ATTEMPTS {
             break;
         }
         // Rebuild proportionally: scale the byte seed toward the target.
         bytes = ((bytes as f64) * (target as f64) / (mean_tokens as f64)).round() as usize;
     }
-    let (per_depth, mean_tokens, worst) = last.expect("loop runs at least once");
-    Ok(CliffPoint { target_tokens: target, verified_tokens: mean_tokens, composite: worst, per_depth })
+    let (per_depth, mean_tokens, worst, samples) = last.expect("loop runs at least once");
+    Ok(CliffPoint { target_tokens: target, verified_tokens: mean_tokens, composite: worst, per_depth, samples })
 }
 
 /// Classify the ladder into a `CliffStatus` plus `cliff_tokens` (largest verified

@@ -1,3 +1,5 @@
+import type { FailureSample } from "../../shared/ipc/eval/cliff";
+
 /// The cliff series the chart + read-out consume. The PADDING, ladder, needle
 /// sweep, and verify-and-adjust now live in the backend engine
 /// (`inference/eval/cliff/`); the frontend only classifies the verified series it
@@ -6,6 +8,9 @@
 export interface CliffPoint {
   promptTokens: number | null;
   composite: number | null;
+  /// Raw completions for the failing tasks at this rung (empty when all passed) —
+  /// surfaced so a Broken/collapsed rung shows what the model emitted, not just 0%.
+  samples?: FailureSample[];
 }
 
 /// Minimum baseline (unpadded, rung 0) composite for a probe to be a valid
