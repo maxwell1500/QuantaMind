@@ -389,6 +389,7 @@ QuantaMind/
 │   └── tauri.conf.json
 │
 ├── docs/                           # Architecture + workflow docs
+│   └── codebase/                   # File-by-file reference (Why/What/How)
 ├── CLAUDE.md                       # Project instructions
 ├── README.md                       # ← you are here
 └── LICENSE
@@ -396,6 +397,16 @@ QuantaMind/
 
 > [!NOTE]
 > **Every source file is single-concern.** Split a file when it starts doing *two things*, not when it crosses a line count. See [Engineering principles](#engineering-principles).
+
+> [!TIP]
+> **Want the full map?** [`docs/codebase/`](./docs/codebase/README.md) is a deep,
+> file-by-file reference for the entire codebase — every backend module and
+> frontend page/tab/feature, with **Why** it exists, **What** it does, and
+> **How/Where** it's used. Start at its [index](./docs/codebase/README.md) and
+> jump to the subsystem you need (e.g.
+> [inference engines](./docs/codebase/backend-inference-backends.md),
+> [eval](./docs/codebase/backend-eval-engine.md),
+> [the Workspace tab](./docs/codebase/frontend-workspace.md)).
 
 ---
 
