@@ -12,7 +12,7 @@ const VERDICTS: ModelVerdict[] = [
 ];
 
 const preview = (over: Partial<PublishPreview> = {}): PublishPreview => ({
-  rows: [{ model: "qwen", quant: "Q4_K_M", cohort_key: "apple-silicon/m3-pro/32-64gb", tool_version: "0.2.0", metrics: { pass_k: 0.9, effort: 1.2, avg_steps: 3 } }],
+  rows: [{ model: "qwen", quant: "Q4_K_M", cohort_key: "apple-silicon/m3-pro/32-64gb", tool_version: "0.2.0", metrics: { pass_k: 0.9, effort: 1.2, avg_steps: 3 }, params: {} }],
   canonical_json: '[{"cohort_key":"apple-silicon/m3-pro/32-64gb","metrics":{"avg_steps":3.0,"effort":1.2,"pass_k":0.9},"model":"qwen","quant":"Q4_K_M","tool_version":"0.2.0"}]',
   hash: "abc123",
   cohort_key: "apple-silicon/m3-pro/32-64gb",
@@ -76,7 +76,8 @@ describe("PublishDialog", () => {
     fireEvent.click(await screen.findByTestId("publish-optin"));
     fireEvent.change(screen.getByTestId("publish-link"), { target: { value: "https://dev.to/me/post" } });
     fireEvent.click(screen.getByTestId("publish-confirm"));
-    expect(onPublish).toHaveBeenCalledWith(expect.objectContaining({ hash: "abc123" }), "https://dev.to/me/post");
+    // The global-header params snapshot rides along as the third arg (default = {} here).
+    expect(onPublish).toHaveBeenCalledWith(expect.objectContaining({ hash: "abc123" }), "https://dev.to/me/post", {});
   });
 
   it("explains why Publish is disabled when there are no measured results", async () => {

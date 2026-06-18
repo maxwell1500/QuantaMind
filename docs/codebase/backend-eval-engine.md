@@ -558,8 +558,8 @@ match i.pass_k {
     Some(pk) if pk < p.min_pass_k - EPSILON => blocking.push(format!("pass^k {:.2} < {:.2} required", pk, p.min_pass_k)),
     Some(_) => {}
 }
-if p.forbid_infinite_loop && i.loops > 0 { blocking.push("loops on some runs".into()); }
-if p.forbid_hallucinated_completion && i.hallucinated > 0 { blocking.push("false 'done' on some runs".into()); }
+if p.forbid_infinite_loop && i.loops > 0 { blocking.push(format!("loops on {} run{}", i.loops, plural(i.loops))); }
+if p.forbid_hallucinated_completion && i.hallucinated > 0 { blocking.push(format!("false 'done' on {} run{}", i.hallucinated, plural(i.hallucinated))); }
 if p.require_full_vram { match i.fits_in_vram {
     Some(false) => blocking.push("partial offload → severe slowdown".into()),
     None        => blocking.push("require_full_vram set, but VRAM fit not measured".into()),  // null-gate

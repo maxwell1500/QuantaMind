@@ -77,8 +77,9 @@ fn forbidden_loop_and_hallucination_each_block() {
     i.hallucinated = 2;
     let v = assess(&i, &p);
     assert_eq!(v.status, Readiness::NotReady);
-    assert!(v.blocking.contains(&"loops on some runs".to_string()));
-    assert!(v.blocking.contains(&"false 'done' on some runs".to_string()));
+    // The exact affected-run counts are interpolated (loops=1 → singular, hallucinated=2 → plural).
+    assert!(v.blocking.contains(&"loops on 1 run".to_string()));
+    assert!(v.blocking.contains(&"false 'done' on 2 runs".to_string()));
 }
 
 #[test]

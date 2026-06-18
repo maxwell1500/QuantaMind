@@ -25,7 +25,7 @@ const VERDICTS: ModelVerdict[] = [
     backend: "ollama",
     verdict: {
       status: "not_ready",
-      blocking: ["pass^k 0.40 < 0.80 required", "loops on some runs"],
+      blocking: ["pass^k 0.40 < 0.80 required", "loops on 2 runs"],
       conditions: [],
       path: "prompt_based",
     },
@@ -56,7 +56,18 @@ describe("VerdictTable", () => {
     render(<VerdictTable verdicts={VERDICTS} />);
     const row = screen.getByTestId("readiness-row-phi3.5");
     expect(row).toHaveTextContent("✗ pass^k 0.40 < 0.80 required");
-    expect(row).toHaveTextContent("✗ loops on some runs");
+    expect(row).toHaveTextContent("✗ loops on 2 runs");
+  });
+
+  it("renders BLOCKING badges with a ✗ failure marker (never a literal 'X') and the real run counts in Details", () => {
+    render(<VerdictTable verdicts={VERDICTS} />);
+    const row = screen.getByTestId("readiness-row-phi3.5");
+    // The visible badge is a category tag with a ✗ cross — not an ambiguous capital "X".
+    expect(row).toHaveTextContent("BLOCKING: [✗ Reliability] [✗ Loops]");
+    expect(row).not.toHaveTextContent("[X Reliability]");
+    // The Details line surfaces the exact measured counts the backend reported, never "some runs".
+    expect(row).toHaveTextContent("Pass^k (0.40) < 0.80");
+    expect(row).toHaveTextContent("Loops on 2 runs");
   });
 
   it("renders conditions as amber notes and a clean Ready row as 'meets all criteria'", () => {

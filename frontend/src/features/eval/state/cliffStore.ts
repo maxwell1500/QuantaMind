@@ -51,6 +51,11 @@ interface CliffStore {
   /// The model currently being probed (for the Matrix "probing…" indicator).
   runningModel: string | null;
   progress: { done: number; total: number };
+  /// Monotonic overall completion fraction in [0,1], derived from `progress` + `step` by
+  /// [`progressFraction`]. Held in the store (not recomputed in the panel) so it can stay
+  /// non-decreasing across a run — a re-sweep never drives the bar backward. Reset to 0 at
+  /// the start of each run; snapped to 1 on completion (an early-stopped probe is still done).
+  frac: number;
   /// The latest fine-grained sub-rung step (per task generation). Null between runs and
   /// until the first task of a run completes — the panel uses it to show "rung r/N ·
   /// position p/3 · task t/M" and an ETA so a slow deep rung never looks frozen.
@@ -91,12 +96,37 @@ interface CliffStore {
 // supersede), so a long sweep can be cancelled and a re-run never races the old one.
 let activeRun = 0;
 
+/// Within-rung fill ceiling: one sweep advances the bar to at most this fraction of the
+/// current rung's slice, reserving headroom for a possible verify-and-adjust re-sweep —
+/// so the bar never claims a rung is finished before the authoritative `cliff-progress`
+/// (`on_rung`) event confirms it.
+const RUNG_FILL_CAP = 0.9;
+
+/// Overall completion fraction in [0,1]. Rung boundaries are anchored on the authoritative
+/// per-rung counter (`done`/`total` from `cliff-progress`); the fine-grained `step` only
+/// fills WITHIN the current incomplete rung, capped below the boundary. The caller clamps
+/// the result to never decrease across a run — a verify-and-adjust re-sweep resets the
+/// `step` counters, but the bar must not jump backward.
+function progressFraction(done: number, total: number, step: CliffStep | null): number {
+  if (total <= 0) return 0;
+  let within = 0;
+  // Only the CURRENT incomplete rung gets within-rung fill: once `on_rung` advances `done`
+  // to this rung, the step is stale and must add nothing (else it double-counts the rung
+  // `done` already includes, overshooting past the boundary).
+  if (step != null && step.rung === done + 1 && step.total_positions > 0 && step.total_tasks > 0) {
+    const swept = ((step.position - 1) * step.total_tasks + step.task) / (step.total_positions * step.total_tasks);
+    within = Math.min(swept, RUNG_FILL_CAP);
+  }
+  return Math.min(1, (done + within) / total);
+}
+
 export const useCliffStore = create<CliffStore>((set, get) => ({
   request: null,
   points: [],
   running: false,
   runningModel: null,
   progress: { done: 0, total: 0 },
+  frac: 0,
   step: null,
   startedAt: null,
   error: null,
@@ -150,7 +180,7 @@ export const useCliffStore = create<CliffStore>((set, get) => ({
     // GUARDRAIL 2: clear all prior state BEFORE dispatching — never append to a
     // stale series (that corrupts the chart and the persisted cliff).
     const myRun = ++activeRun;
-    set({ points: [], error: null, running: true, runningModel: model, progress: { done: 0, total: steps }, step: null, startedAt: Date.now() });
+    set({ points: [], error: null, running: true, runningModel: model, progress: { done: 0, total: steps }, frac: 0, step: null, startedAt: Date.now() });
 
     // Live per-rung points stream from the backend engine over `cliff-progress`; the
     // engine owns the ladder, padding, verify-and-adjust, classification, and
@@ -171,16 +201,20 @@ export const useCliffStore = create<CliffStore>((set, get) => ({
             // it as "not reported", never a fake ≈0-token depth.
             points: [...s.points, { promptTokens: p.point.verified_tokens || null, composite: p.point.composite, trace: p.point.trace }],
             progress: { done: p.done, total: p.total },
+            // Advance the bar to the just-completed rung's boundary; never backward.
+            frac: Math.max(s.frac, progressFraction(p.done, p.total, s.step)),
           }));
         }),
       );
       unlisteners.push(
         await listen<CliffStep>(EVENT_CLIFF_STEP, (ev) => {
-          const s = ev.payload;
+          const st = ev.payload;
           // Same run-token filter as the rung stream — a superseded run's late ticks must
           // never drive the live line/ETA of the new run.
-          if (activeRun !== myRun || s.run_id !== myRun) return;
-          set({ step: s });
+          if (activeRun !== myRun || st.run_id !== myRun) return;
+          // Fill within the current rung, monotonically — a re-sweep resets the step
+          // counters but the bar holds (never claims a rung done before `on_rung`).
+          set((s) => ({ step: st, frac: Math.max(s.frac, progressFraction(s.progress.done, s.progress.total, st)) }));
         }),
       );
 
@@ -199,6 +233,9 @@ export const useCliffStore = create<CliffStore>((set, get) => ({
         else delete col[model];
         return {
           points,
+          // The probe returned — it's genuinely done even if it early-stopped before the
+          // last rung, so snap the bar to 100% rather than leaving it short.
+          frac: 1,
           // Mark probed REGARDLESS of outcome so the Matrix shows "✓ no cliff" rather than
           // an unmeasured "Run probe ↗"; record broken explicitly so a healthy re-run clears it.
           probed: { ...s.probed, [collectionId]: { ...(s.probed[collectionId] ?? {}), [model]: true } },
@@ -219,7 +256,7 @@ export const useCliffStore = create<CliffStore>((set, get) => ({
     // Actually cancel the backend probe — without this the model kept being called
     // through the whole ladder; bumping activeRun only hid the result in the UI.
     void stopContextCliff().catch((e) => console.error("stop context-cliff failed:", e));
-    set({ running: false, runningModel: null, step: null, startedAt: null });
+    set({ running: false, runningModel: null, frac: 0, step: null, startedAt: null });
   },
 
   reset: () => {
@@ -230,6 +267,6 @@ export const useCliffStore = create<CliffStore>((set, get) => ({
     if (get().running) {
       void stopContextCliff().catch((e) => console.error("stop context-cliff failed:", e));
     }
-    set({ points: [], error: null, running: false, runningModel: null, progress: { done: 0, total: 0 }, step: null, startedAt: null });
+    set({ points: [], error: null, running: false, runningModel: null, progress: { done: 0, total: 0 }, frac: 0, step: null, startedAt: null });
   },
 }));

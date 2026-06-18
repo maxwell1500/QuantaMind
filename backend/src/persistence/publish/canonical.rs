@@ -22,8 +22,16 @@ fn canonicalize(v: &Value) -> Value {
 }
 
 /// Deterministic JSON for the batch: sorted keys at every depth, no whitespace.
+///
+/// The value is parsed back from the SERIALIZED row bytes (not `to_value(rows)`) so every
+/// number's representation matches exactly what ships in the request body — and therefore
+/// what the server re-canonicalizes. `to_value` widens `f32` fields (e.g. a `temperature`
+/// param of `0.2`) to `f64` with a precision artifact (`0.20000000298023224`), while the
+/// wire serializes the same `f32` as `0.2`; hashing the widened form would diverge from the
+/// server's hash of the wire bytes and reject every publish carrying a float param.
 pub fn canonical_json(rows: &[PublishRow]) -> AppResult<String> {
-    let canon = canonicalize(&serde_json::to_value(rows)?);
+    let wire: Value = serde_json::from_str(&serde_json::to_string(rows)?)?;
+    let canon = canonicalize(&wire);
     Ok(serde_json::to_string(&canon)?)
 }
 

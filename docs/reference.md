@@ -798,6 +798,18 @@ before any padded rung runs, and the **first collapse** stops the ladder (deeper
 re-confirm failure at the highest cost). Three needle positions, one sweep per rung, and early-stop keep
 a probe affordable; lowering **Test Steps** / **Max Tokens** trims it further.
 
+**Live progress (monotonic, never a false 100%).** The bar/percentage read a single fraction
+(`frac`) owned by `cliffStore` (`progressFraction`), not a value recomputed in the panel. Rung
+boundaries are anchored on the authoritative per-rung counter (`done`/`total` from the `cliff-progress`
+/ `on_rung` event); the fine-grained `cliff-step` stream only fills **within** the current incomplete
+rung, **capped at `RUNG_FILL_CAP` (0.9)** of that rung's slice. The cap reserves headroom so a single
+sweep can never claim the rung is finished before `on_rung` confirms it — which is what made the old bar
+hit 100% and then jump back to ~80% when a **verify-and-adjust** re-sweep reset the position/task
+counters. `frac` is also kept **monotonic** across the run (a re-sweep holds the bar, never walks it
+back) and is **snapped to 1 on completion**, so an **early-stopped** probe — which stops below the last
+rung — still reads 100% rather than freezing short. The ETA is a labelled `~` extrapolation from
+`elapsed ÷ frac`, never presented as exact.
+
 The probe owns its own **Active Collection** picker (independent of the EvalManager editor), so it
 always has a real dataset to run. The **Max Tokens** control sets the deepest rung and is capped at the
 model's reported **context window** when known (Ollama `/api/show` dims), falling back to a fixed
@@ -924,9 +936,12 @@ exact reasons. Pick a target collection + a profile, click **Run readiness**.
 - 🟡 **Conditional** — passes the hard gates but trips a *soft target* (e.g. slow,
   or inefficient step count). The reason carries the interpolated math, e.g.
   `slow: 8400ms/step > 5000ms target`.
-- 🔴 **NotReady** — trips a *hard gate*. Reasons are explicit, e.g.
-  `pass^k 0.40 < 0.80 required`, `loops on some runs`, or `run error: …` for a
-  column that failed to produce data.
+- 🔴 **NotReady** — trips a *hard gate*. Reasons are explicit and carry the exact
+  measured counts, e.g. `pass^k 0.40 < 0.80 required`, `loops on 2 runs`,
+  `false 'done' on 1 run`, or `run error: …` for a column that failed to produce
+  data. The report's BLOCKING line tags each by category with a ✗ marker
+  (`[✗ Reliability] [✗ Loops]`); the Details line below shows the interpolated
+  numbers verbatim.
 
 **Blocking vs conditions.** Hard gates push to `blocking[]` (→ NotReady); soft
 targets push to `conditions[]` (→ Conditional). Status = NotReady if any blocking,
@@ -1027,9 +1042,14 @@ share lever (see `process.md#phase-roadmap`, step 8.B4).
 offline export, an *opt-in* publish path can contribute a verdict to a shared
 leaderboard. What's sent is **metrics-only**: a `PublishRow` per measured model —
 `model`, `quant`, a **hardware `cohort_key`** (`{platform}/{accel}/{mem_tier}`, e.g.
-`apple-silicon/m3-pro/32-64gb`), `tool_version`, and the metrics bag (`pass_k`,
-`effort?`, `avg_steps?`). **Never sent:** task content, prompts, file names, raw model
-output, or any identity beyond the GitHub handle. The payload is built in Rust
+`apple-silicon/m3-pro/32-64gb`), `tool_version`, the metrics bag (`pass_k`, `effort?`,
+`avg_steps?`), and the **inference `params`** the run used (temperature, top-p/k,
+max_tokens, repeat_penalty, seed, num_ctx) so the board knows the sampling/context a
+`pass_k` was measured under. The params are the **global-header** snapshot in effect at
+publish time (the single source every run reads — architecture.md rule 7); only keys the
+user actually set are sent (each field skip-serializes when unset), so an empty `{}`
+honestly means "ran on the backend defaults" — never a fabricated value. **Never sent:**
+task content, prompts, file names, raw model output, or any identity beyond the GitHub handle. The payload is built in Rust
 (`persistence/publish/` + `commands/publish/`), serialized to **deterministic
 canonical JSON** (object keys sorted at every depth) and hashed (SHA-256) so transit
 tampering is detectable; unmeasured/unquantized rows are dropped (never sent as a null

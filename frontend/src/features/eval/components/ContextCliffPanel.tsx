@@ -61,6 +61,7 @@ export function ContextCliffPanel() {
   const running = useCliffStore((s) => s.running);
   const error = useCliffStore((s) => s.error);
   const progress = useCliffStore((s) => s.progress);
+  const frac = useCliffStore((s) => s.frac);
   const step = useCliffStore((s) => s.step);
   const startedAt = useCliffStore((s) => s.startedAt);
   const runningModel = useCliffStore((s) => s.runningModel);
@@ -155,20 +156,14 @@ export function ContextCliffPanel() {
     return () => clearInterval(id);
   }, [running]);
 
-  // Overall completion fraction across the WHOLE ladder, derived from the fine-grained
-  // step when present (so the bar advances mid-rung), else the coarse per-rung counter.
-  // Within a rung: (positions done · tasks + tasks done) / (positions · tasks).
-  const overallFrac = (() => {
-    if (step && step.total_rungs > 0 && step.total_positions > 0 && step.total_tasks > 0) {
-      const within = ((step.position - 1) * step.total_tasks + step.task) / (step.total_positions * step.total_tasks);
-      return Math.min(1, ((step.rung - 1) + within) / step.total_rungs);
-    }
-    return progress.total > 0 ? progress.done / progress.total : 0;
-  })();
+  // Overall completion fraction across the WHOLE ladder. The store owns it (see
+  // `progressFraction` in cliffStore): rung boundaries anchored on the authoritative
+  // per-rung counter, within-rung fill capped below the boundary, and kept MONOTONIC so a
+  // verify-and-adjust re-sweep never drives the bar backward or falsely claims 100%.
   const elapsedS = running && startedAt != null ? Math.max(0, (now - startedAt) / 1000) : 0;
   // Linear extrapolation from elapsed ÷ fraction — only once there's enough signal to not
   // show a wild first guess. It's an estimate, labelled "~", never presented as exact.
-  const etaS = overallFrac > 0.03 && elapsedS > 3 ? (elapsedS * (1 - overallFrac)) / overallFrac : null;
+  const etaS = frac > 0.03 && frac < 1 && elapsedS > 3 ? (elapsedS * (1 - frac)) / frac : null;
 
   const handleRun = () => {
     if (!selected) return;
@@ -627,7 +622,7 @@ export function ContextCliffPanel() {
                       ? ` · ~${(lastDepth / 1000).toFixed(1)}k tokens`
                       : ""}
               </span>
-              <span style={{ fontVariantNumeric: "tabular-nums", color: "#334155", fontWeight: 600 }}>{Math.round(overallFrac * 100)}%</span>
+              <span style={{ fontVariantNumeric: "tabular-nums", color: "#334155", fontWeight: 600 }}>{Math.round(frac * 100)}%</span>
             </div>
             {/* Sub-line: the per-task ticker (position p/3 · task t/M) + elapsed/ETA. This is
                 the "it's not stuck" signal — it advances every time a single generation
@@ -642,7 +637,7 @@ export function ContextCliffPanel() {
               <div
                 style={{
                   height: 5,
-                  width: `${Math.round(overallFrac * 100)}%`,
+                  width: `${Math.round(frac * 100)}%`,
                   background: "#2563eb",
                   borderRadius: 3,
                   transition: "width 200ms ease",

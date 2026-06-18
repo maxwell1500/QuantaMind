@@ -1,6 +1,15 @@
 use super::profile::ReadinessProfile;
 use super::types::{AgentPath, CliffStatus, NativeFcStatus, Readiness, ReadinessInputs, ReadinessVerdict, EPSILON};
 
+/// "" for a count of 1, "s" otherwise — so a reason reads "1 run" not "1 runs".
+fn plural(n: u32) -> &'static str {
+    if n == 1 {
+        ""
+    } else {
+        "s"
+    }
+}
+
 /// Pure synthesis: measured inputs + a profile → a verdict. No async, no I/O —
 /// the single source of truth shared by the GUI command and the future CLI.
 /// Hard gates push to `blocking` (→ NotReady); soft targets push to `conditions`
@@ -18,12 +27,13 @@ pub fn assess(i: &ReadinessInputs, p: &ReadinessProfile) -> ReadinessVerdict {
         Some(_) => {}
     }
 
-    // Failure-taxonomy hard gates (counts are always known when agentic ran).
+    // Failure-taxonomy hard gates (counts are always known when agentic ran, so report
+    // the exact number of affected runs — never a vague "some runs").
     if p.forbid_infinite_loop && i.loops > 0 {
-        blocking.push("loops on some runs".into());
+        blocking.push(format!("loops on {} run{}", i.loops, plural(i.loops)));
     }
     if p.forbid_hallucinated_completion && i.hallucinated > 0 {
-        blocking.push("false 'done' on some runs".into());
+        blocking.push(format!("false 'done' on {} run{}", i.hallucinated, plural(i.hallucinated)));
     }
 
     // Hardware hard gate (strict null-gating: required ⇒ unmeasured blocks).

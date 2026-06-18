@@ -2,14 +2,18 @@ import { useEffect, useState } from "react";
 import { formatIpcError } from "../../shared/ipc/core/error";
 import { previewPublishPayload, type PublishPreview } from "../../shared/ipc/publish/preview";
 import type { ModelVerdict } from "../../shared/ipc/eval/readiness";
+import type { InferenceParams } from "../../shared/ipc/workspace/prompts";
+import { useParamsStore } from "../../shared/state/paramsStore";
 import { WhatsSharedPanel } from "./WhatsSharedPanel";
 import { isAllowedWriteupLink } from "./writeupLink";
 
 interface Props {
   verdicts: ModelVerdict[];
   onClose: () => void;
-  /// Invoked with the agreed preview + the (optional, allow-listed) write-up link.
-  onPublish: (preview: PublishPreview, link: string) => void;
+  /// Invoked with the agreed preview, the (optional, allow-listed) write-up link, and
+  /// the exact params snapshot the preview was built from — so what's published is
+  /// byte-identical to what the user opted into (no re-read race if the header changes).
+  onPublish: (preview: PublishPreview, link: string, params: InferenceParams) => void;
 }
 
 /// The privacy gate: build the exact payload preview in Rust, show the user what
@@ -21,16 +25,20 @@ export function PublishDialog({ verdicts, onClose, onPublish }: Props) {
   const [agreed, setAgreed] = useState(false);
   const [link, setLink] = useState("");
   const linkOk = isAllowedWriteupLink(link);
+  // The global header is the single source every run reads (architecture.md rule 7), so
+  // the published params are exactly what the eval used — assuming the header is unchanged
+  // since the run. Reactive: editing the header rebuilds the preview so it never goes stale.
+  const params = useParamsStore((s) => s.globalParams);
 
   useEffect(() => {
     let live = true;
-    previewPublishPayload(verdicts)
+    previewPublishPayload(verdicts, params)
       .then((p) => live && setPreview(p))
       .catch((e) => live && setError(formatIpcError(e)));
     return () => {
       live = false;
     };
-  }, [verdicts]);
+  }, [verdicts, params]);
 
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => e.key === "Escape" && onClose();
@@ -120,7 +128,7 @@ export function PublishDialog({ verdicts, onClose, onPublish }: Props) {
           <button type="button" onClick={onClose} data-testid="publish-cancel" className="px-3 py-1.5 rounded-md text-sm text-slate-600 hover:bg-slate-100 transition-colors">
             Cancel
           </button>
-          <button type="button" disabled={!canPublish} title={disabledReason} data-testid="publish-confirm" onClick={() => preview && onPublish(preview, link.trim())} className="px-3 py-1.5 rounded-md text-sm font-semibold text-white bg-slate-900 hover:bg-slate-800 disabled:opacity-50">
+          <button type="button" disabled={!canPublish} title={disabledReason} data-testid="publish-confirm" onClick={() => preview && onPublish(preview, link.trim(), params)} className="px-3 py-1.5 rounded-md text-sm font-semibold text-white bg-slate-900 hover:bg-slate-800 disabled:opacity-50">
             Publish
           </button>
         </div>

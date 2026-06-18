@@ -276,7 +276,7 @@ export function VerdictTable({
                           <span>VRAM: {m.memory ? `${gb(m.memory.total_bytes)}GB` : "N/A"}</span>
                           <span className="text-slate-300">|</span>
                           <span>
-                            BLOCKING: {m.verdict.blocking.map(b => `[X ${getIndicatorLabel(b)}]`).join(" ")}
+                            BLOCKING: {m.verdict.blocking.map(b => `[✗ ${getIndicatorLabel(b)}]`).join(" ")}
                           </span>
                         </div>
                         {getDetailsLine(m) && (
