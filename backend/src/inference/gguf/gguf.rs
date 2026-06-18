@@ -10,9 +10,12 @@ use std::io::Read;
 use std::path::Path;
 
 // `Read::read` on macOS only returns one syscall's worth (~64KB),
-// so we use `take(N).read_to_end()` to actually fill `HEADER_READ_BYTES`.
-// 8 MiB covers Llama 3 / Qwen 2.5 SentencePiece tokenizer arrays.
+// so we use `take(N).read_to_end()` to actually fill the window.
+// 8 MiB covers most tokenizers; large-vocab BPE metadata (e.g. Qwen3)
+// runs past it, so `inspect_gguf` grows the window on truncation up to
+// `MAX_HEADER_READ_BYTES` rather than failing on a valid file.
 const HEADER_READ_BYTES: u64 = 8 * 1024 * 1024;
+const MAX_HEADER_READ_BYTES: u64 = 256 * 1024 * 1024;
 const MIN_FILE_SIZE: u64 = 64 * 1024;
 
 #[derive(Serialize, Clone, Debug)]
@@ -74,6 +77,13 @@ pub fn inspect_gguf_bytes(bytes: &[u8]) -> Result<GgufMetadata, AppError> {
     Ok(GgufMetadata { architecture, parameter_count, context_length, quantization, family })
 }
 
+fn read_prefix(path: &Path, n: u64) -> Result<Vec<u8>, AppError> {
+    let f = fs::File::open(path).map_err(|e| AppError::Io(e.to_string()))?;
+    let mut buf: Vec<u8> = Vec::with_capacity(n as usize);
+    f.take(n).read_to_end(&mut buf).map_err(|e| AppError::Io(e.to_string()))?;
+    Ok(buf)
+}
+
 pub fn inspect_gguf(path: &Path) -> Result<GgufMetadata, AppError> {
     let ext_ok = path.extension().and_then(|e| e.to_str())
         .map(|s| s.eq_ignore_ascii_case("gguf")).unwrap_or(false);
@@ -86,10 +96,23 @@ pub fn inspect_gguf(path: &Path) -> Result<GgufMetadata, AppError> {
             "file too small to be a real GGUF: {} bytes", md.len()
         )));
     }
-    let f = fs::File::open(path).map_err(|e| AppError::Io(e.to_string()))?;
-    let mut buf: Vec<u8> = Vec::with_capacity(HEADER_READ_BYTES.min(md.len()) as usize);
-    f.take(HEADER_READ_BYTES).read_to_end(&mut buf).map_err(|e| AppError::Io(e.to_string()))?;
-    let mut meta = inspect_gguf_bytes(&buf)?;
+    // Read a prefix and parse; if the metadata runs past the window (Truncated),
+    // double the window and retry. Tensor data follows the KV block, so the
+    // metadata is always within the first `ceiling` bytes of a valid file —
+    // once the window reaches `ceiling`, a Truncated error means a genuinely
+    // incomplete file, and we surface it.
+    let ceiling = md.len().min(MAX_HEADER_READ_BYTES);
+    let mut window = HEADER_READ_BYTES.min(ceiling);
+    let mut meta = loop {
+        let buf = read_prefix(path, window)?;
+        match inspect_gguf_bytes(&buf) {
+            Ok(m) => break m,
+            Err(AppError::Truncated(_)) if window < ceiling => {
+                window = window.saturating_mul(2).min(ceiling);
+            }
+            Err(e) => return Err(e),
+        }
+    };
     if meta.quantization.is_none() {
         if let Some(name) = path.file_name().and_then(|s| s.to_str()) {
             meta.quantization = quant_from_filename(name);

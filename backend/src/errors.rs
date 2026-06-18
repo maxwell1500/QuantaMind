@@ -7,6 +7,12 @@ pub enum AppError {
     #[error("validation: {0}")]
     Validation(String),
 
+    /// Parse ran off the end of the bytes it was given. Distinct from
+    /// `Validation` so a partial-buffer reader (e.g. GGUF header peek) can
+    /// tell "need more bytes" from "structurally invalid" and fetch more.
+    #[error("truncated: {0}")]
+    Truncated(String),
+
     #[error("invalid task schema: {0}")]
     InvalidTaskSchema(String),
 

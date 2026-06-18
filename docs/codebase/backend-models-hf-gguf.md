@@ -360,7 +360,8 @@ pub fn decide(local: Option<u64>, total: u64) -> ResumeStrategy {
 
 The GGUF header is a little-endian binary block: magic `GGUF`, `u32` version,
 `u64` tensor_count, `u64` kv_count, then `kv_count` key/value pairs. The app reads
-the first 8 MiB and parses only the scalar metadata it needs.
+the first 8 MiB and parses only the scalar metadata it needs, growing that window
+on demand for models whose tokenizer metadata is larger (e.g. Qwen3).
 
 ### File: `inference/gguf/gguf_reader.rs`
 - **Responsibility:** A bounds-checked little-endian cursor over a byte slice.
@@ -368,12 +369,14 @@ the first 8 MiB and parses only the scalar metadata it needs.
 - **What:** `GgufReader { bytes, pos }`; `take(n)` (overflow + truncation
   checked), typed readers `u8/u16/u32/u64/i16/i32/i64/f32/f64`, `magic(expected)`,
   `string()` (`u64` length-prefixed UTF-8, length validated against `usize`).
+  Running off the end returns `AppError::Truncated` (not `Validation`), so the
+  file-path inspector can tell "buffer too small, read more" from "invalid file".
 
 ```rust
 fn take(&mut self, n: usize) -> Result<&'a [u8], AppError> {
     let end = self.pos.checked_add(n).ok_or_else(|| /* overflow */)?;
     if end > self.bytes.len() {
-        return Err(AppError::Validation(format!(
+        return Err(AppError::Truncated(format!(
             "GGUF truncated: need {n} bytes at offset {}, have {}",
             self.pos, self.bytes.len() - self.pos)));
     }
@@ -400,9 +403,13 @@ fn take(&mut self, n: usize) -> Result<&'a [u8], AppError> {
   architecture into template detection — all without Ollama.
 - **What:** `GgufMetadata { architecture, parameter_count, context_length,
   quantization, family }`, `inspect_gguf_bytes(bytes)`, `inspect_gguf(path)`,
-  `as_string`/`as_u64` coercers. Reads up to `HEADER_READ_BYTES = 8 MiB` (uses
+  `as_string`/`as_u64` coercers. Starts at `HEADER_READ_BYTES = 8 MiB` (uses
   `take(N).read_to_end` because macOS `Read::read` only returns ~64KB per syscall);
-  rejects files under `MIN_FILE_SIZE = 64 KiB`. Supports GGUF versions 1–3.
+  on `AppError::Truncated` it doubles the read window and retries, up to
+  `MAX_HEADER_READ_BYTES = 256 MiB` (capped at file size) — so large-vocab
+  tokenizers parse instead of falsely reporting a truncated file. A `Truncated`
+  error once the window reaches that ceiling means a genuinely incomplete file.
+  Rejects files under `MIN_FILE_SIZE = 64 KiB`. Supports GGUF versions 1–3.
 - **How/Where used:** `quantization` comes from `general.file_type`; if absent it
   falls back to the filename. `context_length` is namespaced
   (`{arch}.context_length`). `inspect_gguf` is the `inspect_gguf` IPC + the

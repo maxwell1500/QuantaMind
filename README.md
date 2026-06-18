@@ -531,7 +531,7 @@ GET https://huggingface.co/api/models
 
 Clicking a result opens a detail view that lists every `.gguf` file in the repo via `GET /api/models/{repo}/tree/main?recursive=true`. The quantization label is parsed from the filename (`Q4_K_M`, `IQ4_XS`, `BF16`, …); the install name is derived as `<basename>:<quant>` to satisfy Ollama's name validator.
 
-Downloads stream to a `.partial` file with HTTP `Range` header support — interrupted installs **resume** on the next click.
+Downloads stream to a `.partial` file with HTTP `Range` header support — interrupted installs **resume** on the next click. After download, the GGUF header is parsed in Rust to read architecture/quant/context; the parser grows its metadata read window on demand (8 MiB → up to 256 MiB) so large-vocab tokenizers (e.g. Qwen3) parse cleanly instead of falsely reporting a truncated file.
 
 </details>
 

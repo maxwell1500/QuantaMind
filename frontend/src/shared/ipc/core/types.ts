@@ -1,5 +1,6 @@
 export type AppErrorKind =
   | "validation"
+  | "truncated"
   | "not_found"
   | "inference"
   | "io"

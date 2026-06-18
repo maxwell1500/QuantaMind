@@ -14,7 +14,7 @@ impl<'a> GgufReader<'a> {
             format!("GGUF overflow: pos {} + n {n} exceeds usize", self.pos)
         ))?;
         if end > self.bytes.len() {
-            return Err(AppError::Validation(format!(
+            return Err(AppError::Truncated(format!(
                 "GGUF truncated: need {n} bytes at offset {}, have {}",
                 self.pos, self.bytes.len() - self.pos
             )));

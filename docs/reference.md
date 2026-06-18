@@ -283,7 +283,9 @@ it reads as fixable, not broken. The classifier (`ImportError` in
 - **"This GGUF file is incomplete"** (truncated / file-too-small) — the download or copy
   was cut off; it isn't the full model. Re-download the complete `.gguf`. Real models are
   hundreds of MB to several GB; a tiny file is truncated. From Hugging Face, fetch the
-  real `.gguf` via **Git LFS**, not a small pointer stub.
+  real `.gguf` via **Git LFS**, not a small pointer stub. Note: the parser grows its
+  metadata read window on demand (up to 256 MiB), so a large-vocab tokenizer (e.g. Qwen3)
+  no longer trips this — a truncation error now means the file really is incomplete.
 - **"This isn't a valid GGUF file"** (bad magic / wrong extension) — pick a `.gguf`, not
   `.safetensors`, `.bin`, or a zip.
 - **"Unsupported GGUF version"** — QuantaMind reads GGUF v1–v3; get a compatible export.
