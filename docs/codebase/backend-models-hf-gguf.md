@@ -156,18 +156,23 @@ match AssertUnwindSafe(task).catch_unwind().await {
 ### File: `commands/hf/hf_install.rs`
 - **Responsibility:** The HF-GGUF install pipeline (download → import) with a
   single-in-flight guard and cancellation.
-- **Why:** One HF install at a time; cancel must clean up both the final file and
-  the `.partial`; the GGUF is kept for llama.cpp even if Ollama import is skipped.
+- **Why:** One HF install at a time; a cancel **or a failed download** must clean
+  up both the final file and the `.partial` and free the single-install slot, so
+  nothing broken lingers and the next attempt isn't blocked; the GGUF is kept for
+  llama.cpp even if Ollama import is skipped.
 - **What:** `HfInstallState { current: Mutex<Option<CancellationToken>> }` (slot
   shared with the MLX path via `.current()`), `install_hf_gguf()` (IPC),
   `cancel_hf_install()` (IPC), `install_hf_gguf_inner(...)`,
-  `ollama_import_required(backend)`.
+  `ollama_import_required(backend)`, `cleanup_incomplete_download(dest)`.
 - **How/Where used:** `weights_dir` from user settings → `gguf_dest(dir, name)` is
-  the destination. `download_gguf` streams the file emitting `HfPhase::Downloading`;
-  on cancel both `dest` and `partial_path(dest)` are removed. After download, if
-  Ollama is reachable it imports via `install_local_gguf_inner` (emitting
-  `Hashing`/`Uploading`/`Installing`); if not reachable and the backend *requires*
-  Ollama, it errors. The `.partial` marker is always removed; `dest` is kept.
+  the destination. `download_gguf` streams the file emitting `HfPhase::Downloading`.
+  On cancel **or download error**, `cleanup_incomplete_download` removes both `dest`
+  and `partial_path(dest)` and the install slot is cleared (a download that errored
+  leaves no resumable state — only an app-kill mid-stream leaves a `.partial` to
+  resume). After a successful download, if Ollama is reachable it imports via
+  `install_local_gguf_inner` (emitting `Hashing`/`Uploading`/`Installing`); if not
+  reachable and the backend *requires* Ollama, it errors. On the import path the
+  `.partial` marker is removed and the (complete) `dest` is kept for llama.cpp.
 
 ```rust
 let dl = download_gguf(endpoint, repo, filename, &dest, on_dl, token.clone()).await;
