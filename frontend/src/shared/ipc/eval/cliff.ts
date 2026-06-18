@@ -8,6 +8,10 @@ import type { InferenceParams } from "../workspace/prompts";
 /// Live per-rung progress from the backend cliff engine.
 export const EVENT_CLIFF_PROGRESS = "cliff-progress";
 
+/// Fine-grained sub-rung progress (one per task generation) — drives the live "rung r/N ·
+/// position p/3 · task t/M" line and the ETA so a slow deep rung never looks frozen.
+export const EVENT_CLIFF_STEP = "cliff-step";
+
 /// Which embedded synthetic preset pads the probe (or the user's own text).
 export const CliffPresetSchema = z.enum(["corporate_policy", "system_logs", "financial_ledger"]);
 export type CliffPreset = z.infer<typeof CliffPresetSchema>;
@@ -72,6 +76,23 @@ export const CliffProgressSchema = z.object({
   point: CliffRungSchema,
 });
 export type CliffProgress = z.infer<typeof CliffProgressSchema>;
+
+/// The `cliff-step` event: a single task generation completed within a rung. Carries the
+/// rung, needle position, and task indices (all 1-based) plus their totals and the rung's
+/// target depth, so the panel can render continuous progress + a time estimate mid-rung.
+/// `run_id` is echoed for the same superseded-run filtering as `cliff-progress`.
+export const CliffStepSchema = z.object({
+  run_id: z.number().int(),
+  model: z.string(),
+  rung: z.number().int(),
+  total_rungs: z.number().int(),
+  target_tokens: z.number().int(),
+  position: z.number().int(),
+  total_positions: z.number().int(),
+  task: z.number().int(),
+  total_tasks: z.number().int(),
+});
+export type CliffStep = z.infer<typeof CliffStepSchema>;
 
 /// Run the context-cliff probe in the backend engine: pad each task to a ladder of
 /// VERIFIED token depths, sweep the needle across mid-document positions, and report

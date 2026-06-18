@@ -5,8 +5,10 @@ import {
   stopContextCliff,
   getCliffResults,
   EVENT_CLIFF_PROGRESS,
+  EVENT_CLIFF_STEP,
   type CliffSource,
   type CliffProgress,
+  type CliffStep,
 } from "../../../shared/ipc/eval/cliff";
 import { formatIpcError } from "../../../shared/ipc/core/error";
 import { type CliffPoint } from "../cliff";
@@ -49,6 +51,12 @@ interface CliffStore {
   /// The model currently being probed (for the Matrix "probing…" indicator).
   runningModel: string | null;
   progress: { done: number; total: number };
+  /// The latest fine-grained sub-rung step (per task generation). Null between runs and
+  /// until the first task of a run completes — the panel uses it to show "rung r/N ·
+  /// position p/3 · task t/M" and an ETA so a slow deep rung never looks frozen.
+  step: CliffStep | null;
+  /// Wall-clock ms when the current run started (Date.now()). Drives the ETA; null when idle.
+  startedAt: number | null;
   error: string | null;
   /// Backend-hydrated cliff depths: collection → model (verbatim key) → tokens.
   results: Record<string, Record<string, number>>;
@@ -89,6 +97,8 @@ export const useCliffStore = create<CliffStore>((set, get) => ({
   running: false,
   runningModel: null,
   progress: { done: 0, total: 0 },
+  step: null,
+  startedAt: null,
   error: null,
   results: {},
   probed: {},
@@ -140,26 +150,39 @@ export const useCliffStore = create<CliffStore>((set, get) => ({
     // GUARDRAIL 2: clear all prior state BEFORE dispatching — never append to a
     // stale series (that corrupts the chart and the persisted cliff).
     const myRun = ++activeRun;
-    set({ points: [], error: null, running: true, runningModel: model, progress: { done: 0, total: steps } });
+    set({ points: [], error: null, running: true, runningModel: model, progress: { done: 0, total: steps }, step: null, startedAt: Date.now() });
 
     // Live per-rung points stream from the backend engine over `cliff-progress`; the
     // engine owns the ladder, padding, verify-and-adjust, classification, and
-    // persistence (the Matrix/verdict read the stored status afterward).
-    let unlisten: UnlistenFn | undefined;
+    // persistence (the Matrix/verdict read the stored status afterward). A second,
+    // finer `cliff-step` stream ticks once per task generation so the UI moves DURING a
+    // slow padded rung instead of freezing between the (minutes-apart) rung events.
+    const unlisteners: UnlistenFn[] = [];
     try {
-      unlisten = await listen<CliffProgress>(EVENT_CLIFF_PROGRESS, (ev) => {
-        const p = ev.payload;
-        // Filter by run token, not model: two runs of the SAME model must not bleed into
-        // each other. A superseded run's late (often cancelled/partial) events carry the
-        // OLD run_id and are dropped here, so they never pollute the new run's chart.
-        if (activeRun !== myRun || p.run_id !== myRun) return;
-        set((s) => ({
-          // verified_tokens 0 ⇒ the backend reported no count for this rung — render
-          // it as "not reported", never a fake ≈0-token depth.
-          points: [...s.points, { promptTokens: p.point.verified_tokens || null, composite: p.point.composite, trace: p.point.trace }],
-          progress: { done: p.done, total: p.total },
-        }));
-      });
+      unlisteners.push(
+        await listen<CliffProgress>(EVENT_CLIFF_PROGRESS, (ev) => {
+          const p = ev.payload;
+          // Filter by run token, not model: two runs of the SAME model must not bleed into
+          // each other. A superseded run's late (often cancelled/partial) events carry the
+          // OLD run_id and are dropped here, so they never pollute the new run's chart.
+          if (activeRun !== myRun || p.run_id !== myRun) return;
+          set((s) => ({
+            // verified_tokens 0 ⇒ the backend reported no count for this rung — render
+            // it as "not reported", never a fake ≈0-token depth.
+            points: [...s.points, { promptTokens: p.point.verified_tokens || null, composite: p.point.composite, trace: p.point.trace }],
+            progress: { done: p.done, total: p.total },
+          }));
+        }),
+      );
+      unlisteners.push(
+        await listen<CliffStep>(EVENT_CLIFF_STEP, (ev) => {
+          const s = ev.payload;
+          // Same run-token filter as the rung stream — a superseded run's late ticks must
+          // never drive the live line/ETA of the new run.
+          if (activeRun !== myRun || s.run_id !== myRun) return;
+          set({ step: s });
+        }),
+      );
 
       const report = await runContextCliff(model, backend, collectionId, tasks, source, maxTokens, steps, params, myRun);
       if (activeRun !== myRun) return; // stopped or superseded mid-run
@@ -186,8 +209,8 @@ export const useCliffStore = create<CliffStore>((set, get) => ({
     } catch (e) {
       if (activeRun === myRun) set((s) => ({ error: s.error ?? formatIpcError(e) }));
     } finally {
-      unlisten?.();
-      if (activeRun === myRun) set({ running: false, runningModel: null });
+      for (const u of unlisteners) u();
+      if (activeRun === myRun) set({ running: false, runningModel: null, step: null, startedAt: null });
     }
   },
 
@@ -196,7 +219,7 @@ export const useCliffStore = create<CliffStore>((set, get) => ({
     // Actually cancel the backend probe — without this the model kept being called
     // through the whole ladder; bumping activeRun only hid the result in the UI.
     void stopContextCliff().catch((e) => console.error("stop context-cliff failed:", e));
-    set({ running: false, runningModel: null });
+    set({ running: false, runningModel: null, step: null, startedAt: null });
   },
 
   reset: () => {
@@ -207,6 +230,6 @@ export const useCliffStore = create<CliffStore>((set, get) => ({
     if (get().running) {
       void stopContextCliff().catch((e) => console.error("stop context-cliff failed:", e));
     }
-    set({ points: [], error: null, running: false, runningModel: null, progress: { done: 0, total: 0 } });
+    set({ points: [], error: null, running: false, runningModel: null, progress: { done: 0, total: 0 }, step: null, startedAt: null });
   },
 }));

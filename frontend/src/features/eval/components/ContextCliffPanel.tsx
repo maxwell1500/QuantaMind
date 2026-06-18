@@ -61,6 +61,8 @@ export function ContextCliffPanel() {
   const running = useCliffStore((s) => s.running);
   const error = useCliffStore((s) => s.error);
   const progress = useCliffStore((s) => s.progress);
+  const step = useCliffStore((s) => s.step);
+  const startedAt = useCliffStore((s) => s.startedAt);
   const runningModel = useCliffStore((s) => s.runningModel);
   const runProbe = useCliffStore((s) => s.runProbe);
   const stopProbe = useCliffStore((s) => s.stop);
@@ -142,6 +144,31 @@ export function ContextCliffPanel() {
     0,
   );
   const lastDepth = points.length > 0 ? points[points.length - 1].promptTokens : null;
+
+  // A 1 Hz clock, live only while probing, so the elapsed/ETA readout ticks without
+  // re-rendering the whole panel when idle.
+  const [now, setNow] = useState(() => Date.now());
+  useEffect(() => {
+    if (!running) return;
+    setNow(Date.now());
+    const id = setInterval(() => setNow(Date.now()), 1000);
+    return () => clearInterval(id);
+  }, [running]);
+
+  // Overall completion fraction across the WHOLE ladder, derived from the fine-grained
+  // step when present (so the bar advances mid-rung), else the coarse per-rung counter.
+  // Within a rung: (positions done · tasks + tasks done) / (positions · tasks).
+  const overallFrac = (() => {
+    if (step && step.total_rungs > 0 && step.total_positions > 0 && step.total_tasks > 0) {
+      const within = ((step.position - 1) * step.total_tasks + step.task) / (step.total_positions * step.total_tasks);
+      return Math.min(1, ((step.rung - 1) + within) / step.total_rungs);
+    }
+    return progress.total > 0 ? progress.done / progress.total : 0;
+  })();
+  const elapsedS = running && startedAt != null ? Math.max(0, (now - startedAt) / 1000) : 0;
+  // Linear extrapolation from elapsed ÷ fraction — only once there's enough signal to not
+  // show a wild first guess. It's an estimate, labelled "~", never presented as exact.
+  const etaS = overallFrac > 0.03 && elapsedS > 3 ? (elapsedS * (1 - overallFrac)) / overallFrac : null;
 
   const handleRun = () => {
     if (!selected) return;
@@ -585,15 +612,37 @@ export function ContextCliffPanel() {
       <div style={{ padding: "14px 20px" }}>
         {running && (
           <div data-testid="cliff-progress" style={{ marginBottom: 12 }}>
-            <div style={{ fontSize: 11, color: "#475569", fontFamily: "Inter, ui-sans-serif, system-ui, sans-serif", marginBottom: 6 }}>
-              Probing {runningModel ?? model} — rung {progress.done}/{progress.total}
-              {lastDepth != null ? ` · ~${(lastDepth / 1000).toFixed(1)}k tokens` : ""}… keep this tab open or switch away — the run continues.
+            {/* Headline: which rung + the depth it's padding to, plus an overall % so the
+                user sees the whole-run position at a glance. The deep rungs are the slow
+                ones, so the rung count alone can sit still for minutes — the sub-line and
+                ETA below are what prove the run is alive. */}
+            <div style={{ display: "flex", justifyContent: "space-between", alignItems: "baseline", gap: 12, fontSize: 11, color: "#475569", fontFamily: "Inter, ui-sans-serif, system-ui, sans-serif", marginBottom: 3 }}>
+              <span>
+                Probing {runningModel ?? model} — rung {step ? step.rung : progress.done}/{step ? step.total_rungs : progress.total}
+                {step && step.target_tokens > 0
+                  ? ` · padding to ${(step.target_tokens / 1000).toFixed(1)}k tokens`
+                  : step && step.rung === 1
+                    ? " · unpadded baseline"
+                    : lastDepth != null
+                      ? ` · ~${(lastDepth / 1000).toFixed(1)}k tokens`
+                      : ""}
+              </span>
+              <span style={{ fontVariantNumeric: "tabular-nums", color: "#334155", fontWeight: 600 }}>{Math.round(overallFrac * 100)}%</span>
+            </div>
+            {/* Sub-line: the per-task ticker (position p/3 · task t/M) + elapsed/ETA. This is
+                the "it's not stuck" signal — it advances every time a single generation
+                returns, even while a single rung grinds for minutes. */}
+            <div style={{ fontSize: 10.5, color: "#94a3b8", fontFamily: "Inter, ui-sans-serif, system-ui, sans-serif", marginBottom: 6 }}>
+              {step
+                ? `position ${step.position}/${step.total_positions} · task ${step.task}/${step.total_tasks} · ${formatDuration(elapsedS)} elapsed${etaS != null ? ` · ~${formatDuration(etaS)} left` : ""}`
+                : "starting…"}{" "}
+              · keep this tab open or switch away — the run continues.
             </div>
             <div style={{ height: 5, background: "#f1f5f9", borderRadius: 3 }}>
               <div
                 style={{
                   height: 5,
-                  width: `${progress.total > 0 ? Math.round((progress.done / progress.total) * 100) : 0}%`,
+                  width: `${Math.round(overallFrac * 100)}%`,
                   background: "#2563eb",
                   borderRadius: 3,
                   transition: "width 200ms ease",
@@ -627,6 +676,18 @@ export function ContextCliffPanel() {
       </div>
     </div>
   );
+}
+
+// ── Helpers ────────────────────────────────────────────────────────────────────
+
+/// Compact, human "Nm Ss" / "Ns" for the elapsed + ETA readout. Rounds to whole seconds
+/// — sub-second precision is noise on a multi-minute probe.
+function formatDuration(seconds: number): string {
+  const s = Math.max(0, Math.round(seconds));
+  if (s < 60) return `${s}s`;
+  const m = Math.floor(s / 60);
+  const rem = s % 60;
+  return rem === 0 ? `${m}m` : `${m}m ${rem}s`;
 }
 
 // ── Shared styles ──────────────────────────────────────────────────────────────

@@ -115,6 +115,33 @@ fn merge_pos_into_trace(trace: &mut Vec<TaskTrace>, depth: f32, pos: Vec<PosTrac
     }
 }
 
+/// Fine-grained progress WITHIN a rung, emitted after each individual task generation.
+/// The per-rung `on_rung` seam only fires once a whole rung finishes — at depth a single
+/// rung is `positions × tasks` slow model calls and can take minutes, so a UI driven by
+/// `on_rung` alone freezes at "rung 1/N" and reads as stuck. This carries enough context
+/// for the panel to show live movement (rung, needle position, task) and estimate time.
+#[derive(Clone, Copy, Debug)]
+pub struct StepProgress {
+    /// 1-based current rung and the ladder length.
+    pub rung: usize,
+    pub total_rungs: usize,
+    /// The token depth this rung is padding toward (requested target, pre-verification).
+    pub target_tokens: u32,
+    /// 1-based needle position within the rung, and how many positions it sweeps.
+    pub position: usize,
+    pub total_positions: usize,
+    /// 1-based task just completed at this position, and the task count.
+    pub task: usize,
+    pub total_tasks: usize,
+}
+
+/// The fine-grained progress seam (see [`StepProgress`]). Boxed `dyn` so the generic
+/// engine functions thread one shared sink without each becoming generic over a closure.
+type StepSink<'a> = &'a mut (dyn FnMut(StepProgress) + Send);
+
+/// A no-op step sink — used by [`run_cliff`] and tests that don't observe sub-rung steps.
+fn no_step(_: StepProgress) {}
+
 /// One needle position within a rung: the composite there and the verified depth.
 #[derive(Serialize, Deserialize, Clone, Debug, PartialEq)]
 pub struct DepthScore {
@@ -207,10 +234,11 @@ async fn run_position<M: ModelTurn>(
     tasks: &[ToolTask],
     padding: &str,
     depth: f32,
+    on_task: &mut (dyn FnMut(usize, usize) + Send),
 ) -> AppResult<(Vec<TaskResult>, Vec<PosTrace>)> {
     let mut results = Vec::with_capacity(tasks.len());
     let mut traces = Vec::with_capacity(tasks.len());
-    for task in tasks {
+    for (ti, task) in tasks.iter().enumerate() {
         let prompt = if padding.is_empty() {
             task.prompt.clone()
         } else {
@@ -245,26 +273,39 @@ async fn run_position<M: ModelTurn>(
             verdict,
             prompt_tokens: stats.prompt_eval_count,
         });
+        // Report this task as done so the UI advances during the slow per-rung sweep.
+        on_task(ti + 1, tasks.len());
     }
     Ok((results, traces))
 }
 
 /// Sweep every needle depth for one fixed padding. Returns the per-depth scores,
 /// the mean verified token depth, and the worst-position composite.
+#[allow(clippy::too_many_arguments)]
 async fn sweep<M: ModelTurn>(
     turn: &M,
     model: &str,
     tasks: &[ToolTask],
     padding: &str,
     depths: &[f32],
+    rung: usize,
+    total_rungs: usize,
+    target: u32,
+    on_step: StepSink<'_>,
 ) -> AppResult<(Vec<DepthScore>, u32, Option<f64>, Vec<TaskTrace>)> {
     let mut per_depth = Vec::with_capacity(depths.len());
     let mut tok_sum: u64 = 0;
     let mut tok_n: u64 = 0;
     let mut worst: Option<f64> = None;
     let mut trace: Vec<TaskTrace> = Vec::new();
-    for &depth in depths {
-        let (results, pos_traces) = run_position(turn, model, tasks, padding, depth).await?;
+    for (pi, &depth) in depths.iter().enumerate() {
+        // Wrap the per-task tick with this position's context so the panel can render
+        // "rung r/N · position p/3 · task t/M" and weight an overall completion fraction.
+        let total_positions = depths.len();
+        let mut on_task = |task: usize, total_tasks: usize| {
+            on_step(StepProgress { rung, total_rungs, target_tokens: target, position: pi + 1, total_positions, task, total_tasks });
+        };
+        let (results, pos_traces) = run_position(turn, model, tasks, padding, depth, &mut on_task).await?;
         let (composite, prompt_tokens) = cliff_score(tasks, &results);
         let vt = prompt_tokens.map(|t| t.round() as u32).unwrap_or(0);
         if let Some(t) = prompt_tokens {
@@ -290,6 +331,7 @@ async fn sweep<M: ModelTurn>(
 /// each rung lands within tolerance on the FIRST sweep, and updated from this rung's
 /// own measurement. That turns verify-and-adjust from "re-sweep until close" into one
 /// sweep per rung in the common case — the main speed win.
+#[allow(clippy::too_many_arguments)]
 async fn probe_rung<M: ModelTurn>(
     turn: &M,
     model: &str,
@@ -298,10 +340,16 @@ async fn probe_rung<M: ModelTurn>(
     target: u32,
     depths: &[f32],
     rate: &mut Option<f64>,
+    rung: usize,
+    total_rungs: usize,
+    on_step: StepSink<'_>,
 ) -> AppResult<CliffPoint> {
     if target == 0 {
         // Baseline: unpadded, single position.
-        let (results, pos_traces) = run_position(turn, model, tasks, "", 0.0).await?;
+        let mut on_task = |task: usize, total_tasks: usize| {
+            on_step(StepProgress { rung, total_rungs, target_tokens: 0, position: 1, total_positions: 1, task, total_tasks });
+        };
+        let (results, pos_traces) = run_position(turn, model, tasks, "", 0.0, &mut on_task).await?;
         let (composite, prompt_tokens) = cliff_score(tasks, &results);
         let vt = prompt_tokens.map(|t| t.round() as u32).unwrap_or(0);
         let mut trace: Vec<TaskTrace> = Vec::new();
@@ -323,7 +371,7 @@ async fn probe_rung<M: ModelTurn>(
     let mut last: Option<(Vec<DepthScore>, u32, Option<f64>, Vec<TaskTrace>)> = None;
     for attempt in 0..=MAX_ADJUST_ATTEMPTS {
         let padding = build_padding(source_text, bytes);
-        let (per_depth, mean_tokens, worst, trace) = sweep(turn, model, tasks, &padding, depths).await?;
+        let (per_depth, mean_tokens, worst, trace) = sweep(turn, model, tasks, &padding, depths, rung, total_rungs, target, on_step).await?;
         if mean_tokens > 0 {
             *rate = Some(bytes as f64 / mean_tokens as f64); // learn for the next rung
         }
@@ -388,14 +436,17 @@ pub async fn run_cliff<M: ModelTurn>(
     ladder: &[u32],
     depths: &[f32],
 ) -> AppResult<CliffReport> {
-    run_cliff_with(turn, model, tasks, source, ladder, depths, &CancellationToken::new(), &mut |_, _, _| {}).await
+    run_cliff_with(turn, model, tasks, source, ladder, depths, &CancellationToken::new(), &mut |_, _, _| {}, &mut no_step).await
 }
 
 /// Same as [`run_cliff`] but invokes `on_rung(done, total, point)` after each rung
 /// completes — the seam the command layer uses to emit live progress events while
-/// the engine stays UI-free. `cancel` lets the Stop button abort the sweep: it's
-/// checked before each (costly) rung and before classification, so a cancelled probe
-/// returns an error WITHOUT classifying or persisting a bogus outcome.
+/// the engine stays UI-free. `on_step` is the finer seam: it fires after EVERY task
+/// generation (see [`StepProgress`]) so the UI shows movement DURING a rung, not only
+/// when one finishes — a deep rung is minutes of model calls, and per-rung events alone
+/// look stuck. `cancel` lets the Stop button abort the sweep: it's checked before each
+/// (costly) rung and before classification, so a cancelled probe returns an error
+/// WITHOUT classifying or persisting a bogus outcome.
 pub async fn run_cliff_with<M: ModelTurn>(
     turn: &M,
     model: &str,
@@ -405,6 +456,7 @@ pub async fn run_cliff_with<M: ModelTurn>(
     depths: &[f32],
     cancel: &CancellationToken,
     on_rung: &mut (dyn FnMut(usize, usize, &CliffPoint) + Send),
+    on_step: StepSink<'_>,
 ) -> AppResult<CliffReport> {
     let source_text = source.text();
     let total = ladder.len();
@@ -419,7 +471,7 @@ pub async fn run_cliff_with<M: ModelTurn>(
         if cancel.is_cancelled() {
             return Err(AppError::Inference("context-cliff probe cancelled".into()));
         }
-        let point = probe_rung(turn, model, tasks, source_text, target, depths, &mut rate).await?;
+        let point = probe_rung(turn, model, tasks, source_text, target, depths, &mut rate, i + 1, total, on_step).await?;
         // A Stop that fired DURING this rung leaves it half-generated (cancelled turns
         // return empty/partial text). Abort before emitting it, so a stopped/superseded
         // run never pushes a garbage rung into the chart or the report.

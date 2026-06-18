@@ -735,9 +735,12 @@ let _ = queue::delete(&job_path);
 - `run_context_cliff` / `stop_context_cliff`, `save_cliff_result` / `get_cliff_results`,
   `assess_readiness`, `list_readiness_profiles` / `save_readiness_profile` /
   `delete_readiness_profile`. Const `CLIFF_CTX_HEADROOM=2048`,
-  `EVENT_CLIFF_PROGRESS="cliff-progress"`. `run_context_cliff` forces temp 0,
-  `num_ctx = max_tokens + 2048`, registers a cancel token, emits a rung event per
-  `on_rung`, persists the classified `CliffStatus` only on success. `assess_readiness`
+  `EVENT_CLIFF_PROGRESS="cliff-progress"`, `EVENT_CLIFF_STEP="cliff-step"`.
+  `run_context_cliff` forces temp 0, `num_ctx = max_tokens + 2048`, registers a cancel
+  token, emits a rung event per `on_rung` AND a fine-grained `cliff-step` per
+  `on_step` (one per task generation — `StepProgress{rung,position,task,...}` — so the UI
+  shows movement during a slow deep rung instead of freezing between rungs), persists the
+  classified `CliffStatus` only on success. `assess_readiness`
   loads the persisted batch report, pulls real weights/quant from Ollama, computes
   per-column VRAM fit via `vram_fit::try_profile` (only when `cap_bytes` set),
   builds verdicts via `verdict_for`, then `recommend::rank`.
@@ -797,7 +800,9 @@ let _ = queue::delete(&job_path);
    learned byte/token rate, sweeps the needle across `DEFAULT_DEPTHS=[0.1,0.5,0.9]`
    (`inject_at_depth`), measures real `prompt_eval_count`, and verify-adjusts once if
    off by `> ADJUST_TOLERANCE`. Rung composite = the **worst** depth's score.
-3. After each rung, `on_rung` emits `EVENT_CLIFF_PROGRESS`. Early-stop: a baseline
+3. After each rung, `on_rung` emits `EVENT_CLIFF_PROGRESS`; within a rung, `on_step`
+   fires per task generation (threaded `run_cliff_with`→`probe_rung`→`sweep`→`run_position`)
+   and emits `EVENT_CLIFF_STEP` so the panel's bar/ETA advance mid-rung. Early-stop: a baseline
    `< BASELINE_PASS` ⇒ `Broken` (break); the first rung dropping `<= base -
    COLLAPSE_MARGIN` ⇒ `Collapsed{depth}` (break). `cancel` is checked before each
    rung, after `probe_rung`, and before classify/persist.

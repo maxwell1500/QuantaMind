@@ -219,9 +219,19 @@ async fn a_cancel_during_a_rung_aborts_before_emitting_that_rung() {
     let cancel = CancellationToken::new();
     let model = CancelsMidRun { cancel: cancel.clone() };
     let mut emitted = 0usize;
-    let result = run_cliff_with(&model, "m", &[task()], &source(), &[0u32, 4000], &DEFAULT_DEPTHS, &cancel, &mut |_, _, _| {
-        emitted += 1;
-    })
+    let result = run_cliff_with(
+        &model,
+        "m",
+        &[task()],
+        &source(),
+        &[0u32, 4000],
+        &DEFAULT_DEPTHS,
+        &cancel,
+        &mut |_, _, _| {
+            emitted += 1;
+        },
+        &mut |_| {},
+    )
     .await;
     assert!(result.is_err(), "a cancel mid-rung aborts with an error");
     assert_eq!(emitted, 0, "the half-generated rung is never emitted");
@@ -242,13 +252,54 @@ async fn progress_callback_fires_once_per_rung() {
     let tasks = [task()];
     let ladder = [0u32, 4000, 8000];
     let mut seen: Vec<(usize, usize)> = Vec::new();
-    let report = run_cliff_with(&model, "m", &tasks, &source(), &ladder, &DEFAULT_DEPTHS, &CancellationToken::new(), &mut |done, total, _| {
-        seen.push((done, total));
-    })
+    let report = run_cliff_with(
+        &model,
+        "m",
+        &tasks,
+        &source(),
+        &ladder,
+        &DEFAULT_DEPTHS,
+        &CancellationToken::new(),
+        &mut |done, total, _| {
+            seen.push((done, total));
+        },
+        &mut |_| {},
+    )
     .await
     .unwrap();
     assert_eq!(seen, vec![(1, 3), (2, 3), (3, 3)]);
     assert_eq!(report.points.len(), 3);
+}
+
+#[tokio::test]
+async fn step_callback_fires_per_task_with_rung_and_position_context() {
+    // The fix for the "stuck on rung 2" report: the engine must emit a fine-grained step
+    // after EVERY task generation, carrying rung + needle-position + task context, so the
+    // UI can show movement during a slow padded rung instead of freezing between rungs.
+    let model = CliffModel { threshold: u32::MAX, good: GOOD.into() };
+    let tasks = [task()];
+    let ladder = [0u32, 4000]; // baseline (1 position) + one padded rung (3 positions)
+    let mut steps: Vec<(usize, usize, u32, usize, usize, usize, usize)> = Vec::new();
+    run_cliff_with(
+        &model,
+        "m",
+        &tasks,
+        &source(),
+        &ladder,
+        &DEFAULT_DEPTHS,
+        &CancellationToken::new(),
+        &mut |_, _, _| {},
+        &mut |s| steps.push((s.rung, s.total_rungs, s.target_tokens, s.position, s.total_positions, s.task, s.total_tasks)),
+    )
+    .await
+    .unwrap();
+    // Baseline: rung 1/2, target 0, single position, one task.
+    assert_eq!(steps.first(), Some(&(1, 2, 0, 1, 1, 1, 1)));
+    // Padded rung: rung 2/2, target 4000, swept across all three needle positions.
+    let padded: Vec<_> = steps.iter().filter(|s| s.0 == 2).collect();
+    assert_eq!(padded.len(), DEFAULT_DEPTHS.len(), "one step per needle position for the single task");
+    assert_eq!(padded[0], &(2, 2, 4000, 1, 3, 1, 1));
+    assert_eq!(padded[2], &(2, 2, 4000, 3, 3, 1, 1));
 }
 
 #[tokio::test]
@@ -261,9 +312,19 @@ async fn a_cancelled_token_aborts_the_sweep_with_an_error_and_no_classification(
     let cancel = CancellationToken::new();
     cancel.cancel();
     let mut rungs = 0usize;
-    let result = run_cliff_with(&model, "m", &tasks, &source(), &ladder, &DEFAULT_DEPTHS, &cancel, &mut |_, _, _| {
-        rungs += 1;
-    })
+    let result = run_cliff_with(
+        &model,
+        "m",
+        &tasks,
+        &source(),
+        &ladder,
+        &DEFAULT_DEPTHS,
+        &cancel,
+        &mut |_, _, _| {
+            rungs += 1;
+        },
+        &mut |_| {},
+    )
     .await;
     assert!(result.is_err(), "a cancelled probe must return an error, not a report");
     assert_eq!(rungs, 0, "no rung should run once the token is cancelled");

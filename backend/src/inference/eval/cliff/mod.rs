@@ -7,5 +7,5 @@ pub mod engine;
 pub mod padding;
 pub mod presets;
 
-pub use engine::{build_ladder, run_cliff, run_cliff_with, CliffPoint, CliffReport, DepthScore, TaskTrace, TraceOutput, DEFAULT_DEPTHS};
+pub use engine::{build_ladder, run_cliff, run_cliff_with, CliffPoint, CliffReport, DepthScore, StepProgress, TaskTrace, TraceOutput, DEFAULT_DEPTHS};
 pub use presets::{CliffPreset, CliffSource};

@@ -7,7 +7,7 @@ use crate::errors::AppError;
 use crate::inference::backend::backend_kind::BackendKind;
 use crate::inference::backend::endpoint;
 use crate::inference::eval::agentic::model_turn::BackendTurn;
-use crate::inference::eval::cliff::{build_ladder, run_cliff_with, CliffPoint, CliffReport, CliffSource, DEFAULT_DEPTHS};
+use crate::inference::eval::cliff::{build_ladder, run_cliff_with, CliffPoint, CliffReport, CliffSource, StepProgress, DEFAULT_DEPTHS};
 use crate::inference::eval::readiness::inputs::{agentic_metrics, pass_k_of, verdict_for};
 use crate::inference::eval::readiness::recommend;
 use crate::inference::eval::readiness::profile::ReadinessProfile;
@@ -27,6 +27,11 @@ use tokio_util::sync::CancellationToken;
 
 /// Live per-rung progress for the context-cliff probe (the panel's progress bar).
 pub const EVENT_CLIFF_PROGRESS: &str = "cliff-progress";
+
+/// Fine-grained sub-rung progress (per task generation) so the panel shows movement
+/// DURING a slow padded rung — without it the bar sits frozen between rungs and reads
+/// as "stuck" exactly when the model is working hardest (the deep-context rungs).
+pub const EVENT_CLIFF_STEP: &str = "cliff-step";
 
 /// Run-level cancellation for the context-cliff probe (mirrors `BatchRunState`): the
 /// running probe stores its token here so `stop_context_cliff` can cancel it, and a
@@ -49,6 +54,23 @@ struct CliffProgress {
     /// The rung that just finished — carries its verified depth + composite so the
     /// chart grows live, not only at the final report.
     point: CliffPoint,
+}
+
+/// One fine-grained step (a single task generation) within a rung — drives the panel's
+/// "rung r/N · position p/3 · task t/M" line and the ETA, so a long deep rung shows
+/// continuous progress instead of a frozen bar.
+#[derive(Serialize, Clone)]
+struct CliffStep {
+    /// The frontend's run token (same filtering contract as `CliffProgress`).
+    run_id: u32,
+    model: String,
+    rung: usize,
+    total_rungs: usize,
+    target_tokens: u32,
+    position: usize,
+    total_positions: usize,
+    task: usize,
+    total_tasks: usize,
 }
 
 /// Context window headroom over the deepest rung: the system prompt (tool schemas),
@@ -177,9 +199,35 @@ pub async fn run_context_cliff(
     let ladder = build_ladder(max_tokens, steps);
     // A Stop makes `run_cliff_with` return Err, so `?` short-circuits BEFORE the
     // persistence below — a cancelled probe never overwrites the saved cliff status.
-    let report = run_cliff_with(&turn, &model, &tasks, &source, &ladder, &DEFAULT_DEPTHS, &cancel, &mut |done, total, point| {
-        log_emit(&app, EVENT_CLIFF_PROGRESS, CliffProgress { run_id, model: model.clone(), done, total, point: point.clone() });
-    })
+    let report = run_cliff_with(
+        &turn,
+        &model,
+        &tasks,
+        &source,
+        &ladder,
+        &DEFAULT_DEPTHS,
+        &cancel,
+        &mut |done, total, point| {
+            log_emit(&app, EVENT_CLIFF_PROGRESS, CliffProgress { run_id, model: model.clone(), done, total, point: point.clone() });
+        },
+        &mut |s: StepProgress| {
+            log_emit(
+                &app,
+                EVENT_CLIFF_STEP,
+                CliffStep {
+                    run_id,
+                    model: model.clone(),
+                    rung: s.rung,
+                    total_rungs: s.total_rungs,
+                    target_tokens: s.target_tokens,
+                    position: s.position,
+                    total_positions: s.total_positions,
+                    task: s.task,
+                    total_tasks: s.total_tasks,
+                },
+            );
+        },
+    )
     .await?;
 
     // Persist the classified outcome (NotProbed is the absence of a record).
