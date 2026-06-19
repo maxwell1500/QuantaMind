@@ -25,6 +25,14 @@ pub struct FaultRule {
     pub fault: FaultInjection,
 }
 
+/// Phase 9-v2 fault keyed by tool NAME (`faults[].on_call`) — trips on any call to
+/// that tool, regardless of args (v1 `FaultRule` keys by the exact call).
+#[derive(Serialize, Deserialize, Clone, Debug, PartialEq)]
+pub struct NameFault {
+    pub on_call: String,
+    pub fault: FaultInjection,
+}
+
 /// Phase 9 difficulty tier. `Ord` is deliberate: readiness compares a model's
 /// cleared tier against the tier its hardware class requires (`cleared < required`
 /// blocks). A pre-Phase-9 task with no `tier` deserializes to `Easy`.
@@ -100,6 +108,10 @@ pub struct AgenticSpec {
     /// WorldState responder). `None` for v1 tasks (static mocks).
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub world_state: Option<Value>,
+    /// Phase 9-v2: name-keyed faults (`on_call` trips on any call to that tool).
+    /// Empty for v1 tasks (which use the canonical-keyed `faults`).
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub name_faults: Vec<NameFault>,
 }
 
 #[cfg(test)]
@@ -141,6 +153,7 @@ mod tests {
             max_recovery: None,
             must_not_call: vec![],
             world_state: None,
+            name_faults: vec![],
         };
         let v = serde_json::to_value(&spec).unwrap();
         assert!(v.get("tier").is_none()); // Easy is the default → omitted

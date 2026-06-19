@@ -83,6 +83,7 @@ fn agentic_task(id: &str, k: u32) -> ToolTask {
             max_recovery: None,
             must_not_call: vec![],
             world_state: None,
+            name_faults: vec![],
         }),
     }
 }

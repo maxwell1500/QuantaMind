@@ -2,5 +2,7 @@
 //! object with `world_state` discovery, wildcard `expected_calls`, `must_not_call`
 //! traps) transpiles into the existing `ToolTask`/`AgenticSpec` and runs on the
 //! UNCHANGED agentic runner — no second execution path.
+pub mod collection;
 pub mod r#match;
+pub mod transpile;
 pub mod world_state;

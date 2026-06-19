@@ -56,10 +56,10 @@ pub fn sandbox_for(task: &ToolTask) -> AppResult<(DeterministicSandbox, AgenticC
             )));
         }
     }
-    // Phase 9A: present the real tools with `axes.decoy_tools` distractors shuffled
-    // in (deterministic per task). A decoy is never an expected checkpoint and has
-    // no mock, so it can never satisfy the end state — the oracle is untouched.
-    let decoy_n = spec.axes.as_ref().map(|a| a.decoy_tools).unwrap_or(0);
+    // Phase 9A: v1 ("agentic") tasks get `axes.decoy_tools` random-pool distractors
+    // shuffled in (deterministic per task). v2 ("agent_loop") tasks carry their OWN
+    // authored decoy_tools already merged into `task.tools`, so they skip the pool.
+    let decoy_n = if task.category == "agentic" { spec.axes.as_ref().map(|a| a.decoy_tools).unwrap_or(0) } else { 0 };
     let presented = decoys::merge_decoys(&task.tools, decoy_n, seed_from_id(&task.id));
     let mut sandbox = DeterministicSandbox::new(
         task.prompt.clone(),
@@ -72,6 +72,12 @@ pub fn sandbox_for(task: &ToolTask) -> AppResult<(DeterministicSandbox, AgenticC
     // v2: ground-truth responder when the task carries a world_state.
     if let Some(ws) = &spec.world_state {
         sandbox = sandbox.with_world_state(ws.clone());
+    }
+    // v2: name-keyed faults (on_call trips on any call to that tool).
+    if !spec.name_faults.is_empty() {
+        let nf: std::collections::HashMap<String, crate::inference::eval::agentic::spec::FaultInjection> =
+            spec.name_faults.iter().map(|f| (f.on_call.clone(), f.fault.clone())).collect();
+        sandbox = sandbox.with_name_faults(nf);
     }
     let d = AgenticConfig::default();
     let cfg = AgenticConfig {
@@ -124,6 +130,7 @@ mod tests {
                 max_recovery: None,
                 must_not_call: vec![],
                 world_state: None,
+                name_faults: vec![],
             }),
         }
     }
