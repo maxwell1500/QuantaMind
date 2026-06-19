@@ -112,6 +112,15 @@ pub struct AgenticSpec {
     /// Empty for v1 tasks (which use the canonical-keyed `faults`).
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub name_faults: Vec<NameFault>,
+    /// Phase 9-v2/C2: this task is procedurally instanced — the runner builds a fresh
+    /// instance per Pass^k run (seeded entity-id remap) for contamination resistance.
+    /// `false` for static tasks (which reuse one sandbox across runs).
+    #[serde(default, skip_serializing_if = "is_false")]
+    pub generated: bool,
+}
+
+fn is_false(b: &bool) -> bool {
+    !b
 }
 
 #[cfg(test)]
@@ -154,6 +163,7 @@ mod tests {
             must_not_call: vec![],
             world_state: None,
             name_faults: vec![],
+            generated: false,
         };
         let v = serde_json::to_value(&spec).unwrap();
         assert!(v.get("tier").is_none()); // Easy is the default → omitted

@@ -18,6 +18,8 @@ struct V2Collection {
     #[serde(default)]
     pass_k: Option<u32>,
     #[serde(default)]
+    generated: bool,
+    #[serde(default)]
     axes: DifficultyAxes,
     tasks: Vec<V2Task>,
 }
@@ -33,7 +35,7 @@ pub fn load_v2_collection(json: &str) -> AppResult<Vec<ToolTask>> {
     let tasks = c
         .tasks
         .into_iter()
-        .map(|t| transpile_task(t, tier, pass_k, c.axes.clone()))
+        .map(|t| transpile_task(t, tier, pass_k, c.axes.clone(), c.generated))
         .collect::<AppResult<Vec<_>>>()?;
     if tasks.is_empty() {
         return Err(AppError::InvalidTaskSchema(format!("v2 collection '{}' ({}) has no tasks", c.name, c.domain)));

@@ -131,6 +131,7 @@ mod tests {
                 must_not_call: vec![],
                 world_state: None,
                 name_faults: vec![],
+                generated: false,
             }),
         }
     }

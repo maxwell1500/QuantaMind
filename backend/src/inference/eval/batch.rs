@@ -3,10 +3,12 @@ use crate::inference::backend::backend_kind::BackendKind;
 use crate::inference::backend::endpoint;
 use crate::inference::eval::agentic::build::sandbox_for;
 use crate::inference::eval::agentic::model_turn::ModelTurn;
+use crate::inference::eval::agentic::sandbox::DeterministicSandbox;
 use crate::inference::eval::agentic::scoring::report::{AgenticReport, FailureTracker, TopError};
-use crate::inference::eval::agentic::runner::run_agentic;
+use crate::inference::eval::agentic::runner::{run_agentic, run_agentic_with, AgenticConfig};
 use crate::inference::eval::agentic::spec::Tier;
 use crate::inference::eval::agentic::step::TrajectoryStep;
+use crate::inference::eval::agentic::v2::generator;
 use crate::inference::eval::toolcall::eval::{aggregate, trace_one_with, TaskResult, ToolCallReport, TraceResult};
 use crate::inference::eval::toolcall::matrix::ModelTarget;
 use crate::inference::eval::toolcall::score::verdict_passed;
@@ -283,10 +285,35 @@ async fn run_one_agentic<M: ModelTurn + Send + Sync>(
             s2.agentic_turn(&model2, &task2, &step);
         }
     });
-    let result = run_agentic(turn, &sandbox, cfg, &tx).await;
+    let result = run_agentic_for(turn, task, model, &sandbox, cfg, &tx).await;
     drop(tx);
     let _ = pump.await;
     result.map(|r| r.with_tier(task_tier(task)))
+}
+
+/// Drive Pass^k for a task: a `generated` task builds a FRESH procedural instance
+/// per run (seeded by model + run_index → contamination resistance); a static task
+/// reuses the one `sandbox`. The shared seam both run paths (streaming + native FC)
+/// call so generation behaves identically in each.
+async fn run_agentic_for<M: ModelTurn>(
+    turn: &M,
+    task: &ToolTask,
+    model: &str,
+    sandbox: &DeterministicSandbox,
+    cfg: AgenticConfig,
+    tx: &tokio::sync::mpsc::UnboundedSender<TrajectoryStep>,
+) -> AppResult<AgenticReport> {
+    let generated = task.agentic.as_ref().map(|s| s.generated).unwrap_or(false);
+    if generated {
+        run_agentic_with(turn, cfg.k, |run_index| {
+            let inst = generator::instantiate(task, generator::seed_for(model, run_index));
+            let (sb, c) = sandbox_for(&inst)?;
+            Ok((sb, c.max_steps, c.max_recovery))
+        }, tx)
+        .await
+    } else {
+        run_agentic(turn, sandbox, cfg, tx).await
+    }
 }
 
 /// The non-resumable dispatcher (tests, no hardware gate): a thin wrapper over
@@ -536,7 +563,7 @@ where
             let (sandbox, cfg) = sandbox_for(task)?;
             let (tx, mut rx) = unbounded_channel::<TrajectoryStep>();
             let drain = tokio::spawn(async move { while rx.recv().await.is_some() {} });
-            let result = run_agentic(&turn, &sandbox, cfg, &tx).await;
+            let result = run_agentic_for(&turn, task, &col.model, &sandbox, cfg, &tx).await;
             drop(tx);
             let _ = drain.await;
             if let Ok(report) = result {
