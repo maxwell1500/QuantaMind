@@ -10,6 +10,7 @@ const KIND_META: Record<StepKind, { label: string; color: string }> = {
   end_state_reached: { label: "End State Reached", color: "#4ade80" },
   infinite_loop: { label: "Loop Cap Hit", color: "#fca5a5" },
   forbidden_call: { label: "Forbidden Call (trap)", color: "#f87171" },
+  turn_timeout: { label: "Turn Timeout (stalled)", color: "#fb923c" },
 };
 
 const code: React.CSSProperties = {

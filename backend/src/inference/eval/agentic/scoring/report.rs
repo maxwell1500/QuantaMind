@@ -16,6 +16,9 @@ pub enum FailureKind {
     MalformedSchema,
     /// Phase 9-v2: invoked a `must_not_call` trap — terminal the moment it fires.
     ForbiddenCall,
+    /// Phase 9-v2: a model turn exceeded the per-step wall-clock budget (a wedged /
+    /// stalled model). Terminal — an agent that hangs isn't production-ready.
+    TurnTimeout,
 }
 
 /// The result of ONE agentic attempt — the unit the Pass^k loop folds into an
@@ -97,6 +100,10 @@ pub struct FailureTracker {
     /// failure mode — participates in `top()`. `#[serde(default)]` for back-compat.
     #[serde(default)]
     pub forbidden_calls: u32,
+    /// Phase 9-v2: runs ended by a per-step turn timeout (a stalled model). Terminal
+    /// failure mode. `#[serde(default)]` for back-compat.
+    #[serde(default)]
+    pub turn_timeouts: u32,
 }
 
 impl FailureTracker {
@@ -107,6 +114,7 @@ impl FailureTracker {
             FailureKind::Malformed => self.malformed_json_calls += 1,
             FailureKind::MalformedSchema => self.schema_unrecovered_calls += 1,
             FailureKind::ForbiddenCall => self.forbidden_calls += 1,
+            FailureKind::TurnTimeout => self.turn_timeouts += 1,
         }
     }
 
@@ -119,14 +127,16 @@ impl FailureTracker {
         self.schema_unrecovered_calls += o.schema_unrecovered_calls;
         self.unknown_tool_calls += o.unknown_tool_calls;
         self.forbidden_calls += o.forbidden_calls;
+        self.turn_timeouts += o.turn_timeouts;
     }
 
     /// The most common failure mode (argmax). Ties resolve by severity order:
-    /// forbidden-call > infinite-loop > hallucinated > malformed-schema >
-    /// malformed-json. `None` when there were no failures at all.
+    /// forbidden-call > turn-timeout > infinite-loop > hallucinated >
+    /// malformed-schema > malformed-json. `None` when there were no failures at all.
     pub(crate) fn top(&self) -> TopError {
         [
             (self.forbidden_calls, TopError::ForbiddenCall),
+            (self.turn_timeouts, TopError::TurnTimeout),
             (self.infinite_loop_hits, TopError::InfiniteLoop),
             (self.hallucinated_completions, TopError::Hallucinated),
             (self.schema_unrecovered_calls, TopError::MalformedSchema),
@@ -148,6 +158,7 @@ pub enum TopError {
     MalformedJson,
     MalformedSchema,
     ForbiddenCall,
+    TurnTimeout,
 }
 
 /// The Pass^k payload: how many of `total_runs` reached the end state, the

@@ -27,6 +27,7 @@ fn col(passes: u32, total: u32, loops: u32, hall: u32, steps: Option<f64>) -> Ba
                 schema_unrecovered_calls: 0,
                 unknown_tool_calls: 0,
                 forbidden_calls: 0,
+                turn_timeouts: 0,
             },
             by_tier: vec![],
         }),
@@ -128,6 +129,7 @@ fn agg(passes: u32, total: u32, loops: u32) -> AggAgentic {
             schema_unrecovered_calls: 0,
             unknown_tool_calls: 0,
             forbidden_calls: 0,
+            turn_timeouts: 0,
         },
         by_tier: vec![],
     }

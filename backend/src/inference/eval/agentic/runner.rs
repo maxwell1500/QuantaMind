@@ -104,6 +104,27 @@ pub async fn run_once<M: ModelTurn>(
     run_index: u32,
     tx: &UnboundedSender<TrajectoryStep>,
 ) -> AppResult<RunOutcome> {
+    run_once_inner(turn, sandbox, max_steps, max_recovery, STEP_TIMEOUT, run_index, tx).await
+}
+
+/// Per-step wall-clock budget. The streaming HTTP client has no body deadline, so a
+/// stalled model would otherwise hang the loop forever; a turn over this budget ends
+/// the run as `TurnTimeout`. Generous vs. local tok/s so a legitimately slow turn
+/// (long generation, a fault-injected retry) isn't killed.
+const STEP_TIMEOUT: std::time::Duration = std::time::Duration::from_secs(180);
+
+/// `run_once` with an injectable per-step timeout (so the timeout path is testable
+/// without waiting the full budget).
+#[allow(clippy::too_many_arguments)]
+async fn run_once_inner<M: ModelTurn>(
+    turn: &M,
+    sandbox: &DeterministicSandbox,
+    max_steps: u32,
+    max_recovery: u8,
+    step_timeout: std::time::Duration,
+    run_index: u32,
+    tx: &UnboundedSender<TrajectoryStep>,
+) -> AppResult<RunOutcome> {
     let system = build_system_for(&sandbox.tools);
     let mut convo = Conversation::new(sandbox.initial_prompt.clone());
     let mut output_tokens = 0u32;
@@ -131,7 +152,23 @@ pub async fn run_once<M: ModelTurn>(
             }),
             keep_alive: None,
         };
-        let (raw, stats) = turn.run(&spec).await?;
+        let (raw, stats) = match tokio::time::timeout(step_timeout, turn.run(&spec)).await {
+            Ok(r) => r?, // backend returned; an Err propagates (infra fault → run skipped upstream)
+            Err(_elapsed) => {
+                // The turn blew the wall-clock — a stalled model. Terminal: a hanging
+                // agent isn't production-ready, so it counts as a failure (not a skip).
+                let _ = tx.send(TrajectoryStep {
+                    run_index,
+                    step_index,
+                    raw_output: String::new(),
+                    injection: None,
+                    kind: StepKind::TurnTimeout,
+                });
+                return Ok(RunOutcome::failure(step_index + 1, output_tokens, FailureKind::TurnTimeout)
+                    .with_schema(hit_schema_error, schema_recovered)
+                    .with_unknown_tools(unknown_tools));
+            }
+        };
         output_tokens += stats.eval_count.unwrap_or(0);
         let send = |kind: StepKind, injection: Option<String>| {
             let _ = tx.send(TrajectoryStep { run_index, step_index, raw_output: raw.clone(), injection, kind });

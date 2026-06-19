@@ -9,6 +9,7 @@ const TOP_ERROR_LABEL: Record<TopError, string> = {
   malformed_json: "Malformed",
   malformed_schema: "Bad Schema",
   forbidden_call: "Forbidden",
+  turn_timeout: "Timeout",
 };
 
 /// One per-model row of the Matrix Scoreboard. Every metric is a display string;

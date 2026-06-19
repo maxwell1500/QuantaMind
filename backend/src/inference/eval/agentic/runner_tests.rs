@@ -1,7 +1,7 @@
 use crate::errors::AppResult;
 use crate::inference::eval::agentic::model_turn::ModelTurn;
 use crate::inference::eval::agentic::scoring::report::{FailureKind, TopError};
-use crate::inference::eval::agentic::runner::{run_agentic, run_once, AgenticConfig};
+use crate::inference::eval::agentic::runner::{run_agentic, run_once, run_once_inner, AgenticConfig};
 use crate::inference::eval::agentic::sandbox::{DeterministicSandbox, EndStateRule, MockResponse, TaskCheckpoint};
 use crate::inference::eval::agentic::spec::{FaultInjection, FaultRule};
 use crate::inference::eval::agentic::step::{StepKind, TrajectoryStep};
@@ -504,4 +504,25 @@ async fn forbidden_pair_is_terminal_while_allowed_args_advance() {
     let (tx2, _rx2) = unbounded_channel();
     let ok = run_once(&good, &sandbox(), 8, 2, 0, &tx2).await.unwrap();
     assert!(ok.reached_end);
+}
+
+/// A model whose turn never returns in time — exercises the per-step timeout.
+struct HangingModel;
+impl ModelTurn for HangingModel {
+    async fn run(&self, _spec: &GenerateSpec) -> AppResult<(String, GenerateStats)> {
+        tokio::time::sleep(std::time::Duration::from_secs(3600)).await;
+        Ok((END_CALL.to_string(), GenerateStats::default()))
+    }
+}
+
+#[tokio::test]
+async fn a_stalled_turn_times_out_and_terminates() {
+    let (tx, mut rx) = unbounded_channel();
+    // Tiny budget so the stalled turn trips it immediately.
+    let outcome =
+        run_once_inner(&HangingModel, &sandbox(), 8, 2, std::time::Duration::from_millis(5), 0, &tx).await.unwrap();
+    drop(tx);
+    assert!(!outcome.reached_end);
+    assert_eq!(outcome.failure, Some(FailureKind::TurnTimeout));
+    assert_eq!(drain(&mut rx).last().unwrap().kind, StepKind::TurnTimeout);
 }

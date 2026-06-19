@@ -30,6 +30,9 @@ pub enum StepKind {
     /// Phase 9-v2: the model invoked a `must_not_call` trap — terminal the instant
     /// it fires (the forbidden action never "happens").
     ForbiddenCall,
+    /// Phase 9-v2: a model turn exceeded the per-step wall-clock budget (a stalled
+    /// model) — terminal.
+    TurnTimeout,
 }
 
 /// One turn of an agentic run, streamed to the UI as it happens. `injection` is
