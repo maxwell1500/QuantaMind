@@ -462,8 +462,11 @@ Error), with a click-through Trace Debugger. See [the workspace](#eval-runner).
   task (seeded by task id, so temp-0 reproducibility holds). A decoy is never an
   `expected` checkpoint and has no mock, so calling one yields the runner's
   "unknown tool" injection and **cannot** satisfy the end state — difficulty rises
-  with the **oracle unchanged**. Still pending in later steps: `tier`→Pass^k
-  scaling and the hardware-calibrated readiness gate.
+  with the **oracle unchanged**. **Pass^k scales by tier:** an authored task with no
+  explicit `k` runs at `pass_k_for(tier)` — Easy 5 (= the legacy default) / Medium 8
+  / Hard 16 / Extreme 24 (τ-bench: top models cluster at pass^1, spread at pass^8).
+  An explicit `k` (authored, or the UI K override) still wins. Still pending: the
+  hardware-calibrated readiness gate (Phase 9B).
 - **Relative effort, not absolute joules.** `avg_output_tokens_success` is the mean
   output-token count (`eval_count`) over the **successful** runs only — **n/a**
   when there are zero successes, never a divide-by-zero. Prompt tokens are

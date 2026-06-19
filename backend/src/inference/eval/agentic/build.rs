@@ -1,5 +1,6 @@
 use crate::errors::{AppError, AppResult};
 use crate::inference::eval::agentic::difficulty::decoys;
+use crate::inference::eval::agentic::difficulty::passk::pass_k_for;
 use crate::inference::eval::agentic::runner::AgenticConfig;
 use crate::inference::eval::agentic::sandbox::{DeterministicSandbox, EndStateRule};
 use crate::inference::eval::toolcall::tasks::ToolTask;
@@ -67,7 +68,9 @@ pub fn sandbox_for(task: &ToolTask) -> AppResult<(DeterministicSandbox, AgenticC
     .with_faults(spec.faults.clone());
     let d = AgenticConfig::default();
     let cfg = AgenticConfig {
-        k: spec.k.unwrap_or(d.k),
+        // Precedence (Gap 4): an explicit `k` (authored, or the UI K override that
+        // `apply_overrides` writes into `spec.k`) wins; otherwise scale by tier.
+        k: spec.k.unwrap_or_else(|| pass_k_for(spec.tier)),
         max_steps: spec.max_steps.unwrap_or(d.max_steps),
         max_recovery: spec.max_recovery.unwrap_or(d.max_recovery),
     };
@@ -78,7 +81,7 @@ pub fn sandbox_for(task: &ToolTask) -> AppResult<(DeterministicSandbox, AgenticC
 mod tests {
     use super::*;
     use crate::inference::eval::agentic::sandbox::{MockResponse, TaskCheckpoint};
-    use crate::inference::eval::agentic::spec::{AgenticSpec, DifficultyAxes};
+    use crate::inference::eval::agentic::spec::{AgenticSpec, DifficultyAxes, Tier};
     use crate::inference::eval::toolcall::tasks::{Call, ToolSchema};
     use serde_json::json;
 
@@ -143,6 +146,24 @@ mod tests {
         let decoy =
             sandbox.tools.iter().find(|x| x.name != "get_balance" && x.name != "transfer").unwrap();
         assert!(sandbox.respond(&Call { name: decoy.name.clone(), args: json!({}) }).is_none());
+    }
+
+    #[test]
+    fn tier_scales_k_when_no_explicit_k_is_authored() {
+        let mut t = agentic_task();
+        t.agentic.as_mut().unwrap().k = None; // no explicit k → tier policy decides
+        t.agentic.as_mut().unwrap().tier = Tier::Hard;
+        let (_, cfg) = sandbox_for(&t).unwrap();
+        assert_eq!(cfg.k, 16); // pass_k_for(Hard)
+    }
+
+    #[test]
+    fn an_explicit_k_wins_over_the_tier_policy() {
+        let mut t = agentic_task();
+        t.agentic.as_mut().unwrap().k = Some(3); // authored / UI override
+        t.agentic.as_mut().unwrap().tier = Tier::Extreme; // would be 24
+        let (_, cfg) = sandbox_for(&t).unwrap();
+        assert_eq!(cfg.k, 3); // explicit k beats pass_k_for(Extreme)
     }
 
     #[test]
