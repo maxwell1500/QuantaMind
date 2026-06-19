@@ -10,6 +10,7 @@ use crate::inference::eval::toolcall::prompt::build_system_for;
 use crate::inference::generate::generate_options::GenerateOptions;
 use crate::inference::generate::generate_spec::GenerateSpec;
 use tokio::sync::mpsc::UnboundedSender;
+use tokio_util::sync::CancellationToken;
 
 const MAX_TOKENS: u32 = 256;
 const UNKNOWN_TOOL: &str =
@@ -48,7 +49,9 @@ pub async fn run_agentic<M: ModelTurn>(
     tx: &UnboundedSender<TrajectoryStep>,
 ) -> AppResult<AgenticReport> {
     // Non-generated tasks reuse one sandbox for every run (a constant factory).
-    run_agentic_with(turn, config.k, |_| Ok((sandbox.clone(), config.max_steps, config.max_recovery)), tx).await
+    let never = CancellationToken::new();
+    run_agentic_with(turn, config.k, |_| Ok((sandbox.clone(), config.max_steps, config.max_recovery)), &never, tx)
+        .await
 }
 
 /// Pass^k with a per-run sandbox FACTORY. `make(run_index)` returns the sandbox +
@@ -61,6 +64,7 @@ pub async fn run_agentic_with<M, F>(
     turn: &M,
     k: u32,
     make: F,
+    cancel: &CancellationToken,
     tx: &UnboundedSender<TrajectoryStep>,
 ) -> AppResult<AgenticReport>
 where
@@ -70,6 +74,11 @@ where
     let mut outcomes = Vec::with_capacity(k as usize);
     let mut last_err = None;
     for run_index in 0..k {
+        // Halt a long Pass^k task promptly on cancel (the batch loop also checks
+        // between tasks; this bounds an interrupt to ≤1 run of a big-k task).
+        if cancel.is_cancelled() {
+            break;
+        }
         let (sandbox, max_steps, max_recovery) = match make(run_index) {
             Ok(t) => t,
             Err(e) => {
