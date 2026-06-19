@@ -74,6 +74,10 @@ export function EvalManager({
 
   const [collectionsExpanded, setCollectionsExpanded] = useState(true);
   const [hoverTaskId, setHoverTaskId] = useState<string | null>(null);
+  // Which collection's task list is expanded (accordion). Toggled by double-clicking
+  // the collection; only the SELECTED collection's tasks are loaded, so the list shows
+  // when `expandedId === selected`.
+  const [expandedId, setExpandedId] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [deleteTarget, setDeleteTarget] = useState<string | null>(null);
   const [csvOpen, setCsvOpen] = useState(false);
@@ -216,23 +220,38 @@ export function EvalManager({
       })
     );
 
-  // One collection row + (when it's the selected one) its nested task list.
-  const collectionRow = (id: string, label: string, menuItems: { label: string; danger?: boolean; onClick: () => void; testid: string }[]) => (
-    <div key={id}>
-      <div style={{ ...collectionItemStyle, justifyContent: "space-between", color: selected === id ? "#2563eb" : "#475569", fontWeight: selected === id ? 600 : 400 }}>
-        <span
-          onClick={() => void select(id)}
-          style={{ display: "flex", alignItems: "center", cursor: "pointer", flex: 1, minWidth: 0 }}
-          data-testid={`eval-collection-item-${id}`}
-        >
-          <span style={{ marginRight: 6 }}>{selected === id ? "•" : "-"}</span>
-          <span style={{ overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{label}</span>
-        </span>
-        <KebabMenu testid={`eval-collection-menu-${id}`} items={menuItems} />
+  // Single-click toggles a collection's task list (accordion); opening also selects it
+  // (so its tasks load + it becomes the active run target). Clicking again collapses.
+  const toggleExpand = (id: string) => {
+    if (expandedId === id) {
+      setExpandedId(null);
+    } else {
+      void select(id);
+      setExpandedId(id);
+    }
+  };
+
+  // One collection row + (when expanded) its nested task list.
+  const collectionRow = (id: string, label: string, menuItems: { label: string; danger?: boolean; onClick: () => void; testid: string }[]) => {
+    const isExpanded = expandedId === id && selected === id;
+    return (
+      <div key={id}>
+        <div style={{ ...collectionItemStyle, justifyContent: "space-between", color: selected === id ? "#2563eb" : "#475569", fontWeight: selected === id ? 600 : 400 }}>
+          <span
+            onClick={() => toggleExpand(id)}
+            title="Click to open/close this collection's tasks"
+            style={{ display: "flex", alignItems: "center", cursor: "pointer", flex: 1, minWidth: 0, userSelect: "none" }}
+            data-testid={`eval-collection-item-${id}`}
+          >
+            <span style={{ marginRight: 6, fontSize: 10, color: "#94a3b8" }}>{isExpanded ? "▾" : "▸"}</span>
+            <span style={{ overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{label}</span>
+          </span>
+          <KebabMenu testid={`eval-collection-menu-${id}`} items={menuItems} />
+        </div>
+        {isExpanded && renderTasks()}
       </div>
-      {selected === id && renderTasks()}
-    </div>
-  );
+    );
+  };
 
   return (
     <div

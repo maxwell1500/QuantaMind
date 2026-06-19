@@ -163,20 +163,30 @@ describe("EvalManager Sidebar Controls", () => {
     expect(screen.getByTestId("eval-new-collection")).toBeInTheDocument();
   });
 
-  it("lists the selected collection's tasks beneath it with hover Edit/Delete", () => {
+  it("click expands a collection's tasks; each row has hover Edit/Delete", () => {
     const onEditTask = vi.fn();
     const onDeleteTask = vi.fn();
     render(<EvalManager {...props({ onEditTask, onDeleteTask })} />);
-    // The task ("w") of the selected easy-coding collection is shown in the sidebar.
+    // Collapsed by default — tasks appear only after clicking the collection.
+    expect(screen.queryByTestId("eval-task-row-w")).toBeNull();
+    fireEvent.click(screen.getByTestId("eval-collection-item-easy-coding"));
     const row = screen.getByTestId("eval-task-row-w");
     expect(row).toBeInTheDocument();
-    // Hidden until hover.
+    // Edit/Delete hidden until hover.
     expect(screen.queryByTestId("eval-task-edit-w")).toBeNull();
     fireEvent.mouseEnter(row);
     fireEvent.click(screen.getByTestId("eval-task-edit-w"));
     expect(onEditTask).toHaveBeenCalledWith("w");
     fireEvent.click(screen.getByTestId("eval-task-delete-w"));
     expect(onDeleteTask).toHaveBeenCalledWith("w");
+  });
+
+  it("clicking again collapses the task list", () => {
+    render(<EvalManager {...props()} />);
+    fireEvent.click(screen.getByTestId("eval-collection-item-easy-coding"));
+    expect(screen.getByTestId("eval-task-row-w")).toBeInTheDocument();
+    fireEvent.click(screen.getByTestId("eval-collection-item-easy-coding"));
+    expect(screen.queryByTestId("eval-task-row-w")).toBeNull();
   });
 
   it("shows the Decoy info popup on hover (Anti-Saturation ⓘ)", () => {

@@ -418,10 +418,11 @@ per model). All pure-presentation given the report.
 Sidebar order (top→bottom): **Model → Difficulty Tier → Collections → Iterations →
 Max Steps → Anti-Saturation → (Native-FC, RUN BATCH, Export)**. Calls **`useBatchRun`**.
 The built-in collection list is **filtered to the chosen tier** (the data-source toggle,
-now inside the Collections section, still switches built-in/custom). The **selected
-collection's tasks are listed beneath it** (`collectionRow` → `renderTasks`), each
-revealing **Edit** (`onEditTask`) + **Delete** (`onDeleteTask`) on hover — wired from
-`EvalPage` (this replaced the scoreboard buttons and the old collection-level "Edit").
+now inside the Collections section, still switches built-in/custom). **Clicking a collection** expands/collapses its task list beneath it (accordion,
+`expandedId` state; click also `select`s it; `collectionRow` → `renderTasks`, shown when
+`expandedId === selected`).
+Each task row reveals **Edit** (`onEditTask`) + **Delete** (`onDeleteTask`) on hover —
+wired from `EvalPage` (this replaced the scoreboard buttons and the old collection-level "Edit").
 **+ New Collection** + **Import JSON/CSV** sit at the end of the collection list; Export
 is at the bottom. The Decoy control carries an `InfoButton` (`TOOL_HELP.decoys`). Run is
 disabled without a model + tasks. Delete-collection differs: presets are *hidden*

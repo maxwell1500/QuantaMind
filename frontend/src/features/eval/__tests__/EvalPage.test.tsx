@@ -154,6 +154,8 @@ describe("EvalPage — k pre-fill from tier (no clobber)", () => {
       tasks: [{ id: "t1", category: "single", prompt: "p", tools: [{ name: "x", description: "", parameters: { type: "object", properties: {} } }], expected: { type: "call", name: "x", args: {} } }] as never,
     });
     render(<EvalPage />);
+    // Click the collection to expand its task list, then delete a task.
+    fireEvent.click(await screen.findByTestId("eval-collection-item-medium-coding"));
     const row = await screen.findByTestId("eval-task-row-t1");
     fireEvent.mouseEnter(row);
     fireEvent.click(screen.getByTestId("eval-task-delete-t1"));
