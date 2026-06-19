@@ -232,6 +232,9 @@ fn tier_gate_blocks_when_an_exercised_required_tier_is_not_cleared() {
     let v = assess(&i, &p);
     assert_eq!(v.status, Readiness::NotReady);
     assert!(v.blocking.iter().any(|b| b.contains("Easy") && b.contains("Hard")), "{:?}", v.blocking);
+    // The verdict surfaces the graduated readiness for the report header.
+    assert_eq!(v.cleared_tier, Some(Tier::Easy));
+    assert_eq!(v.required_tier, Tier::Hard);
 }
 
 #[test]
@@ -252,7 +255,9 @@ fn tier_gate_passes_when_the_required_tier_is_cleared() {
         tier_pass_k: vec![(Tier::Easy, 1.0), (Tier::Hard, 0.9)], // Hard 0.9 ≥ 0.8
         ..clean_inputs()
     };
-    assert_eq!(assess(&i, &p).status, Readiness::Ready);
+    let v = assess(&i, &p);
+    assert_eq!(v.status, Readiness::Ready);
+    assert_eq!(v.cleared_tier, Some(Tier::Hard)); // highest tier cleared at the bar
 }
 
 #[test]

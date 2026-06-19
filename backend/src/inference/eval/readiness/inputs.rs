@@ -62,6 +62,8 @@ pub fn verdict_for(
             blocking: vec![format!("run error: {err}")],
             conditions: Vec::new(),
             path: AgentPath::PromptBased,
+            required_tier: profile.required_tier,
+            cleared_tier: None, // an errored column measured nothing
         },
         None => assess(&from_column(col, fits_in_vram, vram_pressure, cliff), profile),
     }

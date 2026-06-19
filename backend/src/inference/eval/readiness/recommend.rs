@@ -41,7 +41,14 @@ mod tests {
         ModelVerdict {
             model: model.into(),
             backend: BackendKind::Ollama,
-            verdict: ReadinessVerdict { status, blocking: vec![], conditions: vec![], path: AgentPath::PromptBased },
+            verdict: ReadinessVerdict {
+                status,
+                blocking: vec![],
+                conditions: vec![],
+                path: AgentPath::PromptBased,
+                required_tier: Default::default(),
+                cleared_tier: None,
+            },
             memory: None,
             avg_steps: steps,
             effort,

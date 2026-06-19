@@ -13,6 +13,8 @@ fn verdict(model: &str, pass_k: Option<f64>, quant: Option<&str>) -> ModelVerdic
             blocking: vec!["this reason must never reach the wire".into()],
             conditions: vec![],
             path: AgentPath::NativeFc,
+            required_tier: Default::default(),
+            cleared_tier: None,
         },
         memory: None,
         avg_steps: Some(3.0),

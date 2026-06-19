@@ -84,6 +84,14 @@ pub struct ReadinessVerdict {
     pub blocking: Vec<String>,
     pub conditions: Vec<String>,
     pub path: AgentPath,
+    /// Phase 9: the difficulty tier this profile requires (graduated readiness —
+    /// the report shows "cleared X / requires Y", never a bare pass/fail).
+    #[serde(default)]
+    pub required_tier: Tier,
+    /// Phase 9: the highest tier the model actually cleared at the profile's bar
+    /// (`pass^k ≥ min_pass_k`). `None` when no tier cleared, or no tiered task ran.
+    #[serde(default)]
+    pub cleared_tier: Option<Tier>,
 }
 
 /// A verdict paired with the model it judged — one row of the Agent Report. The

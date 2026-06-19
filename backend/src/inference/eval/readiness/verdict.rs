@@ -96,16 +96,18 @@ pub fn assess(i: &ReadinessInputs, p: &ReadinessProfile) -> ReadinessVerdict {
     }
 
     // Phase 9 hard gate (hardware-calibrated difficulty): the model must clear the
-    // profile's required tier. It blocks ONLY when the collection actually exercised
-    // that tier — an untested tier is NotAttempted, never a guessed fail, so an
-    // all-Easy collection never trips a Hard profile. A pre-Phase-9 profile defaults
-    // `required_tier = Easy`, which this never blocks on (exact old behavior).
+    // profile's required tier. `cleared_tier` is the highest tier cleared at this
+    // profile's bar (computed once, also surfaced in the report). The gate blocks
+    // ONLY when the collection actually exercised the required tier — an untested
+    // tier is NotAttempted, never a guessed fail, so an all-Easy collection never
+    // trips a Hard profile. A pre-Phase-9 profile defaults `required_tier = Easy`,
+    // which this never blocks on (exact old behavior).
+    let cleared_tier =
+        i.tier_pass_k.iter().filter(|(_, pk)| *pk >= p.min_pass_k - EPSILON).map(|(t, _)| *t).max();
     if p.required_tier > Tier::Easy {
         let exercised = i.tier_pass_k.iter().any(|(t, _)| *t >= p.required_tier);
-        let cleared =
-            i.tier_pass_k.iter().filter(|(_, pk)| *pk >= p.min_pass_k - EPSILON).map(|(t, _)| *t).max();
-        if exercised && cleared.map_or(true, |c| c < p.required_tier) {
-            blocking.push(match cleared {
+        if exercised && cleared_tier.map_or(true, |c| c < p.required_tier) {
+            blocking.push(match cleared_tier {
                 Some(c) => format!("cleared {c:?}; this profile requires {:?}", p.required_tier),
                 None => format!("cleared no tier at pass^k {:.2}; requires {:?}", p.min_pass_k, p.required_tier),
             });
@@ -123,7 +125,7 @@ pub fn assess(i: &ReadinessInputs, p: &ReadinessProfile) -> ReadinessVerdict {
     } else {
         Readiness::Ready
     };
-    ReadinessVerdict { status, blocking, conditions, path }
+    ReadinessVerdict { status, blocking, conditions, path, required_tier: p.required_tier, cleared_tier }
 }
 
 #[cfg(test)]
