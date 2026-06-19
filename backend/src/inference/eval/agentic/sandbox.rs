@@ -1,4 +1,5 @@
 use crate::inference::eval::agentic::spec::{FaultInjection, FaultRule};
+use crate::inference::eval::agentic::v2::r#match::MustNotCall;
 use crate::inference::eval::toolcall::tasks::{Call, ToolSchema};
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
@@ -32,6 +33,10 @@ pub struct TaskCheckpoint {
 pub enum EndStateRule {
     RequireSequence(Vec<TaskCheckpoint>),
     ExpectAbstainingText,
+    /// Phase 9-v2: every checkpoint must be satisfied at least once, in ANY order
+    /// (consume-once, wildcard-aware). v2 tasks are multi-entity with independent
+    /// sub-sequences, so strict ordering would false-negative a correct model.
+    RequireAll(Vec<TaskCheckpoint>),
 }
 
 /// A strictly prompt-based simulated environment: the opening user prompt, the
@@ -62,6 +67,9 @@ pub struct DeterministicSandbox {
     pub faults: HashMap<String, FaultInjection>,
     /// v1 `StaticMocks` by default; v2 sets `WorldState` via `with_world_state`.
     pub responder: ResponderKind,
+    /// Phase 9-v2 trap calls — invoking any is an immediate terminal failure.
+    /// Empty for v1 sandboxes (the guard then never fires).
+    pub must_not_call: Vec<MustNotCall>,
 }
 
 impl DeterministicSandbox {
@@ -72,7 +80,21 @@ impl DeterministicSandbox {
         end_state: EndStateRule,
     ) -> Self {
         let mock_responses = mocks.into_iter().map(|m| (canonical(&m.call), m.response)).collect();
-        Self { initial_prompt, tools, mock_responses, end_state, faults: HashMap::new(), responder: ResponderKind::StaticMocks }
+        Self {
+            initial_prompt,
+            tools,
+            mock_responses,
+            end_state,
+            faults: HashMap::new(),
+            responder: ResponderKind::StaticMocks,
+            must_not_call: Vec::new(),
+        }
+    }
+
+    /// Attach Phase 9-v2 `must_not_call` traps (builder form).
+    pub fn with_must_not_call(mut self, traps: Vec<MustNotCall>) -> Self {
+        self.must_not_call = traps;
+        self
     }
 
     /// Attach Driver-B fault traps (builder form, so the `new` signature and every

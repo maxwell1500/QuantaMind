@@ -158,9 +158,9 @@ pub fn validate_tasks(tasks: &[ToolTask]) -> AppResult<()> {
 fn validate_agentic(id: &str, tools: &[ToolSchema], spec: &AgenticSpec) -> AppResult<()> {
     let known = |name: &str| tools.iter().any(|t| t.name == name);
     match &spec.end_state {
-        EndStateRule::RequireSequence(cps) => {
+        EndStateRule::RequireSequence(cps) | EndStateRule::RequireAll(cps) => {
             if cps.is_empty() {
-                return Err(bad(id, "agentic", "end-state require_sequence needs at least one checkpoint"));
+                return Err(bad(id, "agentic", "end-state needs at least one checkpoint"));
             }
             for cp in cps {
                 if !known(&cp.tool) {
@@ -173,6 +173,17 @@ fn validate_agentic(id: &str, tools: &[ToolSchema], spec: &AgenticSpec) -> AppRe
     for m in &spec.mocks {
         if !known(&m.call.name) {
             return Err(bad(id, "agentic", &format!("mock references unknown tool '{}'", m.call.name)));
+        }
+    }
+    // v2: every must_not_call entry must name a declared tool (real or decoy) — a
+    // typo'd trap silently never fires and the task becomes easier than authored.
+    for trap in &spec.must_not_call {
+        let name = match trap {
+            crate::inference::eval::agentic::v2::r#match::MustNotCall::Name(n) => n,
+            crate::inference::eval::agentic::v2::r#match::MustNotCall::Pair { name, .. } => name,
+        };
+        if !known(name) {
+            return Err(bad(id, "agentic", &format!("must_not_call names unknown tool '{name}'")));
         }
     }
     if matches!(spec.k, Some(0)) || matches!(spec.max_steps, Some(0)) {

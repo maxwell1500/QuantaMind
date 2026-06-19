@@ -81,6 +81,11 @@ pub async fn run_once<M: ModelTurn>(
     let mut convo = Conversation::new(sandbox.initial_prompt.clone());
     let mut output_tokens = 0u32;
     let mut next_cp = 0usize; // progress through a RequireSequence end-state
+    // RequireAll (v2): per-checkpoint consumed flags (unordered, consume-once).
+    let mut satisfied: Vec<bool> = match &sandbox.end_state {
+        EndStateRule::RequireAll(cps) => vec![false; cps.len()],
+        _ => Vec::new(),
+    };
     let mut state = SandboxState::new(); // per-run fault attempt counters (Driver B)
     let mut recoveries = 0u8; // schema corrections used this run (Driver D)
     let mut hit_schema_error = false; // this run emitted a schema-invalid call
@@ -106,85 +111,107 @@ pub async fn run_once<M: ModelTurn>(
         };
 
         match extract_calls(&raw).and_then(|c| c.into_iter().next()) {
-            Some(call) => match &sandbox.end_state {
-                // Acted (called a tool) when the task wanted a plain-text
-                // abstention — declining was correct, so this is a failure.
-                EndStateRule::ExpectAbstainingText => {
-                    send(StepKind::HallucinatedCompletion, None);
-                    return Ok(RunOutcome::failure(step_index + 1, output_tokens, FailureKind::Hallucinated));
-                }
-                EndStateRule::RequireSequence(checkpoints) => {
-                    // Driver D: SEMANTIC validation precedes everything (only when the
-                    // task declares tool schemas to validate against). An invalid call
-                    // gets a precise correction injected and burns one recovery;
-                    // exhausting the budget ends the run as MalformedSchema.
-                    if !sandbox.tools.is_empty() {
-                        if let Err(msg) = endstate::validate_call(&call, &sandbox.tools) {
-                            hit_schema_error = true;
-                            if recoveries >= max_recovery {
-                                send(StepKind::SchemaError, None); // terminal: budget spent
-                                return Ok(RunOutcome::failure(
-                                    step_index + 1,
-                                    output_tokens,
-                                    FailureKind::MalformedSchema,
-                                )
+            // Acted (called a tool) when the task wanted a plain-text abstention —
+            // declining was correct, so this is a failure.
+            Some(_) if matches!(sandbox.end_state, EndStateRule::ExpectAbstainingText) => {
+                send(StepKind::HallucinatedCompletion, None);
+                return Ok(RunOutcome::failure(step_index + 1, output_tokens, FailureKind::Hallucinated));
+            }
+            // RequireSequence | RequireAll share this per-call pipeline; they differ
+            // ONLY in the checkpoint-progress rule (ordered index vs unordered set).
+            Some(call) => {
+                // Driver D: SEMANTIC validation precedes everything (only when the
+                // task declares tool schemas). An invalid call injects a precise
+                // correction and burns one recovery; exhausting the budget ends the
+                // run as MalformedSchema.
+                if !sandbox.tools.is_empty() {
+                    if let Err(msg) = endstate::validate_call(&call, &sandbox.tools) {
+                        hit_schema_error = true;
+                        if recoveries >= max_recovery {
+                            send(StepKind::SchemaError, None); // terminal: budget spent
+                            return Ok(RunOutcome::failure(step_index + 1, output_tokens, FailureKind::MalformedSchema)
                                 .with_schema(true, false)
                                 .with_unknown_tools(unknown_tools));
-                            }
-                            recoveries += 1;
-                            let err = format!("[Schema error: {msg}]");
-                            let line = tool_result_line(&err);
-                            convo.push_model(&raw);
-                            convo.push_tool_result(&err);
-                            send(StepKind::SchemaError, Some(line));
-                            continue;
                         }
-                        // A schema-valid call after a prior schema error is the recovery.
-                        if hit_schema_error && !schema_recovered {
-                            schema_recovered = true;
-                        }
-                    }
-                    // Driver B: a fault trap fires BEFORE any checkpoint advance, so a
-                    // trapped call can never be a fake pass. Inject the HTTP-style
-                    // error and continue — a robust agent retries (transient) or
-                    // reports the failure (persistent) on the next turn.
-                    if let Some(err) = state.fault_for(&call, &sandbox.faults) {
+                        recoveries += 1;
+                        let err = format!("[Schema error: {msg}]");
                         let line = tool_result_line(&err);
                         convo.push_model(&raw);
                         convo.push_tool_result(&err);
-                        send(StepKind::ToolError, Some(line));
+                        send(StepKind::SchemaError, Some(line));
                         continue;
                     }
-                    let advances = endstate::checkpoint_matches(&checkpoints[next_cp], &call);
-                    if advances && next_cp + 1 == checkpoints.len() {
-                        send(StepKind::EndStateReached, None); // final checkpoint hit
-                        return Ok(RunOutcome::success(step_index + 1, output_tokens)
-                            .with_schema(hit_schema_error, schema_recovered)
-                            .with_unknown_tools(unknown_tools));
+                    if hit_schema_error && !schema_recovered {
+                        schema_recovered = true; // a valid call after a schema error is the recovery
                     }
-                    if advances {
-                        next_cp += 1; // intermediate checkpoint reached, keep going
-                    }
-                    let (kind, result) = match sandbox.respond(&call) {
-                        Some(r) => (StepKind::ToolCall, r),
-                        None => {
-                            unknown_tools += 1; // a decoy or hallucinated tool — no mock exists
-                            (StepKind::UnknownTool, UNKNOWN_TOOL.to_string())
-                        }
-                    };
-                    let line = tool_result_line(&result);
-                    convo.push_model(&raw);
-                    convo.push_tool_result(&result);
-                    send(kind, Some(line));
                 }
-            },
+                // Phase 9-v2 trap: a forbidden call is terminal — checked AFTER
+                // schema-validate, so a malformed forbidden call takes the recovery
+                // path first (can't escape the trap by emitting it malformed). Empty
+                // `must_not_call` (v1) → this never fires.
+                if sandbox.must_not_call.iter().any(|m| m.matches(&call)) {
+                    send(StepKind::ForbiddenCall, None);
+                    return Ok(RunOutcome::failure(step_index + 1, output_tokens, FailureKind::ForbiddenCall)
+                        .with_schema(hit_schema_error, schema_recovered)
+                        .with_unknown_tools(unknown_tools));
+                }
+                // Driver B: a fault trap fires BEFORE any checkpoint advance, so a
+                // trapped call can never be a fake pass. A robust agent retries
+                // (transient) or reports the failure (persistent) next turn.
+                if let Some(err) = state.fault_for(&call, &sandbox.faults) {
+                    let line = tool_result_line(&err);
+                    convo.push_model(&raw);
+                    convo.push_tool_result(&err);
+                    send(StepKind::ToolError, Some(line));
+                    continue;
+                }
+                // Checkpoint progress: ordered (RequireSequence, exact) or unordered
+                // consume-once set (RequireAll, wildcard-aware).
+                let complete = match &sandbox.end_state {
+                    EndStateRule::RequireSequence(cps) => {
+                        if endstate::checkpoint_matches(&cps[next_cp], &call) {
+                            next_cp += 1;
+                        }
+                        next_cp == cps.len()
+                    }
+                    EndStateRule::RequireAll(cps) => {
+                        for (i, cp) in cps.iter().enumerate() {
+                            if !satisfied[i] && endstate::checkpoint_matches_v2(cp, &call) {
+                                satisfied[i] = true;
+                                break; // a call consumes at most one checkpoint
+                            }
+                        }
+                        satisfied.iter().all(|&s| s)
+                    }
+                    EndStateRule::ExpectAbstainingText => unreachable!("handled above"),
+                };
+                if complete {
+                    send(StepKind::EndStateReached, None);
+                    return Ok(RunOutcome::success(step_index + 1, output_tokens)
+                        .with_schema(hit_schema_error, schema_recovered)
+                        .with_unknown_tools(unknown_tools));
+                }
+                // Not complete: inject the tool result and continue.
+                let (kind, result) = match sandbox.respond(&call) {
+                    Some(r) => (StepKind::ToolCall, r),
+                    None => {
+                        unknown_tools += 1; // a decoy or hallucinated tool — no mock exists
+                        (StepKind::UnknownTool, UNKNOWN_TOOL.to_string())
+                    }
+                };
+                let line = tool_result_line(&result);
+                convo.push_model(&raw);
+                convo.push_tool_result(&result);
+                send(kind, Some(line));
+            }
             None => match &sandbox.end_state {
                 // Declined to call any tool, exactly as the task demanded.
                 EndStateRule::ExpectAbstainingText => {
                     send(StepKind::EndStateReached, None);
                     return Ok(RunOutcome::success(step_index + 1, output_tokens));
                 }
-                EndStateRule::RequireSequence(_) => {
+                // Yielded (no call) without completing the required checkpoints.
+                EndStateRule::RequireSequence(_) | EndStateRule::RequireAll(_) => {
                     let (kind, failure) = if looks_like_broken_json(&raw) {
                         (StepKind::MalformedJson, FailureKind::Malformed)
                     } else {

@@ -11,6 +11,14 @@ pub fn checkpoint_matches(checkpoint: &TaskCheckpoint, call: &Call) -> bool {
     call.name == checkpoint.tool && args_match(&checkpoint.args, &call.args)
 }
 
+/// Phase 9-v2 checkpoint match: same tool name AND wildcard-aware args
+/// (`args_match_v2` — a `*…*` string arg globs; everything else stays exact). Used
+/// only by the `RequireAll` end state; `RequireSequence` keeps the exact matcher.
+pub fn checkpoint_matches_v2(checkpoint: &TaskCheckpoint, call: &Call) -> bool {
+    use crate::inference::eval::agentic::v2::r#match::args_match_v2;
+    call.name == checkpoint.tool && args_match_v2(&checkpoint.args, &call.args)
+}
+
 /// Driver D — SEMANTIC validation of a parsed call against the tool schema (not
 /// just "did it parse"). `Ok(())` when the call names a declared tool, supplies
 /// every `required` param, and the provided params match their declared primitive

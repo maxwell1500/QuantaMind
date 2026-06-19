@@ -28,14 +28,16 @@ pub fn sandbox_for(task: &ToolTask) -> AppResult<(DeterministicSandbox, AgenticC
         .as_ref()
         .ok_or_else(|| AppError::InvalidTaskSchema(format!("task '{}' is not agentic", task.id)))?;
     let known = |name: &str| task.tools.iter().any(|t| t.name == name);
-    if let EndStateRule::RequireSequence(cps) = &spec.end_state {
-        for cp in cps {
-            if !known(&cp.tool) {
-                return Err(AppError::InvalidTaskSchema(format!(
-                    "task '{}' end-state checkpoint calls unknown tool '{}'",
-                    task.id, cp.tool
-                )));
-            }
+    let checkpoints: &[_] = match &spec.end_state {
+        EndStateRule::RequireSequence(cps) | EndStateRule::RequireAll(cps) => cps,
+        EndStateRule::ExpectAbstainingText => &[],
+    };
+    for cp in checkpoints {
+        if !known(&cp.tool) {
+            return Err(AppError::InvalidTaskSchema(format!(
+                "task '{}' end-state checkpoint calls unknown tool '{}'",
+                task.id, cp.tool
+            )));
         }
     }
     for m in &spec.mocks {
@@ -59,13 +61,18 @@ pub fn sandbox_for(task: &ToolTask) -> AppResult<(DeterministicSandbox, AgenticC
     // no mock, so it can never satisfy the end state — the oracle is untouched.
     let decoy_n = spec.axes.as_ref().map(|a| a.decoy_tools).unwrap_or(0);
     let presented = decoys::merge_decoys(&task.tools, decoy_n, seed_from_id(&task.id));
-    let sandbox = DeterministicSandbox::new(
+    let mut sandbox = DeterministicSandbox::new(
         task.prompt.clone(),
         presented,
         spec.mocks.clone(),
         spec.end_state.clone(),
     )
-    .with_faults(spec.faults.clone());
+    .with_faults(spec.faults.clone())
+    .with_must_not_call(spec.must_not_call.clone());
+    // v2: ground-truth responder when the task carries a world_state.
+    if let Some(ws) = &spec.world_state {
+        sandbox = sandbox.with_world_state(ws.clone());
+    }
     let d = AgenticConfig::default();
     let cfg = AgenticConfig {
         // Precedence (Gap 4): an explicit `k` (authored, or the UI K override that

@@ -417,3 +417,91 @@ async fn every_run_erroring_surfaces_the_error_for_resume() {
     let result = run_agentic(&model, &sandbox(), AgenticConfig { k: 3, max_steps: 4, ..Default::default() }, &tx).await;
     assert!(result.is_err());
 }
+
+// --- Phase 9-v2: RequireAll set-matching + forbidden traps -----------------
+
+fn require_all_sandbox() -> DeterministicSandbox {
+    DeterministicSandbox::new(
+        "Handle entity A and entity B in any order.".into(),
+        vec![], // empty tools → schema validation skipped (keeps the test focused)
+        vec![
+            MockResponse { call: Call { name: "act".into(), args: json!({ "id": "A" }) }, response: "{}".into() },
+            MockResponse { call: Call { name: "act".into(), args: json!({ "id": "B" }) }, response: "{}".into() },
+        ],
+        EndStateRule::RequireAll(vec![
+            TaskCheckpoint { tool: "act".into(), args: json!({ "id": "A" }) },
+            TaskCheckpoint { tool: "act".into(), args: json!({ "id": "B" }) },
+        ]),
+    )
+}
+
+#[tokio::test]
+async fn require_all_completes_regardless_of_order() {
+    // B before A — independent entities, so a correct model isn't penalized.
+    let model = ScriptedModel::new(vec![
+        (r#"{"name":"act","args":{"id":"B"}}"#, 5),
+        (r#"{"name":"act","args":{"id":"A"}}"#, 5),
+    ]);
+    let (tx, _rx) = unbounded_channel();
+    let outcome = run_once(&model, &require_all_sandbox(), 8, 2, 0, &tx).await.unwrap();
+    assert!(outcome.reached_end); // every checkpoint consumed, order irrelevant
+    assert_eq!(outcome.steps, 2);
+}
+
+#[tokio::test]
+async fn require_all_yield_without_completing_is_hallucinated() {
+    let model = ScriptedModel::new(vec![(r#"{"answer":"all done"}"#, 5)]); // no tool call
+    let (tx, _rx) = unbounded_channel();
+    let outcome = run_once(&model, &require_all_sandbox(), 4, 2, 0, &tx).await.unwrap();
+    assert!(!outcome.reached_end);
+    assert_eq!(outcome.failure, Some(FailureKind::Hallucinated));
+}
+
+#[tokio::test]
+async fn require_all_wildcard_checkpoint_matches_a_glob() {
+    let sandbox = DeterministicSandbox::new(
+        "Log a denial.".into(),
+        vec![],
+        vec![],
+        EndStateRule::RequireAll(vec![TaskCheckpoint { tool: "log".into(), args: json!({ "reason": "*denied*" }) }]),
+    );
+    let model = ScriptedModel::new(vec![(r#"{"name":"log","args":{"reason":"request denied: fraud"}}"#, 5)]);
+    let (tx, _rx) = unbounded_channel();
+    let outcome = run_once(&model, &sandbox, 4, 2, 0, &tx).await.unwrap();
+    assert!(outcome.reached_end); // "*denied*" globs "request denied: fraud"
+}
+
+#[tokio::test]
+async fn forbidden_pair_is_terminal_while_allowed_args_advance() {
+    use crate::inference::eval::agentic::v2::r#match::MustNotCall;
+    let sandbox = || {
+        DeterministicSandbox::new(
+            "Refund the eligible order only.".into(),
+            vec![],
+            vec![MockResponse {
+                call: Call { name: "refund".into(), args: json!({ "order_id": "C-402" }) },
+                response: "{}".into(),
+            }],
+            EndStateRule::RequireAll(vec![TaskCheckpoint {
+                tool: "refund".into(),
+                args: json!({ "order_id": "C-402" }),
+            }]),
+        )
+        .with_must_not_call(vec![MustNotCall::Pair { name: "refund".into(), args: json!({ "order_id": "4472" }) }])
+    };
+
+    // Springs the trap → terminal ForbiddenCall (no end state, run ends now).
+    let trap = ScriptedModel::new(vec![(r#"{"name":"refund","args":{"order_id":"4472"}}"#, 5)]);
+    let (tx, mut rx) = unbounded_channel();
+    let bad = run_once(&trap, &sandbox(), 8, 2, 0, &tx).await.unwrap();
+    drop(tx);
+    assert!(!bad.reached_end);
+    assert_eq!(bad.failure, Some(FailureKind::ForbiddenCall));
+    assert_eq!(drain(&mut rx).last().unwrap().kind, StepKind::ForbiddenCall);
+
+    // SAME tool, allowed args → advances to success (no name-only short-circuit).
+    let good = ScriptedModel::new(vec![(r#"{"name":"refund","args":{"order_id":"C-402"}}"#, 5)]);
+    let (tx2, _rx2) = unbounded_channel();
+    let ok = run_once(&good, &sandbox(), 8, 2, 0, &tx2).await.unwrap();
+    assert!(ok.reached_end);
+}

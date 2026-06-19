@@ -19,6 +19,7 @@ export const StepKindSchema = z.enum([
   "hallucinated_completion",
   "end_state_reached",
   "infinite_loop",
+  "forbidden_call",
 ]);
 export type StepKind = z.infer<typeof StepKindSchema>;
 
@@ -37,6 +38,7 @@ export const TopErrorSchema = z.enum([
   "hallucinated",
   "malformed_json",
   "malformed_schema",
+  "forbidden_call",
 ]);
 export type TopError = z.infer<typeof TopErrorSchema>;
 
