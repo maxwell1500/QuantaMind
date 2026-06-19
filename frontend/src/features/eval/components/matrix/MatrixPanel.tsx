@@ -1,6 +1,7 @@
 import { useEffect, useState } from "react";
 import { useEvalRegistryStore, DEFAULT_PRESET } from "../../state/evalRegistryStore";
 import { PresetOptGroups } from "../PresetOptGroups";
+import { estimateLabel } from "../../estimate";
 import { getBuiltinCollection, loadCustomCollection, type ToolTask } from "../../../../shared/ipc/eval/registry";
 import {
   runCollectionMatrix,
@@ -123,6 +124,11 @@ export function MatrixPanel({
         >
           {running ? <span style={{ fontSize: 9 }}>●●●</span> : <span style={{ marginLeft: 2 }}>▶</span>}
         </button>
+        {!runDisabled && (
+          <span data-testid="matrix-estimate" style={{ fontSize: 11, color: "#64748b", whiteSpace: "nowrap" }}>
+            {estimateLabel(tasks, targets.length)}
+          </span>
+        )}
       </div>
 
       {error && (
