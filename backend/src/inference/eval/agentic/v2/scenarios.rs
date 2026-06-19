@@ -47,7 +47,51 @@ pub fn v2_header(json: &str) -> Option<V2Header> {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::inference::eval::agentic::sandbox::{EndStateRule, TaskCheckpoint};
     use crate::inference::eval::agentic::v2::collection::load_v2_collection;
+    use crate::inference::eval::agentic::v2::r#match::args_match_v2;
+    use serde_json::Value;
+    use std::collections::HashSet;
+
+    fn has_wildcard(args: &Value) -> bool {
+        args.as_object()
+            .map(|o| o.values().any(|v| v.as_str().is_some_and(|s| s.contains('*'))))
+            .unwrap_or(false)
+    }
+
+    /// `a` is a strict wildcard-superset of `b`: same tool, `a` has a wildcard, `a`'s
+    /// pattern matches `b`'s args, but not the reverse — so greedy-first RequireAll
+    /// matching could consume `a` with a call meant for the narrower `b` (false-negative).
+    fn wildcard_superset(a: &TaskCheckpoint, b: &TaskCheckpoint) -> bool {
+        a.tool == b.tool
+            && has_wildcard(&a.args)
+            && args_match_v2(&a.args, &b.args)
+            && !args_match_v2(&b.args, &a.args)
+    }
+
+    /// Permanent answer-key guard: a future authored scenario can't silently regress
+    /// these without failing the build.
+    #[test]
+    fn bundled_collections_pass_deep_integrity_checks() {
+        for (id, json) in V2_SCENARIOS {
+            for t in load_v2_collection(json).unwrap() {
+                let spec = t.agentic.as_ref().unwrap();
+                let tools: HashSet<&str> = t.tools.iter().map(|x| x.name.as_str()).collect();
+                // name-keyed faults must name a presented tool (a typo'd on_call never fires).
+                for nf in &spec.name_faults {
+                    assert!(tools.contains(nf.on_call.as_str()), "{id}/{}: fault on_call '{}' not a tool", t.id, nf.on_call);
+                }
+                // no wildcard-superset shadowing among RequireAll checkpoints.
+                if let EndStateRule::RequireAll(cps) = &spec.end_state {
+                    for (i, a) in cps.iter().enumerate() {
+                        for (j, b) in cps.iter().enumerate() {
+                            assert!(i == j || !wildcard_superset(a, b), "{id}/{}: checkpoint {i} shadows {j}", t.id);
+                        }
+                    }
+                }
+            }
+        }
+    }
 
     #[test]
     fn every_bundled_v2_collection_loads_and_validates() {
