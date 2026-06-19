@@ -3,3 +3,4 @@
 //! traps) transpiles into the existing `ToolTask`/`AgenticSpec` and runs on the
 //! UNCHANGED agentic runner — no second execution path.
 pub mod r#match;
+pub mod world_state;

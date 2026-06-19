@@ -39,6 +39,15 @@ pub enum EndStateRule {
 /// and the end-state success criterion. No native function-calling — the agent
 /// emits raw-text JSON calls and the sandbox replies in text, so the identical
 /// environment runs across Ollama / llama.cpp / MLX.
+/// How the sandbox answers a tool call. `StaticMocks` is the v1 default (canonical
+/// call -> authored response). `WorldState` is the Phase 9-v2 mode: responses are
+/// derived from a ground-truth map the model must discover via tools.
+#[derive(Clone, Debug)]
+pub enum ResponderKind {
+    StaticMocks,
+    WorldState(Value),
+}
+
 #[derive(Clone, Debug)]
 pub struct DeterministicSandbox {
     pub initial_prompt: String,
@@ -51,6 +60,8 @@ pub struct DeterministicSandbox {
     /// Empty for a fault-free sandbox. The mocks are immutable; the per-RUN attempt
     /// counters live in `SandboxState`, never here.
     pub faults: HashMap<String, FaultInjection>,
+    /// v1 `StaticMocks` by default; v2 sets `WorldState` via `with_world_state`.
+    pub responder: ResponderKind,
 }
 
 impl DeterministicSandbox {
@@ -61,7 +72,7 @@ impl DeterministicSandbox {
         end_state: EndStateRule,
     ) -> Self {
         let mock_responses = mocks.into_iter().map(|m| (canonical(&m.call), m.response)).collect();
-        Self { initial_prompt, tools, mock_responses, end_state, faults: HashMap::new() }
+        Self { initial_prompt, tools, mock_responses, end_state, faults: HashMap::new(), responder: ResponderKind::StaticMocks }
     }
 
     /// Attach Driver-B fault traps (builder form, so the `new` signature and every
@@ -71,12 +82,21 @@ impl DeterministicSandbox {
         self
     }
 
-    /// The deterministic result for a parsed call, or `None` when the agent called
-    /// something the sandbox has no mock for (an unknown/hallucinated tool, or the
-    /// right tool with wrong args). Matching goes through `canonical`, so arg key
-    /// ordering is irrelevant.
-    pub fn respond(&self, call: &Call) -> Option<&str> {
-        self.mock_responses.get(&canonical(call)).map(String::as_str)
+    /// Switch to the v2 world_state responder (builder form). Tool responses are then
+    /// derived from `ws` instead of static mocks.
+    pub fn with_world_state(mut self, ws: Value) -> Self {
+        self.responder = ResponderKind::WorldState(ws);
+        self
+    }
+
+    /// The deterministic result for a parsed call. `StaticMocks`: `Some(mock)` or
+    /// `None` for an unknown/hallucinated tool or wrong args (matched via `canonical`).
+    /// `WorldState`: always `Some` — the derived entity sub-object, or a generic ack.
+    pub fn respond(&self, call: &Call) -> Option<String> {
+        match &self.responder {
+            ResponderKind::StaticMocks => self.mock_responses.get(&canonical(call)).cloned(),
+            ResponderKind::WorldState(ws) => Some(crate::inference::eval::agentic::v2::world_state::derive_response(ws, call)),
+        }
     }
 }
 
@@ -175,16 +195,16 @@ mod tests {
     fn respond_returns_mock_for_known_call() {
         let sb = sandbox();
         let got = sb.respond(&call("get_balance", json!({ "account_id": "ACC-123" })));
-        assert_eq!(got, Some(r#"{"status":200,"balance":450.0}"#));
+        assert_eq!(got.as_deref(), Some(r#"{"status":200,"balance":450.0}"#));
     }
 
     #[test]
     fn respond_is_none_for_unknown_tool_or_wrong_args() {
         let sb = sandbox();
         // Unknown / hallucinated tool.
-        assert_eq!(sb.respond(&call("search_web", json!({ "q": "rates" }))), None);
+        assert_eq!(sb.respond(&call("search_web", json!({ "q": "rates" }))).as_deref(), None);
         // Right tool, wrong args → still a miss (the sandbox is deterministic).
-        assert_eq!(sb.respond(&call("get_balance", json!({ "account_id": "ACC-999" }))), None);
+        assert_eq!(sb.respond(&call("get_balance", json!({ "account_id": "ACC-999" }))).as_deref(), None);
     }
 
     #[test]
@@ -195,6 +215,21 @@ mod tests {
     }
 
     #[test]
+    fn world_state_mode_responds_with_the_entity_blob() {
+        let sb = DeterministicSandbox::new(
+            "p".into(),
+            vec![],
+            vec![],
+            EndStateRule::RequireSequence(vec![TaskCheckpoint { tool: "t".into(), args: json!({}) }]),
+        )
+        .with_world_state(json!({ "M-3": { "ratio": 0.1 } }));
+        assert_eq!(
+            sb.respond(&call("compute_margin", json!({ "account": "M-3" }))).as_deref(),
+            Some(r#"{"ratio":0.1}"#)
+        );
+    }
+
+    #[test]
     fn respond_matches_despite_reordered_args() {
         let sb = DeterministicSandbox::new(
             "p".into(),
@@ -202,7 +237,7 @@ mod tests {
             vec![MockResponse { call: call("f", json!({ "x": 1, "y": 2 })), response: "ok".into() }],
             EndStateRule::RequireSequence(vec![TaskCheckpoint { tool: "done".into(), args: json!({}) }]),
         );
-        assert_eq!(sb.respond(&call("f", json!({ "y": 2, "x": 1 }))), Some("ok"));
+        assert_eq!(sb.respond(&call("f", json!({ "y": 2, "x": 1 }))).as_deref(), Some("ok"));
     }
 
     fn faults(rules: Vec<FaultRule>) -> HashMap<String, FaultInjection> {

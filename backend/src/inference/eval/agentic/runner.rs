@@ -166,7 +166,7 @@ pub async fn run_once<M: ModelTurn>(
                         next_cp += 1; // intermediate checkpoint reached, keep going
                     }
                     let (kind, result) = match sandbox.respond(&call) {
-                        Some(r) => (StepKind::ToolCall, r.to_string()),
+                        Some(r) => (StepKind::ToolCall, r),
                         None => {
                             unknown_tools += 1; // a decoy or hallucinated tool — no mock exists
                             (StepKind::UnknownTool, UNKNOWN_TOOL.to_string())
