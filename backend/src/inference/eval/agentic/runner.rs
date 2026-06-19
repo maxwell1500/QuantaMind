@@ -34,6 +34,13 @@ impl Default for AgenticConfig {
 /// outcomes into an `AgenticReport`. Each `run_once` builds a fresh transcript and
 /// token counter over the shared (immutable) sandbox — absolute isolation, no
 /// state bleed between iterations.
+///
+/// A per-run backend error (e.g. Ollama timed out or crashed on one of the k
+/// attempts) does NOT abort the batch: that run is skipped and the remaining
+/// attempts still execute, then the report folds the runs that completed. An infra
+/// fault is not a model task-failure, so a skipped run never reaches the
+/// denominator. Only when EVERY run errored does the error propagate — the task
+/// then shows as Error and re-runs on resume (the backend is genuinely down).
 pub async fn run_agentic<M: ModelTurn>(
     turn: &M,
     sandbox: &DeterministicSandbox,
@@ -41,8 +48,17 @@ pub async fn run_agentic<M: ModelTurn>(
     tx: &UnboundedSender<TrajectoryStep>,
 ) -> AppResult<AgenticReport> {
     let mut outcomes = Vec::with_capacity(config.k as usize);
+    let mut last_err = None;
     for run_index in 0..config.k {
-        outcomes.push(run_once(turn, sandbox, config.max_steps, config.max_recovery, run_index, tx).await?);
+        match run_once(turn, sandbox, config.max_steps, config.max_recovery, run_index, tx).await {
+            Ok(outcome) => outcomes.push(outcome),
+            Err(e) => last_err = Some(e),
+        }
+    }
+    if outcomes.is_empty() {
+        if let Some(e) = last_err {
+            return Err(e);
+        }
     }
     Ok(AgenticReport::from_outcomes(&outcomes))
 }

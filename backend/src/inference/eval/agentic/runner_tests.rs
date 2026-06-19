@@ -36,6 +36,30 @@ impl ModelTurn for ScriptedModel {
     }
 }
 
+/// A backend that errors on specific call indices (0-based) and otherwise returns
+/// `END_CALL` → an immediate success. With single-turn runs, the call index equals
+/// the run index, so this simulates Ollama failing on a specific Pass^k attempt.
+struct FlakyModel {
+    err_on: Vec<usize>,
+    next: AtomicUsize,
+}
+
+impl FlakyModel {
+    fn new(err_on: Vec<usize>) -> Self {
+        Self { err_on, next: AtomicUsize::new(0) }
+    }
+}
+
+impl ModelTurn for FlakyModel {
+    async fn run(&self, _spec: &GenerateSpec) -> AppResult<(String, GenerateStats)> {
+        let i = self.next.fetch_add(1, Ordering::SeqCst);
+        if self.err_on.contains(&i) {
+            return Err(crate::errors::AppError::Inference("ollama timed out".into()));
+        }
+        Ok((END_CALL.to_string(), GenerateStats { eval_count: Some(10), ..Default::default() }))
+    }
+}
+
 fn drain(rx: &mut UnboundedReceiver<TrajectoryStep>) -> Vec<TrajectoryStep> {
     let mut out = Vec::new();
     while let Ok(s) = rx.try_recv() {
@@ -363,4 +387,32 @@ async fn expect_abstaining_text_passes_on_decline_fails_on_action() {
     let bad = run_agentic(&actor, &abstain, AgenticConfig { k: 1, max_steps: 4, ..Default::default() }, &tx2).await.unwrap();
     assert_eq!(bad.passes, 0);
     assert_eq!(bad.failures.hallucinated_completions, 1);
+}
+
+#[tokio::test]
+async fn a_per_run_backend_error_does_not_abort_the_remaining_runs() {
+    // Ollama errors on attempts 1 and 3 of a k=5 batch. The OLD behaviour bailed on
+    // attempt 1 (the `?`), losing attempts 2–4. Now the failing attempts are skipped
+    // and runs 0, 2, 4 still complete → the report folds the 3 that ran (an infra
+    // fault never reaches the denominator: total_runs is 3, not 5).
+    let model = FlakyModel::new(vec![1, 3]);
+    let (tx, _rx) = unbounded_channel();
+    let report =
+        run_agentic(&model, &sandbox(), AgenticConfig { k: 5, max_steps: 4, ..Default::default() }, &tx).await.unwrap();
+
+    assert_eq!(report.passes, 3); // runs 0, 2, 4 all reached the end state
+    assert_eq!(report.total_runs, 3); // the 2 errored runs are excluded, not failed
+    assert_eq!(report.failures.hallucinated_completions, 0);
+    assert_eq!(report.failures.infinite_loop_hits, 0);
+    assert_eq!(report.avg_output_tokens_success, Some(10.0));
+}
+
+#[tokio::test]
+async fn every_run_erroring_surfaces_the_error_for_resume() {
+    // The backend is genuinely down: all k attempts error. With no completed run to
+    // report, the error propagates so the task shows as Error and re-runs on resume.
+    let model = FlakyModel::new(vec![0, 1, 2]);
+    let (tx, _rx) = unbounded_channel();
+    let result = run_agentic(&model, &sandbox(), AgenticConfig { k: 3, max_steps: 4, ..Default::default() }, &tx).await;
+    assert!(result.is_err());
 }

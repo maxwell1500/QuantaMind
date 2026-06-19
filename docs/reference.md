@@ -412,7 +412,13 @@ Error), with a click-through Trace Debugger. See [the workspace](#eval-runner).
   plain-text refusal with **no** tool call (so a robust planner that declines an
   unsafe/unnecessary action isn't mis-scored as lazy); acting anyway fails.
 - **Pass^k consistency.** The loop runs `k` times (default 5) with absolute
-  isolation between runs. The per-task `AgenticReport` carries `passes/total_runs`, a
+  isolation between runs. A per-run **backend** error (e.g. Ollama timed out or
+  crashed on one attempt) does **not** abort the batch: that attempt is skipped and
+  the remaining runs still execute, then the report folds the runs that completed —
+  an infra fault is not a model task-failure, so a skipped run never reaches
+  `total_runs`. Only when **every** run errors does the error propagate (the task
+  then shows as Error and re-runs on resume — the backend is genuinely down). The
+  per-task `AgenticReport` carries `passes/total_runs`, a
   `FailureTracker` with **distinct** tallies (`infinite_loop_hits` = hit the step
   cap, `hallucinated_completions` = fake done, `malformed_json_calls` = broken
   JSON, `schema_unrecovered_calls` = exhausted the recovery budget), and a
