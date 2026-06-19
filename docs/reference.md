@@ -465,8 +465,13 @@ Error), with a click-through Trace Debugger. See [the workspace](#eval-runner).
   with the **oracle unchanged**. **Pass^k scales by tier:** an authored task with no
   explicit `k` runs at `pass_k_for(tier)` — Easy 5 (= the legacy default) / Medium 8
   / Hard 16 / Extreme 24 (τ-bench: top models cluster at pass^1, spread at pass^8).
-  An explicit `k` (authored, or the UI K override) still wins. Still pending: the
-  hardware-calibrated readiness gate (Phase 9B).
+  An explicit `k` (authored, or the UI K override) still wins. **Built-in tiered
+  templates** (`difficulty/tiers.rs::builtin_templates(category, tier)`) ship one
+  escalating task per `(coding|rag|general) × tier`, built from existing primitives
+  (a `require_sequence` whose length follows `axes.min_required_steps`, plus the
+  tier's decoy count) — every one is satisfiable by an oracle-perfect agent (tested).
+  They are library code today; surfacing them into the collection picker is a later
+  step. Still pending: the hardware-calibrated readiness gate (Phase 9B).
 - **Relative effort, not absolute joules.** `avg_output_tokens_success` is the mean
   output-token count (`eval_count`) over the **successful** runs only — **n/a**
   when there are zero successes, never a divide-by-zero. Prompt tokens are
