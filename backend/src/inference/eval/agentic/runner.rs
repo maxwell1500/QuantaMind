@@ -1,8 +1,8 @@
 use crate::errors::AppResult;
 use crate::inference::eval::agentic::context::{tool_result_line, Conversation};
-use crate::inference::eval::agentic::endstate;
+use crate::inference::eval::agentic::scoring::endstate;
 use crate::inference::eval::agentic::model_turn::ModelTurn;
-use crate::inference::eval::agentic::report::{AgenticReport, FailureKind, RunOutcome};
+use crate::inference::eval::agentic::scoring::report::{AgenticReport, FailureKind, RunOutcome};
 use crate::inference::eval::agentic::sandbox::{DeterministicSandbox, EndStateRule, SandboxState};
 use crate::inference::eval::agentic::step::{StepKind, TrajectoryStep};
 use crate::inference::eval::toolcall::parse::{extract_calls, looks_like_broken_json};

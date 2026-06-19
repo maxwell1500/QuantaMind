@@ -375,6 +375,11 @@ one folder per commit, behavior unchanged).
   `useContextCliff` + `ContextCliffChart`, visx). Built-in eval presets (curated + `tasks_finance.json`)
   are enumerated by `toolcall/tasks.rs::BUILTIN_COLLECTIONS` behind `list_builtin_collections` /
   `get_builtin_collection`.
+- **backend `inference/eval/agentic/`** (was 11 files): the run-judgment concern
+  splits into `agentic/scoring/` (`report.rs` = `AgenticReport`/`FailureTracker`/
+  `FailureKind`/`RunOutcome`/`TopError`; `endstate.rs` = `checkpoint_matches` /
+  `validate_call`). The run loop (`runner`, `model_turn`, `context`, `step`),
+  task definition (`spec`, `sandbox`, `build`) stay at the root.
 - **frontend `features/workspace/components/`** (was 17 files): `model-select/` ·
   `prompt/` (editor + params) · `run/` (single/multi + controls + output) ·
   `status/` (status bar, ollama control, errors)

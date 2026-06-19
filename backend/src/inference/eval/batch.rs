@@ -3,7 +3,7 @@ use crate::inference::backend::backend_kind::BackendKind;
 use crate::inference::backend::endpoint;
 use crate::inference::eval::agentic::build::sandbox_for;
 use crate::inference::eval::agentic::model_turn::ModelTurn;
-use crate::inference::eval::agentic::report::{AgenticReport, FailureTracker, TopError};
+use crate::inference::eval::agentic::scoring::report::{AgenticReport, FailureTracker, TopError};
 use crate::inference::eval::agentic::runner::run_agentic;
 use crate::inference::eval::agentic::step::TrajectoryStep;
 use crate::inference::eval::toolcall::eval::{aggregate, trace_one_with, TaskResult, ToolCallReport, TraceResult};

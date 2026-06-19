@@ -3,7 +3,7 @@ use super::super::types::{AgentPath, CliffStatus, NativeFcStatus, Readiness};
 use super::{agentic_metrics, assess_report, from_column, pass_k_of, verdict_for};
 use crate::inference::eval::batch::BatchReport;
 use crate::inference::backend::backend_kind::BackendKind;
-use crate::inference::eval::agentic::report::{FailureTracker, TopError};
+use crate::inference::eval::agentic::scoring::report::{FailureTracker, TopError};
 use crate::inference::eval::batch::{AggAgentic, BatchColumn};
 
 fn col(passes: u32, total: u32, loops: u32, hall: u32, steps: Option<f64>) -> BatchColumn {

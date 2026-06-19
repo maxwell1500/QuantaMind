@@ -1,6 +1,6 @@
 use crate::errors::AppResult;
 use crate::inference::eval::agentic::model_turn::ModelTurn;
-use crate::inference::eval::agentic::report::{FailureKind, TopError};
+use crate::inference::eval::agentic::scoring::report::{FailureKind, TopError};
 use crate::inference::eval::agentic::runner::{run_agentic, run_once, AgenticConfig};
 use crate::inference::eval::agentic::sandbox::{DeterministicSandbox, EndStateRule, MockResponse, TaskCheckpoint};
 use crate::inference::eval::agentic::spec::{FaultInjection, FaultRule};

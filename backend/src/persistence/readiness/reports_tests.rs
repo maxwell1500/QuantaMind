@@ -1,6 +1,6 @@
 use super::*;
 use crate::inference::backend::backend_kind::BackendKind;
-use crate::inference::eval::agentic::report::{FailureTracker, TopError};
+use crate::inference::eval::agentic::scoring::report::{FailureTracker, TopError};
 use crate::inference::eval::batch::{AggAgentic, BatchColumn};
 use tempfile::tempdir;
 

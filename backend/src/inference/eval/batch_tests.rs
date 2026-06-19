@@ -163,7 +163,7 @@ async fn native_fc_pass_aggregates_into_the_column_for_supported_models_only() {
 
 #[test]
 fn agg_agentic_sums_failure_breakdown_not_just_top_error() {
-    use crate::inference::eval::agentic::report::{AgenticReport, FailureKind, RunOutcome};
+    use crate::inference::eval::agentic::scoring::report::{AgenticReport, FailureKind, RunOutcome};
     // Task A loops once; task B hallucinates nine times. `top_error` is Hallucinated
     // (9 > 1), but a `forbid_infinite_loop` verdict must still see the single loop —
     // the gap this aggregate closes.
@@ -179,7 +179,7 @@ fn agg_agentic_sums_failure_breakdown_not_just_top_error() {
     assert_eq!(agg.failures.hallucinated_completions, 9);
 }
 
-use crate::inference::eval::agentic::report::{AgenticReport, FailureKind, RunOutcome};
+use crate::inference::eval::agentic::scoring::report::{AgenticReport, FailureKind, RunOutcome};
 use std::sync::Mutex as StdMutex;
 
 /// A gate that always fails — to prove the run halts (assert-and-fail) rather than
