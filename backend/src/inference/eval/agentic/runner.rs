@@ -47,10 +47,37 @@ pub async fn run_agentic<M: ModelTurn>(
     config: AgenticConfig,
     tx: &UnboundedSender<TrajectoryStep>,
 ) -> AppResult<AgenticReport> {
-    let mut outcomes = Vec::with_capacity(config.k as usize);
+    // Non-generated tasks reuse one sandbox for every run (a constant factory).
+    run_agentic_with(turn, config.k, |_| Ok((sandbox.clone(), config.max_steps, config.max_recovery)), tx).await
+}
+
+/// Pass^k with a per-run sandbox FACTORY. `make(run_index)` returns the sandbox +
+/// (max_steps, max_recovery) for that repetition — so a generated task can build a
+/// FRESH instance per run (contamination resistance) while a static task returns
+/// the same sandbox each time. A factory `Err` (e.g. a generation failure) skips
+/// that run like an infra error; only when EVERY run is skipped/errored does the
+/// error propagate. The infra-error-skip semantics are otherwise unchanged.
+pub async fn run_agentic_with<M, F>(
+    turn: &M,
+    k: u32,
+    make: F,
+    tx: &UnboundedSender<TrajectoryStep>,
+) -> AppResult<AgenticReport>
+where
+    M: ModelTurn,
+    F: Fn(u32) -> AppResult<(DeterministicSandbox, u32, u8)>,
+{
+    let mut outcomes = Vec::with_capacity(k as usize);
     let mut last_err = None;
-    for run_index in 0..config.k {
-        match run_once(turn, sandbox, config.max_steps, config.max_recovery, run_index, tx).await {
+    for run_index in 0..k {
+        let (sandbox, max_steps, max_recovery) = match make(run_index) {
+            Ok(t) => t,
+            Err(e) => {
+                last_err = Some(e); // a generation failure skips this run
+                continue;
+            }
+        };
+        match run_once(turn, &sandbox, max_steps, max_recovery, run_index, tx).await {
             Ok(outcome) => outcomes.push(outcome),
             Err(e) => last_err = Some(e),
         }
