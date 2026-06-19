@@ -471,7 +471,18 @@ Error), with a click-through Trace Debugger. See [the workspace](#eval-runner).
   (a `require_sequence` whose length follows `axes.min_required_steps`, plus the
   tier's decoy count) — every one is satisfiable by an oracle-perfect agent (tested).
   They are library code today; surfacing them into the collection picker is a later
-  step. Still pending: the hardware-calibrated readiness gate (Phase 9B).
+  step.
+- **Hardware-calibrated tier gate (Phase 9B).** `AggAgentic.by_tier` carries strict
+  Pass^k bucketed per tier; the readiness `assess()` derives the highest tier a model
+  cleared (`pass^k ≥ profile.min_pass_k`) and blocks when the profile's
+  `required_tier` was **exercised by the collection** but not cleared. An untested
+  tier is **NotAttempted**, never a guessed fail — so an all-Easy collection never
+  trips a Hard profile. `readiness/hardware/hwclass.rs` maps total memory to a
+  `HardwareClass` (rounded to the nearest GB to avoid boundary flip-flop) and a
+  default required tier; built-in profiles ship `required_tier` Hard (coding) /
+  Medium (rag, general), while a pre-Phase-9 saved profile defaults `Easy` and never
+  blocks (exact old behavior). Pending: surfacing hw-class / required / cleared tier
+  in the report UI (9B.3).
 - **Relative effort, not absolute joules.** `avg_output_tokens_success` is the mean
   output-token count (`eval_count`) over the **successful** runs only — **n/a**
   when there are zero successes, never a divide-by-zero. Prompt tokens are

@@ -26,6 +26,10 @@ pub fn from_column(
     let (loops, hallucinated) = source
         .map(|a| (a.failures.infinite_loop_hits, a.failures.hallucinated_completions))
         .unwrap_or((0, 0));
+    // Phase 9: per-tier strict Pass^k for the tier gate — from the SAME (native-first)
+    // aggregate the other gates read, so the verdict is internally consistent.
+    let tier_pass_k =
+        source.map(|a| a.by_tier.iter().filter_map(|s| s.pass_k().map(|pk| (s.tier, pk))).collect()).unwrap_or_default();
     ReadinessInputs {
         pass_k,
         avg_steps: source.and_then(|a| a.avg_steps),
@@ -36,6 +40,7 @@ pub fn from_column(
         loops,
         hallucinated,
         native_fc,
+        tier_pass_k,
     }
 }
 

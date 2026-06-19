@@ -85,6 +85,7 @@ fn ctx_profile(min_ctx: Option<u32>) -> ReadinessProfile {
         forbid_hallucinated_completion: false,
         require_full_vram: false,
         require_native_fc: false,
+        required_tier: crate::inference::eval::agentic::spec::Tier::Easy,
     }
 }
 

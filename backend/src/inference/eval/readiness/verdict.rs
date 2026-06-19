@@ -1,5 +1,6 @@
 use super::profile::ReadinessProfile;
 use super::types::{AgentPath, CliffStatus, NativeFcStatus, Readiness, ReadinessInputs, ReadinessVerdict, EPSILON};
+use crate::inference::eval::agentic::spec::Tier;
 
 /// "" for a count of 1, "s" otherwise — so a reason reads "1 run" not "1 runs".
 fn plural(n: u32) -> &'static str {
@@ -92,6 +93,23 @@ pub fn assess(i: &ReadinessInputs, p: &ReadinessProfile) -> ReadinessVerdict {
     // model uncertifiable until 7.2 lands).
     if matches!(i.native_fc, NativeFcStatus::NotSupported) && p.require_native_fc {
         blocking.push("native tool-calling required but not supported/measured on this backend".into());
+    }
+
+    // Phase 9 hard gate (hardware-calibrated difficulty): the model must clear the
+    // profile's required tier. It blocks ONLY when the collection actually exercised
+    // that tier — an untested tier is NotAttempted, never a guessed fail, so an
+    // all-Easy collection never trips a Hard profile. A pre-Phase-9 profile defaults
+    // `required_tier = Easy`, which this never blocks on (exact old behavior).
+    if p.required_tier > Tier::Easy {
+        let exercised = i.tier_pass_k.iter().any(|(t, _)| *t >= p.required_tier);
+        let cleared =
+            i.tier_pass_k.iter().filter(|(_, pk)| *pk >= p.min_pass_k - EPSILON).map(|(t, _)| *t).max();
+        if exercised && cleared.map_or(true, |c| c < p.required_tier) {
+            blocking.push(match cleared {
+                Some(c) => format!("cleared {c:?}; this profile requires {:?}", p.required_tier),
+                None => format!("cleared no tier at pass^k {:.2}; requires {:?}", p.min_pass_k, p.required_tier),
+            });
+        }
     }
 
     let path = match i.native_fc {

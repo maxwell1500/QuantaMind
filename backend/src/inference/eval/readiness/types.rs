@@ -1,5 +1,6 @@
 use super::vram_fit::MemoryProfile;
 use crate::inference::backend::backend_kind::BackendKind;
+use crate::inference::eval::agentic::spec::Tier;
 use serde::{Deserialize, Serialize};
 
 /// Absorbs float drift (a serialized `0.80` read back as `0.7999999999999999`,
@@ -58,6 +59,13 @@ pub struct ReadinessInputs {
     pub loops: u32,
     pub hallucinated: u32,
     pub native_fc: NativeFcStatus,
+    /// Phase 9: strict Pass^k per difficulty tier that was actually exercised
+    /// (sorted ascending by tier). `assess` derives the cleared tier from this and
+    /// compares it to the profile's `required_tier`. Empty for a collection with no
+    /// tiered tasks → the tier gate stays silent (a tier can't be failed if it was
+    /// never run). `#[serde(default)]` so pre-Phase-9 inputs deserialize.
+    #[serde(default)]
+    pub tier_pass_k: Vec<(Tier, f64)>,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
