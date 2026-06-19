@@ -24,6 +24,7 @@ import { useSelectedModelStore } from "../../../../shared/state/selectedModelSto
 import { runBatchEval } from "../../../../shared/ipc/eval/batch";
 import { useParamsStore } from "../../../../shared/state/paramsStore";
 import { useBackendStore } from "../../../../shared/state/backendStore";
+import { useBatchStore } from "../../state/batchStore";
 
 const sampleTasks = [{
   id: "w",
@@ -51,6 +52,9 @@ const props = (over: Record<string, unknown> = {}) => ({
 
 beforeEach(() => {
   vi.clearAllMocks();
+  // A mocked run never receives its batch-complete event, so `running` would stay
+  // true and the next click would hit the Stop path — reset it between tests.
+  useBatchStore.getState().reset();
   useBackendStore.setState({ selectedBackend: "ollama" });
   useInstalledModelsStore.setState({
     list: [{ name: "llama3.2:1b", size_bytes: 1, modified_at: "", family: "", parameter_size: "", quantization: "Q4_0", backend: "ollama" }],
@@ -175,10 +179,10 @@ describe("EvalManager Sidebar Controls", () => {
     await waitFor(() => expect(hidePreset).toHaveBeenCalledWith("hard-coding"));
   });
 
-  it("runs the chosen global model when ▶ RUN BATCH is clicked", async () => {
+  it("runs at a chosen tier: sends the tier and leaves k undefined (backend derives Pass^k)", async () => {
     useParamsStore.setState({ globalParams: { temperature: 0.2 } });
     vi.mocked(runBatchEval).mockResolvedValue({ collection_id: "easy-coding", columns: [] });
-    render(<EvalManager {...props()} />);
+    render(<EvalManager {...props({ tierSel: "medium", effectiveTier: "medium", lockedK: 8 })} />);
     const runBtn = screen.getByTestId("eval-run-all");
     expect(runBtn).not.toBeDisabled();
     fireEvent.click(runBtn);
@@ -187,11 +191,73 @@ describe("EvalManager Sidebar Controls", () => {
         "easy-coding",
         [{ model: "llama3.2:1b", backend: "ollama" }],
         sampleTasks,
-        1,
+        undefined, // k — locked by the tier, so the backend derives it
         8,
         { temperature: 0.2 },
         undefined,
         false, // runNativeFc — off by default
+        "medium", // tier
+        undefined, // decoyTools — off by default
+      );
+    });
+  });
+
+  it("Custom tier sends the manual k and no tier", async () => {
+    useParamsStore.setState({ globalParams: {} });
+    vi.mocked(runBatchEval).mockResolvedValue({ collection_id: "easy-coding", columns: [] });
+    render(<EvalManager {...props({ tierSel: "custom", k: 3 })} />);
+    fireEvent.click(screen.getByTestId("eval-run-all"));
+    await waitFor(() => {
+      expect(runBatchEval).toHaveBeenCalledWith(
+        "easy-coding",
+        [{ model: "llama3.2:1b", backend: "ollama" }],
+        sampleTasks,
+        3, // manual k
+        8,
+        {},
+        undefined,
+        false,
+        undefined, // tier — none under Custom
+        undefined,
+      );
+    });
+  });
+
+  it("locks the k field under a tier (read-only) and frees it under Custom", () => {
+    const { rerender } = render(<EvalManager {...props({ tierSel: "hard", lockedK: 16 })} />);
+    expect(screen.getByTestId("eval-manager-k-locked")).toHaveTextContent("16");
+    expect(screen.queryByTestId("eval-manager-k")).toBeNull();
+    rerender(<EvalManager {...props({ tierSel: "custom", k: 4 })} />);
+    expect(screen.getByTestId("eval-manager-k")).toHaveValue(4);
+    expect(screen.queryByTestId("eval-manager-k-locked")).toBeNull();
+  });
+
+  it("shows the HW hint from the backend tier read", () => {
+    render(
+      <EvalManager
+        {...props({ hwTier: { total_memory_bytes: 16 * 1024 ** 3, class: "Mainstream", recommended_tier: "medium" } })}
+      />,
+    );
+    expect(screen.getByTestId("eval-hw-hint")).toHaveTextContent("HW: 16GB RAM · Mainstream · Medium recommended");
+  });
+
+  it("flows the decoy budget into the run only when enabled", async () => {
+    useParamsStore.setState({ globalParams: {} });
+    vi.mocked(runBatchEval).mockResolvedValue({ collection_id: "easy-coding", columns: [] });
+    render(<EvalManager {...props({ tierSel: "easy", effectiveTier: "easy", lockedK: 5, decoyEnabled: true, decoyCount: 4 })} />);
+    fireEvent.click(screen.getByTestId("eval-run-all"));
+    await waitFor(() => {
+      expect(runBatchEval).toHaveBeenCalledWith(
+        "easy-coding",
+        [{ model: "llama3.2:1b", backend: "ollama" }],
+        sampleTasks,
+        undefined,
+        8,
+        {},
+        undefined,
+        false,
+        "easy",
+        4, // decoyTools
       );
     });
   });

@@ -1,5 +1,6 @@
 import { invoke } from "@tauri-apps/api/core";
 import { z } from "zod";
+import { TierSchema } from "../eval/readiness";
 
 // GPU/VRAM, best-effort per platform. unified = shared memory (Apple Silicon;
 // no separate VRAM pool). available:false → "Not available".
@@ -31,4 +32,19 @@ export type HardwareSnapshot = z.infer<typeof HardwareSnapshotSchema>;
 export async function getHardwareSnapshot(): Promise<HardwareSnapshot> {
   const raw = await invoke("get_hardware_snapshot");
   return HardwareSnapshotSchema.parse(raw);
+}
+
+// Hardware class + recommended difficulty tier (mirror of Rust `HardwareTier`).
+// The eval page's tier-`Auto` mode and "HW: …" hint read this; the GB thresholds
+// + class→tier policy live in the backend (`hwclass.rs`), never duplicated here.
+export const HardwareTierSchema = z.object({
+  total_memory_bytes: z.number().int().nonnegative(),
+  class: z.string(),
+  recommended_tier: TierSchema,
+});
+export type HardwareTier = z.infer<typeof HardwareTierSchema>;
+
+export async function getHardwareTier(): Promise<HardwareTier> {
+  const raw = await invoke("get_hardware_tier");
+  return HardwareTierSchema.parse(raw);
 }

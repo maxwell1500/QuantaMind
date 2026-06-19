@@ -247,6 +247,23 @@ whole queue is unit-tested without HTTP. On the frontend, the matching consumer
 `requestAnimationFrame`, so a model's token firehose never triggers a per-event
 render.
 
+The batch command also carries the **Phase-9 run-shape parameters** end-to-end:
+`run_batch_eval` takes `tier`/`decoyTools` alongside `k`/`maxSteps`, persists them on
+`RunConfig` (`#[serde(default)]` so older resumable job logs still parse), and
+`apply_overrides` stamps them onto each agentic spec at run time (tier → `spec.tier`
++ derived `pass_k_for(tier)` when no explicit `k`; decoys → `spec.axes.decoy_tools`).
+The eval page's tier-`Auto` mode + HW hint read a separate **`get_hardware_tier`**
+command (`commands/eval/readiness_cmd.rs`) that classifies the machine via the
+readiness engine's `classify_bytes` + `default_required_tier` — one source of truth
+for the GB thresholds, never duplicated in TS.
+
+On the **read** side (Phase 9B), the per-tier breakdown the Agent Report deep-dive
+renders is computed once in `agg_agentic` (the enriched `TierStat` carries per-tier
+`avg_steps` + `failures`) and surfaced on `ModelVerdict.by_tier`/`failures`. A single
+`readiness::inputs::native_first_source` helper selects the native-first aggregate for
+the gate, the per-tier breakdown, **and** the failure taxonomy, so the displayed numbers
+can never come from a different pass than the verdict gated on.
+
 ### Pattern 2 — Thin command, pure core
 
 A `#[tauri::command]` does three things only: validate input, wire Tauri

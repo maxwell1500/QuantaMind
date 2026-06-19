@@ -5,6 +5,8 @@ import { useBackendStore } from "../../../shared/state/backendStore";
 import { useBatchStore } from "../state/batchStore";
 import { useCliffStore } from "../state/cliffStore";
 import { stopBatchEval } from "../../../shared/ipc/eval/batch";
+import { getHardwareTier, type HardwareTier } from "../../../shared/ipc/compare/hardware";
+import { PASS_K_BY_TIER, type Tier } from "../../../shared/ipc/eval/readiness";
 import { EvalManager } from "./manager/EvalManager";
 import { CollectionEditor } from "./manager/CollectionEditor";
 import { MatrixScoreboard } from "./scoreboard/MatrixScoreboard";
@@ -38,12 +40,27 @@ export function EvalPage() {
   };
   const [iterationsK, setIterationsK] = useState<number>(1);
   const [maxSteps, setMaxSteps] = useState<number>(8);
+  // Phase 9 difficulty levers, owned here so the manager (run) and the scoreboard
+  // (header chips) read one resolved value. `tierSel` drives `k`: a tier locks it
+  // (`pass_k_for`), `custom` frees the manual input. `Auto` resolves to the running
+  // machine's recommended tier (`hwTier`).
+  const [tierSel, setTierSel] = useState<"auto" | Tier | "custom">("auto");
+  const [decoyEnabled, setDecoyEnabled] = useState(false);
+  const [decoyCount, setDecoyCount] = useState(3);
+  const [hwTier, setHwTier] = useState<HardwareTier | null>(null);
   const [editing, setEditing] = useState(false);
   const recovery = useRunRecovery();
 
   useEffect(() => {
     void initRegistry().catch((e) => console.error("eval registry init failed (EvalPage):", e));
   }, [initRegistry]);
+
+  // One read of the machine's class + recommended tier (drives Auto + the HW hint).
+  useEffect(() => {
+    void getHardwareTier()
+      .then(setHwTier)
+      .catch((e) => console.error("hardware tier load failed (EvalPage):", e));
+  }, []);
 
   // Context-shift cancellation law: a backend OR collection switch invalidates the
   // target of every long-running process, so ALL compute for the old context halts.
@@ -87,6 +104,22 @@ export function EvalPage() {
     if (evalModel) setFocusedModel(evalModel);
   }, [evalModel]);
 
+  // Resolve the tier selection into the effective tier + locked Pass^k once, so the
+  // run, the locked-k field, and the scoreboard chips can never disagree. `Custom`
+  // (and `Auto` before the hardware read lands) yields no tier → manual `k`.
+  const effectiveTier: Tier | undefined =
+    tierSel === "custom" ? undefined : tierSel === "auto" ? hwTier?.recommended_tier : tierSel;
+  const lockedK = effectiveTier ? PASS_K_BY_TIER[effectiveTier] : undefined;
+  const effectiveK = tierSel === "custom" ? iterationsK : lockedK;
+  const decoys = decoyEnabled ? decoyCount : undefined;
+  const cap = (s: string) => s.charAt(0).toUpperCase() + s.slice(1);
+  const tierLabel =
+    tierSel === "custom"
+      ? "Custom"
+      : effectiveTier
+        ? `${cap(effectiveTier)}${tierSel === "auto" ? " (Auto)" : ""}`
+        : "Auto";
+
   return (
     <div className="grid gap-4" style={{ gridTemplateColumns: "360px 1fr" }} data-testid="eval-page">
       {recovery.pending && (
@@ -104,6 +137,15 @@ export function EvalPage() {
         setK={setIterationsK}
         maxSteps={maxSteps}
         setMaxSteps={setMaxSteps}
+        tierSel={tierSel}
+        setTierSel={setTierSel}
+        effectiveTier={effectiveTier}
+        lockedK={lockedK}
+        hwTier={hwTier}
+        decoyEnabled={decoyEnabled}
+        setDecoyEnabled={setDecoyEnabled}
+        decoyCount={decoyCount}
+        setDecoyCount={setDecoyCount}
         onNewCollection={() => {
           startNew();
           setEditing(true);
@@ -118,8 +160,10 @@ export function EvalPage() {
             <div ref={detailRef}>
               <MatrixScoreboard
                 model={focusedModel}
-                k={iterationsK}
+                k={effectiveK ?? iterationsK}
                 maxSteps={maxSteps}
+                tierLabel={tierLabel}
+                decoys={decoys}
                 focusedTaskId={focusedTaskId}
                 setFocusedTaskId={setFocusedTaskId}
               />

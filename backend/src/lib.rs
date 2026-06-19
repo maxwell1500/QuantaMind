@@ -156,6 +156,7 @@ pub fn run() {
             commands::eval::readiness_cmd::save_readiness_profile,
             commands::eval::readiness_cmd::delete_readiness_profile,
             commands::eval::readiness_cmd::assess_readiness,
+            commands::eval::readiness_cmd::get_hardware_tier,
             commands::eval::readiness_cmd::save_cliff_result,
             commands::eval::readiness_cmd::get_cliff_results,
             commands::eval::readiness_cmd::run_context_cliff,

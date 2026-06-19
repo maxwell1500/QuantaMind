@@ -8,6 +8,17 @@ export const TierSchema = z.enum(["easy", "medium", "hard", "extreme"]);
 export type Tier = z.infer<typeof TierSchema>;
 
 /// A use-case preset the verdict is measured against (mirror of the Rust
+/// Tier → locked Pass^k (mirror of Rust `pass_k_for` in `passk.rs` — that is the
+/// source of truth; keep these in sync). Drives the eval page's read-only `k` field
+/// when a difficulty tier is selected, so the displayed `k` matches what the backend
+/// stamps onto each spec.
+export const PASS_K_BY_TIER: Record<Tier, number> = {
+  easy: 5,
+  medium: 8,
+  hard: 16,
+  extreme: 24,
+};
+
 /// `ReadinessProfile`). Hard gates (`require_*`, `min_*`) block; soft targets
 /// (`max_*`) downgrade to Conditional. Nullable fields mean "metric ignored".
 export const ReadinessProfileSchema = z.object({

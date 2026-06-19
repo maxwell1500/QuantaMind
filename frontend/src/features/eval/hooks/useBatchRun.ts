@@ -14,6 +14,7 @@ import { formatIpcError } from "../../../shared/ipc/core/error";
 import { healthFor } from "../../../shared/ipc/core/client";
 import type { ModelTarget } from "../../../shared/ipc/eval/matrix";
 import type { ToolTask } from "../../../shared/ipc/eval/registry";
+import type { Tier } from "../../../shared/ipc/eval/readiness";
 import { useInstalledModelsStore } from "../../models/state/installedModelsStore";
 import { useBatchStore } from "../state/batchStore";
 import { useParamsStore } from "../../../shared/state/paramsStore";
@@ -83,6 +84,8 @@ export function useBatchRun() {
       k?: number,
       maxSteps?: number,
       runNativeFc?: boolean,
+      tier?: Tier,
+      decoyTools?: number,
     ) => {
       // Pre-flight: actively probe EVERY backend this run uses (a run can mix
       // backends), so a down server fails fast with a clear message instead of
@@ -109,7 +112,18 @@ export function useBatchRun() {
       try {
         const { globalParams, keepLoaded } = useParamsStore.getState();
         // Keep loaded → resident; off → omit so the backend default applies.
-        await runBatchEval(collectionId, targets, tasks, k, maxSteps, globalParams, keepLoaded ? -1 : undefined, runNativeFc);
+        await runBatchEval(
+          collectionId,
+          targets,
+          tasks,
+          k,
+          maxSteps,
+          globalParams,
+          keepLoaded ? -1 : undefined,
+          runNativeFc,
+          tier,
+          decoyTools,
+        );
       } catch (e) {
         useBatchStore.getState().setError(formatIpcError(e));
       }

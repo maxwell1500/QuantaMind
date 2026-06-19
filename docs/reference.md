@@ -833,6 +833,31 @@ Each Scoreboard row has a **View Trace** button: clicking it flips the toggle to
 that exact collection + task + model, ready to ▶ — connecting the macro "which tasks failed?" view to
 the micro "why did this one fail?" trace.
 
+**Run Controls — difficulty tier + anti-saturation (Phase 9).** The Eval Manager's run controls expose
+the Phase-9 levers inline, so the chosen tier and decoy budget genuinely shape the batch (they flow into
+`run_batch_eval` → `apply_overrides`, which rewrites each agentic spec at run time):
+
+- **Difficulty Tier** dropdown — `Auto · Easy · Medium · Hard · Extreme · Custom`. A tier sends `tier`
+  to the backend with `k = None`; the backend derives the locked Pass^k via `pass_k_for` (Easy 5 /
+  Medium 8 / Hard 16 / Extreme 24) and **stamps it onto every agentic spec**, so an authored per-task
+  `k` no longer silently wins under a chosen tier. `Auto` resolves to the machine's recommended tier
+  (see below). The **Iterations (k)** field is read-only (a 🔒 lock) for a tier and shows that derived
+  value (TS mirror `PASS_K_BY_TIER`, source of truth `passk.rs`). **`Custom`** is the escape hatch:
+  it restores today's behavior — a free `k` input, no tier sent, authored tiers untouched.
+- **HW hint** — "HW: 16GB RAM · Mainstream · Medium recommended" comes from the new `get_hardware_tier`
+  command (the single source of truth; the GB thresholds + class→tier policy live in `hwclass.rs`, never
+  duplicated in TS).
+- **Anti-Saturation** — an `Enable Decoy Tools` checkbox + `Decoy Count`. Enabled sends `decoyTools = N`,
+  which rewrites each agentic spec's `axes.decoy_tools` (N never-correct distractor tools shuffled into
+  the presented tool list); disabled (the default) leaves the task-authored decoys untouched.
+- **Scoreboard header chips** echo the active run's shape: `Target: <model> · Tier: <…> · K: <k> ·
+  Decoys: <n/off>`.
+
+Deferred (flagged, not faked): **Max Steps stays a normal editable input** — the backend has no
+tier→max-steps policy to lock it to. A **"Conditional" per-task status** isn't shown (task outcomes are
+Pass/Fail only; Conditional exists for readiness verdicts, not per task). The trace panel's AST tab +
+inline decoy/hallucination annotations are out of scope (the Evaluator/Trace panel is untouched).
+
 ## Context-cliff probe {#context-cliff}
 
 Runs a dataset at increasing prompt lengths and graphs where tool-call accuracy collapses
@@ -1023,6 +1048,36 @@ with no VRAM-fit measurement, or `min_context_tokens` with no cliff probe), that
 **blocking** — ignorance is not a pass; the report tells you to run the missing
 diagnostic. The `pass^k` core gate likewise blocks when no agentic run was recorded.
 Float comparisons are epsilon-guarded (`1e-6`) so a true `0.80` can't false-block.
+
+**The per-model deep-dive (Phase 9B).** Below the multi-model table a model selector
+opens a three-section drill-down for one model, sourced from `ModelVerdict.by_tier` /
+`failures` — the **same native-first aggregate the gate read** (one `native_first_source`
+helper feeds the gate, the per-tier breakdown, and the taxonomy, so they can't drift):
+
+- **Executive Verdict** — the headline tier is the **tier that actually ran** (the highest
+  tier exercised in `by_tier`), *not* the profile's `required_tier`. The hardware class
+  (`get_hardware_tier`) is an **advisory lens, never a gate**: a Workstation user who
+  deliberately runs Easy gets *Ready (Easy)* plus a soft "run a harder tier for a
+  production-grade verdict" note, never a forced NotReady. Status answers "did it clear the
+  tier it was tested at" via a contiguous `clearsThrough` — READY when it clears up to the
+  hardest tested tier, CONDITIONAL for a cleared prefix **or** a non-monotonic curve (a
+  higher tier cleared above a failed lower one — flagged inconsistent), NOT READY when
+  nothing cleared.
+- **Tier Progression Matrix** — four tier cards with measured per-tier Pass^k + avg-steps
+  and a CLEAR / SATURATED / FAIL badge on the **same `min_pass_k` bar** the verdict's
+  `cleared_tier` uses, so a card and the headline can't contradict. A tier the run never
+  exercised is **NOT TESTED** (gray), never a guessed fail. "Task Parameters"
+  (Horizon/Decoys) come from the collection's **real task axes** or read "not declared" —
+  the mockup's illustrative `3–8 steps` / `2–4 decoys` ranges are never printed as measured.
+- **Failure Taxonomy** — the distribution of failure modes (`unknown_tool_calls`→decoys,
+  `forbidden_calls`→`must_not_call`, loops, hallucinations, …) summed across the **tiers
+  that actually ran** (named in the heading — not a hardcoded Hard+Extreme, so a Mainstream
+  Easy/Medium run gets a truthful section), as a share of tracked failure **events** (not a
+  1:1 failed-run count). The deep-dive exports as **versioned** JSON (`schema_version`).
+
+Pool-injected **decoys reach only the prompt-based pass** (the native tool_calls API is
+handed the raw `task.tools`); a `Decoys: N` figure therefore describes the prompt column,
+not the native one — a pre-existing asymmetry, documented so it isn't misread.
 
 **Profiles** are flat JSON files under the OS app-config dir (`readiness/`),
 editable by power users and seeded on first run with three built-ins:
