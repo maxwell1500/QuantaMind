@@ -238,3 +238,14 @@ fn agentic_task_round_trips_through_serde() {
     let back: ToolTask = serde_json::from_str(&json).unwrap();
     assert_eq!(original, back);
 }
+
+#[test]
+fn pre_phase9_agentic_fixture_saves_without_leaking_tier_or_axes_keys() {
+    // Back-compat: the bundled (pre-Phase-9) agentic collection loads as Easy/None
+    // and re-serializes with no new keys — a saved collection stays byte-compatible.
+    use crate::inference::eval::toolcall::tasks::agentic_tasks;
+    let loaded = agentic_tasks();
+    let json = serde_json::to_string(&loaded).unwrap();
+    assert!(!json.contains("\"tier\""), "default Easy tier must be omitted on save");
+    assert!(!json.contains("\"axes\""), "absent axes must be omitted on save");
+}

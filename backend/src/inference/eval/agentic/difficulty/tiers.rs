@@ -112,7 +112,7 @@ mod tests {
     use crate::errors::AppResult;
     use crate::inference::eval::agentic::build::sandbox_for;
     use crate::inference::eval::agentic::model_turn::ModelTurn;
-    use crate::inference::eval::agentic::runner::run_once;
+    use crate::inference::eval::agentic::runner::{run_agentic, run_once};
     use crate::inference::eval::toolcall::tasks::validate_tasks;
     use crate::inference::generate::generate_spec::GenerateSpec;
     use crate::inference::generate::generate_stats::GenerateStats;
@@ -176,6 +176,54 @@ mod tests {
                 assert_eq!(outcome.unknown_tool_calls, 0);
             }
         }
+    }
+
+    /// A model that emits one fixed reply every turn (a trivial / adversarial agent).
+    struct Fixed(String);
+    impl ModelTurn for Fixed {
+        async fn run(&self, _spec: &GenerateSpec) -> AppResult<(String, GenerateStats)> {
+            Ok((self.0.clone(), GenerateStats { eval_count: Some(3), ..Default::default() }))
+        }
+    }
+
+    #[tokio::test]
+    async fn a_trivial_always_done_agent_scores_zero_at_every_tier() {
+        // The anti-cheat must survive difficulty: a model that just yields "done"
+        // (no tool call) is Hallucinated on every run ⇒ pass^k == 0 at all tiers.
+        for &tier in &TIERS {
+            let task = builtin_templates("coding", tier)[0].clone();
+            let (sandbox, cfg) = sandbox_for(&task).unwrap();
+            let expected_k = cfg.k;
+            let (tx, _rx) = unbounded_channel();
+            let report =
+                run_agentic(&Fixed(r#"{"answer":"all done"}"#.into()), &sandbox, cfg, &tx).await.unwrap();
+            assert_eq!(report.passes, 0, "trivial agent must never pass {:?}", tier);
+            assert_eq!(report.total_runs, expected_k); // ran the full tier-scaled k
+            assert!(report.failures.hallucinated_completions > 0);
+        }
+    }
+
+    #[tokio::test]
+    async fn calling_an_injected_decoy_is_an_unknown_tool_not_a_pass() {
+        let task = builtin_templates("rag", Tier::Hard)[0].clone();
+        let (sandbox, _) = sandbox_for(&task).unwrap();
+        let (tx, _rx) = unbounded_channel();
+        // An injected decoy is a *declared* tool (passes schema validation) but has no
+        // mock, so calling it takes the runner's UnknownTool path — not a SchemaError,
+        // and never an end-state advance. (A tool absent from the presented set would
+        // instead be a SchemaError; that's the Gap-3 distinction.)
+        let real: Vec<String> = tool_pool("rag").iter().map(|t| t.name.clone()).collect();
+        let decoy = sandbox
+            .tools
+            .iter()
+            .map(|t| t.name.clone())
+            .find(|n| !real.contains(n))
+            .expect("Hard injects decoys into the presented tools");
+        let call = json!({ "name": decoy, "args": { "query": "x" } }).to_string();
+
+        let outcome = run_once(&Fixed(call), &sandbox, 6, 2, 0, &tx).await.unwrap();
+        assert!(!outcome.reached_end); // a decoy can never advance the sequence
+        assert!(outcome.unknown_tool_calls > 0); // counted as distraction, not a pass
     }
 
     #[test]
