@@ -451,27 +451,34 @@ Error), with a click-through Trace Debugger. See [the workspace](#eval-runner).
   report's `schema_resilience` is recovered ÷ runs-that-hit-an-error — **n/a** (UI
   "—") when no run ever hit one, never a fabricated 0. Constrained-decoding paths
   can't emit syntactically-broken calls, so this targets **semantic** faults.
-- **Difficulty tier (Phase 9, in progress).** A task may declare an optional
-  `tier` (`easy`/`medium`/`hard`/`extreme`, default `easy`) and `axes`
-  (`min_required_steps`, `decoy_tools`, `hidden_prereqs`, `conflicting_constraints`,
-  `adversarial_context`). Both are `serde`-defaulted so a pre-Phase-9 collection
-  loads and round-trips byte-identically (`easy`/absent are omitted on save); a
-  missing `axes` is strictly absent, never a guessed value. **Decoy tools are
-  live:** `axes.decoy_tools` shuffles that many plausible-but-wrong distractor
-  tools (from a built-in pool) into the presented tool list, deterministically per
-  task (seeded by task id, so temp-0 reproducibility holds). A decoy is never an
-  `expected` checkpoint and has no mock, so calling one yields the runner's
-  "unknown tool" injection and **cannot** satisfy the end state — difficulty rises
-  with the **oracle unchanged**. **Pass^k scales by tier:** an authored task with no
-  explicit `k` runs at `pass_k_for(tier)` — Easy 5 (= the legacy default) / Medium 8
-  / Hard 16 / Extreme 24 (τ-bench: top models cluster at pass^1, spread at pass^8).
-  An explicit `k` (authored, or the UI K override) still wins. **Built-in tiered
-  templates** (`difficulty/tiers.rs::builtin_templates(category, tier)`) ship one
-  escalating task per `(coding|rag|general) × tier`, built from existing primitives
-  (a `require_sequence` whose length follows `axes.min_required_steps`, plus the
-  tier's decoy count) — every one is satisfiable by an oracle-perfect agent (tested).
-  They are library code today; surfacing them into the collection picker is a later
-  step.
+- **Difficulty tiers (Phase 9) + the v2 scenario engine.** Eval content is now the
+  **19 bundled tiered scenario collections** (Easy→Extreme across coding, finance,
+  medical, legal, ecommerce, support, supply-chain, math/science, clinical) under
+  `agentic/v2/scenarios/`. They **replaced** the old hand-coded single/multi fixtures.
+  Each collection is one JSON object (`{name, domain, tier, pass_k, axes, tasks[]}`);
+  `v2/collection.rs::load_v2_collection` transpiles it to engine `ToolTask`s
+  (`category:"agent_loop"`, routed through the unchanged agentic runner — no second
+  execution path). v2 task mechanics:
+  - **`world_state`** — ground truth the model discovers via tools; the sandbox's
+    `WorldState` responder returns the whole entity sub-object for the first arg that
+    names a `world_state` key (`v2/world_state.rs`), so there are no static mocks.
+  - **`expected_calls` → `EndStateRule::RequireAll`** — an unordered, consume-once
+    set (multi-entity tasks have independent sub-sequences, so strict order would
+    false-negative a correct model). Args match via `args_match_v2`: a `*…*` string is
+    an ordered, case-insensitive multi-segment glob; everything else is exact.
+  - **`must_not_call`** traps — invoking one (bare name, or `{name,args}` matched
+    wildcard-aware) is an immediate terminal `ForbiddenCall`, checked after
+    schema-validate (a malformed trap takes the recovery path first). pass^k
+    punishes a model that springs a trap even once.
+  - **`decoy_tools`** authored per task (presented but never expected); **`faults`**
+    keyed by tool name (`on_call`, trips on any args, transient `clears_after` is a
+    global per-tool counter).
+  - **`tier`/`pass_k`** scale reliability — Easy 5 / Medium 8 / Hard 16 / Extreme 24
+    (τ-bench: top models cluster at pass^1, spread at pass^8). `axes` document the
+    tier (`min_required_steps`, decoys, hidden prereqs, conflicting constraints,
+    adversarial/region variance). A permanent integrity test + an **oracle gate**
+    (replays each task's expected_calls) prove all 434 authored tasks are satisfiable
+    and a trivial agent scores 0.
 - **Hardware-calibrated tier gate (Phase 9B).** `AggAgentic.by_tier` carries strict
   Pass^k bucketed per tier; the readiness `assess()` derives the highest tier a model
   cleared (`pass^k ≥ profile.min_pass_k`) and blocks when the profile's
