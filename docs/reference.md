@@ -948,8 +948,10 @@ exact reasons. Pick a target collection + a profile, click **Run readiness**.
   measured counts, e.g. `pass^k 0.40 < 0.80 required`, `loops on 2 runs`,
   `false 'done' on 1 run`, or `run error: …` for a column that failed to produce
   data. The report's BLOCKING line tags each by category with a ✗ marker
-  (`[✗ Reliability] [✗ Loops]`); the Details line below shows the interpolated
-  numbers verbatim.
+  (`[✗ Reliability] [✗ Loops]`, plus `Context`, `Hardware`, `Native FC`,
+  `Run Error`, `Performance`, `Efficiency`); every backend reason maps to a real
+  category — none falls through to a bare `System`. The Details line below shows
+  the interpolated numbers/message verbatim.
 
 **Blocking vs conditions.** Hard gates push to `blocking[]` (→ NotReady); soft
 targets push to `conditions[]` (→ Conditional). Status = NotReady if any blocking,

@@ -38,10 +38,20 @@ function cliffColor(c: ModelVerdict["cliff"]): string {
 
 function getIndicatorLabel(reason: string): string {
   const lower = reason.toLowerCase();
-  if (lower.includes("pass^k") || lower.includes("pass") || lower.includes("fail")) return "Reliability";
+  if (
+    lower.includes("pass^k") ||
+    lower.includes("pass") ||
+    lower.includes("fail") ||
+    lower.includes("false") ||
+    lower.includes("'done'") ||
+    lower.includes("hallucinat")
+  )
+    return "Reliability";
   if (lower.includes("loop") || lower.includes("infinite")) return "Loops";
   if (lower.includes("cliff") || lower.includes("context") || lower.includes("token")) return "Context";
-  if (lower.includes("vram") || lower.includes("memory") || lower.includes("pressure") || lower.includes("fit")) return "Hardware";
+  if (lower.includes("vram") || lower.includes("memory") || lower.includes("pressure") || lower.includes("fit") || lower.includes("offload")) return "Hardware";
+  if (lower.includes("native") || lower.includes("tool-calling")) return "Native FC";
+  if (lower.includes("error")) return "Run Error";
   if (lower.includes("slow") || lower.includes("latency") || lower.includes("ms") || lower.includes("speed")) return "Performance";
   if (lower.includes("step") || lower.includes("efficiency") || lower.includes("effort")) return "Efficiency";
   return "System";

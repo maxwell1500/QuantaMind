@@ -70,6 +70,34 @@ describe("VerdictTable", () => {
     expect(row).toHaveTextContent("Loops on 2 runs");
   });
 
+  it("categorizes every backend blocking reason — never the meaningless 'System' fallback", () => {
+    const verdicts: ModelVerdict[] = [
+      {
+        model: "phi3.5",
+        backend: "ollama",
+        verdict: {
+          status: "not_ready",
+          blocking: [
+            "false 'done' on 2 runs",
+            "native tool-calling required but not supported/measured on this backend",
+            "partial offload → severe slowdown",
+            "run error: ollama timed out",
+          ],
+          conditions: [],
+          path: "prompt_based",
+        },
+      },
+    ];
+    render(<VerdictTable verdicts={verdicts} />);
+    const row = screen.getByTestId("readiness-row-phi3.5");
+    // Each reason maps to a real category, not the catch-all "System".
+    expect(row).toHaveTextContent("BLOCKING: [✗ Reliability] [✗ Native FC] [✗ Hardware] [✗ Run Error]");
+    expect(row).not.toHaveTextContent("System");
+    // The Details line still surfaces the exact backend reasons (with their counts/messages).
+    expect(row).toHaveTextContent("False 'done' on 2 runs");
+    expect(row).toHaveTextContent("Run error: ollama timed out");
+  });
+
   it("renders conditions as amber notes and a clean Ready row as 'meets all criteria'", () => {
     render(<VerdictTable verdicts={VERDICTS} />);
     expect(screen.getByTestId("readiness-row-mistral-nemo")).toHaveTextContent("! slow: 8400ms/step > 5000ms target");
