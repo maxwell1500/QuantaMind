@@ -488,6 +488,12 @@ Error), with a click-through Trace Debugger. See [the workspace](#eval-runner).
     task with no numbered entities replays its worked instance unchanged (honest: runs,
     not varied). Deep per-template semantic generation (e.g. re-deriving which entity is
     sanctioned) is deferred.
+  - **Runtime safety (v2 is heavy: ~80 steps × pass^24).** Each model turn has a 180s
+    wall-clock budget (`run_once`) — the streaming client has no body deadline, so a
+    stalled model would otherwise hang; a turn over budget ends the run as a terminal
+    `TurnTimeout`. Cancellation is checked between Pass^k runs (`run_agentic_with`), so
+    interrupting a big-k task halts within ≤1 run, not after all k. The Matrix panel
+    shows a worst-case **cost estimate** ("~N model calls (~H h)") before a run.
 - **Hardware-calibrated tier gate (Phase 9B).** `AggAgentic.by_tier` carries strict
   Pass^k bucketed per tier; the readiness `assess()` derives the highest tier a model
   cleared (`pass^k ≥ profile.min_pass_k`) and blocks when the profile's
