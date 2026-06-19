@@ -1,11 +1,17 @@
 import { describe, it, expect, vi, beforeEach } from "vitest";
 import { render, screen, fireEvent, waitFor } from "@testing-library/react";
 
-vi.mock("../../../shared/ipc/eval/readiness", () => ({
+// Spread the real module so the constants/schemas (PASS_K_BY_TIER, TierSchema, …) the
+// deep-dive components import survive; mock only the two IPC calls this test drives.
+vi.mock("../../../shared/ipc/eval/readiness", async (orig) => ({
+  ...(await orig<typeof import("../../../shared/ipc/eval/readiness")>()),
   listReadinessProfiles: vi.fn(),
   assessReadiness: vi.fn(),
 }));
-vi.mock("../../../shared/ipc/compare/hardware", () => ({ getHardwareSnapshot: vi.fn() }));
+vi.mock("../../../shared/ipc/compare/hardware", () => ({
+  getHardwareSnapshot: vi.fn(),
+  getHardwareTier: vi.fn(),
+}));
 
 import { listReadinessProfiles, assessReadiness, type ReadinessProfile } from "../../../shared/ipc/eval/readiness";
 import { getHardwareSnapshot } from "../../../shared/ipc/compare/hardware";

@@ -11,7 +11,7 @@ use crate::inference::eval::agentic::model_turn::BackendTurn;
 use crate::inference::eval::agentic::spec::Tier;
 use crate::inference::eval::readiness::hardware::hwclass::{classify_bytes, default_required_tier, HardwareClass};
 use crate::inference::eval::cliff::{build_ladder, run_cliff_with, CliffPoint, CliffReport, CliffSource, StepProgress, DEFAULT_DEPTHS};
-use crate::inference::eval::readiness::inputs::{agentic_metrics, pass_k_of, verdict_for};
+use crate::inference::eval::readiness::inputs::{agentic_metrics, native_first_source, pass_k_of, verdict_for};
 use crate::inference::eval::readiness::recommend;
 use crate::inference::eval::readiness::profile::ReadinessProfile;
 use crate::inference::eval::readiness::types::{CliffStatus, ModelVerdict};
@@ -359,6 +359,10 @@ pub async fn assess_readiness(
         let cliff = registry_get(&cliffs, &col.model).copied().unwrap_or_default();
         let verdict = verdict_for(col, fits_in_vram, vram_pressure, cliff, &profile);
         let (avg_steps, effort) = agentic_metrics(col);
+        // Per-tier breakdown + failures from the SAME native-first source the verdict gated
+        // on, so the Agent Report's deep-dive can't drift from the gate (issue 5).
+        let (by_tier, failures) =
+            native_first_source(col).map(|a| (a.by_tier.clone(), a.failures.clone())).unwrap_or_default();
         out.push(ModelVerdict {
             model: col.model.clone(),
             backend: col.backend,
@@ -369,6 +373,8 @@ pub async fn assess_readiness(
             pass_k: pass_k_of(col),
             quantization: registry_get(&quants, &col.model).cloned(),
             cliff,
+            by_tier,
+            failures,
         });
     }
     // Phase 7.3: rank best-first (Ready > Conditional > NotReady, ties by effort

@@ -55,6 +55,8 @@ mod tests {
             pass_k: None,
             quantization: None,
             cliff: CliffStatus::NotProbed,
+            by_tier: Vec::new(),
+            failures: Default::default(),
         }
     }
 

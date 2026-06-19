@@ -3,6 +3,11 @@ import { useEvalRegistryStore } from "../../eval/state/evalRegistryStore";
 import { useReadinessStore } from "../state/readinessStore";
 import { VerdictTable } from "./VerdictTable";
 import { RecommendationBanner } from "./RecommendationBanner";
+import { ExecutiveVerdict } from "./ExecutiveVerdict";
+import { TierProgressionMatrix } from "./TierProgressionMatrix";
+import { FailureTaxonomy } from "./FailureTaxonomy";
+import { axesByTier, deepDiveJson } from "../deepDive";
+import { download } from "../../eval/exportBatch";
 import { ExportMenu } from "./ExportMenu";
 import { PublishButton } from "../../publish/PublishButton";
 import { useNavStore } from "../../../shared/state/navStore";
@@ -13,18 +18,22 @@ import { EditProfileModal } from "./EditProfileModal";
 import { useToast } from "../../../shared/ui/Toast";
 
 export function AgentReportPage() {
-  const { presets, collections, selected, select, init } = useEvalRegistryStore();
+  const { presets, collections, selected, tasks, select, init } = useEvalRegistryStore();
   const {
     profiles,
     selectedProfileId,
     verdicts,
     hardware,
+    hardwareTier,
+    focusedModel,
     capBytes,
     assessed,
     loading,
     error,
     loadProfiles,
     loadHardware,
+    loadHardwareTier,
+    setFocusedModel,
     selectProfile,
     setCap,
     assess,
@@ -49,7 +58,15 @@ export function AgentReportPage() {
     if (presets.length === 0) void init().catch(() => {});
     void loadProfiles();
     void loadHardware();
-  }, [presets.length, init, loadProfiles, loadHardware]);
+    void loadHardwareTier();
+  }, [presets.length, init, loadProfiles, loadHardware, loadHardwareTier]);
+
+  // The deep-dive targets one model — default to the recommended (first, best-ranked)
+  // verdict; reset if the focused model leaves the current verdict set (re-assess / switch).
+  useEffect(() => {
+    if (verdicts.length === 0) return;
+    if (!verdicts.some((v) => v.model === focusedModel)) setFocusedModel(verdicts[0].model);
+  }, [verdicts, focusedModel, setFocusedModel]);
 
   const options = [
     ...presets.map((p) => ({ id: p.id, label: p.label })),
@@ -57,6 +74,19 @@ export function AgentReportPage() {
   ];
 
   const activeProfile = profiles.find((p) => p.id === selectedProfileId);
+
+  // The deep-dive (Executive Verdict / Tier Matrix / Failure Taxonomy) for the focused model.
+  const focused = verdicts.find((v) => v.model === focusedModel) ?? verdicts[0];
+  const tierParams = axesByTier(tasks);
+  const minPassK = activeProfile?.min_pass_k ?? 0.8;
+  const exportDeepDiveJson = () => {
+    if (!focused) return;
+    download(
+      `${focused.model.replace(/[^a-z0-9._-]/gi, "_")}-readiness.json`,
+      JSON.stringify(deepDiveJson(focused, selected, activeProfile?.name ?? "this profile"), null, 2),
+      "application/json",
+    );
+  };
 
   const pct = (x: number) => `${Math.round(x * 100)}%`;
   const yn = (b: boolean) => (b ? "YES" : "no");
@@ -336,6 +366,41 @@ export function AgentReportPage() {
               profileName={activeProfile?.name}
               showNativeFc={showNativeFc}
             />
+          </div>
+        )}
+
+        {/* Per-model DEEP DIVE: Executive Verdict + Tier Progression Matrix + Failure
+            Taxonomy for the focused model (defaults to the recommended one). */}
+        {verdicts.length > 0 && focused && (
+          <div data-testid="agent-report-deepdive" className="space-y-6 border-t border-slate-200 pt-5">
+            <div className="flex items-center justify-between">
+              <label className="flex items-center gap-2 text-sm">
+                <span className="text-xs font-semibold uppercase tracking-wider text-slate-500">Deep Dive:</span>
+                <select
+                  data-testid="deepdive-model-select"
+                  value={focused.model}
+                  onChange={(e) => setFocusedModel(e.target.value)}
+                  className="bg-white border border-slate-200 hover:border-slate-300 focus:border-slate-400 rounded-lg py-1.5 pl-3 pr-8 text-sm text-slate-800 shadow-sm outline-none cursor-pointer font-mono"
+                >
+                  {verdicts.map((v) => (
+                    <option key={v.model} value={v.model}>
+                      {v.model}
+                    </option>
+                  ))}
+                </select>
+              </label>
+              <button
+                type="button"
+                data-testid="deepdive-export-json"
+                onClick={exportDeepDiveJson}
+                className="px-3 py-1.5 bg-white border border-slate-300 hover:border-slate-400 text-slate-700 rounded-lg text-xs font-semibold transition-all hover:bg-slate-50 cursor-pointer shadow-sm"
+              >
+                ⬇ Export JSON
+              </button>
+            </div>
+            <ExecutiveVerdict verdict={focused} hardwareTier={hardwareTier} minPassK={minPassK} />
+            <TierProgressionMatrix byTier={focused.by_tier} minPassK={minPassK} params={tierParams} />
+            <FailureTaxonomy byTier={focused.by_tier} />
           </div>
         )}
 

@@ -265,3 +265,55 @@ fn assess_report_grades_clean_models_and_short_circuits_errors() {
     assert_eq!(verdicts[1].verdict.status, Readiness::NotReady);
     assert!(verdicts[1].verdict.blocking[0].contains("backend offline")); // real error, not a synthesized score
 }
+
+#[test]
+fn model_verdict_carries_by_tier_and_failures_from_the_native_first_source() {
+    use crate::inference::eval::agentic::spec::Tier;
+    use crate::inference::eval::batch::TierStat;
+    let general = builtins().into_iter().find(|p| p.id == "general-agent").unwrap();
+
+    // Prompt aggregate has an Easy tier; the NATIVE aggregate has a Hard tier + 3 forbidden
+    // calls. With native measured, the verdict's per-tier breakdown + failures must come
+    // from native — the exact source the gate read — not the prompt proxy.
+    let mut c = col(9, 10, 0, 0, Some(2.0));
+    c.agentic.as_mut().unwrap().by_tier =
+        vec![TierStat { tier: Tier::Easy, tasks_passed: 1, tasks_total: 1, avg_steps: Some(2.0), failures: FailureTracker::default() }];
+    let mut native = agg(9, 10, 0);
+    native.by_tier = vec![TierStat {
+        tier: Tier::Hard,
+        tasks_passed: 2,
+        tasks_total: 4,
+        avg_steps: Some(7.0),
+        failures: FailureTracker { forbidden_calls: 3, ..Default::default() },
+    }];
+    native.failures = FailureTracker { forbidden_calls: 3, ..Default::default() };
+    c.agentic_native_fc = Some(native);
+
+    let report = BatchReport { collection_id: "c".into(), num_ctx: None, columns: vec![c] };
+    let v = &assess_report(&report, &general)[0];
+    assert_eq!(v.by_tier.len(), 1);
+    assert_eq!(v.by_tier[0].tier, Tier::Hard); // native, NOT the prompt's Easy
+    assert_eq!(v.by_tier[0].avg_steps, Some(7.0));
+    assert_eq!(v.failures.forbidden_calls, 3);
+}
+
+#[test]
+fn model_verdict_by_tier_falls_back_to_prompt_when_native_absent() {
+    use crate::inference::eval::agentic::spec::Tier;
+    use crate::inference::eval::batch::TierStat;
+    let general = builtins().into_iter().find(|p| p.id == "general-agent").unwrap();
+    let mut c = col(5, 5, 0, 0, Some(2.0)); // native absent (the common case — FC defaults off)
+    c.agentic.as_mut().unwrap().by_tier = vec![TierStat {
+        tier: Tier::Medium,
+        tasks_passed: 1,
+        tasks_total: 1,
+        avg_steps: Some(3.0),
+        failures: FailureTracker { unknown_tool_calls: 4, ..Default::default() },
+    }];
+    c.agentic.as_mut().unwrap().failures = FailureTracker { unknown_tool_calls: 4, ..Default::default() };
+    let report = BatchReport { collection_id: "c".into(), num_ctx: None, columns: vec![c] };
+    let v = &assess_report(&report, &general)[0];
+    assert_eq!(v.by_tier.len(), 1);
+    assert_eq!(v.by_tier[0].tier, Tier::Medium);
+    assert_eq!(v.failures.unknown_tool_calls, 4); // prompt-based source, since native absent
+}

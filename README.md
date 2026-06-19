@@ -161,7 +161,8 @@ Three design commitments shape every decision:
 - Per-model **Ready / Conditional / Not Ready** verdict with the exact blocking + conditional reasons
 - Hardware-aware: VRAM fit (exact weights + KV cache vs an allocation cap, with a pressure flag)
 - Configurable readiness profiles (min Pass^k, forbid loops/false-done, require full VRAM, min context, require native FC)
-- Export the verdict table as a standalone HTML report
+- **Per-model deep-dive (Phase 9B):** an **Executive Verdict** judged against the tier you actually ran (hardware class shown as advice, never a forced fail), a **Tier Progression Matrix** (per-tier Pass^k + avg-steps with CLEAR / SATURATED / FAIL / NOT-TESTED badges — saturation at a glance), and a **Failure Taxonomy** (decoy / forbidden-call / loop / hallucination distribution across the tested tiers)
+- Export the verdict table as a standalone HTML report, or the deep-dive as versioned JSON
 
 ---
 

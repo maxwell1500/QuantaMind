@@ -6,7 +6,12 @@ import {
   type ModelVerdict,
   type ReadinessProfile,
 } from "../../../shared/ipc/eval/readiness";
-import { getHardwareSnapshot, type HardwareSnapshot } from "../../../shared/ipc/compare/hardware";
+import {
+  getHardwareSnapshot,
+  getHardwareTier,
+  type HardwareSnapshot,
+  type HardwareTier,
+} from "../../../shared/ipc/compare/hardware";
 import { defaultCapBytes } from "../capBytes";
 
 interface ReadinessStore {
@@ -14,6 +19,13 @@ interface ReadinessStore {
   selectedProfileId: string;
   verdicts: ModelVerdict[];
   hardware: HardwareSnapshot | null;
+  /// Hardware class + recommended difficulty tier (Phase 9B) — the Agent Report's
+  /// Executive Verdict shows this as the advisory hardware lens. Best-effort; `null`
+  /// just omits the lens.
+  hardwareTier: HardwareTier | null;
+  /// The model the deep-dive (Executive Verdict / Tier Matrix / Failure Taxonomy) targets.
+  /// Defaults to the recommended verdict; a table-row click reassigns it.
+  focusedModel: string;
   capBytes: number | null;
   /// True once an assess has completed — distinguishes "not run yet" from a
   /// genuinely empty result (no persisted report) so the page shows the right state.
@@ -22,6 +34,8 @@ interface ReadinessStore {
   error: string | null;
   loadProfiles: () => Promise<void>;
   loadHardware: () => Promise<void>;
+  loadHardwareTier: () => Promise<void>;
+  setFocusedModel: (model: string) => void;
   selectProfile: (id: string) => void;
   setCap: (bytes: number) => void;
   assess: (collectionId: string) => Promise<void>;
@@ -38,6 +52,8 @@ export const useReadinessStore = create<ReadinessStore>((set, get) => ({
   selectedProfileId: "",
   verdicts: [],
   hardware: null,
+  hardwareTier: null,
+  focusedModel: "",
   capBytes: null,
   assessed: false,
   loading: false,
@@ -59,6 +75,15 @@ export const useReadinessStore = create<ReadinessStore>((set, get) => ({
       /* no hardware snapshot — fit stays unmeasured */
     }
   },
+  loadHardwareTier: async () => {
+    // Best-effort: a missing tier just omits the Executive Verdict's hardware lens.
+    try {
+      set({ hardwareTier: await getHardwareTier() });
+    } catch {
+      /* no hardware tier — the advisory context is simply hidden */
+    }
+  },
+  setFocusedModel: (model) => set({ focusedModel: model }),
   selectProfile: (id) => set({ selectedProfileId: id, assessed: false, verdicts: [] }),
   setCap: (bytes) => set({ capBytes: bytes }),
   assess: async (collectionId) => {

@@ -46,6 +46,18 @@ export const FaultInjectionSchema = z.union([
 ]);
 const FaultRuleSchema = z.object({ call: CallSchema, fault: FaultInjectionSchema });
 
+/// The measurable axes that DEFINE a difficulty tier (Phase 9). The Agent Report reads
+/// `min_required_steps` + `decoy_tools` to show a tier's real "Task Parameters" instead of
+/// the mockup's illustrative ranges. Defaulted so a partial/hand-authored axes still parses.
+const DifficultyAxesSchema = z.object({
+  min_required_steps: z.number().int().nonnegative().default(0),
+  decoy_tools: z.number().int().nonnegative().default(0),
+  hidden_prereqs: z.number().int().nonnegative().default(0),
+  conflicting_constraints: z.number().int().nonnegative().default(0),
+  adversarial_context: z.boolean().default(false),
+});
+export type DifficultyAxes = z.infer<typeof DifficultyAxesSchema>;
+
 export const AgenticSpecSchema = z.object({
   mocks: z.array(MockResponseSchema),
   end_state: EndStateRuleSchema,
@@ -55,6 +67,11 @@ export const AgenticSpecSchema = z.object({
   faults: z.array(FaultRuleSchema).optional(),
   /// Driver D semantic-recovery budget; omitted to use the engine default.
   max_recovery: z.number().int().nonnegative().optional(),
+  /// Phase 9 difficulty tier (Easy when absent) — inlined enum to avoid a value-import
+  /// cycle with readiness.ts (the existing pattern for the tier enum in this file).
+  tier: z.enum(["easy", "medium", "hard", "extreme"]).optional(),
+  /// Phase 9 difficulty axes; absent for pre-Phase-9 tasks → the Matrix shows "not declared".
+  axes: DifficultyAxesSchema.optional(),
 });
 export type AgenticSpec = z.infer<typeof AgenticSpecSchema>;
 

@@ -329,6 +329,46 @@ fn agg_buckets_strict_pass_k_by_tier() {
 }
 
 #[test]
+fn agg_buckets_per_tier_avg_steps_and_failures() {
+    use crate::inference::eval::agentic::spec::Tier;
+    // One clean Easy task, one clean Hard task, one flaky Hard task (2 of its 5 runs
+    // hallucinate). Every run takes 2 steps (the task_report helper).
+    let reports = vec![
+        task_report(5, 5).with_tier(Tier::Easy),
+        task_report(16, 16).with_tier(Tier::Hard),
+        task_report(3, 5).with_tier(Tier::Hard),
+    ];
+    let agg = agg_agentic(&reports);
+
+    let easy = agg.by_tier.iter().find(|s| s.tier == Tier::Easy).unwrap();
+    let hard = agg.by_tier.iter().find(|s| s.tier == Tier::Hard).unwrap();
+
+    // Per-tier avg steps = mean of that tier's reports' avg_steps (every run took 2 steps).
+    assert_eq!(easy.avg_steps, Some(2.0));
+    assert_eq!(hard.avg_steps, Some(2.0));
+
+    // Failures are bucketed per tier, NOT smeared across tiers: the 2 hallucinated runs
+    // belong to the Hard bucket only; Easy carries none.
+    assert_eq!(hard.failures.hallucinated_completions, 2);
+    assert_eq!(easy.failures.hallucinated_completions, 0);
+
+    // The overall aggregate still sums failures across all tiers (unchanged behavior).
+    assert_eq!(agg.failures.hallucinated_completions, 2);
+}
+
+#[test]
+fn tier_stat_deserializes_a_pre_9b_payload_with_defaulted_per_tier_fields() {
+    use crate::inference::eval::agentic::spec::Tier;
+    // A TierStat written before Phase 9B carries no `avg_steps`/`failures` — they must
+    // default (None / zeroed), never fail the parse.
+    let s: TierStat =
+        serde_json::from_value(serde_json::json!({ "tier": "hard", "tasks_passed": 1, "tasks_total": 2 })).unwrap();
+    assert_eq!(s.tier, Tier::Hard);
+    assert_eq!(s.avg_steps, None);
+    assert_eq!(s.failures, FailureTracker::default());
+}
+
+#[test]
 fn pass_k_is_the_fraction_of_fully_passing_tasks() {
     // One task clean (5/5), one fully failing (0/5): one of two tasks credited → 0.5.
     let agg = agg_agentic(&[task_report(5, 5), task_report(0, 5)]);

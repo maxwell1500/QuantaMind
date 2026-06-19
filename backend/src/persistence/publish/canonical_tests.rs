@@ -22,6 +22,8 @@ fn verdict(model: &str, pass_k: Option<f64>, quant: Option<&str>) -> ModelVerdic
         pass_k,
         quantization: quant.map(|s| s.to_string()),
         cliff: CliffStatus::NotProbed,
+        by_tier: Vec::new(),
+        failures: Default::default(),
     }
 }
 

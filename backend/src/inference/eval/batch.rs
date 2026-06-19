@@ -111,6 +111,14 @@ pub struct TierStat {
     pub tier: Tier,
     pub tasks_passed: u32,
     pub tasks_total: u32,
+    /// Phase 9B: mean steps across this tier's runs — the Agent Report's Tier Progression
+    /// Matrix reads it. `None` when no run produced steps. `#[serde(default)]` for back-compat.
+    #[serde(default)]
+    pub avg_steps: Option<f64>,
+    /// Phase 9B: failure breakdown summed within this tier — the Failure Taxonomy reads it
+    /// per tier. `#[serde(default)]` so pre-9B reports (no per-tier failures) still load.
+    #[serde(default)]
+    pub failures: FailureTracker,
 }
 
 impl TierStat {
@@ -243,10 +251,21 @@ fn agg_agentic(reports: &[AgenticReport]) -> AggAgentic {
     }
     let mut by_tier: Vec<TierStat> = buckets
         .into_iter()
-        .map(|(tier, rs)| TierStat {
-            tier,
-            tasks_passed: rs.iter().filter(|r| r.total_runs > 0 && r.passes == r.total_runs).count() as u32,
-            tasks_total: rs.len() as u32,
+        .map(|(tier, rs)| {
+            // Phase 9B: per-tier avg steps + failures, computed exactly like the overall
+            // fields but scoped to this tier's bucket (the Agent Report renders both).
+            let tier_steps: Vec<f64> = rs.iter().filter_map(|r| r.avg_steps).collect();
+            let mut tier_failures = FailureTracker::default();
+            for r in &rs {
+                tier_failures.merge(&r.failures);
+            }
+            TierStat {
+                tier,
+                tasks_passed: rs.iter().filter(|r| r.total_runs > 0 && r.passes == r.total_runs).count() as u32,
+                tasks_total: rs.len() as u32,
+                avg_steps: mean_f64(&tier_steps),
+                failures: tier_failures,
+            }
         })
         .collect();
     by_tier.sort_by_key(|s| s.tier);

@@ -342,7 +342,8 @@ FaultInjection::TransientError { status_code, clears_after } => {
   are `None`, never 0.
 - **What:** `FailureKind`, `RunOutcome` (`success`/`failure`/`with_schema`),
   `FailureTracker{infinite_loop_hits, hallucinated_completions, malformed_json_calls,
-  schema_unrecovered_calls}` (`top() -> TopError`), `TopError`,
+  schema_unrecovered_calls, unknown_tool_calls, forbidden_calls, turn_timeouts}`
+  (`top() -> TopError`, `merge(&Self)` — the centralized fold that never drops a field), `TopError`,
   `AgenticReport{passes, total_runs, failures, avg_output_tokens_success, avg_steps,
   top_error, schema_resilience}` (`from_outcomes`).
 
@@ -530,8 +531,10 @@ required-but-unmeasured input *blocks* ("ignorance is not a pass").
   `AgentPath::{PromptBased, NativeFc}`; `NativeFcStatus::{Tested{pass_k}, NotSupported}`;
   `ReadinessInputs{pass_k, avg_steps, ms_per_step, cliff, fits_in_vram, vram_pressure,
   loops, hallucinated, native_fc}`; `Readiness::{Ready, Conditional, NotReady}`;
-  `ReadinessVerdict{status, blocking, conditions, path}`;
-  `ModelVerdict{model, backend, verdict, memory, avg_steps, effort, pass_k, quantization, cliff}`.
+  `ReadinessVerdict{status, blocking, conditions, path, required_tier, cleared_tier}`;
+  `ModelVerdict{model, backend, verdict, memory, avg_steps, effort, pass_k, quantization,
+  cliff, by_tier, failures}` (Phase 9B: `by_tier`/`failures` for the Agent Report deep-dive,
+  from the native-first source the verdict gated on).
 
 ### File: `profile.rs`
 - **Responsibility:** The tunable use-case presets verdicts are measured against.
@@ -607,8 +610,12 @@ pub fn estimate(weights_bytes, layers, head_count, head_count_kv, embedding_leng
 ### File: `inputs.rs`
 - **Responsibility:** Adapter `BatchColumn -> ReadinessInputs`/verdicts, native-FC
   preferred (the path a real agent uses) when measured.
-- **What:** `from_column`, `verdict_for` (error column short-circuits to NotReady),
-  `agentic_metrics`, `pass_k_of`, `assess_report(report, profile) -> Vec<ModelVerdict>`.
+- **What:** `native_first_source(col) -> Option<&AggAgentic>` (the one native-first
+  selector — `agentic_native_fc.filter(total_runs>0).or(agentic)` — that `from_column`,
+  `pass_k_of`, `agentic_metrics`, AND the deep-dive's `by_tier`/`failures` all route
+  through, so the displayed per-tier data can't drift from the gating source);
+  `from_column`, `verdict_for` (error column short-circuits to NotReady), `agentic_metrics`,
+  `pass_k_of`, `assess_report(report, profile) -> Vec<ModelVerdict>`.
 
 ```rust
 let native = col.agentic_native_fc.as_ref().filter(|a| a.total_runs > 0);
@@ -637,7 +644,10 @@ crash-resume.
   resumable unit); `VramGate` trait (`NoVramGate` / `OllamaVramGate` — evict prior
   model + assert VRAM cleared, `Err` halts); `BatchSink` (`task_started` /
   `agentic_turn` / `task_done`); `AggAgentic` (strict Pass^k: `tasks_passed` =
-  tasks where every run passed; `pass_k() = tasks_passed/tasks_total`);
+  tasks where every run passed; `pass_k() = tasks_passed/tasks_total`; `by_tier:
+  Vec<TierStat>`); `TierStat{tier, tasks_passed, tasks_total, avg_steps, failures}`
+  (Phase 9B: `agg_agentic` buckets reports by tier and computes per-tier `avg_steps`
+  + merged `failures` alongside the strict Pass^k — feeding the Agent Report deep-dive);
   `BatchColumn{model, backend, toolcall, agentic, agentic_native_fc, error}`;
   `BatchReport{collection_id, columns, num_ctx}`.
 - **Functions:** `run_batch` (test wrapper, no gate), `run_batch_resumable`

@@ -1,6 +1,8 @@
 use super::vram_fit::MemoryProfile;
 use crate::inference::backend::backend_kind::BackendKind;
+use crate::inference::eval::agentic::scoring::report::FailureTracker;
 use crate::inference::eval::agentic::spec::Tier;
+use crate::inference::eval::batch::TierStat;
 use serde::{Deserialize, Serialize};
 
 /// Absorbs float drift (a serialized `0.80` read back as `0.7999999999999999`,
@@ -126,4 +128,13 @@ pub struct ModelVerdict {
     /// opts in via `min_context_tokens` (strict: NoCliff passes iff tested ≥ min).
     #[serde(default)]
     pub cliff: CliffStatus,
+    /// Phase 9B: per-tier strict Pass^k + avg-steps + failures (native-first — the same
+    /// aggregate the verdict gated on), powering the Agent Report's Tier Progression
+    /// Matrix. Empty when no agentic run was measured. `#[serde(default)]` for back-compat.
+    #[serde(default)]
+    pub by_tier: Vec<TierStat>,
+    /// Phase 9B: the model's overall failure breakdown (native-first), for the Failure
+    /// Taxonomy. `#[serde(default)]` so pre-9B verdicts deserialize.
+    #[serde(default)]
+    pub failures: FailureTracker,
 }
