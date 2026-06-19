@@ -422,7 +422,9 @@ Error), with a click-through Trace Debugger. See [the workspace](#eval-runner).
   `FailureTracker` with **distinct** tallies (`infinite_loop_hits` = hit the step
   cap, `hallucinated_completions` = fake done, `malformed_json_calls` = broken
   JSON, `schema_unrecovered_calls` = exhausted the recovery budget), and a
-  `top_error` headline. The **collection-level Pass^k** (the Matrix headline and
+  `top_error` headline. `unknown_tool_calls` is a Phase-9 **diagnostic** tally
+  (decoy / hallucinated-tool calls) — it captures *how* a model coped with decoys
+  but is **not** a terminal failure, so it is excluded from `top_error`. The **collection-level Pass^k** (the Matrix headline and
   the readiness/leaderboard gate) is **strict**: `AggAgentic` credits a task only
   when **all k** of its runs reached the end state (`tasks_passed/tasks_total`), so a
   flaky 3/5 task counts as a failure, not 0.6 — reliability compounds and a model

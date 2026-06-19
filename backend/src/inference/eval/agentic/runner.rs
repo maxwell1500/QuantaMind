@@ -85,6 +85,7 @@ pub async fn run_once<M: ModelTurn>(
     let mut recoveries = 0u8; // schema corrections used this run (Driver D)
     let mut hit_schema_error = false; // this run emitted a schema-invalid call
     let mut schema_recovered = false; // ...and later produced a valid one
+    let mut unknown_tools = 0u32; // decoy / unknown-tool calls this run (Phase 9 distraction signal)
 
     for step_index in 0..max_steps {
         let spec = GenerateSpec {
@@ -127,7 +128,8 @@ pub async fn run_once<M: ModelTurn>(
                                     output_tokens,
                                     FailureKind::MalformedSchema,
                                 )
-                                .with_schema(true, false));
+                                .with_schema(true, false)
+                                .with_unknown_tools(unknown_tools));
                             }
                             recoveries += 1;
                             let err = format!("[Schema error: {msg}]");
@@ -157,14 +159,18 @@ pub async fn run_once<M: ModelTurn>(
                     if advances && next_cp + 1 == checkpoints.len() {
                         send(StepKind::EndStateReached, None); // final checkpoint hit
                         return Ok(RunOutcome::success(step_index + 1, output_tokens)
-                            .with_schema(hit_schema_error, schema_recovered));
+                            .with_schema(hit_schema_error, schema_recovered)
+                            .with_unknown_tools(unknown_tools));
                     }
                     if advances {
                         next_cp += 1; // intermediate checkpoint reached, keep going
                     }
                     let (kind, result) = match sandbox.respond(&call) {
                         Some(r) => (StepKind::ToolCall, r.to_string()),
-                        None => (StepKind::UnknownTool, UNKNOWN_TOOL.to_string()),
+                        None => {
+                            unknown_tools += 1; // a decoy or hallucinated tool — no mock exists
+                            (StepKind::UnknownTool, UNKNOWN_TOOL.to_string())
+                        }
                     };
                     let line = tool_result_line(&result);
                     convo.push_model(&raw);
@@ -186,7 +192,8 @@ pub async fn run_once<M: ModelTurn>(
                     };
                     send(kind, None);
                     return Ok(RunOutcome::failure(step_index + 1, output_tokens, failure)
-                        .with_schema(hit_schema_error, schema_recovered));
+                        .with_schema(hit_schema_error, schema_recovered)
+                        .with_unknown_tools(unknown_tools));
                 }
             },
         }
@@ -200,7 +207,8 @@ pub async fn run_once<M: ModelTurn>(
         kind: StepKind::InfiniteLoop,
     });
     Ok(RunOutcome::failure(max_steps, output_tokens, FailureKind::InfiniteLoop)
-        .with_schema(hit_schema_error, schema_recovered))
+        .with_schema(hit_schema_error, schema_recovered)
+        .with_unknown_tools(unknown_tools))
 }
 
 #[cfg(test)]

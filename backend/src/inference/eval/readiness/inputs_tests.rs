@@ -25,6 +25,7 @@ fn col(passes: u32, total: u32, loops: u32, hall: u32, steps: Option<f64>) -> Ba
                 hallucinated_completions: hall,
                 malformed_json_calls: 0,
                 schema_unrecovered_calls: 0,
+                unknown_tool_calls: 0,
             },
         }),
         agentic_native_fc: None,
@@ -122,6 +123,7 @@ fn agg(passes: u32, total: u32, loops: u32) -> AggAgentic {
             hallucinated_completions: 0,
             malformed_json_calls: 0,
             schema_unrecovered_calls: 0,
+            unknown_tool_calls: 0,
         },
     }
 }

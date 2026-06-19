@@ -29,11 +29,24 @@ pub struct RunOutcome {
     pub hit_schema_error: bool,
     /// After a schema error, this run produced a schema-valid call (recovered).
     pub schema_recovered: bool,
+    /// Phase 9: how many times this run called a tool with no mock — a decoy or a
+    /// hallucinated tool. A distraction signal, NOT a terminal failure: the run
+    /// still ends via end-state / yield / step-cap. Captures *how* a model coped
+    /// with decoys, not just whether it passed.
+    pub unknown_tool_calls: u32,
 }
 
 impl RunOutcome {
     pub fn success(steps: u32, output_tokens: u32) -> Self {
-        Self { reached_end: true, steps, output_tokens, failure: None, hit_schema_error: false, schema_recovered: false }
+        Self {
+            reached_end: true,
+            steps,
+            output_tokens,
+            failure: None,
+            hit_schema_error: false,
+            schema_recovered: false,
+            unknown_tool_calls: 0,
+        }
     }
 
     pub fn failure(steps: u32, output_tokens: u32, failure: FailureKind) -> Self {
@@ -44,6 +57,7 @@ impl RunOutcome {
             failure: Some(failure),
             hit_schema_error: false,
             schema_recovered: false,
+            unknown_tool_calls: 0,
         }
     }
 
@@ -52,6 +66,12 @@ impl RunOutcome {
     pub fn with_schema(mut self, hit: bool, recovered: bool) -> Self {
         self.hit_schema_error = hit;
         self.schema_recovered = recovered;
+        self
+    }
+
+    /// Stamp the Phase-9 unknown-tool (decoy distraction) count for this run.
+    pub fn with_unknown_tools(mut self, n: u32) -> Self {
+        self.unknown_tool_calls = n;
         self
     }
 }
@@ -64,6 +84,12 @@ pub struct FailureTracker {
     pub hallucinated_completions: u32,
     pub malformed_json_calls: u32,
     pub schema_unrecovered_calls: u32,
+    /// Phase 9 diagnostic: total decoy / unknown-tool calls across the runs. A
+    /// distraction signal, NOT a terminal failure mode — it is deliberately
+    /// excluded from `top()`. `#[serde(default)]` so reports persisted before
+    /// Phase 9 load as 0.
+    #[serde(default)]
+    pub unknown_tool_calls: u32,
 }
 
 impl FailureTracker {
@@ -130,6 +156,8 @@ impl AgenticReport {
         let mut schema_hits = 0u32;
         let mut schema_recovered = 0u32;
         for o in outcomes {
+            // Diagnostic, counted for every run regardless of pass/fail.
+            failures.unknown_tool_calls += o.unknown_tool_calls;
             if o.reached_end {
                 passes += 1;
                 success_tokens.push(o.output_tokens);
@@ -230,6 +258,17 @@ mod tests {
         ];
         let r = AgenticReport::from_outcomes(&outcomes);
         assert_eq!(r.schema_resilience, Some(0.5)); // 1 recovered / 2 that hit
+    }
+
+    #[test]
+    fn unknown_tool_calls_aggregate_across_runs_but_never_become_the_top_error() {
+        let outcomes = vec![
+            RunOutcome::success(5, 50).with_unknown_tools(2), // passed despite 2 decoy calls
+            RunOutcome::failure(8, 90, FailureKind::InfiniteLoop).with_unknown_tools(3),
+        ];
+        let r = AgenticReport::from_outcomes(&outcomes);
+        assert_eq!(r.failures.unknown_tool_calls, 5); // 2 + 3, counted for pass and fail alike
+        assert_eq!(r.top_error, TopError::InfiniteLoop); // distraction never headlines
     }
 
     #[test]

@@ -117,6 +117,7 @@ async fn unknown_tool_injects_an_error_and_the_loop_continues() {
 
     assert!(outcome.reached_end);
     assert_eq!(outcome.steps, 2);
+    assert_eq!(outcome.unknown_tool_calls, 1); // the one search_web call, counted but not fatal
 
     let steps = drain(&mut rx);
     assert_eq!(steps[0].kind, StepKind::UnknownTool);
