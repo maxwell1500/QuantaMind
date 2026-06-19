@@ -1,6 +1,7 @@
 import { useState, useCallback, useRef, useEffect } from "react";
 import { runToolcallEval, type ToolCallReport, type ToolTaskResult } from "../../../shared/ipc/eval/toolcall";
 import { useEvalRegistryStore, DEFAULT_PRESET } from "../state/evalRegistryStore";
+import { PresetOptGroups } from "./PresetOptGroups";
 import { getBuiltinCollection, loadCustomCollection, type ToolTask } from "../../../shared/ipc/eval/registry";
 import { useInstalledModelsStore } from "../../models/state/installedModelsStore";
 import { modelLabel } from "../../../shared/models/modelLabel";
@@ -283,9 +284,7 @@ export function ToolCallPanel({
               data-testid="toolcall-collection-select"
               style={headerSelect}
             >
-              {presets.map((p) => (
-                <option key={p.id} value={p.id}>{p.label}</option>
-              ))}
+              <PresetOptGroups presets={presets} />
               {collections.map((c) => (
                 <option key={c} value={c}>{c}</option>
               ))}

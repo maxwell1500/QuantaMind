@@ -3,6 +3,7 @@ import { modelLabel } from "../../../shared/models/modelLabel";
 import { useSelectedModelStore } from "../../../shared/state/selectedModelStore";
 import { useParamsStore } from "../../../shared/state/paramsStore";
 import { useEvalRegistryStore, DEFAULT_PRESET } from "../state/evalRegistryStore";
+import { PresetOptGroups } from "./PresetOptGroups";
 import { getBuiltinCollection, loadCustomCollection, type ToolTask } from "../../../shared/ipc/eval/registry";
 import { useVramFit } from "../../quant/useVramFit";
 import { useCliffStore } from "../state/cliffStore";
@@ -215,7 +216,7 @@ export function ContextCliffPanel() {
               marginTop: 3,
             }}
           >
-            {presets.map((p) => <option key={p.id} value={p.id}>{p.label}</option>)}
+            <PresetOptGroups presets={presets} />
             {collections.map((c) => <option key={c} value={c}>{c}</option>)}
           </select>
         </div>

@@ -251,30 +251,42 @@ export function EvalManager({
                     ))
                   )
                 ) : (
-                  presets.map((p) => (
-                    <div
-                      key={p.id}
-                      style={{
-                        ...collectionItemStyle,
-                        justifyContent: "space-between",
-                        color: selected === p.id ? "#2563eb" : "#475569",
-                        fontWeight: selected === p.id ? 600 : 400,
-                      }}
-                    >
-                      <span
-                        onClick={() => void select(p.id)}
-                        style={{ display: "flex", alignItems: "center", cursor: "pointer", flex: 1, minWidth: 0 }}
-                        data-testid={`eval-collection-item-${p.id}`}
-                      >
-                        <span style={{ marginRight: 6 }}>{selected === p.id ? "•" : "-"}</span>
-                        <span style={{ overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{p.label}</span>
-                      </span>
-                      <KebabMenu
-                        testid={`eval-collection-menu-${p.id}`}
-                        items={[{ label: "Remove from list", danger: true, onClick: () => setDeleteTarget(p.id), testid: `eval-collection-delete-${p.id}` }]}
-                      />
-                    </div>
-                  ))
+                  // Built-in collections grouped by difficulty tier (Easy→Extreme).
+                  (["easy", "medium", "hard", "extreme"] as const).map((tier) => {
+                    const items = presets.filter((p) => p.tier === tier);
+                    if (items.length === 0) return null;
+                    return (
+                      <div key={tier} data-testid={`eval-tier-group-${tier}`}>
+                        <div style={{ fontSize: 11, fontWeight: 700, textTransform: "uppercase", letterSpacing: 0.5, color: "#94a3b8", padding: "10px 0 2px" }}>
+                          {tier}
+                        </div>
+                        {items.map((p) => (
+                          <div
+                            key={p.id}
+                            style={{
+                              ...collectionItemStyle,
+                              justifyContent: "space-between",
+                              color: selected === p.id ? "#2563eb" : "#475569",
+                              fontWeight: selected === p.id ? 600 : 400,
+                            }}
+                          >
+                            <span
+                              onClick={() => void select(p.id)}
+                              style={{ display: "flex", alignItems: "center", cursor: "pointer", flex: 1, minWidth: 0 }}
+                              data-testid={`eval-collection-item-${p.id}`}
+                            >
+                              <span style={{ marginRight: 6 }}>{selected === p.id ? "•" : "-"}</span>
+                              <span style={{ overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{p.label}</span>
+                            </span>
+                            <KebabMenu
+                              testid={`eval-collection-menu-${p.id}`}
+                              items={[{ label: "Remove from list", danger: true, onClick: () => setDeleteTarget(p.id), testid: `eval-collection-delete-${p.id}` }]}
+                            />
+                          </div>
+                        ))}
+                      </div>
+                    );
+                  })
                 )}
               </div>
             </div>

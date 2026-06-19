@@ -1,5 +1,6 @@
 import { useEffect, useState } from "react";
 import { useEvalRegistryStore, DEFAULT_PRESET } from "../../state/evalRegistryStore";
+import { PresetOptGroups } from "../PresetOptGroups";
 import { getBuiltinCollection, loadCustomCollection, type ToolTask } from "../../../../shared/ipc/eval/registry";
 import {
   runCollectionMatrix,
@@ -142,7 +143,7 @@ export function MatrixPanel({
             data-testid="matrix-collection-select"
             style={{ background: "rgba(255,255,255,0.05)", border: "1px solid rgba(255,255,255,0.1)", borderRadius: 7, color: "#94a3b8", fontSize: 12, fontFamily: "Inter,sans-serif", padding: "5px 10px", outline: "none", cursor: "pointer" }}
           >
-            {presets.map((p) => <option key={p.id} value={p.id}>{p.label}</option>)}
+            <PresetOptGroups presets={presets} />
             {collections.map((c) => <option key={c} value={c}>{c}</option>)}
           </select>
         </label>

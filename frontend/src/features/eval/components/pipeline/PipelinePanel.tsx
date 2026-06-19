@@ -1,5 +1,6 @@
 import { useEffect, useState } from "react";
 import { useEvalRegistryStore, DEFAULT_PRESET } from "../../state/evalRegistryStore";
+import { PresetOptGroups } from "../PresetOptGroups";
 import { getBuiltinCollection, loadCustomCollection, type ToolTask } from "../../../../shared/ipc/eval/registry";
 import { traceToolcallTask, loadToolcallTrace, type TraceResult } from "../../../../shared/ipc/eval/toolcall";
 import { isPassed } from "../../verdict";
@@ -169,7 +170,7 @@ export function PipelinePanel({
       {/* Controls */}
       <div style={{ display: "flex", flexWrap: "wrap", gap: 10, padding: "10px 20px", borderBottom: "1px solid rgba(255,255,255,0.07)" }}>
         <select value={active} onChange={(e) => { setActive(e.target.value); setTrace(null); setFromCache(false); setPhase(0); }} data-testid="pipeline-collection-select" style={selectStyle}>
-          {presets.map((p) => <option key={p.id} value={p.id}>{p.label}</option>)}
+          <PresetOptGroups presets={presets} />
           {collections.map((c) => <option key={c} value={c}>{c}</option>)}
         </select>
         <select value={taskId} onChange={(e) => { setTaskId(e.target.value); setTrace(null); setFromCache(false); setPhase(0); }} data-testid="pipeline-task-select" style={selectStyle}>
