@@ -26,7 +26,7 @@ pub struct FaultRule {
 /// Phase 9 difficulty tier. `Ord` is deliberate: readiness compares a model's
 /// cleared tier against the tier its hardware class requires (`cleared < required`
 /// blocks). A pre-Phase-9 task with no `tier` deserializes to `Easy`.
-#[derive(Serialize, Deserialize, Clone, Copy, Debug, PartialEq, Eq, PartialOrd, Ord, Default)]
+#[derive(Serialize, Deserialize, Clone, Copy, Debug, PartialEq, Eq, Hash, PartialOrd, Ord, Default)]
 #[serde(rename_all = "snake_case")]
 pub enum Tier {
     #[default]

@@ -22,6 +22,7 @@ fn report(collection_id: &str, passes: u32) -> BatchReport {
                 schema_resilience: None,
                 top_error: TopError::None,
                 failures: FailureTracker::default(),
+                by_tier: vec![],
             }),
             agentic_native_fc: None,
             error: None,

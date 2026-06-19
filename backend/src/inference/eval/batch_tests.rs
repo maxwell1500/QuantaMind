@@ -300,6 +300,31 @@ fn pass_k_credits_a_task_only_when_all_k_runs_pass() {
 }
 
 #[test]
+fn agg_buckets_strict_pass_k_by_tier() {
+    use crate::inference::eval::agentic::spec::Tier;
+    // Two Hard tasks (one all-k pass, one flaky) and one Easy task (all-k pass).
+    let reports = vec![
+        task_report(5, 5).with_tier(Tier::Easy),
+        task_report(16, 16).with_tier(Tier::Hard),
+        task_report(3, 5).with_tier(Tier::Hard),
+    ];
+    let agg = agg_agentic(&reports);
+
+    let easy = agg.by_tier.iter().find(|s| s.tier == Tier::Easy).unwrap();
+    assert_eq!((easy.tasks_passed, easy.tasks_total), (1, 1));
+    assert_eq!(easy.pass_k(), Some(1.0));
+
+    let hard = agg.by_tier.iter().find(|s| s.tier == Tier::Hard).unwrap();
+    assert_eq!((hard.tasks_passed, hard.tasks_total), (1, 2)); // only the all-k task counts
+    assert_eq!(hard.pass_k(), Some(0.5));
+
+    // Buckets are sorted ascending by tier (the readiness gate walks them).
+    assert!(agg.by_tier.windows(2).all(|w| w[0].tier <= w[1].tier));
+    // Medium had no task → it's simply absent, never a fabricated 0.
+    assert!(!agg.by_tier.iter().any(|s| s.tier == Tier::Medium));
+}
+
+#[test]
 fn pass_k_is_the_fraction_of_fully_passing_tasks() {
     // One task clean (5/5), one fully failing (0/5): one of two tasks credited → 0.5.
     let agg = agg_agentic(&[task_report(5, 5), task_report(0, 5)]);

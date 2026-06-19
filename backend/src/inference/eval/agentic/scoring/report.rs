@@ -1,3 +1,4 @@
+use crate::inference::eval::agentic::spec::Tier;
 use serde::{Deserialize, Serialize};
 
 /// How a single agentic run failed. Each maps to exactly one `FailureTracker`
@@ -145,6 +146,11 @@ pub struct AgenticReport {
     /// (produced a valid call). `None` when no run ever hit one — the UI renders
     /// "—", never a fabricated 0 (the metric simply didn't apply).
     pub schema_resilience: Option<f64>,
+    /// Phase 9: the difficulty tier of the task this report scored. `from_outcomes`
+    /// can't know it (it sees only run outcomes), so the runner stamps it via
+    /// `with_tier`. `#[serde(default)]` → reports persisted before Phase 9 load as Easy.
+    #[serde(default)]
+    pub tier: Tier,
 }
 
 impl AgenticReport {
@@ -180,7 +186,15 @@ impl AgenticReport {
             avg_output_tokens_success: mean(&success_tokens),
             avg_steps: mean(&steps),
             schema_resilience: (schema_hits > 0).then(|| schema_recovered as f64 / schema_hits as f64),
+            tier: Tier::default(), // stamped by the runner via with_tier (the task carries the tier)
         }
+    }
+
+    /// Stamp the difficulty tier of the task this report scored (builder form, so
+    /// `from_outcomes` and its tests stay unchanged). Called by the batch runner.
+    pub fn with_tier(mut self, tier: Tier) -> Self {
+        self.tier = tier;
+        self
     }
 }
 
