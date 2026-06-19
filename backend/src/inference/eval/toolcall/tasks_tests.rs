@@ -188,6 +188,25 @@ fn rejects_agentic_without_spec() {
 }
 
 #[test]
+fn agent_loop_category_validates_like_agentic() {
+    use crate::inference::eval::toolcall::tasks::is_agentic;
+    assert!(is_agentic("agentic") && is_agentic("agent_loop"));
+    assert!(!is_agentic("single") && !is_agentic("abstain"));
+    let mut t = agentic_valid();
+    t.id = "v2".into();
+    t.category = "agent_loop".into(); // the Phase 9-v2 category
+    validate_tasks(&[t]).expect("agent_loop validates on the agentic path");
+}
+
+#[test]
+fn rejects_agent_loop_without_spec() {
+    let mut t = agentic_valid();
+    t.category = "agent_loop".into();
+    t.agentic = None;
+    assert!(matches!(validate_tasks(&[t]), Err(AppError::InvalidTaskSchema(_))));
+}
+
+#[test]
 fn rejects_spec_on_non_agentic_task() {
     let mut t = agentic_valid();
     t.category = "single".into();

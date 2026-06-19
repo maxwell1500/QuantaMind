@@ -10,7 +10,7 @@ use crate::inference::eval::agentic::step::TrajectoryStep;
 use crate::inference::eval::toolcall::eval::{aggregate, trace_one_with, TaskResult, ToolCallReport, TraceResult};
 use crate::inference::eval::toolcall::matrix::ModelTarget;
 use crate::inference::eval::toolcall::score::verdict_passed;
-use crate::inference::eval::toolcall::tasks::ToolTask;
+use crate::inference::eval::toolcall::tasks::{is_agentic, ToolTask};
 use crate::inference::ollama::ollama::force_unload;
 use crate::persistence::eval_history::RunSummary;
 use serde::{Deserialize, Serialize};
@@ -374,7 +374,7 @@ where
                 continue;
             }
             sink.task_started(&target.model, &task.id, i, tasks.len(), &task.category);
-            if task.category == "agentic" {
+            if is_agentic(&task.category) {
                 match run_one_agentic(&turn, task, &target.model, sink.clone()).await {
                     Ok(report) => {
                         let outcome = TaskOutcome::Agentic { report: report.clone() };
@@ -508,7 +508,7 @@ where
     F: Fn(&str, &ToolTask) -> M,
     G: VramGate,
 {
-    let agentic_tasks: Vec<&ToolTask> = tasks.iter().filter(|t| t.category == "agentic").collect();
+    let agentic_tasks: Vec<&ToolTask> = tasks.iter().filter(|t| is_agentic(&t.category)).collect();
     if agentic_tasks.is_empty() {
         return Ok(());
     }

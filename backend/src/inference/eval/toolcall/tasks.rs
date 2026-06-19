@@ -61,7 +61,14 @@ pub struct ToolTask {
     pub agentic: Option<AgenticSpec>,
 }
 
-const CATEGORIES: [&str; 5] = ["single", "parallel", "select", "abstain", "agentic"];
+const CATEGORIES: [&str; 6] = ["single", "parallel", "select", "abstain", "agentic", "agent_loop"];
+
+/// Categories that run on the multi-turn agentic engine (score via
+/// `agentic.end_state`, not `expected`). Phase 9-v2 added `agent_loop` — the v2
+/// authored scenarios — alongside the original `agentic`; both route identically.
+pub fn is_agentic(category: &str) -> bool {
+    category == "agentic" || category == "agent_loop"
+}
 
 /// A tool's `parameters` must be a JSON-Schema object: `type:"object"`, a
 /// `properties` map, and an optional `required` list. Used only to validate
@@ -117,7 +124,7 @@ pub fn validate_tasks(tasks: &[ToolTask]) -> AppResult<()> {
         for tool in &t.tools {
             validate_tool(&t.id, tool)?;
         }
-        if t.category == "agentic" {
+        if is_agentic(&t.category) {
             // The agentic path scores via `agentic.end_state`, not `expected`, so
             // the single-turn abstain/expected rule below is skipped entirely.
             let spec = t

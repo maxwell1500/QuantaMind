@@ -58,19 +58,23 @@ export const AgenticSpecSchema = z.object({
 });
 export type AgenticSpec = z.infer<typeof AgenticSpecSchema>;
 
+/// Categories that run on the multi-turn agentic engine (mirror of the Rust
+/// `is_agentic`). `agent_loop` is the Phase 9-v2 authored-scenario category.
+const isAgentic = (category: string) => category === "agentic" || category === "agent_loop";
+
 export const ToolTaskSchema = z
   .object({
     id: z.string().min(1),
-    category: z.enum(["single", "parallel", "select", "abstain", "agentic"]),
+    category: z.enum(["single", "parallel", "select", "abstain", "agentic", "agent_loop"]),
     prompt: z.string().min(1),
     tools: z.array(ToolSchemaSchema).min(1),
     expected: ExpectedSchema,
     agentic: AgenticSpecSchema.optional(),
   })
   .superRefine((t, ctx) => {
-    if (t.category === "agentic" && !t.agentic)
+    if (isAgentic(t.category) && !t.agentic)
       ctx.addIssue({ code: "custom", message: "agentic task requires an agentic spec", path: ["agentic"] });
-    if (t.category !== "agentic" && t.agentic)
+    if (!isAgentic(t.category) && t.agentic)
       ctx.addIssue({ code: "custom", message: "only agentic tasks may carry an agentic spec", path: ["agentic"] });
   });
 export type ToolTask = z.infer<typeof ToolTaskSchema>;
