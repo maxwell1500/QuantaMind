@@ -1,7 +1,21 @@
 use crate::errors::{AppError, AppResult};
+use crate::inference::eval::agentic::difficulty::decoys;
 use crate::inference::eval::agentic::runner::AgenticConfig;
 use crate::inference::eval::agentic::sandbox::{DeterministicSandbox, EndStateRule};
 use crate::inference::eval::toolcall::tasks::ToolTask;
+
+/// FNV-1a over the task id: a stable, dependency-free seed so a task's decoy set is
+/// reproducible across machines/runs yet differs per task. Decoys are fixed for the
+/// whole Pass^k batch (one sandbox per task), so this is keyed on the task, not the
+/// run index. The per-instance generator seed (Phase 9C) is a separate concern.
+fn seed_from_id(id: &str) -> u64 {
+    let mut h: u64 = 0xcbf2_9ce4_8422_2325;
+    for b in id.bytes() {
+        h ^= b as u64;
+        h = h.wrapping_mul(0x0000_0100_0000_01b3);
+    }
+    h
+}
 
 /// Project an agentic `ToolTask` into a ready-to-run sandbox + config. Defense in
 /// depth beyond `validate_tasks`: confirms the task is agentic and that every
@@ -39,9 +53,14 @@ pub fn sandbox_for(task: &ToolTask) -> AppResult<(DeterministicSandbox, AgenticC
             )));
         }
     }
+    // Phase 9A: present the real tools with `axes.decoy_tools` distractors shuffled
+    // in (deterministic per task). A decoy is never an expected checkpoint and has
+    // no mock, so it can never satisfy the end state — the oracle is untouched.
+    let decoy_n = spec.axes.as_ref().map(|a| a.decoy_tools).unwrap_or(0);
+    let presented = decoys::merge_decoys(&task.tools, decoy_n, seed_from_id(&task.id));
     let sandbox = DeterministicSandbox::new(
         task.prompt.clone(),
-        task.tools.clone(),
+        presented,
         spec.mocks.clone(),
         spec.end_state.clone(),
     )
@@ -59,7 +78,7 @@ pub fn sandbox_for(task: &ToolTask) -> AppResult<(DeterministicSandbox, AgenticC
 mod tests {
     use super::*;
     use crate::inference::eval::agentic::sandbox::{MockResponse, TaskCheckpoint};
-    use crate::inference::eval::agentic::spec::AgenticSpec;
+    use crate::inference::eval::agentic::spec::{AgenticSpec, DifficultyAxes};
     use crate::inference::eval::toolcall::tasks::{Call, ToolSchema};
     use serde_json::json;
 
@@ -104,6 +123,38 @@ mod tests {
         assert!(sandbox.respond(&Call { name: "get_balance".into(), args: json!({ "id": "A" }) }).is_some());
         assert_eq!(cfg.k, 5); // default
         assert_eq!(cfg.max_steps, 7); // override
+    }
+
+    #[test]
+    fn decoy_axis_injects_distractors_that_cannot_satisfy_the_end_state() {
+        let mut t = agentic_task();
+        t.id = "decoy-task".into();
+        t.agentic.as_mut().unwrap().axes =
+            Some(DifficultyAxes { decoy_tools: 4, ..Default::default() });
+        let (sandbox, _) = sandbox_for(&t).unwrap();
+
+        // The real (mockable) tools survive...
+        assert!(sandbox.tools.iter().any(|x| x.name == "get_balance"));
+        assert!(sandbox.tools.iter().any(|x| x.name == "transfer"));
+        // ...plus exactly 4 decoys.
+        assert_eq!(sandbox.tools.len(), 2 + 4);
+        // A decoy is schema-valid but has no mock, so respond() is None — calling it
+        // yields the runner's "unknown tool" injection, never an end-state advance.
+        let decoy =
+            sandbox.tools.iter().find(|x| x.name != "get_balance" && x.name != "transfer").unwrap();
+        assert!(sandbox.respond(&Call { name: decoy.name.clone(), args: json!({}) }).is_none());
+    }
+
+    #[test]
+    fn the_decoy_set_is_deterministic_for_a_given_task() {
+        let mut t = agentic_task();
+        t.id = "stable-id".into();
+        t.agentic.as_mut().unwrap().axes =
+            Some(DifficultyAxes { decoy_tools: 5, ..Default::default() });
+        let names = |t: &ToolTask| -> Vec<String> {
+            sandbox_for(t).unwrap().0.tools.iter().map(|x| x.name.clone()).collect()
+        };
+        assert_eq!(names(&t), names(&t)); // same task → identical presented order
     }
 
     #[test]

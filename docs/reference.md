@@ -453,10 +453,15 @@ Error), with a click-through Trace Debugger. See [the workspace](#eval-runner).
   `tier` (`easy`/`medium`/`hard`/`extreme`, default `easy`) and `axes`
   (`min_required_steps`, `decoy_tools`, `hidden_prereqs`, `conflicting_constraints`,
   `adversarial_context`). Both are `serde`-defaulted so a pre-Phase-9 collection
-  loads and round-trips byte-identically (`easy`/absent are omitted on save). The
-  fields are **inert until later Phase 9 steps** wire tier→Pass^k scaling, decoy
-  injection, and the hardware-calibrated readiness gate; a missing `axes` is
-  strictly absent, never a guessed value.
+  loads and round-trips byte-identically (`easy`/absent are omitted on save); a
+  missing `axes` is strictly absent, never a guessed value. **Decoy tools are
+  live:** `axes.decoy_tools` shuffles that many plausible-but-wrong distractor
+  tools (from a built-in pool) into the presented tool list, deterministically per
+  task (seeded by task id, so temp-0 reproducibility holds). A decoy is never an
+  `expected` checkpoint and has no mock, so calling one yields the runner's
+  "unknown tool" injection and **cannot** satisfy the end state — difficulty rises
+  with the **oracle unchanged**. Still pending in later steps: `tier`→Pass^k
+  scaling and the hardware-calibrated readiness gate.
 - **Relative effort, not absolute joules.** `avg_output_tokens_success` is the mean
   output-token count (`eval_count`) over the **successful** runs only — **n/a**
   when there are zero successes, never a divide-by-zero. Prompt tokens are

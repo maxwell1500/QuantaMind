@@ -1,5 +1,6 @@
 pub mod build;
 pub mod context;
+pub mod difficulty;
 pub mod model_turn;
 pub mod runner;
 pub mod sandbox;
