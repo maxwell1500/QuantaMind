@@ -479,6 +479,15 @@ Error), with a click-through Trace Debugger. See [the workspace](#eval-runner).
     adversarial/region variance). A permanent integrity test + an **oracle gate**
     (replays each task's expected_calls) prove all 434 authored tasks are satisfiable
     and a trivial agent scores 0.
+  - **Procedural instancing** (`v2/generator.rs`) — a `generated` collection builds a
+    FRESH instance each Pass^k run: `instantiate(task, seed_for(model, run_index))`
+    consistently renames the task's numbered entity ids (its `world_state` keys) by a
+    seeded offset across the prompt, world_state, checkpoints, and `must_not_call`. It's
+    a bijective alpha-rename — decision logic untouched (oracle-safe), surface ids novel
+    per run (contamination resistance), reproducible for a given `(model, run_index)`. A
+    task with no numbered entities replays its worked instance unchanged (honest: runs,
+    not varied). Deep per-template semantic generation (e.g. re-deriving which entity is
+    sanctioned) is deferred.
 - **Hardware-calibrated tier gate (Phase 9B).** `AggAgentic.by_tier` carries strict
   Pass^k bucketed per tier; the readiness `assess()` derives the highest tier a model
   cleared (`pass^k ≥ profile.min_pass_k`) and blocks when the profile's
