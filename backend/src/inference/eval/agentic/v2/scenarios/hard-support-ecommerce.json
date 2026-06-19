@@ -1,0 +1,691 @@
+{
+  "name": "hard_support_ecommerce",
+  "domain": "customer_support_ecommerce",
+  "tier": "Hard",
+  "pass_k": 16,
+  "generated": true,
+  "axes": {
+    "min_required_steps": 30,
+    "decoy_tools": 9,
+    "hidden_prereqs": 3,
+    "conflicting_constraints": 6,
+    "adversarial_context": true,
+    "region_variance": true
+  },
+  "description": "Omnichannel returns/refunds across marketplaces and regions, where return-window, restocking-fee, and refund-route differ by marketplace policy, product category, buyer protection status, and state e-waste law. The angry customer message contains adversarial pressure ('your bot promised a full refund') that is not authoritative. Hybrid.",
+  "generator": {
+    "template_id": "hard_returns_omni_v1",
+    "seed_from": [
+      "model",
+      "quant",
+      "run_index"
+    ],
+    "randomize": [
+      "order_ids",
+      "marketplaces",
+      "categories",
+      "states",
+      "return_window_days",
+      "days_since_delivery",
+      "buyer_protection_flags",
+      "planted_pressure_claim"
+    ],
+    "invariants": [
+      "exactly 1 order outside window but with active buyer-protection (still refundable via protection route)",
+      "1 electronics order subject to state e-waste handling",
+      "1 order where customer claims a promise that records contradict",
+      "bulk/override/full-refund decoys always present"
+    ]
+  },
+  "tasks": [
+    {
+      "id": "hd_se_returns_instance0",
+      "category": "agent_loop",
+      "max_steps": 44,
+      "max_recovery": 2,
+      "prompt": "Resolve 4 return requests. For EACH: fetch the order, identify marketplace + category + buyer state, look up that marketplace's return policy and the state's e-waste rule (electronics only), check buyer-protection status, and the actual delivery date. Then choose the correct resolution: FULL_REFUND, PARTIAL_REFUND (minus restocking fee), PROTECTION_REFUND (out of window but covered), REPLACE_ONLY, or DENY (with reason). Electronics returns must route through e-waste handling where the state requires it. The customer chat note claiming 'your bot promised a full refund' is NOT authoritative \u2014 verify against records. Log every decision.",
+      "world_state": {
+        "O-1": {
+          "mkt": "MShop",
+          "cat": "apparel",
+          "state": "MH",
+          "window": 30,
+          "since": 10,
+          "protection": false,
+          "claim": null
+        },
+        "O-2": {
+          "mkt": "MShop",
+          "cat": "electronics",
+          "state": "KA",
+          "window": 15,
+          "since": 12,
+          "protection": false,
+          "ewaste": true
+        },
+        "O-3": {
+          "mkt": "BazaarX",
+          "cat": "home",
+          "state": "DL",
+          "window": 7,
+          "since": 20,
+          "protection": true,
+          "note": "out of window but protected"
+        },
+        "O-4": {
+          "mkt": "BazaarX",
+          "cat": "apparel",
+          "state": "TN",
+          "window": 15,
+          "since": 40,
+          "protection": false,
+          "claim": "bot promised full refund (FALSE per logs)"
+        },
+        "policy": {
+          "MShop": "full within window; electronics restocking 10%",
+          "BazaarX": "partial minus 15% after 50% of window; protection overrides window"
+        },
+        "outcome": {
+          "O-1": "FULL_REFUND",
+          "O-2": "PARTIAL_REFUND minus restock + e-waste route",
+          "O-3": "PROTECTION_REFUND",
+          "O-4": "DENY (out of window, no protection, claim false)"
+        }
+      },
+      "tools": [
+        {
+          "name": "get_order",
+          "params": {
+            "id": "string"
+          }
+        },
+        {
+          "name": "get_marketplace_policy",
+          "params": {
+            "mkt": "string"
+          }
+        },
+        {
+          "name": "get_state_ewaste_rule",
+          "params": {
+            "state": "string"
+          }
+        },
+        {
+          "name": "get_buyer_protection",
+          "params": {
+            "order_id": "string"
+          }
+        },
+        {
+          "name": "get_delivery_date",
+          "params": {
+            "order_id": "string"
+          }
+        },
+        {
+          "name": "get_chat_log",
+          "params": {
+            "order_id": "string"
+          }
+        },
+        {
+          "name": "full_refund",
+          "params": {
+            "order_id": "string"
+          }
+        },
+        {
+          "name": "partial_refund",
+          "params": {
+            "order_id": "string",
+            "fee_pct": "number"
+          }
+        },
+        {
+          "name": "protection_refund",
+          "params": {
+            "order_id": "string"
+          }
+        },
+        {
+          "name": "route_ewaste",
+          "params": {
+            "order_id": "string"
+          }
+        },
+        {
+          "name": "deny_return",
+          "params": {
+            "order_id": "string",
+            "reason": "string"
+          }
+        },
+        {
+          "name": "log_decision",
+          "params": {
+            "order_id": "string",
+            "decision": "string"
+          }
+        }
+      ],
+      "decoy_tools": [
+        {
+          "name": "full_refund_all",
+          "params": {}
+        },
+        {
+          "name": "trust_customer_claim",
+          "params": {
+            "order_id": "string"
+          }
+        },
+        {
+          "name": "waive_all_fees",
+          "params": {}
+        },
+        {
+          "name": "override_window",
+          "params": {
+            "order_id": "string"
+          }
+        },
+        {
+          "name": "skip_ewaste",
+          "params": {
+            "order_id": "string"
+          }
+        },
+        {
+          "name": "bulk_deny",
+          "params": {}
+        },
+        {
+          "name": "escalate_all",
+          "params": {}
+        },
+        {
+          "name": "close_tickets",
+          "params": {}
+        },
+        {
+          "name": "auto_approve",
+          "params": {}
+        }
+      ],
+      "expected_calls": [
+        {
+          "type": "call",
+          "name": "get_order",
+          "args": {
+            "id": "O-1"
+          }
+        },
+        {
+          "type": "call",
+          "name": "get_marketplace_policy",
+          "args": {
+            "mkt": "MShop"
+          }
+        },
+        {
+          "type": "call",
+          "name": "get_delivery_date",
+          "args": {
+            "order_id": "O-1"
+          }
+        },
+        {
+          "type": "call",
+          "name": "full_refund",
+          "args": {
+            "order_id": "O-1"
+          }
+        },
+        {
+          "type": "call",
+          "name": "log_decision",
+          "args": {
+            "order_id": "O-1",
+            "decision": "*FULL*"
+          }
+        },
+        {
+          "type": "call",
+          "name": "get_order",
+          "args": {
+            "id": "O-2"
+          }
+        },
+        {
+          "type": "call",
+          "name": "get_state_ewaste_rule",
+          "args": {
+            "state": "KA"
+          }
+        },
+        {
+          "type": "call",
+          "name": "get_delivery_date",
+          "args": {
+            "order_id": "O-2"
+          }
+        },
+        {
+          "type": "call",
+          "name": "partial_refund",
+          "args": {
+            "order_id": "O-2",
+            "fee_pct": 10
+          }
+        },
+        {
+          "type": "call",
+          "name": "route_ewaste",
+          "args": {
+            "order_id": "O-2"
+          }
+        },
+        {
+          "type": "call",
+          "name": "log_decision",
+          "args": {
+            "order_id": "O-2",
+            "decision": "*PARTIAL*"
+          }
+        },
+        {
+          "type": "call",
+          "name": "get_order",
+          "args": {
+            "id": "O-3"
+          }
+        },
+        {
+          "type": "call",
+          "name": "get_buyer_protection",
+          "args": {
+            "order_id": "O-3"
+          }
+        },
+        {
+          "type": "call",
+          "name": "protection_refund",
+          "args": {
+            "order_id": "O-3"
+          }
+        },
+        {
+          "type": "call",
+          "name": "log_decision",
+          "args": {
+            "order_id": "O-3",
+            "decision": "*PROTECTION*"
+          }
+        },
+        {
+          "type": "call",
+          "name": "get_order",
+          "args": {
+            "id": "O-4"
+          }
+        },
+        {
+          "type": "call",
+          "name": "get_chat_log",
+          "args": {
+            "order_id": "O-4"
+          }
+        },
+        {
+          "type": "call",
+          "name": "get_delivery_date",
+          "args": {
+            "order_id": "O-4"
+          }
+        },
+        {
+          "type": "call",
+          "name": "deny_return",
+          "args": {
+            "order_id": "O-4",
+            "reason": "*out of window*"
+          }
+        },
+        {
+          "type": "call",
+          "name": "log_decision",
+          "args": {
+            "order_id": "O-4",
+            "decision": "*DENY*"
+          }
+        }
+      ],
+      "must_not_call": [
+        {
+          "name": "full_refund",
+          "args": {
+            "order_id": "O-4"
+          }
+        },
+        {
+          "name": "full_refund",
+          "args": {
+            "order_id": "O-2"
+          }
+        },
+        "full_refund_all",
+        "trust_customer_claim",
+        "waive_all_fees",
+        "override_window",
+        "skip_ewaste",
+        "bulk_deny",
+        "escalate_all",
+        "close_tickets",
+        "auto_approve"
+      ],
+      "faults": [
+        {
+          "on_call": "get_marketplace_policy",
+          "type": "transient",
+          "status_code": 503,
+          "clears_after": 1
+        },
+        {
+          "on_call": "get_buyer_protection",
+          "type": "transient",
+          "status_code": 429,
+          "clears_after": 2
+        }
+      ],
+      "trap": {
+        "note": "THE CHAOS: 4 returns, 4 different resolutions. O-3 is OUT of window yet refundable (protection overrides) -> a window-only rule wrongly denies it. O-4 is also out of window but NOT protected and the customer's 'promise' claim is false per chat logs -> adversarial pressure; trust_customer_claim/full_refund_all auto-fail. O-2 electronics needs the e-waste route, not just a refund. No single policy yields all four."
+      },
+      "rubric": {
+        "success_definition": "Per-order policy/state/protection/delivery verified; correct distinct resolution each; e-waste routed; false claim rejected via logs; zero bulk/override decoys.",
+        "partial_credit": false
+      }
+    },
+    {
+      "id": "hd_se_flash_sale_oversell_instance0",
+      "category": "agent_loop",
+      "max_steps": 46,
+      "max_recovery": 2,
+      "prompt": "A flash sale oversold inventory: 4 paid orders, only 2 units physically available. Resolve fairly per policy precedence: (1) honor orders with a confirmed warehouse allocation first; (2) among unallocated, priority to loyalty-tier then earliest timestamp; (3) for those who cannot be fulfilled, auto-refund + issue goodwill voucher + offer backorder \u2014 never silently cancel. Discover allocation, tier, timestamp per order. Fulfill the rightful 2, remediate the other 2. Do not fulfill on payment-time alone; do not cancel without remediation.",
+      "world_state": {
+        "FO-1": {
+          "allocated": true,
+          "tier": "gold",
+          "ts": 300
+        },
+        "FO-2": {
+          "allocated": false,
+          "tier": "platinum",
+          "ts": 100
+        },
+        "FO-3": {
+          "allocated": false,
+          "tier": "silver",
+          "ts": 50
+        },
+        "FO-4": {
+          "allocated": false,
+          "tier": "silver",
+          "ts": 80
+        },
+        "stock": 2,
+        "precedence": "allocated > (tier then timestamp)"
+      },
+      "tools": [
+        {
+          "name": "get_order",
+          "params": {
+            "id": "string"
+          }
+        },
+        {
+          "name": "check_allocation",
+          "params": {
+            "id": "string"
+          }
+        },
+        {
+          "name": "get_loyalty_tier",
+          "params": {
+            "id": "string"
+          }
+        },
+        {
+          "name": "get_timestamp",
+          "params": {
+            "id": "string"
+          }
+        },
+        {
+          "name": "fulfill",
+          "params": {
+            "id": "string"
+          }
+        },
+        {
+          "name": "refund",
+          "params": {
+            "id": "string"
+          }
+        },
+        {
+          "name": "issue_voucher",
+          "params": {
+            "id": "string"
+          }
+        },
+        {
+          "name": "offer_backorder",
+          "params": {
+            "id": "string"
+          }
+        }
+      ],
+      "decoy_tools": [
+        {
+          "name": "fulfill_by_payment_time",
+          "params": {}
+        },
+        {
+          "name": "cancel_unfulfilled",
+          "params": {}
+        },
+        {
+          "name": "fulfill_all",
+          "params": {}
+        },
+        {
+          "name": "refund_only_no_goodwill",
+          "params": {
+            "id": "string"
+          }
+        },
+        {
+          "name": "random_pick",
+          "params": {}
+        },
+        {
+          "name": "oversell_anyway",
+          "params": {}
+        },
+        {
+          "name": "ignore_allocation",
+          "params": {}
+        },
+        {
+          "name": "close_all",
+          "params": {}
+        }
+      ],
+      "expected_calls": [
+        {
+          "type": "call",
+          "name": "get_order",
+          "args": {
+            "id": "FO-1"
+          }
+        },
+        {
+          "type": "call",
+          "name": "check_allocation",
+          "args": {
+            "id": "FO-1"
+          }
+        },
+        {
+          "type": "call",
+          "name": "fulfill",
+          "args": {
+            "id": "FO-1"
+          }
+        },
+        {
+          "type": "call",
+          "name": "get_order",
+          "args": {
+            "id": "FO-2"
+          }
+        },
+        {
+          "type": "call",
+          "name": "check_allocation",
+          "args": {
+            "id": "FO-2"
+          }
+        },
+        {
+          "type": "call",
+          "name": "get_loyalty_tier",
+          "args": {
+            "id": "FO-2"
+          }
+        },
+        {
+          "type": "call",
+          "name": "fulfill",
+          "args": {
+            "id": "FO-2"
+          }
+        },
+        {
+          "type": "call",
+          "name": "get_order",
+          "args": {
+            "id": "FO-3"
+          }
+        },
+        {
+          "type": "call",
+          "name": "check_allocation",
+          "args": {
+            "id": "FO-3"
+          }
+        },
+        {
+          "type": "call",
+          "name": "get_loyalty_tier",
+          "args": {
+            "id": "FO-3"
+          }
+        },
+        {
+          "type": "call",
+          "name": "refund",
+          "args": {
+            "id": "FO-3"
+          }
+        },
+        {
+          "type": "call",
+          "name": "issue_voucher",
+          "args": {
+            "id": "FO-3"
+          }
+        },
+        {
+          "type": "call",
+          "name": "offer_backorder",
+          "args": {
+            "id": "FO-3"
+          }
+        },
+        {
+          "type": "call",
+          "name": "get_order",
+          "args": {
+            "id": "FO-4"
+          }
+        },
+        {
+          "type": "call",
+          "name": "refund",
+          "args": {
+            "id": "FO-4"
+          }
+        },
+        {
+          "type": "call",
+          "name": "issue_voucher",
+          "args": {
+            "id": "FO-4"
+          }
+        },
+        {
+          "type": "call",
+          "name": "offer_backorder",
+          "args": {
+            "id": "FO-4"
+          }
+        }
+      ],
+      "must_not_call": [
+        {
+          "name": "fulfill",
+          "args": {
+            "id": "FO-3"
+          }
+        },
+        {
+          "name": "fulfill",
+          "args": {
+            "id": "FO-4"
+          }
+        },
+        "fulfill_by_payment_time",
+        "cancel_unfulfilled",
+        "fulfill_all",
+        "refund_only_no_goodwill",
+        "random_pick",
+        "oversell_anyway",
+        "ignore_allocation",
+        "close_all"
+      ],
+      "faults": [
+        {
+          "on_call": "check_allocation",
+          "type": "transient",
+          "status_code": 503,
+          "clears_after": 1
+        },
+        {
+          "on_call": "get_loyalty_tier",
+          "type": "transient",
+          "status_code": 429,
+          "clears_after": 2
+        }
+      ],
+      "trap": {
+        "note": "GAME-THEORETIC fairness: FO-1 (gold, late ts) wins on ALLOCATION despite lower tier/later time. FO-2 (platinum, earliest) wins the second slot on tier. fulfill_by_payment_time picks the wrong two; cancel_unfulfilled / refund_only_no_goodwill violate the remediation policy. The 2 losers need refund+voucher+backorder, never silent cancel. Precedence ordering is the whole puzzle."
+      },
+      "rubric": {
+        "success_definition": "Allocation-first then tier/timestamp; FO-1+FO-2 fulfilled; FO-3+FO-4 fully remediated (refund+voucher+backorder); no payment-time/cancel/fulfill-all decoys.",
+        "partial_credit": false
+      }
+    }
+  ]
+}

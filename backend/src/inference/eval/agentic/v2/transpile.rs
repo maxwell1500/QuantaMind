@@ -131,7 +131,6 @@ pub fn transpile_task(t: V2Task, tier: Tier, pass_k: u32, axes: DifficultyAxes) 
         .collect::<AppResult<Vec<_>>>()?;
 
     let world_state = if t.world_state.is_null() { None } else { Some(t.world_state) };
-    let category = if t.category.is_empty() { "agent_loop".to_string() } else { t.category };
 
     let spec = AgenticSpec {
         mocks: vec![],
@@ -146,5 +145,7 @@ pub fn transpile_task(t: V2Task, tier: Tier, pass_k: u32, axes: DifficultyAxes) 
         world_state,
         name_faults,
     };
-    Ok(ToolTask { id: t.id, category, prompt: t.prompt, tools, expected: Default::default(), agentic: Some(spec) })
+    // All v2 tasks run on the agentic engine; the end-state (RequireAll vs
+    // ExpectAbstainingText) — not the authored label — encodes act-vs-abstain.
+    Ok(ToolTask { id: t.id, category: "agent_loop".into(), prompt: t.prompt, tools, expected: Default::default(), agentic: Some(spec) })
 }

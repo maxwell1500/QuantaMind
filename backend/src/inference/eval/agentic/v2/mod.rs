@@ -4,5 +4,6 @@
 //! UNCHANGED agentic runner — no second execution path.
 pub mod collection;
 pub mod r#match;
+pub mod scenarios;
 pub mod transpile;
 pub mod world_state;
