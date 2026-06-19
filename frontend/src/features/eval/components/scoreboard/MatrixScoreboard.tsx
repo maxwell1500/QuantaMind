@@ -18,10 +18,6 @@ interface MatrixScoreboardProps {
   decoys?: number;
   focusedTaskId: string | null;
   setFocusedTaskId: (taskId: string | null) => void;
-  /// Per-task authoring, revealed on row hover. Edit opens the task in the configurator;
-  /// Delete removes it (a built-in forks to a saved copy). Absent → no authoring buttons.
-  onEditTask?: (taskId: string) => void;
-  onDeleteTask?: (taskId: string) => void;
 }
 
 export function MatrixScoreboard({
@@ -31,11 +27,8 @@ export function MatrixScoreboard({
   decoys,
   focusedTaskId,
   setFocusedTaskId,
-  onEditTask,
-  onDeleteTask,
 }: MatrixScoreboardProps) {
   const [collapsed, setCollapsed] = useState(false);
-  const [hoverTaskId, setHoverTaskId] = useState<string | null>(null);
   const { tasks } = useEvalRegistryStore();
   const list = useInstalledModelsStore((s) => s.list);
   const running = useBatchStore((s) => s.running);
@@ -247,18 +240,14 @@ export function MatrixScoreboard({
 
                   const isActive = focusedTaskId === t.id;
 
-                  const hovered = hoverTaskId === t.id;
-
                   return (
                     <tr
                       key={t.id}
                       onClick={() => setFocusedTaskId(t.id)}
-                      onMouseEnter={() => setHoverTaskId(t.id)}
-                      onMouseLeave={() => setHoverTaskId((h) => (h === t.id ? null : h))}
                       style={{
                         ...trStyle,
                         cursor: "pointer",
-                        background: isActive ? "#eff6ff" : hovered ? "#f8fafc" : "transparent",
+                        background: isActive ? "#eff6ff" : "transparent",
                       }}
                       data-testid={`scoreboard-row-${t.id}`}
                       title="Click to inspect this task in the Evaluator below"
@@ -274,29 +263,6 @@ export function MatrixScoreboard({
                       <td style={tdStyle}>{resultEl}</td>
                       <td style={{ ...tdStyle, textAlign: "right" }}>
                         <div style={{ display: "inline-flex", alignItems: "center", gap: 6 }}>
-                          {/* Per-task authoring, revealed on hover (or while focused). */}
-                          {(hovered || isActive) && onEditTask && (
-                            <button
-                              type="button"
-                              onClick={(e) => { e.stopPropagation(); onEditTask(t.id); }}
-                              style={{ ...actionBtnStyle, color: "#475569" }}
-                              data-testid={`scoreboard-edit-${t.id}`}
-                              title="Edit this task"
-                            >
-                              ✎ Edit
-                            </button>
-                          )}
-                          {(hovered || isActive) && onDeleteTask && (
-                            <button
-                              type="button"
-                              onClick={(e) => { e.stopPropagation(); onDeleteTask(t.id); }}
-                              style={{ ...actionBtnStyle, color: "#b91c1c" }}
-                              data-testid={`scoreboard-delete-${t.id}`}
-                              title="Delete this task"
-                            >
-                              🗑 Delete
-                            </button>
-                          )}
                           <button
                             type="button"
                             onClick={() => setFocusedTaskId(t.id)}

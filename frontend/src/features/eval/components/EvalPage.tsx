@@ -238,6 +238,8 @@ export function EvalPage() {
           startNew();
           setEditing(true);
         }}
+        onEditTask={onEditTask}
+        onDeleteTask={setDeleteTaskId}
       />
       <div className="flex flex-col gap-4 min-w-0">
         {editing ? (
@@ -259,8 +261,6 @@ export function EvalPage() {
                 decoys={decoys}
                 focusedTaskId={focusedTaskId}
                 setFocusedTaskId={setFocusedTaskId}
-                onEditTask={onEditTask}
-                onDeleteTask={setDeleteTaskId}
               />
             </div>
             <TraceDebugger model={focusedModel} taskId={focusedTaskId} setTaskId={setFocusedTaskId} />

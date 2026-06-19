@@ -163,6 +163,29 @@ describe("EvalManager Sidebar Controls", () => {
     expect(screen.getByTestId("eval-new-collection")).toBeInTheDocument();
   });
 
+  it("lists the selected collection's tasks beneath it with hover Edit/Delete", () => {
+    const onEditTask = vi.fn();
+    const onDeleteTask = vi.fn();
+    render(<EvalManager {...props({ onEditTask, onDeleteTask })} />);
+    // The task ("w") of the selected easy-coding collection is shown in the sidebar.
+    const row = screen.getByTestId("eval-task-row-w");
+    expect(row).toBeInTheDocument();
+    // Hidden until hover.
+    expect(screen.queryByTestId("eval-task-edit-w")).toBeNull();
+    fireEvent.mouseEnter(row);
+    fireEvent.click(screen.getByTestId("eval-task-edit-w"));
+    expect(onEditTask).toHaveBeenCalledWith("w");
+    fireEvent.click(screen.getByTestId("eval-task-delete-w"));
+    expect(onDeleteTask).toHaveBeenCalledWith("w");
+  });
+
+  it("shows the Decoy info popup on hover (Anti-Saturation ⓘ)", () => {
+    render(<EvalManager {...props()} />);
+    const info = screen.getByTestId("info-decoy");
+    fireEvent.mouseEnter(info.parentElement as HTMLElement);
+    expect(screen.getByTestId("info-popup-decoy")).toHaveTextContent(/decoy/i);
+  });
+
   it("the tier dropdown no longer offers a 'Custom' option", () => {
     render(<EvalManager {...props()} />);
     const opts = Array.from((screen.getByTestId("eval-tier-dropdown") as HTMLSelectElement).options).map((o) => o.value);

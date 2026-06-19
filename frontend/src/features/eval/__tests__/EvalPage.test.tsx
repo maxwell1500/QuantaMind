@@ -148,4 +148,17 @@ describe("EvalPage — k pre-fill from tier (no clobber)", () => {
     fireEvent.change(screen.getByTestId("eval-tier-dropdown"), { target: { value: "auto" } });
     await waitFor(() => expect(screen.getByTestId("eval-manager-k")).toHaveValue(8)); // re-armed → recommended
   });
+
+  it("per-task Delete from the sidebar opens the confirm dialog (built-in → saves a copy)", async () => {
+    useEvalRegistryStore.setState({
+      tasks: [{ id: "t1", category: "single", prompt: "p", tools: [{ name: "x", description: "", parameters: { type: "object", properties: {} } }], expected: { type: "call", name: "x", args: {} } }] as never,
+    });
+    render(<EvalPage />);
+    const row = await screen.findByTestId("eval-task-row-t1");
+    fireEvent.mouseEnter(row);
+    fireEvent.click(screen.getByTestId("eval-task-delete-t1"));
+    const dialog = screen.getByTestId("confirm-dialog");
+    expect(dialog).toBeInTheDocument();
+    expect(dialog).toHaveTextContent(/copy/i); // built-in collection → editable copy
+  });
 });

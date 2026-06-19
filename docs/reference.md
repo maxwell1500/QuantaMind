@@ -854,10 +854,14 @@ the Phase-9 levers inline, so the chosen tier and decoy budget genuinely shape t
   the presented tool list); disabled (the default) leaves the task-authored decoys untouched.
 - **Scoreboard header chips** echo the active run's shape: `Target: <model> · Tier: <…> · K: <k> ·
   Decoys: <n/off>`.
-- **Per-task authoring** — there is no collection-level "Edit" button; instead each scoreboard task row
-  reveals **Edit** + **Delete** on hover. Edit opens that task in the configurator; Delete removes it
-  (a built-in is read-only, so a delete/edit **forks the collection to a saved custom copy** — the
-  bundled original is untouched). New blank collections are still created via **+ New Collection**.
+- **Per-task authoring** — there is no collection-level "Edit" button; instead the **left sidebar** lists
+  the **selected collection's tasks beneath it**, and each task row reveals **Edit** + **Delete** on
+  hover. Edit opens that task in the configurator; Delete removes it (a built-in is read-only, so a
+  delete/edit **forks the collection to a saved custom copy** — the bundled original is untouched). New
+  blank collections are created via **+ New Collection** at the end of the collection list.
+- **Sidebar order** (top→bottom): Model → Difficulty Tier → Collections (data-source toggle + tier-filtered
+  list + New/Import JSON/CSV) → Iterations → Max Steps → Anti-Saturation (with an ⓘ explaining decoys) →
+  Native-FC + RUN BATCH + Export.
 
 Deferred (flagged, not faked): **Max Steps stays a normal editable input** — the backend has no
 tier→max-steps policy to lock it to. A **"Conditional" per-task status** isn't shown (task outcomes are
