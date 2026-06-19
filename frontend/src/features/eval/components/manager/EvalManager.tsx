@@ -89,9 +89,10 @@ export function EvalManager({
   const cap = (s: string) => s.charAt(0).toUpperCase() + s.slice(1);
   const gbLabel = (bytes: number) => `${Math.round(bytes / 1024 ** 3)}GB RAM`;
 
-  // Init on mount.
+  // Init on mount. Surface a failure in the panel's error banner instead of
+  // swallowing it — a silent init failure leaves the picker blank with no clue why.
   useEffect(() => {
-    void init().catch((e) => console.error("eval registry init failed (EvalManager):", e));
+    void init().catch((e) => setError(`Couldn't load eval collections: ${formatIpcError(e)}`));
   }, [init]);
 
   const handleDataSourceChange = async (source: "custom" | "builtin") => {

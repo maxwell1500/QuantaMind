@@ -31,10 +31,12 @@ const TaskCheckpointSchema = z.object({ tool: z.string().min(1), args: z.record(
 const MockResponseSchema = z.object({ call: CallSchema, response: z.string() });
 
 /// Mirrors the externally-tagged Rust `EndStateRule`: a unit variant serializes
-/// to the bare string `"expect_abstaining_text"`; the tuple variant to
-/// `{ "require_sequence": [...] }`.
+/// to the bare string `"expect_abstaining_text"`; the tuple variants to
+/// `{ "require_sequence": [...] }` (v1, ordered) and `{ "require_all": [...] }`
+/// (Phase 9-v2, unordered consume-once — the shape EVERY bundled v2 scenario uses).
 export const EndStateRuleSchema = z.union([
   z.object({ require_sequence: z.array(TaskCheckpointSchema).min(1) }),
+  z.object({ require_all: z.array(TaskCheckpointSchema).min(1) }),
   z.literal("expect_abstaining_text"),
 ]);
 
@@ -72,6 +74,14 @@ export const AgenticSpecSchema = z.object({
   tier: z.enum(["easy", "medium", "hard", "extreme"]).optional(),
   /// Phase 9 difficulty axes; absent for pre-Phase-9 tasks → the Matrix shows "not declared".
   axes: DifficultyAxesSchema.optional(),
+  /// Phase 9-v2 opaque fields. The frontend never reads them, but it DOES hand the
+  /// parsed tasks straight back to `run_batch_eval` — so they must survive the parse
+  /// or a built-in scenario loses its oracle/traps and every run fails. Typed as
+  /// `unknown` (permissive: a UX mirror must never reject a valid backend task).
+  must_not_call: z.array(z.unknown()).optional(),
+  world_state: z.unknown().optional(),
+  name_faults: z.array(z.unknown()).optional(),
+  generated: z.boolean().optional(),
 });
 export type AgenticSpec = z.infer<typeof AgenticSpecSchema>;
 

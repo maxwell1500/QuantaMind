@@ -274,8 +274,17 @@ user **custom collections**) and the active `selected` + its `tasks`. The runner
 is always handed `tasks`.
 
 **How.** `init` loads `list_builtin_collections` + `list_custom_collections` in
-parallel and seeds `DEFAULT_PRESET = "curated"`. `select` dispatches on
-`isPreset` (`get_builtin_collection` vs `load_custom_collection`). `save`/`remove`
+parallel, **publishes the presets to the picker first**, then loads the
+`DEFAULT_PRESET = "easy-coding"` tasks — so a single failing default-collection
+load can't blank the whole Built-in list (a silent init failure previously left
+the page stuck on "Custom JSON" with no collections); the error surfaces in the
+panel's error banner instead of being swallowed. NOTE: the registry Zod mirror
+(`registry.ts`) must track the backend `EndStateRule` exactly — every bundled v2
+scenario serializes `{ require_all: [...] }`, and the spec's v2-only keys
+(`world_state`, `must_not_call`, `name_faults`, `generated`) must survive the parse,
+since the parsed tasks are handed straight back to `run_batch_eval`. `select`
+dispatches on `isPreset` (`get_builtin_collection` vs `load_custom_collection`).
+`save`/`remove`
 call the registry CRUD then re-list. Presets can't be deleted from disk, so
 `hidePreset` just hides them (persisted in `localStorage` under
 `qm-eval-hidden-presets`). `startNew()` enters the `NEW_COLLECTION = "__new__"`

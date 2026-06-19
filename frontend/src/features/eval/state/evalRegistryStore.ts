@@ -66,7 +66,12 @@ export const useEvalRegistryStore = create<EvalRegistryStore>((set, get) => ({
     const hidden = loadHidden();
     const [allPresets, collections] = await Promise.all([listBuiltinCollections(), listCustomCollections()]);
     const presets = allPresets.filter((p) => !hidden.includes(p.id));
-    set({ presets, collections, hiddenPresets: hidden, tasks: await getBuiltinCollection(DEFAULT_PRESET), selected: DEFAULT_PRESET });
+    // Publish the picker FIRST, so a single bad default-collection load can never
+    // blank the whole Built-in list (that silent failure left the page stuck on
+    // "Custom JSON" with no collections). A throw below still propagates to the
+    // caller, which surfaces it instead of swallowing it.
+    set({ presets, collections, hiddenPresets: hidden, selected: DEFAULT_PRESET });
+    set({ tasks: await getBuiltinCollection(DEFAULT_PRESET) });
   },
   hidePreset: (id) => {
     const hidden = [...get().hiddenPresets, id];
