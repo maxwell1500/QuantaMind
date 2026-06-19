@@ -30,7 +30,7 @@ const profile = (id: string, name: string, min: number): ReadinessProfile => ({
 beforeEach(() => {
   vi.clearAllMocks();
   // Non-empty presets so the page doesn't trigger a registry init() in the test.
-  useEvalRegistryStore.setState({ presets: [{ id: "curated", label: "Curated Suite" }], collections: ["finance"], selected: "finance" });
+  useEvalRegistryStore.setState({ presets: [{ id: "easy-coding", label: "Coding", domain: "coding", tier: "easy" }], collections: ["finance"], selected: "finance" });
   useReadinessStore.setState({ profiles: [], selectedProfileId: "", verdicts: [], hardware: null, capBytes: null, assessed: false, loading: false, error: null });
   vi.mocked(listReadinessProfiles).mockResolvedValue([profile("coding-agent", "Coding agent", 0.8)]);
   vi.mocked(getHardwareSnapshot).mockResolvedValue({

@@ -1,9 +1,10 @@
 import { useCallback, useState } from "react";
 import { runToolcallEval } from "../../shared/ipc/eval/toolcall";
-import { getBuiltinTasks } from "../../shared/ipc/eval/registry";
+import { getBuiltinCollection } from "../../shared/ipc/eval/registry";
+import { DEFAULT_PRESET } from "../eval/state/evalRegistryStore";
 import type { QuantVariant } from "./quantPick";
 
-/// Run the tool-call reliability eval (curated suite) per quant variant; record
+/// Run the tool-call reliability eval (default tiered collection) per quant variant; record
 /// the composite score (null = backend error — shown as "n/a", never a
 /// fabricated 0). This is the headline differentiator: the tool-call quality
 /// spread across quants.
@@ -15,7 +16,7 @@ export function useQuantToolcall() {
     setRunning(true);
     setScores({});
     try {
-      const tasks = await getBuiltinTasks();
+      const tasks = await getBuiltinCollection(DEFAULT_PRESET);
       for (const v of variants) {
         try {
           const r = await runToolcallEval(v.name, v.backend, tasks);

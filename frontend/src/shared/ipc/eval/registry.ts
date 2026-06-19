@@ -81,21 +81,22 @@ export type ToolTask = z.infer<typeof ToolTaskSchema>;
 
 const TaskArraySchema = z.array(ToolTaskSchema);
 
-/// The bundled curated suite (read once, behind a command, so the runner is
-/// always handed a Vec).
-export async function getBuiltinTasks(): Promise<ToolTask[]> {
-  return TaskArraySchema.parse(await invoke("get_builtin_tasks"));
-}
-
-export const BuiltinCollectionInfoSchema = z.object({ id: z.string(), label: z.string() });
+/// A bundled v2 tiered scenario collection for the picker: id (file stem), short
+/// domain, and tier (so the UI groups Easy→Extreme and labels by domain).
+export const BuiltinCollectionInfoSchema = z.object({
+  id: z.string(),
+  label: z.string(),
+  domain: z.string(),
+  tier: z.enum(["easy", "medium", "hard", "extreme"]),
+});
 export type BuiltinCollectionInfo = z.infer<typeof BuiltinCollectionInfoSchema>;
 
-/// The read-only built-in presets (id + label) for the dataset picker.
+/// The bundled v2 tiered scenario collections for the dataset picker.
 export async function listBuiltinCollections(): Promise<BuiltinCollectionInfo[]> {
   return z.array(BuiltinCollectionInfoSchema).parse(await invoke("list_builtin_collections"));
 }
 
-/// Tasks for a built-in preset id (e.g. "curated" / "finance").
+/// Tasks for a built-in collection id (a v2 scenario file stem, e.g. "easy-coding").
 export async function getBuiltinCollection(id: string): Promise<ToolTask[]> {
   return TaskArraySchema.parse(await invoke("get_builtin_collection", { id }));
 }

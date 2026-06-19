@@ -25,7 +25,7 @@ const summary = (model: string, backend: "ollama" | "llama_cpp") => ({
 beforeEach(() => {
   vi.clearAllMocks();
   useBackendStore.setState({ selectedBackend: "ollama" });
-  useEvalRegistryStore.setState({ presets: [{ id: "curated", label: "Curated Suite" }], collections: [], init: vi.fn().mockResolvedValue(undefined) });
+  useEvalRegistryStore.setState({ presets: [{ id: "easy-coding", label: "Coding", domain: "coding", tier: "easy" }], collections: [], init: vi.fn().mockResolvedValue(undefined) });
 });
 
 describe("AuditPage", () => {

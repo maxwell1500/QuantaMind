@@ -137,7 +137,6 @@ pub fn run() {
             commands::eval::toolcall_cmd::run_toolcall_eval,
             commands::eval::toolcall_cmd::trace_toolcall_task,
             commands::eval::toolcall_cmd::load_toolcall_trace,
-            commands::eval::toolcall_cmd::get_builtin_tasks,
             commands::eval::toolcall_cmd::list_builtin_collections,
             commands::eval::toolcall_cmd::get_builtin_collection,
             commands::eval::eval_registry::list_custom_collections,

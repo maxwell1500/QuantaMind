@@ -59,9 +59,9 @@ beforeEach(() => {
   // The eval model dropdown is driven by the GLOBAL selection (not a per-page list).
   useSelectedModelStore.setState({ selectedModels: [{ name: "llama3.2:1b", backend: "ollama", size_bytes: 1 }] });
   useEvalRegistryStore.setState({
-    presets: [{ id: "curated", label: "Curated Suite" }],
+    presets: [{ id: "easy-coding", label: "Coding", domain: "coding", tier: "easy" }],
     collections: ["my-evals"],
-    selected: "curated",
+    selected: "easy-coding",
     tasks: sampleTasks,
     init,
     select,
@@ -126,7 +126,7 @@ describe("EvalManager Sidebar Controls", () => {
 
   it("renders presets under collections when Built-in is selected", () => {
     render(<EvalManager {...props()} />);
-    expect(screen.getByTestId("eval-collection-item-curated")).toBeInTheDocument();
+    expect(screen.getByTestId("eval-collection-item-easy-coding")).toBeInTheDocument();
   });
 
   it("switches to Custom JSON and lists custom collections", async () => {
@@ -138,7 +138,7 @@ describe("EvalManager Sidebar Controls", () => {
   it("confirms before deleting a custom collection", async () => {
     const remove = vi.fn().mockResolvedValue(undefined);
     useEvalRegistryStore.setState({
-      presets: [{ id: "curated", label: "Curated Suite" }],
+      presets: [{ id: "easy-coding", label: "Coding", domain: "coding", tier: "easy" }],
       collections: ["my-evals"],
       selected: "my-evals",
       tasks: sampleTasks,
@@ -159,9 +159,9 @@ describe("EvalManager Sidebar Controls", () => {
   it("removes a built-in preset from the list via its ⋯ menu", async () => {
     const hidePreset = vi.fn();
     useEvalRegistryStore.setState({
-      presets: [{ id: "agentic_3", label: "Agentic · 3 Multi-Step" }],
+      presets: [{ id: "hard-coding", label: "Coding (Hard)", domain: "coding", tier: "hard" }],
       collections: [],
-      selected: "agentic_3",
+      selected: "hard-coding",
       tasks: sampleTasks,
       init,
       select,
@@ -169,22 +169,22 @@ describe("EvalManager Sidebar Controls", () => {
       hidePreset,
     });
     render(<EvalManager {...props()} />);
-    fireEvent.click(screen.getByTestId("eval-collection-menu-agentic_3"));
-    fireEvent.click(screen.getByTestId("eval-collection-delete-agentic_3"));
+    fireEvent.click(screen.getByTestId("eval-collection-menu-hard-coding"));
+    fireEvent.click(screen.getByTestId("eval-collection-delete-hard-coding"));
     fireEvent.click(screen.getByTestId("confirm-ok"));
-    await waitFor(() => expect(hidePreset).toHaveBeenCalledWith("agentic_3"));
+    await waitFor(() => expect(hidePreset).toHaveBeenCalledWith("hard-coding"));
   });
 
   it("runs the chosen global model when ▶ RUN BATCH is clicked", async () => {
     useParamsStore.setState({ globalParams: { temperature: 0.2 } });
-    vi.mocked(runBatchEval).mockResolvedValue({ collection_id: "curated", columns: [] });
+    vi.mocked(runBatchEval).mockResolvedValue({ collection_id: "easy-coding", columns: [] });
     render(<EvalManager {...props()} />);
     const runBtn = screen.getByTestId("eval-run-all");
     expect(runBtn).not.toBeDisabled();
     fireEvent.click(runBtn);
     await waitFor(() => {
       expect(runBatchEval).toHaveBeenCalledWith(
-        "curated",
+        "easy-coding",
         [{ model: "llama3.2:1b", backend: "ollama" }],
         sampleTasks,
         1,
