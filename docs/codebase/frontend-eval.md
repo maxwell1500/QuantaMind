@@ -26,7 +26,7 @@ or a user-authored custom set):
 | Mode | What it measures | Where |
 |---|---|---|
 | **Tool-call (single-turn)** | One prompt → one (or parallel) tool call. Parse / tool-match / args-match / abstain sub-scores → `composite`. | matrix grid, scoreboard, PipelinePanel trace |
-| **Agentic (multi-step)** | A sandbox loop: model calls tools until an end-state, with injected faults. `Pass^k` (all k runs pass), avg steps, effort (tokens), schema-resilience, top-error. | scoreboard, TraceDebugger / TrajectoryInspector |
+| **Agentic (multi-step)** | A sandbox loop: model calls tools until an end-state, with injected faults. `Pass^k` (all k runs pass), avg steps, effort (tokens), schema-resilience, top-error. | scoreboard, TraceDebugger |
 | **Matrix (across models)** | Run a whole collection across many target models → one row per model, compared side-by-side. | PerformanceMatrix / MatrixPanel |
 | **Context-cliff** | Pad the context to growing depths, find where tool-call accuracy collapses. Feeds the readiness verdict. | ContextCliffPanel + Chart (Audit tab) |
 | **Custom collections + CSV** | Author tasks in-app; import single-turn cases from CSV; import/export JSON. | EvalManager, CollectionEditor, CsvImportModal |
@@ -57,7 +57,7 @@ heavy report lands once on completion. Crash-recovery (`check_unfinished_run` �
 > **Hosting note.** The *live* Eval-tab tree is `EvalPage → EvalManager +
 > MatrixScoreboard + TraceDebugger + PerformanceMatrix`. `ContextCliffPanel`
 > lives on the **Audit** tab (`features/audit/AuditPage`). `PipelinePanel`,
-> `MatrixPanel`/`MatrixGrid`, `ToolCallPanel`, `TrajectoryInspector`,
+> `MatrixPanel`/`MatrixGrid`, `ToolCallPanel`,
 > `TaskDetailView` are self-contained composables (alternate/legacy surfaces over
 > the same IPC) not wired into the current `EvalPage`; they remain documented as
 > the canonical single-task/matrix/agentic renderers.
@@ -124,11 +124,10 @@ Reads `outcomeByKey[cellKey(model,taskId)]` and `stepsByKey[...]` from
 an **inline agentic step timeline** for multi-step outcomes. Uses `traceDiag`
 (from `verdict.ts`) for the failure explanation. Tabs + collapse toggle.
 
-### EvalRow / ToolCallPanel / ContextCliffPanel / CpuFallbackBanner / RunRecoveryDialog
+### ToolCallPanel / ContextCliffPanel / CpuFallbackBanner / RunRecoveryDialog
 
 | File | One-line |
 |---|---|
-| `EvalRow.tsx` | One task row (id, category, pass/fail badge, detail); pure props. |
 | `ToolCallPanel.tsx` *(standalone)* | Batch scoreboard (task table + bar chart + stats + run controls) over `run_toolcall_eval`; `batchStore` + `evalRegistryStore` + `installedModelsStore`. |
 | `CpuFallbackBanner.tsx` | Warns when Ollama weights spill to CPU; reads `loadedModels()` + hardware snapshot. |
 | `RunRecoveryDialog.tsx` | Modal "Resume interrupted evaluation?" — Resume (keeps data) / Discard (destructive) / Esc-dismiss. Renders `run.collection_id` + `done/total`. |
@@ -409,27 +408,6 @@ per model). All pure-presentation given the report.
 
 ---
 
-## `components/trajectory/` — agentic step replay
-
-### TrajectoryInspector.tsx + TrajectoryStepRow.tsx
-
-**Responsibility.** Render an agentic run as a `Pass^k` header (`passes/total_runs`,
-avg-steps, effort, top-error — all "N/A" when the engine reported none) over a
-vertical turn timeline. Each `TrajectoryStep` is one turn, colour-coded by
-`kind`: tool_call (blue), end_state_reached (green), and the error kinds
-(unknown_tool / malformed_json / hallucinated_completion / infinite_loop /
-schema_error / tool_error) draw a high-contrast red/amber rail.
-
-```tsx
-{steps.map((s, i) => <TrajectoryStepRow key={`${s.run_index}-${s.step_index}-${i}`} step={s} />)}
-// row: left rail = KIND_META[step.kind].color; STEP n · label; raw_output <pre>; injection "↳ …"
-```
-
-(The live `TraceDebugger` renders an equivalent timeline inline from
-`stepsByKey`; `TrajectoryInspector` is the reusable standalone version.)
-
----
-
 ## `components/manager/` — collections & authoring
 
 ### EvalManager.tsx — the run + collections control hub (left column)
@@ -540,13 +518,13 @@ PerformanceMatrix: on batch-complete reads report → toScoreRows → one row pe
   → click row → focusModel → TraceDebugger replays that cell (Config→System→Stream→Verify)
 ```
 
-### (b) Agentic run → trajectory inspector
+### (b) Agentic run → TraceDebugger timeline
 
 ```
 A task with category "agentic" runs the sandbox loop; backend emits agentic-step events
   → batchStore.stepsByKey[cellKey(model,taskId)] accumulates TrajectoryStep[]
 Scoreboard row Result = Pass^k (all k pass / partial p/total / fail)
-  → click → TraceDebugger (or TrajectoryInspector): Pass^k header + colour-coded turn timeline
+  → click → TraceDebugger: Pass^k header + colour-coded turn timeline
     (tool_call · schema_error · hallucinated_completion · infinite_loop · end_state_reached)
 ```
 

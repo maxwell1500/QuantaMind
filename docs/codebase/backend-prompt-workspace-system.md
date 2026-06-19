@@ -529,9 +529,8 @@ pub fn compute_disk_usage(probe_path: &Path, models_bytes: u64) -> DiskUsage {
 
 ## `system/` — hardware, health, loaded models, onboarding
 
-Gathers the hardware/runtime snapshot consumed everywhere a fit/feasibility
-decision is made. (Note: `feasibility.rs` belongs to the *compare* feature and
-is intentionally not documented here.)
+Gathers the hardware/runtime snapshot consumed everywhere a memory-fit
+decision is made (the "will this model fit?" VRAM/RAM math).
 
 ### system/hardware.rs
 
@@ -543,7 +542,7 @@ is intentionally not documented here.)
 - **What:** `HardwareSnapshot` struct; `snapshot()` (refresh memory, compute
   available, read CPU brand, guess bandwidth, probe GPU); command
   `get_hardware_snapshot`. Inline tests assert total > 0 and available ≤ total.
-- **How/Where used:** Consumed by the compare/feasibility feature, model picker
+- **How/Where used:** Consumed by the compare memory-fit gate, model picker
   fit badges, and the hardware panel.
 
 ```rust
@@ -657,13 +656,13 @@ pub fn scaffold_in(root: &Path) -> AppResult<PathBuf> {
    `.quantamind/runs/<uuid>.txt` and recording a preview + metrics in
    `history.yaml`. `stop_prompt` cancels mid-stream at any point.
 
-### (b) Hardware snapshot feeding feasibility / fit
+### (b) Hardware snapshot feeding memory-fit / fit
 
 1. UI (model picker, compare panel) calls `get_hardware_snapshot`.
 2. `hardware.rs::snapshot` refreshes a shared `sysinfo::System`, computes
    available RAM via `compute_available`, reads the CPU brand, looks up
    `guess_memory_bandwidth_gbps`, and embeds `probe_gpu()`.
-3. The snapshot (RAM/VRAM, unified flag, bandwidth) is what the feasibility/fit
+3. The snapshot (RAM/VRAM, unified flag, bandwidth) is what the memory-fit
    logic compares model footprints against. `get_loaded_models` and
    `get_ollama_rss` supplement it with live residency for leak/over-commit
    checks. Anything unknown is `None` → "Not available", never fabricated.

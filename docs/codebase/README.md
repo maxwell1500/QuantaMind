@@ -41,7 +41,7 @@ React UI  ──(invoke "command_name", args)──▶  Rust #[tauri::command]
 | [backend-models-hf-gguf.md](backend-models-hf-gguf.md) | Model listing/inspection/pull, Hugging Face browse+install, GGUF parsing, Modelfile create, VRAM math | `commands/models/`, `commands/hf/`, `commands/gguf/`, `inference/hf/`, `inference/gguf/`, `inference/pull/`, `inference/create/`, `inference/vram_math.rs` |
 | [backend-eval-engine.md](backend-eval-engine.md) | Tool-calling eval, agentic runner, context-cliff, readiness/VRAM-fit, batch queue, scoring | `commands/eval/`, `inference/eval/` |
 | [backend-stt.md](backend-stt.md) | whisper.cpp sidecar, audio capture/decode, transcription, STT profiling, STT eval | `commands/stt/`, `commands/audio/`, `inference/stt/` |
-| [backend-compare.md](backend-compare.md) | Side-by-side multi-model runner, feasibility, export | `commands/compare/`, `inference/compare/` |
+| [backend-compare.md](backend-compare.md) | Side-by-side multi-model runner, memory-fit gate, export | `commands/compare/`, `inference/compare/` |
 | [backend-prompt-workspace-system.md](backend-prompt-workspace-system.md) | Single-prompt run, prompt templates, workspaces, history, settings, storage, system/hardware | `commands/prompt/`, `commands/prompt_templates/`, `commands/workspace/`, `commands/settings/`, `commands/storage/`, `commands/system/` |
 | [backend-persistence.md](backend-persistence.md) | On-disk stores: prompts, evals, history, jobs, readiness, publish, STT, settings, workspaces | `persistence/` |
 | [backend-publish.md](backend-publish.md) | Publish-to-board flow, OAuth/PKCE identity, canonical payload, validation | `commands/publish/`, `persistence/publish/` |

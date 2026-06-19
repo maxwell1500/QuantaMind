@@ -38,9 +38,7 @@ you don't kick off a run your machine can't hold.
 **How (IPC + events).**
 - Commands via `shared/ipc/compare/*`: `runCompare` → `run_compare`,
   `stopCompare` → `stop_compare`, `saveCompareReport` → `save_compare_report`,
-  `getHardwareSnapshot` → `get_hardware_snapshot`,
-  `checkInstallFeasibility` → `check_install_feasibility` (used by the model
-  installer, not the run path).
+  `getHardwareSnapshot` → `get_hardware_snapshot`.
 - The backend streams **per-model row events** (`compare-loading`,
   `compare-token`, `compare-done`, `compare-cancelled`, `compare-error`) plus a
   terminal `compare-run-done`. `compareEventBus.ts` `listen()`s once, Zod-parses

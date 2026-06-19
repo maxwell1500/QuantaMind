@@ -254,7 +254,6 @@ maps to.
 |---|---|---|
 | `audio/capture.ts` | `start_recording`, `stop_recording`, `recording_level` | [backend-stt](backend-stt.md) |
 | `compare/compare.ts` | `run_compare`, `stop_compare`, `save_compare_report` | [backend-compare](backend-compare.md) |
-| `compare/feasibility.ts` | `check_install_feasibility` | [backend-compare](backend-compare.md) |
 | `compare/hardware.ts` | `get_hardware_snapshot` | [backend-compare](backend-compare.md) |
 | `eval/batch.ts` | `run_batch_eval`, `stop_batch_eval` | [backend-eval-engine](backend-eval-engine.md) |
 | `eval/cliff.ts` | `run_context_cliff`, `stop_context_cliff`, `save_cliff_result`, `get_cliff_results` | [backend-eval-engine](backend-eval-engine.md) |
