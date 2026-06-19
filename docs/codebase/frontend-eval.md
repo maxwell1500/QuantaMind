@@ -42,8 +42,8 @@ heavy report lands once on completion. Crash-recovery (`check_unfinished_run` �
 | Panel / group | Shows | IPC command(s) | Store |
 |---|---|---|---|
 | **EvalPage** | The Eval-tab layout (Manager + Scoreboard + TraceDebugger + PerformanceMatrix) | — (orchestrates) | all four |
-| **EvalManager** | Collection picker, model, k / maxSteps, native-FC toggle, Run/Stop, New/Edit/Import/Export | `run_batch_eval` / `stop_batch_eval` (via `useBatchRun`) | `evalRegistryStore`, `batchStore` |
-| **MatrixScoreboard** ("Simulator") | Per-task Pass/Fail/Partial table + live progress for the focused model | reads streamed events | `batchStore`, `evalRegistryStore` |
+| **EvalManager** | Difficulty-tier–filtered collection picker, model, editable k / maxSteps, native-FC toggle, Run/Stop, New Collection/Import/Export | `run_batch_eval` / `stop_batch_eval` (via `useBatchRun`) | `evalRegistryStore`, `batchStore` |
+| **MatrixScoreboard** ("Simulator") | Per-task Pass/Fail/Partial table + live progress; per-row hover **Edit/Delete** | reads streamed events | `batchStore`, `evalRegistryStore` |
 | **TraceDebugger** ("Evaluator") | One (model,task) pipeline: Config→System→Stream→Verify + agentic step timeline | reads cached outcome/steps | `batchStore`, `evalRegistryStore` |
 | **PerformanceMatrix** | One row per model: Pass^k, native FC, avg-steps, effort, schema-resil, **cliff depth**, top-error | reads `report`; pre-fills cliff | `batchStore`, `cliffStore` |
 | **CollectionEditor** | Task list + Task/Sandbox configurator (authoring) | registry CRUD (via store) | `evalRegistryStore` |
@@ -388,6 +388,10 @@ Per the **focused** model: aggregates pass-rate / avg-steps / effort over
 table. Each row's Result badge: `single` → Pass/Fail; `agentic` → all-pass
 `Pass`, none `Fail`, **partial → amber `Partial p/total`** ("unreliable, not a
 clean pass"). Row click sets `focusedTaskId` → drives `TraceDebugger`. Collapsible.
+Each row also reveals **Edit** + **Delete** on hover (optional `onEditTask`/
+`onDeleteTask` props, wired by `EvalPage`): Edit opens that task in the configurator,
+Delete removes it (a built-in forks to a saved copy). Header chips echo the run shape
+(`Tier · K · Decoys`).
 
 ---
 
@@ -413,11 +417,26 @@ per model). All pure-presentation given the report.
 ### EvalManager.tsx — the run + collections control hub (left column)
 
 **Responsibility.** Every run control plus the entry points to authoring/import.
-Picks the collection (data-source toggle built-in/custom), the model, `k` and
-`maxSteps`, the **native-FC** checkbox, and Run/Stop. Calls **`useBatchRun`**
-(run/stop). Buttons: New / Edit (→ `CollectionEditor` via `EvalPage`), Import JSON,
-Import CSV (→ `CsvImportModal`), Export. Run is disabled without a model + tasks.
-Delete differs: presets are *hidden* (`hidePreset`), customs are *removed*.
+Picks the model, the **Difficulty Tier** (`Auto`/Easy…Extreme), the editable `k`
+and `maxSteps`, the **Anti-Saturation** decoy budget, the **native-FC** checkbox,
+and Run/Stop. Calls **`useBatchRun`**. The built-in collection list is **filtered to
+the chosen tier** (the data-source toggle still switches built-in/custom). Only the
+**+ New Collection** authoring button remains — per-task Edit/Delete live on the
+scoreboard rows (below). Import JSON/CSV + Export still here. Run is disabled without
+a model + tasks. Delete-collection differs: presets are *hidden* (`hidePreset`),
+customs are *removed*.
+
+**The k pre-fill guard (EvalPage owns it).** `k` is always editable and pre-filled
+with the chosen tier's `PASS_K_BY_TIER` recommendation, but the pre-fill is a
+**programmatic write that must never clobber a value the user fixed**. A synchronous
+`suppressAutoK` **ref** is set the instant the user fixes k — by typing it
+(`setIterationsKByUser`) or by picking a concrete tier. The only async write —
+`Auto`'s recommended k landing when the `getHardwareTier` probe resolves — is keyed
+on `[hwTier]` and skips when `suppressAutoK` is set. Because a ref updates
+synchronously (not subject to render/effect ordering), this holds **even when the
+hardware probe resolves in the same React flush as a tier change** (the effect would
+otherwise run with a stale `tierSel`). The editable `k` is always sent to the run and
+wins over the tier policy in the backend's `apply_overrides`.
 
 ### CollectionEditor.tsx — the authoring surface (center, edit mode)
 
@@ -425,7 +444,10 @@ Dual view: `TaskListView` (the list) ↔ `TaskSandboxConfigurator` (edit one tas
 Holds a `TaskDraft[]` mirror of the active collection, validates on save via
 `validateDrafts` (`evalDraft.ts`), and persists through `evalRegistryStore.save`.
 Editing a **preset** forces a name (NameDialog) → saves a new custom copy.
-ConfirmDialog guards destructive steps.
+ConfirmDialog guards destructive steps. Accepts an **`initialTaskId`** so a
+scoreboard-row "Edit" lands directly in that task's configurator (not the list).
+The scoreboard's per-task **Delete** is handled in `EvalPage` instead (confirm →
+`save` the filtered tasks; a built-in forks to an auto-named custom copy).
 
 ### CsvImportModal.tsx — CSV → tasks
 

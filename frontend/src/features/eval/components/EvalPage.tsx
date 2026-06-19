@@ -9,11 +9,14 @@ import { getHardwareTier, type HardwareTier } from "../../../shared/ipc/compare/
 import { PASS_K_BY_TIER, type Tier } from "../../../shared/ipc/eval/readiness";
 import { EvalManager } from "./manager/EvalManager";
 import { CollectionEditor } from "./manager/CollectionEditor";
+import { ConfirmDialog } from "./manager/ConfirmDialog";
 import { MatrixScoreboard } from "./scoreboard/MatrixScoreboard";
 import { PerformanceMatrix } from "./scoreboard/PerformanceMatrix";
 import { TraceDebugger } from "./TraceDebugger";
 import { RunRecoveryDialog } from "./RunRecoveryDialog";
 import { useRunRecovery } from "../hooks/useRunRecovery";
+import { useToast } from "../../../shared/ui/Toast";
+import { formatIpcError } from "../../../shared/ipc/core/error";
 
 /// The Automated-Pipeline Eval workspace. Left: the Eval Manager (collections +
 /// run controls + authoring entry). Right: in run mode, the live Matrix Scoreboard
@@ -23,8 +26,15 @@ export function EvalPage() {
   const initRegistry = useEvalRegistryStore((s) => s.init);
   const startNew = useEvalRegistryStore((s) => s.startNew);
   const selectedCollection = useEvalRegistryStore((s) => s.selected);
+  const presets = useEvalRegistryStore((s) => s.presets);
+  const collections = useEvalRegistryStore((s) => s.collections);
+  const tasks = useEvalRegistryStore((s) => s.tasks);
+  const selectCollection = useEvalRegistryStore((s) => s.select);
+  const isPreset = useEvalRegistryStore((s) => s.isPreset);
+  const saveCollection = useEvalRegistryStore((s) => s.save);
   const selectedBackend = useBackendStore((s) => s.selectedBackend);
   const selectedModels = useSelectedModelStore((s) => s.selectedModels);
+  const showToast = useToast();
 
   // The eval runs ONE model, chosen from the global selection (single source of truth) —
   // no per-page picker. EvalManager's dropdown sets this.
@@ -38,17 +48,23 @@ export function EvalPage() {
     setFocusedModel(m);
     detailRef.current?.scrollIntoView?.({ behavior: "smooth", block: "start" });
   };
-  const [iterationsK, setIterationsK] = useState<number>(1);
+  // Pass^k is always user-editable; it's PRE-FILLED with the tier's recommended value
+  // (see `onTierChange` + the Auto one-shot below), never locked. Start at Medium's 8 so
+  // the first paint shows a sensible recommended default before `hwTier` resolves.
+  const [iterationsK, setIterationsK] = useState<number>(PASS_K_BY_TIER.medium);
   const [maxSteps, setMaxSteps] = useState<number>(8);
   // Phase 9 difficulty levers, owned here so the manager (run) and the scoreboard
-  // (header chips) read one resolved value. `tierSel` drives `k`: a tier locks it
-  // (`pass_k_for`), `custom` frees the manual input. `Auto` resolves to the running
-  // machine's recommended tier (`hwTier`).
-  const [tierSel, setTierSel] = useState<"auto" | Tier | "custom">("auto");
+  // (header chips) read one resolved value. `Auto` resolves to the machine's
+  // recommended tier (`hwTier`); a named tier filters the collection list + recommends k.
+  const [tierSel, setTierSel] = useState<"auto" | Tier>("auto");
   const [decoyEnabled, setDecoyEnabled] = useState(false);
   const [decoyCount, setDecoyCount] = useState(3);
   const [hwTier, setHwTier] = useState<HardwareTier | null>(null);
   const [editing, setEditing] = useState(false);
+  // The task a scoreboard-row "Edit" opened the editor on (null = the task list).
+  const [editingTaskId, setEditingTaskId] = useState<string | null>(null);
+  // The task id a scoreboard-row "Delete" is confirming (null = no dialog).
+  const [deleteTaskId, setDeleteTaskId] = useState<string | null>(null);
   const recovery = useRunRecovery();
 
   useEffect(() => {
@@ -61,6 +77,38 @@ export function EvalPage() {
       .then(setHwTier)
       .catch((e) => console.error("hardware tier load failed (EvalPage):", e));
   }, []);
+
+  // ── k pre-fill (recommended-from-tier) WITHOUT clobbering a fixed k ──────────────
+  // `suppressAutoK` is a REF (updates synchronously, unaffected by render/effect
+  // ordering) set the instant the user FIXES k — either by typing it
+  // (`setIterationsKByUser`) or by picking a concrete tier. The only async write —
+  // Auto's recommended k landing when `hwTier` resolves — is keyed on `[hwTier]` and
+  // skips when `suppressAutoK` is set. So even if `hwTier` resolves in the SAME flush
+  // as a tier change (the effect would otherwise run with a stale `tierSel`), the ref
+  // already says "don't auto-fill" and the user's value survives.
+  const suppressAutoK = useRef(false);
+  const tierSelRef = useRef(tierSel);
+  tierSelRef.current = tierSel;
+  const setIterationsKByUser = (v: number) => {
+    suppressAutoK.current = true;
+    setIterationsK(v);
+  };
+  const onTierChange = (next: "auto" | Tier) => {
+    setTierSel(next);
+    if (next !== "auto") {
+      suppressAutoK.current = true; // a concrete tier fixes k to its recommendation
+      setIterationsK(PASS_K_BY_TIER[next]);
+    } else {
+      suppressAutoK.current = false; // back to Auto → let the hardware drive k again
+      if (hwTier) setIterationsK(PASS_K_BY_TIER[hwTier.recommended_tier]); // hw already known → now
+      // hw not yet known: the effect below fills it once the probe resolves.
+    }
+  };
+  useEffect(() => {
+    if (tierSelRef.current === "auto" && hwTier && !suppressAutoK.current) {
+      setIterationsK(PASS_K_BY_TIER[hwTier.recommended_tier]);
+    }
+  }, [hwTier]);
 
   // Context-shift cancellation law: a backend OR collection switch invalidates the
   // target of every long-running process, so ALL compute for the old context halts.
@@ -104,21 +152,61 @@ export function EvalPage() {
     if (evalModel) setFocusedModel(evalModel);
   }, [evalModel]);
 
-  // Resolve the tier selection into the effective tier + locked Pass^k once, so the
-  // run, the locked-k field, and the scoreboard chips can never disagree. `Custom`
-  // (and `Auto` before the hardware read lands) yields no tier → manual `k`.
-  const effectiveTier: Tier | undefined =
-    tierSel === "custom" ? undefined : tierSel === "auto" ? hwTier?.recommended_tier : tierSel;
-  const lockedK = effectiveTier ? PASS_K_BY_TIER[effectiveTier] : undefined;
-  const effectiveK = tierSel === "custom" ? iterationsK : lockedK;
+  // Resolve the tier selection into the effective tier. `Auto` resolves to the machine's
+  // recommended tier (undefined only in the brief window before `hwTier` lands).
+  const effectiveTier: Tier | undefined = tierSel === "auto" ? hwTier?.recommended_tier : tierSel;
+  // The recommended Pass^k for the active tier — shown as a hint next to the editable k.
+  const recommendedK = effectiveTier ? PASS_K_BY_TIER[effectiveTier] : undefined;
   const decoys = decoyEnabled ? decoyCount : undefined;
   const cap = (s: string) => s.charAt(0).toUpperCase() + s.slice(1);
-  const tierLabel =
-    tierSel === "custom"
-      ? "Custom"
-      : effectiveTier
-        ? `${cap(effectiveTier)}${tierSel === "auto" ? " (Auto)" : ""}`
-        : "Auto";
+  const tierLabel = effectiveTier ? `${cap(effectiveTier)}${tierSel === "auto" ? " (Auto)" : ""}` : "Auto";
+
+  // Keep the selected Built-In collection inside the chosen tier: the picker now shows
+  // only that tier's collections, so a stale cross-tier selection would be invisible.
+  // Only re-targets a BUILT-IN selection — a custom collection is left alone.
+  useEffect(() => {
+    if (!effectiveTier || !isPreset(selectedCollection)) return;
+    const cur = presets.find((p) => p.id === selectedCollection);
+    if (cur && cur.tier === effectiveTier) return; // already a valid in-tier selection
+    const first = presets.find((p) => p.tier === effectiveTier);
+    if (first) void selectCollection(first.id);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [effectiveTier, presets]);
+
+  // ── Per-task Edit / Delete (from the scoreboard rows) ──────────────────────────────
+  const onEditTask = (taskId: string) => {
+    setEditingTaskId(taskId);
+    setEditing(true);
+  };
+  // A unique custom name for a forked preset copy (a built-in can't be edited in place).
+  const forkName = (base: string) => {
+    let name = `${base}-edited`;
+    for (let i = 2; collections.includes(name); i++) name = `${base}-edited-${i}`;
+    return name;
+  };
+  const performDeleteTask = async () => {
+    const id = deleteTaskId;
+    setDeleteTaskId(null);
+    if (!id) return;
+    const next = tasks.filter((t) => t.id !== id);
+    if (next.length === 0) {
+      showToast("Can't delete the last task in a collection.");
+      return;
+    }
+    try {
+      // Custom: save in place. Built-in (read-only bundle): fork to a saved copy.
+      if (isPreset(selectedCollection)) {
+        const name = forkName(selectedCollection);
+        await saveCollection(name, next);
+        showToast(`Saved as copy: ${name} ✓`);
+      } else {
+        await saveCollection(selectedCollection, next);
+        showToast("Task deleted ✓");
+      }
+    } catch (e) {
+      showToast(formatIpcError(e));
+    }
+  };
 
   return (
     <div className="grid gap-4" style={{ gridTemplateColumns: "360px 1fr" }} data-testid="eval-page">
@@ -134,13 +222,13 @@ export function EvalPage() {
         model={evalModel}
         setModel={setEvalModel}
         k={iterationsK}
-        setK={setIterationsK}
+        setK={setIterationsKByUser}
         maxSteps={maxSteps}
         setMaxSteps={setMaxSteps}
         tierSel={tierSel}
-        setTierSel={setTierSel}
+        onTierChange={onTierChange}
         effectiveTier={effectiveTier}
-        lockedK={lockedK}
+        recommendedK={recommendedK}
         hwTier={hwTier}
         decoyEnabled={decoyEnabled}
         setDecoyEnabled={setDecoyEnabled}
@@ -150,22 +238,29 @@ export function EvalPage() {
           startNew();
           setEditing(true);
         }}
-        onEditCollection={() => setEditing(true)}
       />
       <div className="flex flex-col gap-4 min-w-0">
         {editing ? (
-          <CollectionEditor onClose={() => setEditing(false)} />
+          <CollectionEditor
+            initialTaskId={editingTaskId}
+            onClose={() => {
+              setEditing(false);
+              setEditingTaskId(null);
+            }}
+          />
         ) : (
           <>
             <div ref={detailRef}>
               <MatrixScoreboard
                 model={focusedModel}
-                k={effectiveK ?? iterationsK}
+                k={iterationsK}
                 maxSteps={maxSteps}
                 tierLabel={tierLabel}
                 decoys={decoys}
                 focusedTaskId={focusedTaskId}
                 setFocusedTaskId={setFocusedTaskId}
+                onEditTask={onEditTask}
+                onDeleteTask={setDeleteTaskId}
               />
             </div>
             <TraceDebugger model={focusedModel} taskId={focusedTaskId} setTaskId={setFocusedTaskId} />
@@ -173,6 +268,19 @@ export function EvalPage() {
           </>
         )}
       </div>
+      {deleteTaskId && (
+        <ConfirmDialog
+          title="Delete task"
+          message={
+            isPreset(selectedCollection)
+              ? `Delete task “${deleteTaskId}”? Built-in collections are read-only, so this saves an editable copy.`
+              : `Delete task “${deleteTaskId}” from this collection? This cannot be undone.`
+          }
+          confirmLabel="Delete"
+          onConfirm={() => void performDeleteTask()}
+          onClose={() => setDeleteTaskId(null)}
+        />
+      )}
     </div>
   );
 }

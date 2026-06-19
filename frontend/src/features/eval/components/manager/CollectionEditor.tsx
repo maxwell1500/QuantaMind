@@ -11,7 +11,7 @@ import { ConfirmDialog } from "./ConfirmDialog";
 /// and, when a task is opened, the Task & Sandbox Configurator. Holds the editable
 /// drafts, validates them through the shared `evalDraft` path, and persists via
 /// `evalRegistryStore.save` (a preset edit saves a new custom copy).
-export function CollectionEditor({ onClose }: { onClose: () => void }) {
+export function CollectionEditor({ onClose, initialTaskId }: { onClose: () => void; initialTaskId?: string | null }) {
   const { selected, tasks, save, isPreset } = useEvalRegistryStore();
   const [drafts, setDrafts] = useState<TaskDraft[]>(() => tasks.map(draftFromTask));
   const [openKey, setOpenKey] = useState<string | null>(null);
@@ -20,13 +20,15 @@ export function CollectionEditor({ onClose }: { onClose: () => void }) {
   const [status, setStatus] = useState<string | null>(null);
   const [confirmKey, setConfirmKey] = useState<string | null>(null);
 
-  // Re-seed when the active collection changes.
+  // Re-seed when the active collection changes. When opened on a specific task (a
+  // scoreboard-row "Edit"), land directly in that task's configurator.
   useEffect(() => {
-    setDrafts(tasks.map(draftFromTask));
-    setOpenKey(null);
+    const ds = tasks.map(draftFromTask);
+    setDrafts(ds);
+    setOpenKey(initialTaskId ? (ds.find((d) => d.id === initialTaskId)?.key ?? null) : null);
     setDirty(false);
     setStatus(null);
-  }, [selected, tasks]);
+  }, [selected, tasks, initialTaskId]);
 
   const open = drafts.find((d) => d.key === openKey) ?? null;
 

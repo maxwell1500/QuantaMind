@@ -1,4 +1,4 @@
-import { describe, it, expect, beforeEach } from "vitest";
+import { describe, it, expect, beforeEach, vi } from "vitest";
 import { render, screen, fireEvent } from "@testing-library/react";
 import { MatrixScoreboard } from "../components/scoreboard/MatrixScoreboard";
 import { useEvalRegistryStore } from "../state/evalRegistryStore";
@@ -101,6 +101,37 @@ describe("MatrixScoreboard (Simulator) data flow", () => {
   it("reads 'Decoys: off' when no decoy budget is set", () => {
     render(<MatrixScoreboard model={MODEL} k={8} maxSteps={8} tierLabel="Medium" focusedTaskId={null} setFocusedTaskId={() => {}} />);
     expect(screen.getByTestId("scoreboard-run-chips")).toHaveTextContent("Decoys: off");
+  });
+
+  it("reveals per-task Edit/Delete on row hover and fires the handlers (not row-focus)", () => {
+    const onEditTask = vi.fn();
+    const onDeleteTask = vi.fn();
+    render(
+      <MatrixScoreboard
+        model={MODEL}
+        k={1}
+        maxSteps={8}
+        focusedTaskId={null}
+        setFocusedTaskId={() => {}}
+        onEditTask={onEditTask}
+        onDeleteTask={onDeleteTask}
+      />,
+    );
+    // Hidden until hover.
+    expect(screen.queryByTestId("scoreboard-edit-weather")).toBeNull();
+    fireEvent.mouseEnter(screen.getByTestId("scoreboard-row-weather"));
+    // Edit opens that task; the click must NOT bubble to the row's focus handler.
+    fireEvent.click(screen.getByTestId("scoreboard-edit-weather"));
+    expect(onEditTask).toHaveBeenCalledWith("weather");
+    fireEvent.click(screen.getByTestId("scoreboard-delete-weather"));
+    expect(onDeleteTask).toHaveBeenCalledWith("weather");
+  });
+
+  it("omits the per-task buttons when no edit/delete handlers are supplied", () => {
+    render(<MatrixScoreboard model={MODEL} k={1} maxSteps={8} focusedTaskId={null} setFocusedTaskId={() => {}} />);
+    fireEvent.mouseEnter(screen.getByTestId("scoreboard-row-weather"));
+    expect(screen.queryByTestId("scoreboard-edit-weather")).toBeNull();
+    expect(screen.queryByTestId("scoreboard-delete-weather")).toBeNull();
   });
 
   it("collapses and expands the card, showing a 'click to expand' summary instead of blank", () => {
