@@ -97,6 +97,14 @@ impl DeterministicSandbox {
         self
     }
 
+    /// Attach Phase 9-v2 name-keyed faults (`faults[].on_call` trips on any call to
+    /// that tool). Merged into the same map as canonical-keyed v1 faults — the key
+    /// spaces don't collide (a bare name has no '|').
+    pub fn with_name_faults(mut self, faults: HashMap<String, FaultInjection>) -> Self {
+        self.faults.extend(faults);
+        self
+    }
+
     /// Attach Driver-B fault traps (builder form, so the `new` signature and every
     /// existing caller/test stay unchanged). Keyed by `canonical(call)`.
     pub fn with_faults(mut self, faults: Vec<FaultRule>) -> Self {
@@ -146,7 +154,16 @@ impl SandboxState {
         call: &Call,
         faults: &HashMap<String, FaultInjection>,
     ) -> Option<String> {
-        let key = canonical(call);
+        // v1 faults key by `canonical(call)` (= "name|{args}", always has a '|');
+        // v2 faults key by the bare tool name (no '|') and trip on ANY args. The two
+        // key spaces never collide, so one map holds both: try exact-call first.
+        let key = if faults.contains_key(&canonical(call)) {
+            canonical(call)
+        } else if faults.contains_key(&call.name) {
+            call.name.clone()
+        } else {
+            return None;
+        };
         match faults.get(&key)? {
             FaultInjection::PersistentError { status_code } => {
                 Some(format!("HTTP {status_code} Fatal"))
@@ -306,6 +323,19 @@ mod tests {
         assert!(state.fault_for(&b, &f).is_some()); // b: attempt 1 → fails (independent of a)
         assert!(state.fault_for(&a, &f).is_none()); // a: cleared
         assert!(state.fault_for(&b, &f).is_none()); // b: cleared
+    }
+
+    #[test]
+    fn name_keyed_fault_trips_on_any_args_and_clears() {
+        // v2 `on_call: "mark_to_market"` → fails any call to that tool, transiently.
+        let mut f: HashMap<String, FaultInjection> = HashMap::new();
+        f.insert("mark_to_market".into(), FaultInjection::TransientError { status_code: 503, clears_after: 1 });
+        let mut state = SandboxState::new();
+        // Different args, same tool name — both share the one name-keyed counter.
+        assert!(state.fault_for(&call("mark_to_market", json!({ "account": "M-3" })), &f).is_some()); // attempt 1
+        assert!(state.fault_for(&call("mark_to_market", json!({ "account": "M-9" })), &f).is_none()); // cleared
+        // A different tool is untouched.
+        assert_eq!(state.fault_for(&call("other", json!({})), &f), None);
     }
 
     #[test]
