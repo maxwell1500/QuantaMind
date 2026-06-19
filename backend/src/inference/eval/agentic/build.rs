@@ -115,6 +115,8 @@ mod tests {
                 max_steps: Some(7),
                 faults: vec![],
                 max_recovery: None,
+                must_not_call: vec![],
+                world_state: None,
             }),
         }
     }

@@ -1,6 +1,8 @@
 use crate::inference::eval::agentic::sandbox::{EndStateRule, MockResponse};
+use crate::inference::eval::agentic::v2::r#match::MustNotCall;
 use crate::inference::eval::toolcall::tasks::Call;
 use serde::{Deserialize, Serialize};
+use serde_json::Value;
 
 /// A Driver-B lazy-agent trap: how a specific mocked call fails before it would
 /// succeed. `TransientError` clears after `clears_after` attempts (a robust agent
@@ -90,6 +92,14 @@ pub struct AgenticSpec {
     /// the run is scored `MalformedSchema`. `None` falls back to the engine default.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub max_recovery: Option<u8>,
+    /// Phase 9-v2: `must_not_call` trap entries — invoking any auto-fails the run.
+    /// Empty for v1 tasks (omitted on save).
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub must_not_call: Vec<MustNotCall>,
+    /// Phase 9-v2: ground-truth the model discovers via tools (drives the sandbox's
+    /// WorldState responder). `None` for v1 tasks (static mocks).
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub world_state: Option<Value>,
 }
 
 #[cfg(test)]
@@ -129,9 +139,14 @@ mod tests {
             max_steps: None,
             faults: vec![],
             max_recovery: None,
+            must_not_call: vec![],
+            world_state: None,
         };
         let v = serde_json::to_value(&spec).unwrap();
         assert!(v.get("tier").is_none()); // Easy is the default → omitted
         assert!(v.get("axes").is_none());
+        // v2 fields are absent on a v1 spec → byte-compat preserved.
+        assert!(v.get("must_not_call").is_none());
+        assert!(v.get("world_state").is_none());
     }
 }

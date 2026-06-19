@@ -226,21 +226,9 @@ pub fn batch_summaries(report: &BatchReport, ts: &str) -> Vec<RunSummary> {
 fn agg_agentic(reports: &[AgenticReport]) -> AggAgentic {
     let mut failures = FailureTracker::default();
     for r in reports {
-        failures.infinite_loop_hits += r.failures.infinite_loop_hits;
-        failures.hallucinated_completions += r.failures.hallucinated_completions;
-        failures.malformed_json_calls += r.failures.malformed_json_calls;
-        failures.schema_unrecovered_calls += r.failures.schema_unrecovered_calls;
+        failures.merge(&r.failures); // centralized — never drops a field (e.g. unknown/forbidden)
     }
-    // Same severity order as FailureTracker::top (schema above json).
-    let top_error = [
-        (failures.infinite_loop_hits, TopError::InfiniteLoop),
-        (failures.hallucinated_completions, TopError::Hallucinated),
-        (failures.schema_unrecovered_calls, TopError::MalformedSchema),
-        (failures.malformed_json_calls, TopError::MalformedJson),
-    ]
-    .into_iter()
-    .fold((0u32, TopError::None), |best, (n, e)| if n > best.0 { (n, e) } else { best })
-    .1;
+    let top_error = failures.top();
     let steps: Vec<f64> = reports.iter().filter_map(|r| r.avg_steps).collect();
     let eff: Vec<f64> = reports.iter().filter_map(|r| r.avg_output_tokens_success).collect();
     let resil: Vec<f64> = reports.iter().filter_map(|r| r.schema_resilience).collect();

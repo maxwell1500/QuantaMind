@@ -102,6 +102,8 @@ fn build_template(category: &str, tier: Tier) -> ToolTask {
             max_steps: Some((n + n / 2 + 4) as u32),
             faults: vec![],
             max_recovery: None,
+            must_not_call: vec![],
+            world_state: None,
         }),
     }
 }
