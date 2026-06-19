@@ -49,7 +49,6 @@ pub fn run() {
             Ok(())
         })
         .invoke_handler(tauri::generate_handler![
-            commands::system::feasibility::check_install_feasibility,
             commands::gguf::gguf_cmd::inspect_gguf,
             commands::system::hardware::get_hardware_snapshot,
             commands::system::loaded_models::get_loaded_models,
