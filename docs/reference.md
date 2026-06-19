@@ -481,8 +481,12 @@ Error), with a click-through Trace Debugger. See [the workspace](#eval-runner).
   `HardwareClass` (rounded to the nearest GB to avoid boundary flip-flop) and a
   default required tier; built-in profiles ship `required_tier` Hard (coding) /
   Medium (rag, general), while a pre-Phase-9 saved profile defaults `Easy` and never
-  blocks (exact old behavior). Pending: surfacing hw-class / required / cleared tier
-  in the report UI (9B.3).
+  blocks (exact old behavior). The verdict carries `required_tier` + `cleared_tier`,
+  and the Agent Report renders graduated readiness per row ("✓ cleared Extreme /
+  requires Extreme" or "▸ cleared Medium / requires Extreme") — shown only for a
+  tiered profile, hidden for an untiered (Easy) one. A standalone hardware-class
+  label in the header is deferred (the hardware-calibrated `required_tier` already
+  conveys the bar).
 - **Relative effort, not absolute joules.** `avg_output_tokens_success` is the mean
   output-token count (`eval_count`) over the **successful** runs only — **n/a**
   when there are zero successes, never a divide-by-zero. Prompt tokens are

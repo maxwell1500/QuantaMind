@@ -210,4 +210,31 @@ describe("VerdictTable", () => {
     // The old code fabricated "q5_k_m" for any qwen; an unknown quant is now an honest "—".
     expect(screen.getByTestId("readiness-row-qwen2.5-coder")).not.toHaveTextContent(/q5_k_m/i);
   });
+
+  it("shows graduated readiness (cleared / requires tier) when the profile is tiered", () => {
+    render(
+      <VerdictTable
+        verdicts={[
+          {
+            model: "big-model",
+            backend: "ollama",
+            verdict: {
+              status: "not_ready",
+              blocking: ["cleared Medium; this profile requires Extreme"],
+              conditions: [],
+              path: "native_fc",
+              required_tier: "extreme",
+              cleared_tier: "medium",
+            },
+          },
+        ]}
+      />,
+    );
+    expect(screen.getByTestId("tier-line")).toHaveTextContent("cleared Medium / requires Extreme");
+  });
+
+  it("hides the tier line for an untiered (Easy / absent) profile", () => {
+    render(<VerdictTable verdicts={VERDICTS} />); // these verdicts carry no required_tier
+    expect(screen.queryByTestId("tier-line")).toBeNull();
+  });
 });

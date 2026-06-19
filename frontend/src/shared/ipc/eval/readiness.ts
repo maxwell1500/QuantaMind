@@ -2,6 +2,11 @@ import { invoke } from "@tauri-apps/api/core";
 import { z } from "zod";
 import { BackendKindSchema } from "../models/storage";
 
+/// Phase 9 difficulty tier (mirror of the Rust `Tier`). `.optional()` at each use
+/// site keeps payloads written before Phase 9 (and existing typed fixtures) valid.
+export const TierSchema = z.enum(["easy", "medium", "hard", "extreme"]);
+export type Tier = z.infer<typeof TierSchema>;
+
 /// A use-case preset the verdict is measured against (mirror of the Rust
 /// `ReadinessProfile`). Hard gates (`require_*`, `min_*`) block; soft targets
 /// (`max_*`) downgrade to Conditional. Nullable fields mean "metric ignored".
@@ -16,6 +21,10 @@ export const ReadinessProfileSchema = z.object({
   forbid_hallucinated_completion: z.boolean(),
   require_full_vram: z.boolean(),
   require_native_fc: z.boolean(),
+  /// Phase 9: the difficulty tier this profile requires. `.optional()` keeps old
+  /// profiles + fixtures valid; the EditProfileModal `{...profile}` spread carries
+  /// it through on save, so editing a profile never drops it.
+  required_tier: TierSchema.optional(),
 });
 export type ReadinessProfile = z.infer<typeof ReadinessProfileSchema>;
 
@@ -31,6 +40,10 @@ export const ReadinessVerdictSchema = z.object({
   blocking: z.array(z.string()),
   conditions: z.array(z.string()),
   path: AgentPathSchema,
+  /// The tier this profile requires, and the highest tier the model cleared at the
+  /// profile's bar — graduated readiness ("cleared Medium; requires Extreme").
+  required_tier: TierSchema.optional(),
+  cleared_tier: TierSchema.nullable().optional(),
 });
 export type ReadinessVerdict = z.infer<typeof ReadinessVerdictSchema>;
 
