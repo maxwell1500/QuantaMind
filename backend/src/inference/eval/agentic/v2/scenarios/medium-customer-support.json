@@ -19,24 +19,24 @@
       "category": "agent_loop",
       "max_steps": 16,
       "max_recovery": 2,
-      "prompt": "Three customers each request a warranty replacement for a 14-month-old appliance: C-401 (Maharashtra), C-402 (Tamil Nadu), C-403 (Delhi). Company base warranty is 12 months, but some states mandate longer consumer-protection windows. For each: look up the customer's state, look up that state's mandated warranty window, and approve the replacement ONLY if the appliance age is within the governing window (the longer of base vs state mandate). Log a decision for every customer.",
+      "prompt": "Three customers each request a warranty replacement for a 14-month-old appliance: C-401 (Los Angeles), C-402 (San Francisco), C-403 (Sacramento). Company base warranty is 12 months, but some states mandate longer consumer-protection windows. For each: look up the customer's state, look up that state's mandated warranty window, and approve the replacement ONLY if the appliance age is within the governing window (the longer of base vs state mandate). Log a decision for every customer.",
       "world_state": {
         "C-401": {
-          "state": "MH",
+          "state": "LA",
           "appliance_age_months": 14
         },
         "C-402": {
-          "state": "TN",
+          "state": "SF",
           "appliance_age_months": 14
         },
         "C-403": {
-          "state": "DL",
+          "state": "SAC",
           "appliance_age_months": 14
         },
         "state_warranty": {
-          "MH": 12,
-          "TN": 24,
-          "DL": 12
+          "LA": 12,
+          "SF": 24,
+          "SAC": 12
         },
         "rule": "governing = max(12, state_mandate); approve iff age <= governing"
       },
@@ -101,7 +101,7 @@
           "type": "call",
           "name": "get_state_warranty",
           "args": {
-            "state": "MH"
+            "state": "LA"
           }
         },
         {
@@ -123,7 +123,7 @@
           "type": "call",
           "name": "get_state_warranty",
           "args": {
-            "state": "TN"
+            "state": "SF"
           }
         },
         {
@@ -138,7 +138,7 @@
           "name": "log_decision",
           "args": {
             "customer_id": "C-402",
-            "reason": "*TN*24*"
+            "reason": "*SF*24*"
           }
         },
         {
@@ -152,7 +152,7 @@
           "type": "call",
           "name": "get_state_warranty",
           "args": {
-            "state": "DL"
+            "state": "SAC"
           }
         },
         {
@@ -190,7 +190,7 @@
         }
       ],
       "trap": {
-        "note": "THE CHAOS: identical request, identical 14-month age, three different correct answers. Only TN (24mo mandate) approves; MH and DL (12mo) deny. A model that learns 'approve warranty replacements' from the first or applies one rule to all three fails on at least two. The transient 503 on the state lookup also tests retry vs. give-up."
+        "note": "THE CHAOS: identical request, identical 14-month age, three different correct answers. Only SF (24mo mandate) approves; LA and SAC (12mo) deny. A model that learns 'approve warranty replacements' from the first or applies one rule to all three fails on at least two. The transient 503 on the state lookup also tests retry vs. give-up."
       },
       "rubric": {
         "success_definition": "Per-customer governing window correctly derived; only C-402 approved; all three logged; no decoy actions.",
@@ -202,11 +202,11 @@
       "category": "agent_loop",
       "max_steps": 16,
       "max_recovery": 2,
-      "prompt": "Three support tickets breach response time. The SLA credit owed depends on BOTH the customer's plan AND their region's consumer law (some regions mandate a minimum credit above contract). For each: get the customer, get plan SLA credit %, get region mandated minimum, and issue the GREATER of the two as credit. Log each. T-1 Basic/MH, T-2 Basic/EU, T-3 Pro/MH.",
+      "prompt": "Three support tickets breach response time. The SLA credit owed depends on BOTH the customer's plan AND their region's consumer law (some regions mandate a minimum credit above contract). For each: get the customer, get plan SLA credit %, get region mandated minimum, and issue the GREATER of the two as credit. Log each. T-1 Basic/LA, T-2 Basic/EU, T-3 Pro/LA.",
       "world_state": {
         "T-1": {
           "plan": "Basic",
-          "region": "MH",
+          "region": "LA",
           "plan_credit_pct": 5,
           "region_min_pct": 5
         },
@@ -218,7 +218,7 @@
         },
         "T-3": {
           "plan": "Pro",
-          "region": "MH",
+          "region": "LA",
           "plan_credit_pct": 20,
           "region_min_pct": 5
         },
@@ -295,7 +295,7 @@
           "type": "call",
           "name": "get_region_min",
           "args": {
-            "region": "MH"
+            "region": "LA"
           }
         },
         {

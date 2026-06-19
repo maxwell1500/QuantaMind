@@ -48,7 +48,7 @@
         "O-1": {
           "mkt": "MShop",
           "cat": "apparel",
-          "state": "MH",
+          "state": "LA",
           "window": 30,
           "since": 10,
           "protection": false,
@@ -57,7 +57,7 @@
         "O-2": {
           "mkt": "MShop",
           "cat": "electronics",
-          "state": "KA",
+          "state": "SD",
           "window": 15,
           "since": 12,
           "protection": false,
@@ -66,7 +66,7 @@
         "O-3": {
           "mkt": "BazaarX",
           "cat": "home",
-          "state": "DL",
+          "state": "SAC",
           "window": 7,
           "since": 20,
           "protection": true,
@@ -75,7 +75,7 @@
         "O-4": {
           "mkt": "BazaarX",
           "cat": "apparel",
-          "state": "TN",
+          "state": "SF",
           "window": 15,
           "since": 40,
           "protection": false,
@@ -261,7 +261,7 @@
           "type": "call",
           "name": "get_state_ewaste_rule",
           "args": {
-            "state": "KA"
+            "state": "SD"
           }
         },
         {

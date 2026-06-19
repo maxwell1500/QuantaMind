@@ -208,7 +208,7 @@
       "category": "agent_loop",
       "max_steps": 8,
       "max_recovery": 2,
-      "prompt": "Report 2 measurements to the correct precision by domain rule: lab mass -> 3 sig figs; currency -> 2 decimals. Use the format tool. M-1 mass 12.34567 g, M-2 amount 12.34567 INR.",
+      "prompt": "Report 2 measurements to the correct precision by domain rule: lab mass -> 3 sig figs; currency -> 2 decimals. Use the format tool. M-1 mass 12.34567 g, M-2 amount 12.34567 USD.",
       "world_state": {
         "M-1": {
           "domain": "mass",

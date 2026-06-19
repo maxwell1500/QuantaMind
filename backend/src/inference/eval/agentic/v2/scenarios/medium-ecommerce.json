@@ -19,23 +19,23 @@
       "category": "agent_loop",
       "max_steps": 18,
       "max_recovery": 2,
-      "prompt": "Finalize tax for 3 orders. GST rule: if seller_state == buyer_state, apply CGST+SGST (split of the slab); else apply IGST (full slab). Electronics slab 18%, books slab 0%, apparel 5%. For each order: fetch it, read seller+buyer state and category, look up the slab, compute the correct tax via the tax tool, and record the invoice. ORD-1 electronics MH->MH, ORD-2 electronics MH->KA, ORD-3 books MH->KA.",
+      "prompt": "Finalize tax for 3 orders. GST rule: if seller_state == buyer_state, apply CGST+SGST (split of the slab); else apply IGST (full slab). Electronics slab 18%, books slab 0%, apparel 5%. For each order: fetch it, read seller+buyer state and category, look up the slab, compute the correct tax via the tax tool, and record the invoice. ORD-1 electronics LA->LA, ORD-2 electronics LA->SD, ORD-3 books LA->SD.",
       "world_state": {
         "ORD-1": {
-          "seller": "MH",
-          "buyer": "MH",
+          "seller": "LA",
+          "buyer": "LA",
           "category": "electronics",
           "amount": 10000
         },
         "ORD-2": {
-          "seller": "MH",
-          "buyer": "KA",
+          "seller": "LA",
+          "buyer": "SD",
           "category": "electronics",
           "amount": 10000
         },
         "ORD-3": {
-          "seller": "MH",
-          "buyer": "KA",
+          "seller": "LA",
+          "buyer": "SD",
           "category": "books",
           "amount": 800
         },
@@ -214,23 +214,23 @@
       "category": "agent_loop",
       "max_steps": 17,
       "max_recovery": 2,
-      "prompt": "Three orders contain age-restricted items. Dispatch is allowed only if: buyer age verified >= the item's minimum age for the DESTINATION state (states differ: alcohol 21 in some, 25 in others), AND the courier supports age-check-on-delivery in that pincode. Discover all three facts. Dispatch or hold. O-1 age25 to MH(min25)+courier-ok, O-2 age22 to MH(min25), O-3 age30 to KA(min21)+courier-NO.",
+      "prompt": "Three orders contain age-restricted items. Dispatch is allowed only if: buyer age verified >= the item's minimum age for the DESTINATION state (states differ: alcohol 21 in some, 25 in others), AND the courier supports age-check-on-delivery in that pincode. Discover all three facts. Dispatch or hold. O-1 age25 to LA(min25)+courier-ok, O-2 age22 to LA(min25), O-3 age30 to SD(min21)+courier-NO.",
       "world_state": {
         "O-1": {
           "age": 25,
-          "state": "MH",
+          "state": "LA",
           "min": 25,
           "courier_age_check": true
         },
         "O-2": {
           "age": 22,
-          "state": "MH",
+          "state": "LA",
           "min": 25,
           "courier_age_check": true
         },
         "O-3": {
           "age": 30,
-          "state": "KA",
+          "state": "SD",
           "min": 21,
           "courier_age_check": false
         }
@@ -305,7 +305,7 @@
           "type": "call",
           "name": "get_state_min_age",
           "args": {
-            "state": "MH",
+            "state": "LA",
             "item": "alcohol"
           }
         },

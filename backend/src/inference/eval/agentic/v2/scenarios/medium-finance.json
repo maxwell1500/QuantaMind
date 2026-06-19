@@ -219,7 +219,7 @@
       "category": "agent_loop",
       "max_steps": 18,
       "max_recovery": 2,
-      "prompt": "Apply withholding tax (TDS) on 3 interest payouts. Rate depends on tax residency AND whether a valid PAN/treaty form is on file: resident+PAN 10%, non-resident no-treaty 30%, non-resident+treaty-form 15%. Discover residency and form status per account, compute via calc, deduct, and log. AC-1 resident+PAN, AC-2 NR no-treaty, AC-3 NR+treaty.",
+      "prompt": "Apply withholding tax (TDS) on 3 interest payouts. Rate depends on tax residency AND whether a valid TIN/treaty form is on file: resident+TIN 10%, non-resident no-treaty 30%, non-resident+treaty-form 15%. Discover residency and form status per account, compute via calc, deduct, and log. AC-1 resident+TIN, AC-2 NR no-treaty, AC-3 NR+treaty.",
       "world_state": {
         "AC-1": {
           "residency": "resident",
