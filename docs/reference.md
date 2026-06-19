@@ -449,6 +449,14 @@ Error), with a click-through Trace Debugger. See [the workspace](#eval-runner).
   report's `schema_resilience` is recovered ÷ runs-that-hit-an-error — **n/a** (UI
   "—") when no run ever hit one, never a fabricated 0. Constrained-decoding paths
   can't emit syntactically-broken calls, so this targets **semantic** faults.
+- **Difficulty tier (Phase 9, in progress).** A task may declare an optional
+  `tier` (`easy`/`medium`/`hard`/`extreme`, default `easy`) and `axes`
+  (`min_required_steps`, `decoy_tools`, `hidden_prereqs`, `conflicting_constraints`,
+  `adversarial_context`). Both are `serde`-defaulted so a pre-Phase-9 collection
+  loads and round-trips byte-identically (`easy`/absent are omitted on save). The
+  fields are **inert until later Phase 9 steps** wire tier→Pass^k scaling, decoy
+  injection, and the hardware-calibrated readiness gate; a missing `axes` is
+  strictly absent, never a guessed value.
 - **Relative effort, not absolute joules.** `avg_output_tokens_success` is the mean
   output-token count (`eval_count`) over the **successful** runs only — **n/a**
   when there are zero successes, never a divide-by-zero. Prompt tokens are

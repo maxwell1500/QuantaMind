@@ -165,6 +165,8 @@ fn agentic_valid() -> ToolTask {
                 tool: "transfer".into(),
                 args: json!({ "amount": 1.0 }),
             }]),
+            tier: Default::default(),
+            axes: None,
             k: None,
             max_steps: None,
             faults: vec![],

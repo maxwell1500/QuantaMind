@@ -87,6 +87,8 @@ mod tests {
                     tool: "transfer".into(),
                     args: json!({ "amount": 1.0 }),
                 }]),
+                tier: Default::default(),
+                axes: None,
                 k: None,
                 max_steps: Some(7),
                 faults: vec![],
