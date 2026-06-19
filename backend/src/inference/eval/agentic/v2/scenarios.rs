@@ -93,6 +93,99 @@ mod tests {
         }
     }
 
+    /// A9 oracle gate: an agent that replays a task's expected_calls (substituting a
+    /// wildcard-satisfying value for each `*…*` arg, and retrying through transient
+    /// faults) must reach the end state on EVERY authored task — the per-collection
+    /// answer-key / satisfiability proof. A no-call agent must fail (the floor).
+    #[tokio::test]
+    async fn an_oracle_satisfies_every_authored_task_and_a_trivial_agent_fails() {
+        use crate::errors::AppResult;
+        use crate::inference::eval::agentic::build::sandbox_for;
+        use crate::inference::eval::agentic::model_turn::ModelTurn;
+        use crate::inference::eval::agentic::runner::run_once;
+        use crate::inference::eval::agentic::spec::FaultInjection;
+        use crate::inference::generate::generate_spec::GenerateSpec;
+        use crate::inference::generate::generate_stats::GenerateStats;
+        use serde_json::{json, Value};
+        use std::sync::atomic::{AtomicUsize, Ordering};
+        use tokio::sync::mpsc::unbounded_channel;
+
+        struct Scripted {
+            calls: Vec<String>,
+            next: AtomicUsize,
+        }
+        impl ModelTurn for Scripted {
+            async fn run(&self, _s: &GenerateSpec) -> AppResult<(String, GenerateStats)> {
+                let i = self.next.fetch_add(1, Ordering::SeqCst);
+                // Past the script: emit a no-op (no tool call) → never advances.
+                let body = self.calls.get(i).cloned().unwrap_or_else(|| "{}".into());
+                Ok((body, GenerateStats { eval_count: Some(1), ..Default::default() }))
+            }
+        }
+
+        /// Replace each `*…*` string with a concrete value that satisfies the glob
+        /// (its literal segments joined in order); keep everything else exact.
+        fn concretize(v: &Value) -> Value {
+            match v {
+                Value::Object(o) => Value::Object(o.iter().map(|(k, x)| (k.clone(), concretize(x))).collect()),
+                Value::String(s) if s.contains('*') => {
+                    let lit: String = s.split('*').filter(|p| !p.is_empty()).collect();
+                    Value::String(if lit.is_empty() { "x".into() } else { lit })
+                }
+                other => other.clone(),
+            }
+        }
+
+        for (id, json_str) in V2_SCENARIOS {
+            for t in load_v2_collection(json_str).unwrap() {
+                let spec = t.agentic.as_ref().unwrap();
+                // Build the oracle's call script: each checkpoint, repeated enough to
+                // clear a transient fault on its tool (fault fires before the advance).
+                let mut calls = Vec::new();
+                // A transient fault is keyed by tool NAME (global counter), so the
+                // oracle only needs the extra retries on the tool's FIRST occurrence.
+                let mut cleared: std::collections::HashSet<String> = std::collections::HashSet::new();
+                if let EndStateRule::RequireAll(cps) = &spec.end_state {
+                    for cp in cps {
+                        let retries = if cleared.insert(cp.tool.clone()) {
+                            spec.name_faults
+                                .iter()
+                                .find(|f| f.on_call == cp.tool)
+                                .map(|f| match f.fault {
+                                    FaultInjection::TransientError { clears_after, .. } => clears_after as usize,
+                                    FaultInjection::PersistentError { .. } => 0,
+                                })
+                                .unwrap_or(0)
+                        } else {
+                            0
+                        };
+                        let body = json!({ "name": cp.tool, "args": concretize(&cp.args) }).to_string();
+                        for _ in 0..=retries {
+                            calls.push(body.clone());
+                        }
+                    }
+                }
+                let (sandbox, cfg) = sandbox_for(&t).unwrap();
+
+                // Oracle-perfect run → reaches the end state, no decoys, no traps.
+                let oracle = Scripted { calls, next: AtomicUsize::new(0) };
+                let (tx, _rx) = unbounded_channel();
+                let ok = run_once(&oracle, &sandbox, cfg.max_steps, cfg.max_recovery, 0, &tx).await.unwrap();
+                assert!(ok.reached_end, "{id}/{}: oracle did not reach end state", t.id);
+                assert_eq!(ok.unknown_tool_calls, 0, "{id}/{}: oracle hit an unknown tool", t.id);
+                assert_eq!(ok.failure, None, "{id}/{}: oracle failed ({:?})", t.id, ok.failure);
+
+                // Trivial floor: a no-call agent never satisfies a RequireAll task.
+                if matches!(spec.end_state, EndStateRule::RequireAll(_)) {
+                    let lazy = Scripted { calls: vec![], next: AtomicUsize::new(0) };
+                    let (tx2, _r2) = unbounded_channel();
+                    let bad = run_once(&lazy, &sandbox, cfg.max_steps, cfg.max_recovery, 0, &tx2).await.unwrap();
+                    assert!(!bad.reached_end, "{id}/{}: a trivial agent must NOT pass", t.id);
+                }
+            }
+        }
+    }
+
     #[test]
     fn every_bundled_v2_collection_loads_and_validates() {
         assert_eq!(V2_SCENARIOS.len(), 19);
