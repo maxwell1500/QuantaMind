@@ -665,7 +665,36 @@ are labelled **"community-reported"** (self-fabrication is deterred via validati
 outliers + GitHub identity + report/remove, never cryptographically prevented). The
 **export (B4) is ungated** — it ships in every build, including enterprise.
 
-### Phase 8+
+### Phase 9 — Difficulty tiers & anti-saturation
+
+Graduated difficulty for the agentic eval: per-task **tiers** (Easy→Extreme) that
+scale Pass^k, **hardware-calibrated** readiness (the bar rises with the machine), a
+**v2 scenario engine** (19 bundled tiered collections replace the hand-coded
+fixtures), seeded **decoy** injection, and **procedural instancing** for
+contamination resistance. The engine internals are documented in
+[reference.md](reference.md) (difficulty tiers + the v2 scenario engine); the run-UI
+surface is under [reference.md#eval-runner](reference.md#eval-runner).
+
+| # | Step | Status |
+| --- | --- | --- |
+| 9A | `Tier` + `DifficultyAxes` on `AgenticSpec` (serde-default, byte-identical round-trip); seeded decoy injection (`agentic/difficulty/decoys.rs`); `pass_k_for(tier)` (Easy 5 / Medium 8 / Hard 16 / Extreme 24, explicit `k` wins); `unknown_tool_calls` distraction tally (excluded from `top_error`); trivial-agent + decoy-isolation gate tests | done |
+| 9B | Hardware-calibrated tier gate: `hwclass.rs` (memory → `HardwareClass` → `default_required_tier`); `AggAgentic.by_tier` strict Pass^k per tier; `ReadinessProfile.required_tier` + `assess()` blocks only when the required tier was **exercised but not cleared** (untested = NotAttempted, never a guessed fail); verdict carries `required_tier`/`cleared_tier`; Agent Report renders graduated readiness per row | done |
+| v2 | Full v2 scenario engine (`agentic/v2/`): `world_state` discovery, `RequireAll` unordered checkpoints, `must_not_call` traps, name-keyed faults; 19 bundled tiered collections become THE eval content (old fixtures deleted); runs on the unchanged agentic runner; integrity + oracle gates prove all 434 tasks satisfiable and a trivial agent scores 0 | done |
+| C1–C2 | Per-run sandbox factory (`run_agentic_with`) + procedural instancing (`v2/generator.rs::instantiate`): seeded bijective entity-id rename per Pass^k run (oracle-safe, novel per run, replay fallback when no numbered entities); `AgenticSpec.generated` threaded through both streaming + native passes | done |
+| A5b/B2 | Runtime safety for heavy v2 runs: per-step 180s turn timeout (`TurnTimeout`); mid-run cancellation checked between Pass^k runs; worst-case pre-run cost estimate beside the Matrix Run button | done |
+| 9-UI | **Inline tier + anti-saturation run controls** on the Eval page: Difficulty Tier dropdown (`Auto`/Easy…Extreme/`Custom`) with tier-locked Pass^k (`PASS_K_BY_TIER` mirrors `passk.rs`), `get_hardware_tier` command driving `Auto` + the HW hint, an Enable-Decoy-Tools budget, and scoreboard header chips (`Tier · K · Decoys`). `tier`/`decoyTools` flow through `run_batch_eval` → `apply_overrides` onto each agentic spec | done |
+| 9B-report | **Agent Report deep-dive** (per-model, augmenting the multi-model table): per-tier `avg_steps` + `failures` now computed in `agg_agentic` (enriched `TierStat`) and exposed on `ModelVerdict.by_tier`/`failures` via one `native_first_source` helper (same source the gate reads). Three new components — **Executive Verdict** (run-tier headline = highest tier exercised; hardware class is an advisory lens, never a gate; status = "cleared what it ran" via a contiguous `clearsThrough`), **Tier Progression Matrix** (CLEAR/SATURATED/FAIL/NOT-TESTED on the same `min_pass_k` bar as `cleared_tier`; Task Parameters from real task axes or "not declared"), **Failure Taxonomy** (failure-mode distribution across the *tested* tiers, honest event denominator). Versioned JSON export | done |
+
+Locked decisions: an authored per-task `k` **no longer silently wins** under a chosen
+tier (the backend stamps the derived Pass^k so the locked display matches the run);
+`Custom` is the escape hatch that restores free-`k`, no-tier behavior. **Max Steps
+stays editable** — there is no tier→max-steps policy to lock it to. The GB→class→tier
+thresholds live **once** in `hwclass.rs` (read via `get_hardware_tier`), never
+duplicated in TS. Deferred: deep per-template *semantic* generation (instancing does
+generic id-remap only), replay-vs-varied status per collection, tier-tagging of
+imported custom collections, and the D-series leaderboard (needs Phase 8).
+
+### Phase 9+
 
 Owners flesh out the next phase's section here when the current lands.
 

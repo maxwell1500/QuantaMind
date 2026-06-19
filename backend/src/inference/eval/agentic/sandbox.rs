@@ -1,4 +1,5 @@
 use crate::inference::eval::agentic::spec::{FaultInjection, FaultRule};
+use crate::inference::eval::agentic::v2::r#match::MustNotCall;
 use crate::inference::eval::toolcall::tasks::{Call, ToolSchema};
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
@@ -32,6 +33,10 @@ pub struct TaskCheckpoint {
 pub enum EndStateRule {
     RequireSequence(Vec<TaskCheckpoint>),
     ExpectAbstainingText,
+    /// Phase 9-v2: every checkpoint must be satisfied at least once, in ANY order
+    /// (consume-once, wildcard-aware). v2 tasks are multi-entity with independent
+    /// sub-sequences, so strict ordering would false-negative a correct model.
+    RequireAll(Vec<TaskCheckpoint>),
 }
 
 /// A strictly prompt-based simulated environment: the opening user prompt, the
@@ -39,6 +44,15 @@ pub enum EndStateRule {
 /// and the end-state success criterion. No native function-calling — the agent
 /// emits raw-text JSON calls and the sandbox replies in text, so the identical
 /// environment runs across Ollama / llama.cpp / MLX.
+/// How the sandbox answers a tool call. `StaticMocks` is the v1 default (canonical
+/// call -> authored response). `WorldState` is the Phase 9-v2 mode: responses are
+/// derived from a ground-truth map the model must discover via tools.
+#[derive(Clone, Debug)]
+pub enum ResponderKind {
+    StaticMocks,
+    WorldState(Value),
+}
+
 #[derive(Clone, Debug)]
 pub struct DeterministicSandbox {
     pub initial_prompt: String,
@@ -51,6 +65,11 @@ pub struct DeterministicSandbox {
     /// Empty for a fault-free sandbox. The mocks are immutable; the per-RUN attempt
     /// counters live in `SandboxState`, never here.
     pub faults: HashMap<String, FaultInjection>,
+    /// v1 `StaticMocks` by default; v2 sets `WorldState` via `with_world_state`.
+    pub responder: ResponderKind,
+    /// Phase 9-v2 trap calls — invoking any is an immediate terminal failure.
+    /// Empty for v1 sandboxes (the guard then never fires).
+    pub must_not_call: Vec<MustNotCall>,
 }
 
 impl DeterministicSandbox {
@@ -61,7 +80,29 @@ impl DeterministicSandbox {
         end_state: EndStateRule,
     ) -> Self {
         let mock_responses = mocks.into_iter().map(|m| (canonical(&m.call), m.response)).collect();
-        Self { initial_prompt, tools, mock_responses, end_state, faults: HashMap::new() }
+        Self {
+            initial_prompt,
+            tools,
+            mock_responses,
+            end_state,
+            faults: HashMap::new(),
+            responder: ResponderKind::StaticMocks,
+            must_not_call: Vec::new(),
+        }
+    }
+
+    /// Attach Phase 9-v2 `must_not_call` traps (builder form).
+    pub fn with_must_not_call(mut self, traps: Vec<MustNotCall>) -> Self {
+        self.must_not_call = traps;
+        self
+    }
+
+    /// Attach Phase 9-v2 name-keyed faults (`faults[].on_call` trips on any call to
+    /// that tool). Merged into the same map as canonical-keyed v1 faults — the key
+    /// spaces don't collide (a bare name has no '|').
+    pub fn with_name_faults(mut self, faults: HashMap<String, FaultInjection>) -> Self {
+        self.faults.extend(faults);
+        self
     }
 
     /// Attach Driver-B fault traps (builder form, so the `new` signature and every
@@ -71,12 +112,21 @@ impl DeterministicSandbox {
         self
     }
 
-    /// The deterministic result for a parsed call, or `None` when the agent called
-    /// something the sandbox has no mock for (an unknown/hallucinated tool, or the
-    /// right tool with wrong args). Matching goes through `canonical`, so arg key
-    /// ordering is irrelevant.
-    pub fn respond(&self, call: &Call) -> Option<&str> {
-        self.mock_responses.get(&canonical(call)).map(String::as_str)
+    /// Switch to the v2 world_state responder (builder form). Tool responses are then
+    /// derived from `ws` instead of static mocks.
+    pub fn with_world_state(mut self, ws: Value) -> Self {
+        self.responder = ResponderKind::WorldState(ws);
+        self
+    }
+
+    /// The deterministic result for a parsed call. `StaticMocks`: `Some(mock)` or
+    /// `None` for an unknown/hallucinated tool or wrong args (matched via `canonical`).
+    /// `WorldState`: always `Some` — the derived entity sub-object, or a generic ack.
+    pub fn respond(&self, call: &Call) -> Option<String> {
+        match &self.responder {
+            ResponderKind::StaticMocks => self.mock_responses.get(&canonical(call)).cloned(),
+            ResponderKind::WorldState(ws) => Some(crate::inference::eval::agentic::v2::world_state::derive_response(ws, call)),
+        }
     }
 }
 
@@ -104,7 +154,16 @@ impl SandboxState {
         call: &Call,
         faults: &HashMap<String, FaultInjection>,
     ) -> Option<String> {
-        let key = canonical(call);
+        // v1 faults key by `canonical(call)` (= "name|{args}", always has a '|');
+        // v2 faults key by the bare tool name (no '|') and trip on ANY args. The two
+        // key spaces never collide, so one map holds both: try exact-call first.
+        let key = if faults.contains_key(&canonical(call)) {
+            canonical(call)
+        } else if faults.contains_key(&call.name) {
+            call.name.clone()
+        } else {
+            return None;
+        };
         match faults.get(&key)? {
             FaultInjection::PersistentError { status_code } => {
                 Some(format!("HTTP {status_code} Fatal"))
@@ -175,16 +234,16 @@ mod tests {
     fn respond_returns_mock_for_known_call() {
         let sb = sandbox();
         let got = sb.respond(&call("get_balance", json!({ "account_id": "ACC-123" })));
-        assert_eq!(got, Some(r#"{"status":200,"balance":450.0}"#));
+        assert_eq!(got.as_deref(), Some(r#"{"status":200,"balance":450.0}"#));
     }
 
     #[test]
     fn respond_is_none_for_unknown_tool_or_wrong_args() {
         let sb = sandbox();
         // Unknown / hallucinated tool.
-        assert_eq!(sb.respond(&call("search_web", json!({ "q": "rates" }))), None);
+        assert_eq!(sb.respond(&call("search_web", json!({ "q": "rates" }))).as_deref(), None);
         // Right tool, wrong args → still a miss (the sandbox is deterministic).
-        assert_eq!(sb.respond(&call("get_balance", json!({ "account_id": "ACC-999" }))), None);
+        assert_eq!(sb.respond(&call("get_balance", json!({ "account_id": "ACC-999" }))).as_deref(), None);
     }
 
     #[test]
@@ -195,6 +254,21 @@ mod tests {
     }
 
     #[test]
+    fn world_state_mode_responds_with_the_entity_blob() {
+        let sb = DeterministicSandbox::new(
+            "p".into(),
+            vec![],
+            vec![],
+            EndStateRule::RequireSequence(vec![TaskCheckpoint { tool: "t".into(), args: json!({}) }]),
+        )
+        .with_world_state(json!({ "M-3": { "ratio": 0.1 } }));
+        assert_eq!(
+            sb.respond(&call("compute_margin", json!({ "account": "M-3" }))).as_deref(),
+            Some(r#"{"ratio":0.1}"#)
+        );
+    }
+
+    #[test]
     fn respond_matches_despite_reordered_args() {
         let sb = DeterministicSandbox::new(
             "p".into(),
@@ -202,7 +276,7 @@ mod tests {
             vec![MockResponse { call: call("f", json!({ "x": 1, "y": 2 })), response: "ok".into() }],
             EndStateRule::RequireSequence(vec![TaskCheckpoint { tool: "done".into(), args: json!({}) }]),
         );
-        assert_eq!(sb.respond(&call("f", json!({ "y": 2, "x": 1 }))), Some("ok"));
+        assert_eq!(sb.respond(&call("f", json!({ "y": 2, "x": 1 }))).as_deref(), Some("ok"));
     }
 
     fn faults(rules: Vec<FaultRule>) -> HashMap<String, FaultInjection> {
@@ -249,6 +323,19 @@ mod tests {
         assert!(state.fault_for(&b, &f).is_some()); // b: attempt 1 → fails (independent of a)
         assert!(state.fault_for(&a, &f).is_none()); // a: cleared
         assert!(state.fault_for(&b, &f).is_none()); // b: cleared
+    }
+
+    #[test]
+    fn name_keyed_fault_trips_on_any_args_and_clears() {
+        // v2 `on_call: "mark_to_market"` → fails any call to that tool, transiently.
+        let mut f: HashMap<String, FaultInjection> = HashMap::new();
+        f.insert("mark_to_market".into(), FaultInjection::TransientError { status_code: 503, clears_after: 1 });
+        let mut state = SandboxState::new();
+        // Different args, same tool name — both share the one name-keyed counter.
+        assert!(state.fault_for(&call("mark_to_market", json!({ "account": "M-3" })), &f).is_some()); // attempt 1
+        assert!(state.fault_for(&call("mark_to_market", json!({ "account": "M-9" })), &f).is_none()); // cleared
+        // A different tool is untouched.
+        assert_eq!(state.fault_for(&call("other", json!({})), &f), None);
     }
 
     #[test]

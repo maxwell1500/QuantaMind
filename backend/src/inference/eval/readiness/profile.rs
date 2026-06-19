@@ -1,3 +1,4 @@
+use crate::inference::eval::agentic::spec::Tier;
 use serde::{Deserialize, Serialize};
 
 /// A use-case preset the verdict is measured *against* — user-tunable, never
@@ -29,6 +30,13 @@ pub struct ReadinessProfile {
     /// Hard gate: native tool-calling must be measured & supported, else NotReady.
     /// Built-ins ship this `false` until Phase 7.2 lands the native-FC path.
     pub require_native_fc: bool,
+    /// Phase 9 hard gate: the difficulty tier this profile must clear. `assess`
+    /// blocks only when the collection actually *exercised* this tier and the model
+    /// didn't clear it (an untested tier is NotAttempted, never a guessed fail).
+    /// `#[serde(default)]` → profiles saved before Phase 9 load as `Easy`, which the
+    /// gate never blocks on (exact old behavior).
+    #[serde(default)]
+    pub required_tier: Tier,
 }
 
 /// The shipped presets, written to disk on first run as editable copies. They
@@ -51,6 +59,7 @@ pub fn builtins() -> Vec<ReadinessProfile> {
             forbid_hallucinated_completion: true,
             require_full_vram: true,
             require_native_fc: false,
+            required_tier: Tier::Hard, // a coding agent must clear Hard when the collection offers it
         },
         ReadinessProfile {
             id: "rag-assistant".into(),
@@ -63,6 +72,7 @@ pub fn builtins() -> Vec<ReadinessProfile> {
             forbid_hallucinated_completion: true,
             require_full_vram: false,
             require_native_fc: false,
+            required_tier: Tier::Medium,
         },
         ReadinessProfile {
             id: "general-agent".into(),
@@ -75,6 +85,7 @@ pub fn builtins() -> Vec<ReadinessProfile> {
             forbid_hallucinated_completion: false,
             require_full_vram: false,
             require_native_fc: false,
+            required_tier: Tier::Medium,
         },
     ]
 }

@@ -22,7 +22,7 @@ beforeEach(() => {
   vi.mocked(getBuiltinCollection).mockResolvedValue(tasks as never);
   vi.mocked(loadCollectionHistory).mockResolvedValue([]);
   useEvalRegistryStore.setState({
-    presets: [{ id: "curated", label: "Curated Suite" }],
+    presets: [{ id: "easy-coding", label: "Coding", domain: "coding", tier: "easy" }],
     collections: [],
     init: vi.fn().mockResolvedValue(undefined),
   });
@@ -35,7 +35,7 @@ beforeEach(() => {
 describe("MatrixPanel", () => {
   it("loads the active collection and runs a matrix for the toggled models", async () => {
     const report = {
-      collection_id: "curated", avg_score: 0.5,
+      collection_id: "easy-coding", avg_score: 0.5,
       columns: [{ model: "m1", backend: "ollama", error: null,
         report: { n: 1, parse_rate: 1, tool_selection_acc: 1, arg_acc: 1, abstain_acc: null, composite: 0.5,
           per_task: [{ id: "w", category: "single", verdict: { parsed: true, tool_match: true, args_match: true, abstain_correct: null } }] } }],
@@ -43,7 +43,7 @@ describe("MatrixPanel", () => {
     vi.mocked(runCollectionMatrix).mockResolvedValue(report as never);
 
     render(<MatrixPanel />);
-    await waitFor(() => expect(getBuiltinCollection).toHaveBeenCalledWith("curated"));
+    await waitFor(() => expect(getBuiltinCollection).toHaveBeenCalledWith("easy-coding"));
 
     expect(screen.getByTestId("matrix-run")).toBeDisabled(); // no model toggled yet
     fireEvent.click(screen.getByTestId("eval-model-dropdown")); // open the models menu
@@ -53,7 +53,7 @@ describe("MatrixPanel", () => {
     fireEvent.click(screen.getByTestId("matrix-run"));
     await waitFor(() => expect(runCollectionMatrix).toHaveBeenCalledOnce());
     const [collectionId, targets, passedTasks] = vi.mocked(runCollectionMatrix).mock.calls[0];
-    expect(collectionId).toBe("curated");
+    expect(collectionId).toBe("easy-coding");
     expect(targets).toEqual([{ model: "m1", backend: "ollama" }]);
     expect(passedTasks).toHaveLength(1);
     await waitFor(() => expect(screen.getByTestId("eval-matrix-cell-w-m1")).toBeTruthy());

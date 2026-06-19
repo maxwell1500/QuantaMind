@@ -88,6 +88,21 @@ describe("MatrixScoreboard (Simulator) data flow", () => {
     expect(result).not.toHaveTextContent("Fail");
   });
 
+  it("echoes the Phase 9 run shape as header chips (Tier · K · Decoys)", () => {
+    render(
+      <MatrixScoreboard model={MODEL} k={16} maxSteps={8} tierLabel="Hard" decoys={3} focusedTaskId={null} setFocusedTaskId={() => {}} />,
+    );
+    const chips = screen.getByTestId("scoreboard-run-chips");
+    expect(chips).toHaveTextContent("Tier: Hard");
+    expect(chips).toHaveTextContent("K: 16");
+    expect(chips).toHaveTextContent("Decoys: 3");
+  });
+
+  it("reads 'Decoys: off' when no decoy budget is set", () => {
+    render(<MatrixScoreboard model={MODEL} k={8} maxSteps={8} tierLabel="Medium" focusedTaskId={null} setFocusedTaskId={() => {}} />);
+    expect(screen.getByTestId("scoreboard-run-chips")).toHaveTextContent("Decoys: off");
+  });
+
   it("collapses and expands the card, showing a 'click to expand' summary instead of blank", () => {
     render(<MatrixScoreboard model={MODEL} k={1} maxSteps={8} focusedTaskId={null} setFocusedTaskId={() => {}} />);
     // Body (the task table area / footnote) visible by default; no collapsed summary.

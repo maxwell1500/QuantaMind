@@ -1,5 +1,8 @@
 use super::vram_fit::MemoryProfile;
 use crate::inference::backend::backend_kind::BackendKind;
+use crate::inference::eval::agentic::scoring::report::FailureTracker;
+use crate::inference::eval::agentic::spec::Tier;
+use crate::inference::eval::batch::TierStat;
 use serde::{Deserialize, Serialize};
 
 /// Absorbs float drift (a serialized `0.80` read back as `0.7999999999999999`,
@@ -58,6 +61,13 @@ pub struct ReadinessInputs {
     pub loops: u32,
     pub hallucinated: u32,
     pub native_fc: NativeFcStatus,
+    /// Phase 9: strict Pass^k per difficulty tier that was actually exercised
+    /// (sorted ascending by tier). `assess` derives the cleared tier from this and
+    /// compares it to the profile's `required_tier`. Empty for a collection with no
+    /// tiered tasks → the tier gate stays silent (a tier can't be failed if it was
+    /// never run). `#[serde(default)]` so pre-Phase-9 inputs deserialize.
+    #[serde(default)]
+    pub tier_pass_k: Vec<(Tier, f64)>,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
@@ -76,6 +86,14 @@ pub struct ReadinessVerdict {
     pub blocking: Vec<String>,
     pub conditions: Vec<String>,
     pub path: AgentPath,
+    /// Phase 9: the difficulty tier this profile requires (graduated readiness —
+    /// the report shows "cleared X / requires Y", never a bare pass/fail).
+    #[serde(default)]
+    pub required_tier: Tier,
+    /// Phase 9: the highest tier the model actually cleared at the profile's bar
+    /// (`pass^k ≥ min_pass_k`). `None` when no tier cleared, or no tiered task ran.
+    #[serde(default)]
+    pub cleared_tier: Option<Tier>,
 }
 
 /// A verdict paired with the model it judged — one row of the Agent Report. The
@@ -110,4 +128,13 @@ pub struct ModelVerdict {
     /// opts in via `min_context_tokens` (strict: NoCliff passes iff tested ≥ min).
     #[serde(default)]
     pub cliff: CliffStatus,
+    /// Phase 9B: per-tier strict Pass^k + avg-steps + failures (native-first — the same
+    /// aggregate the verdict gated on), powering the Agent Report's Tier Progression
+    /// Matrix. Empty when no agentic run was measured. `#[serde(default)]` for back-compat.
+    #[serde(default)]
+    pub by_tier: Vec<TierStat>,
+    /// Phase 9B: the model's overall failure breakdown (native-first), for the Failure
+    /// Taxonomy. `#[serde(default)]` so pre-9B verdicts deserialize.
+    #[serde(default)]
+    pub failures: FailureTracker,
 }

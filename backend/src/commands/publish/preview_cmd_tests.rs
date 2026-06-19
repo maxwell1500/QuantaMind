@@ -13,6 +13,8 @@ fn verdict(model: &str, pass_k: Option<f64>, quant: Option<&str>) -> ModelVerdic
             blocking: vec!["secret task detail".into()],
             conditions: vec![],
             path: AgentPath::NativeFc,
+            required_tier: Default::default(),
+            cleared_tier: None,
         },
         memory: None,
         avg_steps: Some(3.0),
@@ -20,6 +22,8 @@ fn verdict(model: &str, pass_k: Option<f64>, quant: Option<&str>) -> ModelVerdic
         pass_k,
         quantization: quant.map(|s| s.to_string()),
         cliff: CliffStatus::NotProbed,
+        by_tier: Vec::new(),
+        failures: Default::default(),
     }
 }
 

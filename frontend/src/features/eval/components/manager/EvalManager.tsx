@@ -10,6 +10,8 @@ import { useBatchRun } from "../../hooks/useBatchRun";
 import { formatIpcError } from "../../../../shared/ipc/core/error";
 import { useToast } from "../../../../shared/ui/Toast";
 import type { ToolTask } from "../../../../shared/ipc/eval/registry";
+import type { Tier } from "../../../../shared/ipc/eval/readiness";
+import type { HardwareTier } from "../../../../shared/ipc/compare/hardware";
 import { batchToCsv, download } from "../../exportBatch";
 import { ConfirmDialog } from "./ConfirmDialog";
 import { CsvImportModal } from "./CsvImportModal";
@@ -23,6 +25,16 @@ interface EvalManagerProps {
   setK: (k: number) => void;
   maxSteps: number;
   setMaxSteps: (steps: number) => void;
+  // Phase 9 difficulty levers (resolved in EvalPage; see its derivation).
+  tierSel: "auto" | Tier | "custom";
+  setTierSel: (t: "auto" | Tier | "custom") => void;
+  effectiveTier?: Tier;
+  lockedK?: number;
+  hwTier: HardwareTier | null;
+  decoyEnabled: boolean;
+  setDecoyEnabled: (b: boolean) => void;
+  decoyCount: number;
+  setDecoyCount: (n: number) => void;
   onNewCollection: () => void;
   onEditCollection: () => void;
 }
@@ -34,6 +46,15 @@ export function EvalManager({
   setK = () => {},
   maxSteps = 8,
   setMaxSteps = () => {},
+  tierSel = "auto",
+  setTierSel = () => {},
+  effectiveTier = undefined,
+  lockedK = undefined,
+  hwTier = null,
+  decoyEnabled = false,
+  setDecoyEnabled = () => {},
+  decoyCount = 3,
+  setDecoyCount = () => {},
   onNewCollection = () => {},
   onEditCollection = () => {},
 }: Partial<EvalManagerProps> = {}) {
@@ -62,6 +83,11 @@ export function EvalManager({
 
   // Determine dataSource based on the active selection
   const dataSource = isPreset(selected) ? "builtin" : "custom";
+
+  // Phase 9 run-control helpers: Custom frees the manual `k`; a tier locks it.
+  const isCustom = tierSel === "custom";
+  const cap = (s: string) => s.charAt(0).toUpperCase() + s.slice(1);
+  const gbLabel = (bytes: number) => `${Math.round(bytes / 1024 ** 3)}GB RAM`;
 
   // Init on mount.
   useEffect(() => {
@@ -131,7 +157,18 @@ export function EvalManager({
     }
     const picked = selectedModels.find((m) => m.name === model);
     if (!picked || tasks.length === 0) return;
-    void run(selected, [{ model: picked.name, backend: picked.backend }], tasks, k, maxSteps, nativeFc);
+    // Custom = manual `k`, no tier; a tier locks `k` to its policy (sent as `undefined`
+    // so the backend derives it). Decoys flow only when the checkbox is on.
+    void run(
+      selected,
+      [{ model: picked.name, backend: picked.backend }],
+      tasks,
+      isCustom ? k : undefined,
+      maxSteps,
+      nativeFc,
+      isCustom ? undefined : effectiveTier,
+      decoyEnabled ? decoyCount : undefined,
+    );
   };
 
   const runDisabled = !model || tasks.length === 0;
@@ -251,30 +288,42 @@ export function EvalManager({
                     ))
                   )
                 ) : (
-                  presets.map((p) => (
-                    <div
-                      key={p.id}
-                      style={{
-                        ...collectionItemStyle,
-                        justifyContent: "space-between",
-                        color: selected === p.id ? "#2563eb" : "#475569",
-                        fontWeight: selected === p.id ? 600 : 400,
-                      }}
-                    >
-                      <span
-                        onClick={() => void select(p.id)}
-                        style={{ display: "flex", alignItems: "center", cursor: "pointer", flex: 1, minWidth: 0 }}
-                        data-testid={`eval-collection-item-${p.id}`}
-                      >
-                        <span style={{ marginRight: 6 }}>{selected === p.id ? "•" : "-"}</span>
-                        <span style={{ overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{p.label}</span>
-                      </span>
-                      <KebabMenu
-                        testid={`eval-collection-menu-${p.id}`}
-                        items={[{ label: "Remove from list", danger: true, onClick: () => setDeleteTarget(p.id), testid: `eval-collection-delete-${p.id}` }]}
-                      />
-                    </div>
-                  ))
+                  // Built-in collections grouped by difficulty tier (Easy→Extreme).
+                  (["easy", "medium", "hard", "extreme"] as const).map((tier) => {
+                    const items = presets.filter((p) => p.tier === tier);
+                    if (items.length === 0) return null;
+                    return (
+                      <div key={tier} data-testid={`eval-tier-group-${tier}`}>
+                        <div style={{ fontSize: 11, fontWeight: 700, textTransform: "uppercase", letterSpacing: 0.5, color: "#94a3b8", padding: "10px 0 2px" }}>
+                          {tier}
+                        </div>
+                        {items.map((p) => (
+                          <div
+                            key={p.id}
+                            style={{
+                              ...collectionItemStyle,
+                              justifyContent: "space-between",
+                              color: selected === p.id ? "#2563eb" : "#475569",
+                              fontWeight: selected === p.id ? 600 : 400,
+                            }}
+                          >
+                            <span
+                              onClick={() => void select(p.id)}
+                              style={{ display: "flex", alignItems: "center", cursor: "pointer", flex: 1, minWidth: 0 }}
+                              data-testid={`eval-collection-item-${p.id}`}
+                            >
+                              <span style={{ marginRight: 6 }}>{selected === p.id ? "•" : "-"}</span>
+                              <span style={{ overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{p.label}</span>
+                            </span>
+                            <KebabMenu
+                              testid={`eval-collection-menu-${p.id}`}
+                              items={[{ label: "Remove from list", danger: true, onClick: () => setDeleteTarget(p.id), testid: `eval-collection-delete-${p.id}` }]}
+                            />
+                          </div>
+                        ))}
+                      </div>
+                    );
+                  })
                 )}
               </div>
             </div>
@@ -318,20 +367,55 @@ export function EvalManager({
               )}
             </div>
 
-            {/* Iterations Selector — Pass^k repeats; only affects Multi-Step tasks */}
+            {/* Difficulty Tier (Phase 9) — Auto follows the machine's class; a tier
+                locks Pass^k to its policy; Custom frees the manual k below. */}
+            <div style={{ display: "flex", flexDirection: "column", gap: 6 }} data-testid="eval-tier-select">
+              <span style={controlLabelStyle}>Difficulty Tier:</span>
+              <select
+                value={tierSel}
+                onChange={(e) => setTierSel(e.target.value as "auto" | Tier | "custom")}
+                data-testid="eval-tier-dropdown"
+                style={{ ...numberInputStyle, width: "100%", cursor: "pointer", textAlign: "left" }}
+              >
+                <option value="auto">Auto{hwTier ? ` (${cap(hwTier.recommended_tier)})` : ""}</option>
+                <option value="easy">Easy</option>
+                <option value="medium">Medium</option>
+                <option value="hard">Hard</option>
+                <option value="extreme">Extreme</option>
+                <option value="custom">Custom</option>
+              </select>
+              {hwTier && (
+                <span style={{ fontSize: 11, color: "#94a3b8", fontFamily: "Inter, sans-serif" }} data-testid="eval-hw-hint">
+                  HW: {gbLabel(hwTier.total_memory_bytes)} · {hwTier.class} · {cap(hwTier.recommended_tier)} recommended
+                </span>
+              )}
+            </div>
+
+            {/* Iterations Selector — Pass^k repeats; only affects Multi-Step tasks.
+                Locked (read-only) under a tier, editable under Custom. */}
             <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between" }}>
               <span style={{ ...controlLabelStyle, display: "inline-flex", alignItems: "center", gap: 6 }}>
                 Iterations (k):
                 <InfoButton {...TOOL_HELP.iterations} align="left" testId="iterations" />
               </span>
-              <input
-                type="number"
-                min={1}
-                value={k}
-                onChange={(e) => setK(Math.max(1, +e.target.value))}
-                style={numberInputStyle}
-                data-testid="eval-manager-k"
-              />
+              {isCustom ? (
+                <input
+                  type="number"
+                  min={1}
+                  value={k}
+                  onChange={(e) => setK(Math.max(1, +e.target.value))}
+                  style={numberInputStyle}
+                  data-testid="eval-manager-k"
+                />
+              ) : (
+                <span
+                  style={lockedValueStyle}
+                  data-testid="eval-manager-k-locked"
+                  title="Pass^k is locked by the selected difficulty tier. Switch to Custom to set it manually."
+                >
+                  {lockedK ?? "—"} 🔒
+                </span>
+              )}
             </div>
 
             {/* Max Steps — agentic loop cap; only affects Multi-Step tasks */}
@@ -347,6 +431,38 @@ export function EvalManager({
                 style={numberInputStyle}
                 data-testid="eval-manager-max-steps"
               />
+            </div>
+
+            {/* ANTI-SATURATION (Phase 9) — shuffle never-correct decoy tools into each
+                agentic task's tool list to resist saturation. Off (default) leaves
+                task-authored decoys untouched. */}
+            <div style={{ display: "flex", flexDirection: "column", gap: 8 }} data-testid="eval-anti-saturation">
+              <div style={sectionHeaderStyle}>ANTI-SATURATION</div>
+              <label
+                style={{ ...controlLabelStyle, display: "flex", alignItems: "center", gap: 8, cursor: "pointer" }}
+                title="Inject N decoy (never-correct) tools into every agentic task's presented tool list. Tests whether the model is misled by plausible distractors. No effect on single-turn tasks."
+              >
+                <input
+                  type="checkbox"
+                  checked={decoyEnabled}
+                  onChange={(e) => setDecoyEnabled(e.target.checked)}
+                  data-testid="eval-decoy-enabled"
+                />
+                Enable Decoy Tools
+              </label>
+              {decoyEnabled && (
+                <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between" }}>
+                  <span style={controlLabelStyle}>Decoy Count:</span>
+                  <input
+                    type="number"
+                    min={1}
+                    value={decoyCount}
+                    onChange={(e) => setDecoyCount(Math.max(1, +e.target.value))}
+                    style={numberInputStyle}
+                    data-testid="eval-decoy-count"
+                  />
+                </div>
+              )}
             </div>
 
             {/* Native function-calling (Phase 7.2) — measure the Ollama tool_calls
@@ -552,6 +668,22 @@ const numberInputStyle: React.CSSProperties = {
   outline: "none",
   width: 55,
   textAlign: "center",
+};
+
+/// The locked (tier-derived) Pass^k readout — same footprint as `numberInputStyle`
+/// but visibly inert (muted fill, default cursor) so it reads as "set by the tier".
+const lockedValueStyle: React.CSSProperties = {
+  background: "#f1f5f9",
+  border: "1px solid #e2e8f0",
+  borderRadius: 6,
+  color: "#475569",
+  fontSize: 12,
+  fontFamily: "Inter, sans-serif",
+  padding: "4px 8px",
+  width: 55,
+  textAlign: "center",
+  cursor: "default",
+  userSelect: "none",
 };
 
 const runBatchBtnStyle: React.CSSProperties = {

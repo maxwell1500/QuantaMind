@@ -62,7 +62,7 @@ Eval batch ────▶ Quant      (score: pass-rate + tool-call spread per q
 |---|---|---|---|---|
 | **Inspector** | `InspectorPage`, `ModelTimeline`, `TtftBreakdown`, `TokenTimeline`, `LatencyHistogram`, `ColdWarmPanel`, `RegressionAlert`, `LeakBanner`, `VramBar`, `ContextBudgetBar` | `get_hardware_snapshot`, `get_loaded_models`, `history_list`, (leak) process-RSS sampler | `compareStore` (rows), `leakStore` (RSS series), reads `cliffStore` | [prompt-workspace](./backend-prompt-workspace-system.md), [compare](./backend-compare.md) |
 | **Quant** | `QuantPage`, `quantPick`, `recommend`, `useVramFit`, `useQuantEval`, `useQuantToolcall` | `inspect_model`, `estimate_kv_cache_bytes`, `list_evals`+`run_eval_task`, `run_toolcall_eval`, `get_hardware_snapshot` | `installedModelsStore`, `selectedModelStore`, local hook state | [eval-engine](./backend-eval-engine.md), [models-hf-gguf](./backend-models-hf-gguf.md) |
-| **Agent Report** | `AgentReportPage`, `VerdictTable`, `RecommendationBanner`, `EditProfileModal`, `ExportMenu`, `StatusBadge` | `assess_readiness`, `list_readiness_profiles`, `save_readiness_profile`, `get_hardware_snapshot`, `save_readiness_image` | `readinessStore`, reads `evalRegistryStore` | [eval-engine](./backend-eval-engine.md) |
+| **Agent Report** | `AgentReportPage`, `VerdictTable`, `RecommendationBanner`, `ExecutiveVerdict`, `TierProgressionMatrix`, `FailureTaxonomy`, `EditProfileModal`, `ExportMenu`, `StatusBadge` | `assess_readiness`, `list_readiness_profiles`, `save_readiness_profile`, `get_hardware_snapshot`, `get_hardware_tier`, `save_readiness_image` | `readinessStore`, reads `evalRegistryStore` | [eval-engine](./backend-eval-engine.md) |
 | **Publish** | `PublishButton`, `PublishDialog`, `WhatsSharedPanel`, `writeupLink` | `preview_publish_payload`, `publish_to_board`, `start_login` | none (passes `verdicts` through) | [publish](./backend-publish.md) |
 
 ---
@@ -307,7 +307,9 @@ recomputed).
 hardware, the VRAM `capBytes`, and `assessed` (distinguishes "not run yet" from a
 genuinely empty result). `assess(collectionId)` → `assess_readiness(collectionId,
 profileId, capBytes?)`; selecting a profile clears verdicts; `saveProfile` writes
-to disk then reloads (so the active profile reflects new gates).
+to disk then reloads (so the active profile reflects new gates). Phase 9B adds
+`hardwareTier` (`loadHardwareTier` → `get_hardware_tier`, best-effort) and
+`focusedModel` (`setFocusedModel`) — the model the per-tier deep-dive targets.
 
 ```ts
 assess: async (collectionId) => {
@@ -325,10 +327,13 @@ assess: async (collectionId) => {
 verdict: { status: ready|conditional|not_ready, blocking[], conditions[], path:
 prompt_based|native_fc }, memory?: { weights_bytes, kv_cache_bytes, total_bytes,
 cap_bytes, context_length, fits, pressure, estimated? }, avg_steps?, effort?,
-pass_k?, quantization?, cliff?: NotProbed|NoCliff|Collapsed|Broken }`. Hard gate
-failed → `not_ready`; soft target exceeded → `conditional`; nothing failing →
-`ready`. **A required-but-unmeasured metric blocks — it never guesses.** Backend
-returns verdicts already ranked best-first.
+pass_k?, quantization?, cliff?: NotProbed|NoCliff|Collapsed|Broken, by_tier?:
+TierStat[], failures? }`. Hard gate failed → `not_ready`; soft target exceeded →
+`conditional`; nothing failing → `ready`. **A required-but-unmeasured metric blocks
+— it never guesses.** Backend returns verdicts already ranked best-first. Phase 9B
+adds `by_tier` (per-tier strict Pass^k + avg-steps + failures) and `failures`
+(overall tally), both from the **native-first** source the verdict gated on — they
+feed the deep-dive below.
 
 ### `components/VerdictTable.tsx` — the verdict rows — **IMPORTANT**
 
@@ -341,6 +346,35 @@ list `! Latency / ! Efficiency / ! High Pressure` from the conditions. The
 `showNativeFc` toggle filters native-FC rows. Hidden mirror elements
 (`MetricsLine`, `MemoryLine`, `Reasons`) carry the raw `pass_k`/steps/effort/cliff
 + VRAM line + escaped reasons for assertions/screen readers.
+
+### Per-model deep-dive (Phase 9B) — `tierCurve.ts` + 3 components — **IMPORTANT**
+
+Below the multi-model table, a model `<select>` (`focusedModel`) opens a three-section
+drill-down for one model. `tierCurve.ts` is the pure brain shared by the cards and the
+verdict, so they can't disagree:
+
+```ts
+// deriveTierCurve(by_tier, minPassK): clearedSet = tiers whose rate ≥ min_pass_k (the
+// SAME bar the backend's cleared_tier uses); tierTested = max(runTiers); clearsThrough =
+// highest tier cleared CONTIGUOUSLY from the lowest run tier (null if the lowest failed).
+// status: READY iff clearsThrough==tierTested; NOT READY iff clearedSet empty; else CONDITIONAL.
+```
+
+- **`ExecutiveVerdict.tsx`** — headline tier = `tierTested` (what actually ran), **not** the
+  profile's `required_tier`. Hardware class (`get_hardware_tier`) is an **advisory lens**: a
+  run below `recommended_tier` shows a "run a harder tier" note but is **never** force-failed.
+  Lens-1 prose branches on `clearedSet` emptiness FIRST (so "nothing cleared" and the
+  non-monotonic "cleared X but missed a lower tier" read differently though both have
+  `clearsThrough==null`). Uses its own status, independent of the profile gate.
+- **`TierProgressionMatrix.tsx`** — four tier cards: measured Pass^k + avg-steps, a
+  `CLEAR/SATURATED/FAIL` badge on the same `min_pass_k` bar, and `NOT TESTED` (gray) for a
+  tier absent from `by_tier` (never a guessed fail). "Task Parameters" (Horizon/Decoys) come
+  from real task `axes` via `deepDive.axesByTier`, or read "not declared".
+- **`FailureTaxonomy.tsx`** — failure-mode distribution (`unknown_tool_calls`→decoys,
+  `forbidden_calls`→must_not_call, loops, hallucinations…) summed across the **tested**
+  tiers (named in the heading), as a share of tracked failure *events* (not failed runs).
+- **`deepDive.ts`** — `axesByTier(tasks)` (real per-tier Horizon/Decoy ranges or absent) +
+  `deepDiveJson(verdict,…)` (versioned `schema_version` JSON export).
 
 ### `export/markdown.ts` — shareable Markdown — **IMPORTANT**
 
@@ -369,7 +403,7 @@ dropped background never exports white-on-transparent) and `pixelRatio:2`.
 
 | File | Role |
 |---|---|
-| `components/AgentReportPage.tsx` | the page shell: Section 1 (hardware badge, VRAM-cap select, profile select, collection select, Run) + Section 2 (banner + table); footer wires `ExportMenu` + `PublishButton`. Re-assesses when the cap changes or a profile is saved. Holds `cardRef` for the PNG snapshot. |
+| `components/AgentReportPage.tsx` | the page shell: Section 1 (hardware badge, VRAM-cap select, profile select, collection select, Run) + Section 2 (banner + table + the Phase-9B deep-dive: model select → `ExecutiveVerdict`/`TierProgressionMatrix`/`FailureTaxonomy` + Export JSON); footer wires `ExportMenu` + `PublishButton`. Re-assesses when the cap changes or a profile is saved; defaults `focusedModel` to the recommended verdict. Holds `cardRef` for the PNG snapshot. |
 | `components/RecommendationBanner.tsx` | frames `verdicts[0]` (already the best pick): clear when Ready, caveated "best available" when Conditional, "no model is ready — closest" when none qualify (never a fabricated Ready); surfaces a "conservative estimate" note when `memory.estimated`. |
 | `components/EditProfileModal.tsx` | a real editor for the active profile's gates (Min Pass^k, forbid loops/hallucination, require full VRAM / native FC, max steps/latency, min context); `numOrNull` maps blank→`null` ("off"); saves via `save_readiness_profile` then re-assesses. |
 | `components/ExportMenu.tsx` | dropdown → PNG (`snapshotPng`→`save`→`save_readiness_image`), Copy Markdown (`buildReadinessMarkdown`→clipboard, surfaces focus rejections), Export HTML (`buildReadinessHtml`→download). All offline, no auth. |

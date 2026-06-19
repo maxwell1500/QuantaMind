@@ -70,6 +70,34 @@ describe("VerdictTable", () => {
     expect(row).toHaveTextContent("Loops on 2 runs");
   });
 
+  it("categorizes every backend blocking reason — never the meaningless 'System' fallback", () => {
+    const verdicts: ModelVerdict[] = [
+      {
+        model: "phi3.5",
+        backend: "ollama",
+        verdict: {
+          status: "not_ready",
+          blocking: [
+            "false 'done' on 2 runs",
+            "native tool-calling required but not supported/measured on this backend",
+            "partial offload → severe slowdown",
+            "run error: ollama timed out",
+          ],
+          conditions: [],
+          path: "prompt_based",
+        },
+      },
+    ];
+    render(<VerdictTable verdicts={verdicts} />);
+    const row = screen.getByTestId("readiness-row-phi3.5");
+    // Each reason maps to a real category, not the catch-all "System".
+    expect(row).toHaveTextContent("BLOCKING: [✗ Reliability] [✗ Native FC] [✗ Hardware] [✗ Run Error]");
+    expect(row).not.toHaveTextContent("System");
+    // The Details line still surfaces the exact backend reasons (with their counts/messages).
+    expect(row).toHaveTextContent("False 'done' on 2 runs");
+    expect(row).toHaveTextContent("Run error: ollama timed out");
+  });
+
   it("renders conditions as amber notes and a clean Ready row as 'meets all criteria'", () => {
     render(<VerdictTable verdicts={VERDICTS} />);
     expect(screen.getByTestId("readiness-row-mistral-nemo")).toHaveTextContent("! slow: 8400ms/step > 5000ms target");
@@ -181,5 +209,32 @@ describe("VerdictTable", () => {
     );
     // The old code fabricated "q5_k_m" for any qwen; an unknown quant is now an honest "—".
     expect(screen.getByTestId("readiness-row-qwen2.5-coder")).not.toHaveTextContent(/q5_k_m/i);
+  });
+
+  it("shows graduated readiness (cleared / requires tier) when the profile is tiered", () => {
+    render(
+      <VerdictTable
+        verdicts={[
+          {
+            model: "big-model",
+            backend: "ollama",
+            verdict: {
+              status: "not_ready",
+              blocking: ["cleared Medium; this profile requires Extreme"],
+              conditions: [],
+              path: "native_fc",
+              required_tier: "extreme",
+              cleared_tier: "medium",
+            },
+          },
+        ]}
+      />,
+    );
+    expect(screen.getByTestId("tier-line")).toHaveTextContent("cleared Medium / requires Extreme");
+  });
+
+  it("hides the tier line for an untiered (Easy / absent) profile", () => {
+    render(<VerdictTable verdicts={VERDICTS} />); // these verdicts carry no required_tier
+    expect(screen.queryByTestId("tier-line")).toBeNull();
   });
 });

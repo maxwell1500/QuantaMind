@@ -247,6 +247,23 @@ whole queue is unit-tested without HTTP. On the frontend, the matching consumer
 `requestAnimationFrame`, so a model's token firehose never triggers a per-event
 render.
 
+The batch command also carries the **Phase-9 run-shape parameters** end-to-end:
+`run_batch_eval` takes `tier`/`decoyTools` alongside `k`/`maxSteps`, persists them on
+`RunConfig` (`#[serde(default)]` so older resumable job logs still parse), and
+`apply_overrides` stamps them onto each agentic spec at run time (tier → `spec.tier`
++ derived `pass_k_for(tier)` when no explicit `k`; decoys → `spec.axes.decoy_tools`).
+The eval page's tier-`Auto` mode + HW hint read a separate **`get_hardware_tier`**
+command (`commands/eval/readiness_cmd.rs`) that classifies the machine via the
+readiness engine's `classify_bytes` + `default_required_tier` — one source of truth
+for the GB thresholds, never duplicated in TS.
+
+On the **read** side (Phase 9B), the per-tier breakdown the Agent Report deep-dive
+renders is computed once in `agg_agentic` (the enriched `TierStat` carries per-tier
+`avg_steps` + `failures`) and surfaced on `ModelVerdict.by_tier`/`failures`. A single
+`readiness::inputs::native_first_source` helper selects the native-first aggregate for
+the gate, the per-tier breakdown, **and** the failure taxonomy, so the displayed numbers
+can never come from a different pass than the verdict gated on.
+
 ### Pattern 2 — Thin command, pure core
 
 A `#[tauri::command]` does three things only: validate input, wire Tauri
@@ -375,6 +392,17 @@ one folder per commit, behavior unchanged).
   `useContextCliff` + `ContextCliffChart`, visx). Built-in eval presets (curated + `tasks_finance.json`)
   are enumerated by `toolcall/tasks.rs::BUILTIN_COLLECTIONS` behind `list_builtin_collections` /
   `get_builtin_collection`.
+- **backend `inference/eval/agentic/`** (was 11 files): the run-judgment concern
+  splits into `agentic/scoring/` (`report.rs` = `AgenticReport`/`FailureTracker`/
+  `FailureKind`/`RunOutcome`/`TopError`; `endstate.rs` = `checkpoint_matches` /
+  `validate_call`). The run loop (`runner`, `model_turn`, `context`, `step`),
+  task definition (`spec`, `sandbox`, `build`) stay at the root. **`agentic/v2/`** is
+  the Phase 9-v2 authored-scenario engine: `collection`/`transpile` (load a v2 JSON
+  object → engine `ToolTask`s), `match` (wildcard + `must_not_call`), `world_state`
+  (ground-truth responder), `scenarios` (the 19 bundled collections via
+  `include_str!`, under `v2/scenarios/`), and `generator` (per-run procedural
+  instancing — seeded entity-id remap). v2 runs on the SAME runner — no second
+  execution path (`run_agentic_with` drives Pass^k via a per-run sandbox factory).
 - **frontend `features/workspace/components/`** (was 17 files): `model-select/` ·
   `prompt/` (editor + params) · `run/` (single/multi + controls + output) ·
   `status/` (status bar, ollama control, errors)

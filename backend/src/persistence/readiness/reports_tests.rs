@@ -1,6 +1,6 @@
 use super::*;
 use crate::inference::backend::backend_kind::BackendKind;
-use crate::inference::eval::agentic::report::{FailureTracker, TopError};
+use crate::inference::eval::agentic::scoring::report::{FailureTracker, TopError};
 use crate::inference::eval::batch::{AggAgentic, BatchColumn};
 use tempfile::tempdir;
 
@@ -22,6 +22,7 @@ fn report(collection_id: &str, passes: u32) -> BatchReport {
                 schema_resilience: None,
                 top_error: TopError::None,
                 failures: FailureTracker::default(),
+                by_tier: vec![],
             }),
             agentic_native_fc: None,
             error: None,

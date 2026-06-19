@@ -1,7 +1,7 @@
 use crate::errors::AppResult;
 use crate::inference::eval::agentic::model_turn::ModelTurn;
-use crate::inference::eval::agentic::report::{FailureKind, TopError};
-use crate::inference::eval::agentic::runner::{run_agentic, run_once, AgenticConfig};
+use crate::inference::eval::agentic::scoring::report::{FailureKind, TopError};
+use crate::inference::eval::agentic::runner::{run_agentic, run_once, run_once_inner, AgenticConfig};
 use crate::inference::eval::agentic::sandbox::{DeterministicSandbox, EndStateRule, MockResponse, TaskCheckpoint};
 use crate::inference::eval::agentic::spec::{FaultInjection, FaultRule};
 use crate::inference::eval::agentic::step::{StepKind, TrajectoryStep};
@@ -33,6 +33,30 @@ impl ModelTurn for ScriptedModel {
         let i = self.next.fetch_add(1, Ordering::SeqCst).min(self.replies.len() - 1);
         let (text, n) = &self.replies[i];
         Ok((text.clone(), GenerateStats { eval_count: Some(*n), ..Default::default() }))
+    }
+}
+
+/// A backend that errors on specific call indices (0-based) and otherwise returns
+/// `END_CALL` → an immediate success. With single-turn runs, the call index equals
+/// the run index, so this simulates Ollama failing on a specific Pass^k attempt.
+struct FlakyModel {
+    err_on: Vec<usize>,
+    next: AtomicUsize,
+}
+
+impl FlakyModel {
+    fn new(err_on: Vec<usize>) -> Self {
+        Self { err_on, next: AtomicUsize::new(0) }
+    }
+}
+
+impl ModelTurn for FlakyModel {
+    async fn run(&self, _spec: &GenerateSpec) -> AppResult<(String, GenerateStats)> {
+        let i = self.next.fetch_add(1, Ordering::SeqCst);
+        if self.err_on.contains(&i) {
+            return Err(crate::errors::AppError::Inference("ollama timed out".into()));
+        }
+        Ok((END_CALL.to_string(), GenerateStats { eval_count: Some(10), ..Default::default() }))
     }
 }
 
@@ -93,6 +117,7 @@ async fn unknown_tool_injects_an_error_and_the_loop_continues() {
 
     assert!(outcome.reached_end);
     assert_eq!(outcome.steps, 2);
+    assert_eq!(outcome.unknown_tool_calls, 1); // the one search_web call, counted but not fatal
 
     let steps = drain(&mut rx);
     assert_eq!(steps[0].kind, StepKind::UnknownTool);
@@ -363,4 +388,141 @@ async fn expect_abstaining_text_passes_on_decline_fails_on_action() {
     let bad = run_agentic(&actor, &abstain, AgenticConfig { k: 1, max_steps: 4, ..Default::default() }, &tx2).await.unwrap();
     assert_eq!(bad.passes, 0);
     assert_eq!(bad.failures.hallucinated_completions, 1);
+}
+
+#[tokio::test]
+async fn a_per_run_backend_error_does_not_abort_the_remaining_runs() {
+    // Ollama errors on attempts 1 and 3 of a k=5 batch. The OLD behaviour bailed on
+    // attempt 1 (the `?`), losing attempts 2–4. Now the failing attempts are skipped
+    // and runs 0, 2, 4 still complete → the report folds the 3 that ran (an infra
+    // fault never reaches the denominator: total_runs is 3, not 5).
+    let model = FlakyModel::new(vec![1, 3]);
+    let (tx, _rx) = unbounded_channel();
+    let report =
+        run_agentic(&model, &sandbox(), AgenticConfig { k: 5, max_steps: 4, ..Default::default() }, &tx).await.unwrap();
+
+    assert_eq!(report.passes, 3); // runs 0, 2, 4 all reached the end state
+    assert_eq!(report.total_runs, 3); // the 2 errored runs are excluded, not failed
+    assert_eq!(report.failures.hallucinated_completions, 0);
+    assert_eq!(report.failures.infinite_loop_hits, 0);
+    assert_eq!(report.avg_output_tokens_success, Some(10.0));
+}
+
+#[tokio::test]
+async fn every_run_erroring_surfaces_the_error_for_resume() {
+    // The backend is genuinely down: all k attempts error. With no completed run to
+    // report, the error propagates so the task shows as Error and re-runs on resume.
+    let model = FlakyModel::new(vec![0, 1, 2]);
+    let (tx, _rx) = unbounded_channel();
+    let result = run_agentic(&model, &sandbox(), AgenticConfig { k: 3, max_steps: 4, ..Default::default() }, &tx).await;
+    assert!(result.is_err());
+}
+
+// --- Phase 9-v2: RequireAll set-matching + forbidden traps -----------------
+
+fn require_all_sandbox() -> DeterministicSandbox {
+    DeterministicSandbox::new(
+        "Handle entity A and entity B in any order.".into(),
+        vec![], // empty tools → schema validation skipped (keeps the test focused)
+        vec![
+            MockResponse { call: Call { name: "act".into(), args: json!({ "id": "A" }) }, response: "{}".into() },
+            MockResponse { call: Call { name: "act".into(), args: json!({ "id": "B" }) }, response: "{}".into() },
+        ],
+        EndStateRule::RequireAll(vec![
+            TaskCheckpoint { tool: "act".into(), args: json!({ "id": "A" }) },
+            TaskCheckpoint { tool: "act".into(), args: json!({ "id": "B" }) },
+        ]),
+    )
+}
+
+#[tokio::test]
+async fn require_all_completes_regardless_of_order() {
+    // B before A — independent entities, so a correct model isn't penalized.
+    let model = ScriptedModel::new(vec![
+        (r#"{"name":"act","args":{"id":"B"}}"#, 5),
+        (r#"{"name":"act","args":{"id":"A"}}"#, 5),
+    ]);
+    let (tx, _rx) = unbounded_channel();
+    let outcome = run_once(&model, &require_all_sandbox(), 8, 2, 0, &tx).await.unwrap();
+    assert!(outcome.reached_end); // every checkpoint consumed, order irrelevant
+    assert_eq!(outcome.steps, 2);
+}
+
+#[tokio::test]
+async fn require_all_yield_without_completing_is_hallucinated() {
+    let model = ScriptedModel::new(vec![(r#"{"answer":"all done"}"#, 5)]); // no tool call
+    let (tx, _rx) = unbounded_channel();
+    let outcome = run_once(&model, &require_all_sandbox(), 4, 2, 0, &tx).await.unwrap();
+    assert!(!outcome.reached_end);
+    assert_eq!(outcome.failure, Some(FailureKind::Hallucinated));
+}
+
+#[tokio::test]
+async fn require_all_wildcard_checkpoint_matches_a_glob() {
+    let sandbox = DeterministicSandbox::new(
+        "Log a denial.".into(),
+        vec![],
+        vec![],
+        EndStateRule::RequireAll(vec![TaskCheckpoint { tool: "log".into(), args: json!({ "reason": "*denied*" }) }]),
+    );
+    let model = ScriptedModel::new(vec![(r#"{"name":"log","args":{"reason":"request denied: fraud"}}"#, 5)]);
+    let (tx, _rx) = unbounded_channel();
+    let outcome = run_once(&model, &sandbox, 4, 2, 0, &tx).await.unwrap();
+    assert!(outcome.reached_end); // "*denied*" globs "request denied: fraud"
+}
+
+#[tokio::test]
+async fn forbidden_pair_is_terminal_while_allowed_args_advance() {
+    use crate::inference::eval::agentic::v2::r#match::MustNotCall;
+    let sandbox = || {
+        DeterministicSandbox::new(
+            "Refund the eligible order only.".into(),
+            vec![],
+            vec![MockResponse {
+                call: Call { name: "refund".into(), args: json!({ "order_id": "C-402" }) },
+                response: "{}".into(),
+            }],
+            EndStateRule::RequireAll(vec![TaskCheckpoint {
+                tool: "refund".into(),
+                args: json!({ "order_id": "C-402" }),
+            }]),
+        )
+        .with_must_not_call(vec![MustNotCall::Pair { name: "refund".into(), args: json!({ "order_id": "4472" }) }])
+    };
+
+    // Springs the trap → terminal ForbiddenCall (no end state, run ends now).
+    let trap = ScriptedModel::new(vec![(r#"{"name":"refund","args":{"order_id":"4472"}}"#, 5)]);
+    let (tx, mut rx) = unbounded_channel();
+    let bad = run_once(&trap, &sandbox(), 8, 2, 0, &tx).await.unwrap();
+    drop(tx);
+    assert!(!bad.reached_end);
+    assert_eq!(bad.failure, Some(FailureKind::ForbiddenCall));
+    assert_eq!(drain(&mut rx).last().unwrap().kind, StepKind::ForbiddenCall);
+
+    // SAME tool, allowed args → advances to success (no name-only short-circuit).
+    let good = ScriptedModel::new(vec![(r#"{"name":"refund","args":{"order_id":"C-402"}}"#, 5)]);
+    let (tx2, _rx2) = unbounded_channel();
+    let ok = run_once(&good, &sandbox(), 8, 2, 0, &tx2).await.unwrap();
+    assert!(ok.reached_end);
+}
+
+/// A model whose turn never returns in time — exercises the per-step timeout.
+struct HangingModel;
+impl ModelTurn for HangingModel {
+    async fn run(&self, _spec: &GenerateSpec) -> AppResult<(String, GenerateStats)> {
+        tokio::time::sleep(std::time::Duration::from_secs(3600)).await;
+        Ok((END_CALL.to_string(), GenerateStats::default()))
+    }
+}
+
+#[tokio::test]
+async fn a_stalled_turn_times_out_and_terminates() {
+    let (tx, mut rx) = unbounded_channel();
+    // Tiny budget so the stalled turn trips it immediately.
+    let outcome =
+        run_once_inner(&HangingModel, &sandbox(), 8, 2, std::time::Duration::from_millis(5), 0, &tx).await.unwrap();
+    drop(tx);
+    assert!(!outcome.reached_end);
+    assert_eq!(outcome.failure, Some(FailureKind::TurnTimeout));
+    assert_eq!(drain(&mut rx).last().unwrap().kind, StepKind::TurnTimeout);
 }

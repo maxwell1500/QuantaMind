@@ -1,3 +1,4 @@
+use crate::inference::eval::agentic::spec::Tier;
 use serde::{Deserialize, Serialize};
 
 /// How a single agentic run failed. Each maps to exactly one `FailureTracker`
@@ -13,6 +14,11 @@ pub enum FailureKind {
     /// Driver D: emitted schema-invalid call(s) and burned the recovery budget
     /// without ever producing a valid one.
     MalformedSchema,
+    /// Phase 9-v2: invoked a `must_not_call` trap — terminal the moment it fires.
+    ForbiddenCall,
+    /// Phase 9-v2: a model turn exceeded the per-step wall-clock budget (a wedged /
+    /// stalled model). Terminal — an agent that hangs isn't production-ready.
+    TurnTimeout,
 }
 
 /// The result of ONE agentic attempt — the unit the Pass^k loop folds into an
@@ -29,11 +35,24 @@ pub struct RunOutcome {
     pub hit_schema_error: bool,
     /// After a schema error, this run produced a schema-valid call (recovered).
     pub schema_recovered: bool,
+    /// Phase 9: how many times this run called a tool with no mock — a decoy or a
+    /// hallucinated tool. A distraction signal, NOT a terminal failure: the run
+    /// still ends via end-state / yield / step-cap. Captures *how* a model coped
+    /// with decoys, not just whether it passed.
+    pub unknown_tool_calls: u32,
 }
 
 impl RunOutcome {
     pub fn success(steps: u32, output_tokens: u32) -> Self {
-        Self { reached_end: true, steps, output_tokens, failure: None, hit_schema_error: false, schema_recovered: false }
+        Self {
+            reached_end: true,
+            steps,
+            output_tokens,
+            failure: None,
+            hit_schema_error: false,
+            schema_recovered: false,
+            unknown_tool_calls: 0,
+        }
     }
 
     pub fn failure(steps: u32, output_tokens: u32, failure: FailureKind) -> Self {
@@ -44,6 +63,7 @@ impl RunOutcome {
             failure: Some(failure),
             hit_schema_error: false,
             schema_recovered: false,
+            unknown_tool_calls: 0,
         }
     }
 
@@ -52,6 +72,12 @@ impl RunOutcome {
     pub fn with_schema(mut self, hit: bool, recovered: bool) -> Self {
         self.hit_schema_error = hit;
         self.schema_recovered = recovered;
+        self
+    }
+
+    /// Stamp the Phase-9 unknown-tool (decoy distraction) count for this run.
+    pub fn with_unknown_tools(mut self, n: u32) -> Self {
+        self.unknown_tool_calls = n;
         self
     }
 }
@@ -64,6 +90,20 @@ pub struct FailureTracker {
     pub hallucinated_completions: u32,
     pub malformed_json_calls: u32,
     pub schema_unrecovered_calls: u32,
+    /// Phase 9 diagnostic: total decoy / unknown-tool calls across the runs. A
+    /// distraction signal, NOT a terminal failure mode — it is deliberately
+    /// excluded from `top()`. `#[serde(default)]` so reports persisted before
+    /// Phase 9 load as 0.
+    #[serde(default)]
+    pub unknown_tool_calls: u32,
+    /// Phase 9-v2: runs that sprang a `must_not_call` trap (terminal). A real
+    /// failure mode — participates in `top()`. `#[serde(default)]` for back-compat.
+    #[serde(default)]
+    pub forbidden_calls: u32,
+    /// Phase 9-v2: runs ended by a per-step turn timeout (a stalled model). Terminal
+    /// failure mode. `#[serde(default)]` for back-compat.
+    #[serde(default)]
+    pub turn_timeouts: u32,
 }
 
 impl FailureTracker {
@@ -73,14 +113,30 @@ impl FailureTracker {
             FailureKind::Hallucinated => self.hallucinated_completions += 1,
             FailureKind::Malformed => self.malformed_json_calls += 1,
             FailureKind::MalformedSchema => self.schema_unrecovered_calls += 1,
+            FailureKind::ForbiddenCall => self.forbidden_calls += 1,
+            FailureKind::TurnTimeout => self.turn_timeouts += 1,
         }
     }
 
+    /// Sum another tracker into this one (the per-column aggregate over a model's
+    /// tasks). Centralized so a new field can't be silently dropped by a caller.
+    pub(crate) fn merge(&mut self, o: &FailureTracker) {
+        self.infinite_loop_hits += o.infinite_loop_hits;
+        self.hallucinated_completions += o.hallucinated_completions;
+        self.malformed_json_calls += o.malformed_json_calls;
+        self.schema_unrecovered_calls += o.schema_unrecovered_calls;
+        self.unknown_tool_calls += o.unknown_tool_calls;
+        self.forbidden_calls += o.forbidden_calls;
+        self.turn_timeouts += o.turn_timeouts;
+    }
+
     /// The most common failure mode (argmax). Ties resolve by severity order:
-    /// infinite-loop > hallucinated > malformed-schema > malformed-json. `None`
-    /// when there were no failures at all.
-    fn top(&self) -> TopError {
+    /// forbidden-call > turn-timeout > infinite-loop > hallucinated >
+    /// malformed-schema > malformed-json. `None` when there were no failures at all.
+    pub(crate) fn top(&self) -> TopError {
         [
+            (self.forbidden_calls, TopError::ForbiddenCall),
+            (self.turn_timeouts, TopError::TurnTimeout),
             (self.infinite_loop_hits, TopError::InfiniteLoop),
             (self.hallucinated_completions, TopError::Hallucinated),
             (self.schema_unrecovered_calls, TopError::MalformedSchema),
@@ -101,6 +157,8 @@ pub enum TopError {
     Hallucinated,
     MalformedJson,
     MalformedSchema,
+    ForbiddenCall,
+    TurnTimeout,
 }
 
 /// The Pass^k payload: how many of `total_runs` reached the end state, the
@@ -119,6 +177,11 @@ pub struct AgenticReport {
     /// (produced a valid call). `None` when no run ever hit one — the UI renders
     /// "—", never a fabricated 0 (the metric simply didn't apply).
     pub schema_resilience: Option<f64>,
+    /// Phase 9: the difficulty tier of the task this report scored. `from_outcomes`
+    /// can't know it (it sees only run outcomes), so the runner stamps it via
+    /// `with_tier`. `#[serde(default)]` → reports persisted before Phase 9 load as Easy.
+    #[serde(default)]
+    pub tier: Tier,
 }
 
 impl AgenticReport {
@@ -130,6 +193,8 @@ impl AgenticReport {
         let mut schema_hits = 0u32;
         let mut schema_recovered = 0u32;
         for o in outcomes {
+            // Diagnostic, counted for every run regardless of pass/fail.
+            failures.unknown_tool_calls += o.unknown_tool_calls;
             if o.reached_end {
                 passes += 1;
                 success_tokens.push(o.output_tokens);
@@ -152,7 +217,15 @@ impl AgenticReport {
             avg_output_tokens_success: mean(&success_tokens),
             avg_steps: mean(&steps),
             schema_resilience: (schema_hits > 0).then(|| schema_recovered as f64 / schema_hits as f64),
+            tier: Tier::default(), // stamped by the runner via with_tier (the task carries the tier)
         }
+    }
+
+    /// Stamp the difficulty tier of the task this report scored (builder form, so
+    /// `from_outcomes` and its tests stay unchanged). Called by the batch runner.
+    pub fn with_tier(mut self, tier: Tier) -> Self {
+        self.tier = tier;
+        self
     }
 }
 
@@ -212,6 +285,19 @@ mod tests {
     }
 
     #[test]
+    fn forbidden_call_tops_on_a_tie_and_merge_rolls_up_all_fields() {
+        let mut f = FailureTracker::default();
+        f.record(FailureKind::ForbiddenCall);
+        f.record(FailureKind::InfiniteLoop);
+        assert_eq!(f.forbidden_calls, 1);
+        assert_eq!(f.top(), TopError::ForbiddenCall); // 1==1 tie → severity favors forbidden
+
+        let mut agg = FailureTracker { unknown_tool_calls: 3, ..Default::default() };
+        agg.merge(&f);
+        assert_eq!((agg.forbidden_calls, agg.infinite_loop_hits, agg.unknown_tool_calls), (1, 1, 3));
+    }
+
+    #[test]
     fn malformed_schema_is_tallied_and_can_be_top() {
         let mut f = FailureTracker::default();
         f.record(FailureKind::MalformedSchema);
@@ -230,6 +316,17 @@ mod tests {
         ];
         let r = AgenticReport::from_outcomes(&outcomes);
         assert_eq!(r.schema_resilience, Some(0.5)); // 1 recovered / 2 that hit
+    }
+
+    #[test]
+    fn unknown_tool_calls_aggregate_across_runs_but_never_become_the_top_error() {
+        let outcomes = vec![
+            RunOutcome::success(5, 50).with_unknown_tools(2), // passed despite 2 decoy calls
+            RunOutcome::failure(8, 90, FailureKind::InfiniteLoop).with_unknown_tools(3),
+        ];
+        let r = AgenticReport::from_outcomes(&outcomes);
+        assert_eq!(r.failures.unknown_tool_calls, 5); // 2 + 3, counted for pass and fail alike
+        assert_eq!(r.top_error, TopError::InfiniteLoop); // distraction never headlines
     }
 
     #[test]

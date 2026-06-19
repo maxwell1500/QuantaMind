@@ -3,12 +3,15 @@ use crate::commands::eval::toolcall_cmd::endpoint_for;
 use crate::commands::models::model_inspect::fetch_dims;
 use crate::commands::prompt::prompt_options::{to_generate_options, validate_params};
 use crate::commands::storage::storage::fetch_installed_with_stats;
+use crate::commands::system::hardware::snapshot;
 use crate::errors::AppError;
 use crate::inference::backend::backend_kind::BackendKind;
 use crate::inference::backend::endpoint;
 use crate::inference::eval::agentic::model_turn::BackendTurn;
+use crate::inference::eval::agentic::spec::Tier;
+use crate::inference::eval::readiness::hardware::hwclass::{classify_bytes, default_required_tier, HardwareClass};
 use crate::inference::eval::cliff::{build_ladder, run_cliff_with, CliffPoint, CliffReport, CliffSource, StepProgress, DEFAULT_DEPTHS};
-use crate::inference::eval::readiness::inputs::{agentic_metrics, pass_k_of, verdict_for};
+use crate::inference::eval::readiness::inputs::{agentic_metrics, native_first_source, pass_k_of, verdict_for};
 use crate::inference::eval::readiness::recommend;
 use crate::inference::eval::readiness::profile::ReadinessProfile;
 use crate::inference::eval::readiness::types::{CliffStatus, ModelVerdict};
@@ -248,6 +251,42 @@ pub fn stop_context_cliff(state: tauri::State<'_, CliffRunState>) -> Result<(), 
     Ok(())
 }
 
+/// Hardware → recommended difficulty tier, derived from total system memory. The
+/// single source of truth for the eval page's tier-`Auto` mode and HW hint: the GB
+/// thresholds + class→tier policy live in `hwclass.rs`, never duplicated in TS.
+#[derive(Serialize)]
+pub struct HardwareTier {
+    pub total_memory_bytes: u64,
+    pub class: String,
+    pub recommended_tier: Tier,
+}
+
+/// Stable human label for a class — decoupled from the `Debug` derive so the IPC
+/// contract can't shift if a variant is renamed.
+fn class_label(c: HardwareClass) -> &'static str {
+    match c {
+        HardwareClass::Constrained => "Constrained",
+        HardwareClass::Mainstream => "Mainstream",
+        HardwareClass::Workstation => "Workstation",
+        HardwareClass::Frontier => "Frontier",
+    }
+}
+
+/// Classify the running machine and recommend the difficulty tier its class should
+/// clear (the eval page's `Auto` tier + the "HW: …" hint read this). Reuses the
+/// readiness engine's `classify_bytes` + `default_required_tier` so the eval-run
+/// path and the readiness verdict agree on one set of thresholds.
+#[tauri::command]
+pub fn get_hardware_tier() -> Result<HardwareTier, AppError> {
+    let bytes = snapshot().total_memory_bytes;
+    let class = classify_bytes(bytes);
+    Ok(HardwareTier {
+        total_memory_bytes: bytes,
+        class: class_label(class).to_string(),
+        recommended_tier: default_required_tier(class),
+    })
+}
+
 #[tauri::command]
 pub fn list_readiness_profiles(app: AppHandle) -> Result<Vec<ReadinessProfile>, AppError> {
     profiles::list(&profiles_dir(&app)?)
@@ -320,6 +359,10 @@ pub async fn assess_readiness(
         let cliff = registry_get(&cliffs, &col.model).copied().unwrap_or_default();
         let verdict = verdict_for(col, fits_in_vram, vram_pressure, cliff, &profile);
         let (avg_steps, effort) = agentic_metrics(col);
+        // Per-tier breakdown + failures from the SAME native-first source the verdict gated
+        // on, so the Agent Report's deep-dive can't drift from the gate (issue 5).
+        let (by_tier, failures) =
+            native_first_source(col).map(|a| (a.by_tier.clone(), a.failures.clone())).unwrap_or_default();
         out.push(ModelVerdict {
             model: col.model.clone(),
             backend: col.backend,
@@ -330,10 +373,43 @@ pub async fn assess_readiness(
             pass_k: pass_k_of(col),
             quantization: registry_get(&quants, &col.model).cloned(),
             cliff,
+            by_tier,
+            failures,
         });
     }
     // Phase 7.3: rank best-first (Ready > Conditional > NotReady, ties by effort
     // then steps) so the page's recommendation banner + leaderboard are correct.
     recommend::rank(&mut out);
     Ok(out)
+}
+
+#[cfg(test)]
+mod hardware_tier_tests {
+    use super::*;
+
+    #[test]
+    fn reports_a_real_machine_and_a_consistent_recommended_tier() {
+        let ht = get_hardware_tier().expect("hardware tier");
+        // Real bytes, not a guessed fallback.
+        assert!(ht.total_memory_bytes > 0);
+        // Class label is one of the four engine classes.
+        assert!(["Constrained", "Mainstream", "Workstation", "Frontier"].contains(&ht.class.as_str()));
+        // The command adds no policy of its own — it must agree with the engine.
+        let class = classify_bytes(ht.total_memory_bytes);
+        assert_eq!(ht.class, class_label(class));
+        assert_eq!(ht.recommended_tier, default_required_tier(class));
+    }
+
+    #[test]
+    fn serializes_with_the_ipc_contract_keys_and_snake_case_tier() {
+        let ht = HardwareTier {
+            total_memory_bytes: 16 * 1024 * 1024 * 1024,
+            class: "Mainstream".into(),
+            recommended_tier: Tier::Medium,
+        };
+        let v = serde_json::to_value(&ht).unwrap();
+        assert_eq!(v["total_memory_bytes"], 16u64 * 1024 * 1024 * 1024);
+        assert_eq!(v["class"], "Mainstream");
+        assert_eq!(v["recommended_tier"], "medium"); // matches TS TierSchema enum
+    }
 }

@@ -412,11 +412,19 @@ Error), with a click-through Trace Debugger. See [the workspace](#eval-runner).
   plain-text refusal with **no** tool call (so a robust planner that declines an
   unsafe/unnecessary action isn't mis-scored as lazy); acting anyway fails.
 - **Pass^k consistency.** The loop runs `k` times (default 5) with absolute
-  isolation between runs. The per-task `AgenticReport` carries `passes/total_runs`, a
+  isolation between runs. A per-run **backend** error (e.g. Ollama timed out or
+  crashed on one attempt) does **not** abort the batch: that attempt is skipped and
+  the remaining runs still execute, then the report folds the runs that completed —
+  an infra fault is not a model task-failure, so a skipped run never reaches
+  `total_runs`. Only when **every** run errors does the error propagate (the task
+  then shows as Error and re-runs on resume — the backend is genuinely down). The
+  per-task `AgenticReport` carries `passes/total_runs`, a
   `FailureTracker` with **distinct** tallies (`infinite_loop_hits` = hit the step
   cap, `hallucinated_completions` = fake done, `malformed_json_calls` = broken
   JSON, `schema_unrecovered_calls` = exhausted the recovery budget), and a
-  `top_error` headline. The **collection-level Pass^k** (the Matrix headline and
+  `top_error` headline. `unknown_tool_calls` is a Phase-9 **diagnostic** tally
+  (decoy / hallucinated-tool calls) — it captures *how* a model coped with decoys
+  but is **not** a terminal failure, so it is excluded from `top_error`. The **collection-level Pass^k** (the Matrix headline and
   the readiness/leaderboard gate) is **strict**: `AggAgentic` credits a task only
   when **all k** of its runs reached the end state (`tasks_passed/tasks_total`), so a
   flaky 3/5 task counts as a failure, not 0.6 — reliability compounds and a model
@@ -443,6 +451,64 @@ Error), with a click-through Trace Debugger. See [the workspace](#eval-runner).
   report's `schema_resilience` is recovered ÷ runs-that-hit-an-error — **n/a** (UI
   "—") when no run ever hit one, never a fabricated 0. Constrained-decoding paths
   can't emit syntactically-broken calls, so this targets **semantic** faults.
+- **Difficulty tiers (Phase 9) + the v2 scenario engine.** Eval content is now the
+  **19 bundled tiered scenario collections** (Easy→Extreme across coding, finance,
+  medical, legal, ecommerce, support, supply-chain, math/science, clinical) under
+  `agentic/v2/scenarios/`. They **replaced** the old hand-coded single/multi fixtures.
+  Each collection is one JSON object (`{name, domain, tier, pass_k, axes, tasks[]}`);
+  `v2/collection.rs::load_v2_collection` transpiles it to engine `ToolTask`s
+  (`category:"agent_loop"`, routed through the unchanged agentic runner — no second
+  execution path). v2 task mechanics:
+  - **`world_state`** — ground truth the model discovers via tools; the sandbox's
+    `WorldState` responder returns the whole entity sub-object for the first arg that
+    names a `world_state` key (`v2/world_state.rs`), so there are no static mocks.
+  - **`expected_calls` → `EndStateRule::RequireAll`** — an unordered, consume-once
+    set (multi-entity tasks have independent sub-sequences, so strict order would
+    false-negative a correct model). Args match via `args_match_v2`: a `*…*` string is
+    an ordered, case-insensitive multi-segment glob; everything else is exact.
+  - **`must_not_call`** traps — invoking one (bare name, or `{name,args}` matched
+    wildcard-aware) is an immediate terminal `ForbiddenCall`, checked after
+    schema-validate (a malformed trap takes the recovery path first). pass^k
+    punishes a model that springs a trap even once.
+  - **`decoy_tools`** authored per task (presented but never expected); **`faults`**
+    keyed by tool name (`on_call`, trips on any args, transient `clears_after` is a
+    global per-tool counter).
+  - **`tier`/`pass_k`** scale reliability — Easy 5 / Medium 8 / Hard 16 / Extreme 24
+    (τ-bench: top models cluster at pass^1, spread at pass^8). `axes` document the
+    tier (`min_required_steps`, decoys, hidden prereqs, conflicting constraints,
+    adversarial/region variance). A permanent integrity test + an **oracle gate**
+    (replays each task's expected_calls) prove all 434 authored tasks are satisfiable
+    and a trivial agent scores 0.
+  - **Procedural instancing** (`v2/generator.rs`) — a `generated` collection builds a
+    FRESH instance each Pass^k run: `instantiate(task, seed_for(model, run_index))`
+    consistently renames the task's numbered entity ids (its `world_state` keys) by a
+    seeded offset across the prompt, world_state, checkpoints, and `must_not_call`. It's
+    a bijective alpha-rename — decision logic untouched (oracle-safe), surface ids novel
+    per run (contamination resistance), reproducible for a given `(model, run_index)`. A
+    task with no numbered entities replays its worked instance unchanged (honest: runs,
+    not varied). Deep per-template semantic generation (e.g. re-deriving which entity is
+    sanctioned) is deferred.
+  - **Runtime safety (v2 is heavy: ~80 steps × pass^24).** Each model turn has a 180s
+    wall-clock budget (`run_once`) — the streaming client has no body deadline, so a
+    stalled model would otherwise hang; a turn over budget ends the run as a terminal
+    `TurnTimeout`. Cancellation is checked between Pass^k runs (`run_agentic_with`), so
+    interrupting a big-k task halts within ≤1 run, not after all k. The Matrix panel
+    shows a worst-case **cost estimate** ("~N model calls (~H h)") before a run.
+- **Hardware-calibrated tier gate (Phase 9B).** `AggAgentic.by_tier` carries strict
+  Pass^k bucketed per tier; the readiness `assess()` derives the highest tier a model
+  cleared (`pass^k ≥ profile.min_pass_k`) and blocks when the profile's
+  `required_tier` was **exercised by the collection** but not cleared. An untested
+  tier is **NotAttempted**, never a guessed fail — so an all-Easy collection never
+  trips a Hard profile. `readiness/hardware/hwclass.rs` maps total memory to a
+  `HardwareClass` (rounded to the nearest GB to avoid boundary flip-flop) and a
+  default required tier; built-in profiles ship `required_tier` Hard (coding) /
+  Medium (rag, general), while a pre-Phase-9 saved profile defaults `Easy` and never
+  blocks (exact old behavior). The verdict carries `required_tier` + `cleared_tier`,
+  and the Agent Report renders graduated readiness per row ("✓ cleared Extreme /
+  requires Extreme" or "▸ cleared Medium / requires Extreme") — shown only for a
+  tiered profile, hidden for an untiered (Easy) one. A standalone hardware-class
+  label in the header is deferred (the hardware-calibrated `required_tier` already
+  conveys the bar).
 - **Relative effort, not absolute joules.** `avg_output_tokens_success` is the mean
   output-token count (`eval_count`) over the **successful** runs only — **n/a**
   when there are zero successes, never a divide-by-zero. Prompt tokens are
@@ -767,6 +833,31 @@ Each Scoreboard row has a **View Trace** button: clicking it flips the toggle to
 that exact collection + task + model, ready to ▶ — connecting the macro "which tasks failed?" view to
 the micro "why did this one fail?" trace.
 
+**Run Controls — difficulty tier + anti-saturation (Phase 9).** The Eval Manager's run controls expose
+the Phase-9 levers inline, so the chosen tier and decoy budget genuinely shape the batch (they flow into
+`run_batch_eval` → `apply_overrides`, which rewrites each agentic spec at run time):
+
+- **Difficulty Tier** dropdown — `Auto · Easy · Medium · Hard · Extreme · Custom`. A tier sends `tier`
+  to the backend with `k = None`; the backend derives the locked Pass^k via `pass_k_for` (Easy 5 /
+  Medium 8 / Hard 16 / Extreme 24) and **stamps it onto every agentic spec**, so an authored per-task
+  `k` no longer silently wins under a chosen tier. `Auto` resolves to the machine's recommended tier
+  (see below). The **Iterations (k)** field is read-only (a 🔒 lock) for a tier and shows that derived
+  value (TS mirror `PASS_K_BY_TIER`, source of truth `passk.rs`). **`Custom`** is the escape hatch:
+  it restores today's behavior — a free `k` input, no tier sent, authored tiers untouched.
+- **HW hint** — "HW: 16GB RAM · Mainstream · Medium recommended" comes from the new `get_hardware_tier`
+  command (the single source of truth; the GB thresholds + class→tier policy live in `hwclass.rs`, never
+  duplicated in TS).
+- **Anti-Saturation** — an `Enable Decoy Tools` checkbox + `Decoy Count`. Enabled sends `decoyTools = N`,
+  which rewrites each agentic spec's `axes.decoy_tools` (N never-correct distractor tools shuffled into
+  the presented tool list); disabled (the default) leaves the task-authored decoys untouched.
+- **Scoreboard header chips** echo the active run's shape: `Target: <model> · Tier: <…> · K: <k> ·
+  Decoys: <n/off>`.
+
+Deferred (flagged, not faked): **Max Steps stays a normal editable input** — the backend has no
+tier→max-steps policy to lock it to. A **"Conditional" per-task status** isn't shown (task outcomes are
+Pass/Fail only; Conditional exists for readiness verdicts, not per task). The trace panel's AST tab +
+inline decoy/hallucination annotations are out of scope (the Evaluator/Trace panel is untouched).
+
 ## Context-cliff probe {#context-cliff}
 
 Runs a dataset at increasing prompt lengths and graphs where tool-call accuracy collapses
@@ -942,8 +1033,10 @@ exact reasons. Pick a target collection + a profile, click **Run readiness**.
   measured counts, e.g. `pass^k 0.40 < 0.80 required`, `loops on 2 runs`,
   `false 'done' on 1 run`, or `run error: …` for a column that failed to produce
   data. The report's BLOCKING line tags each by category with a ✗ marker
-  (`[✗ Reliability] [✗ Loops]`); the Details line below shows the interpolated
-  numbers verbatim.
+  (`[✗ Reliability] [✗ Loops]`, plus `Context`, `Hardware`, `Native FC`,
+  `Run Error`, `Performance`, `Efficiency`); every backend reason maps to a real
+  category — none falls through to a bare `System`. The Details line below shows
+  the interpolated numbers/message verbatim.
 
 **Blocking vs conditions.** Hard gates push to `blocking[]` (→ NotReady); soft
 targets push to `conditions[]` (→ Conditional). Status = NotReady if any blocking,
@@ -955,6 +1048,36 @@ with no VRAM-fit measurement, or `min_context_tokens` with no cliff probe), that
 **blocking** — ignorance is not a pass; the report tells you to run the missing
 diagnostic. The `pass^k` core gate likewise blocks when no agentic run was recorded.
 Float comparisons are epsilon-guarded (`1e-6`) so a true `0.80` can't false-block.
+
+**The per-model deep-dive (Phase 9B).** Below the multi-model table a model selector
+opens a three-section drill-down for one model, sourced from `ModelVerdict.by_tier` /
+`failures` — the **same native-first aggregate the gate read** (one `native_first_source`
+helper feeds the gate, the per-tier breakdown, and the taxonomy, so they can't drift):
+
+- **Executive Verdict** — the headline tier is the **tier that actually ran** (the highest
+  tier exercised in `by_tier`), *not* the profile's `required_tier`. The hardware class
+  (`get_hardware_tier`) is an **advisory lens, never a gate**: a Workstation user who
+  deliberately runs Easy gets *Ready (Easy)* plus a soft "run a harder tier for a
+  production-grade verdict" note, never a forced NotReady. Status answers "did it clear the
+  tier it was tested at" via a contiguous `clearsThrough` — READY when it clears up to the
+  hardest tested tier, CONDITIONAL for a cleared prefix **or** a non-monotonic curve (a
+  higher tier cleared above a failed lower one — flagged inconsistent), NOT READY when
+  nothing cleared.
+- **Tier Progression Matrix** — four tier cards with measured per-tier Pass^k + avg-steps
+  and a CLEAR / SATURATED / FAIL badge on the **same `min_pass_k` bar** the verdict's
+  `cleared_tier` uses, so a card and the headline can't contradict. A tier the run never
+  exercised is **NOT TESTED** (gray), never a guessed fail. "Task Parameters"
+  (Horizon/Decoys) come from the collection's **real task axes** or read "not declared" —
+  the mockup's illustrative `3–8 steps` / `2–4 decoys` ranges are never printed as measured.
+- **Failure Taxonomy** — the distribution of failure modes (`unknown_tool_calls`→decoys,
+  `forbidden_calls`→`must_not_call`, loops, hallucinations, …) summed across the **tiers
+  that actually ran** (named in the heading — not a hardcoded Hard+Extreme, so a Mainstream
+  Easy/Medium run gets a truthful section), as a share of tracked failure **events** (not a
+  1:1 failed-run count). The deep-dive exports as **versioned** JSON (`schema_version`).
+
+Pool-injected **decoys reach only the prompt-based pass** (the native tool_calls API is
+handed the raw `task.tools`); a `Decoys: N` figure therefore describes the prompt column,
+not the native one — a pre-existing asymmetry, documented so it isn't misread.
 
 **Profiles** are flat JSON files under the OS app-config dir (`readiness/`),
 editable by power users and seeded on first run with three built-ins:

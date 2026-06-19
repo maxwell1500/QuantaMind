@@ -34,7 +34,7 @@ beforeEach(() => {
   vi.mocked(traceToolcallTask).mockResolvedValue(trace as never);
   vi.mocked(loadToolcallTrace).mockResolvedValue(null);
   useEvalRegistryStore.setState({
-    presets: [{ id: "curated", label: "Curated Suite" }],
+    presets: [{ id: "easy-coding", label: "Coding", domain: "coding", tier: "easy" }],
     collections: [],
     init: vi.fn().mockResolvedValue(undefined),
   });
@@ -47,7 +47,7 @@ beforeEach(() => {
 describe("PipelinePanel", () => {
   it("runs a single task trace and reveals real prompt + output + verdict", async () => {
     render(<PipelinePanel />);
-    await waitFor(() => expect(getBuiltinCollection).toHaveBeenCalledWith("curated"));
+    await waitFor(() => expect(getBuiltinCollection).toHaveBeenCalledWith("easy-coding"));
 
     // Config phase shows the task prompt before running.
     expect(screen.getByTestId("pipeline-config")).toHaveTextContent("Weather in London?");
@@ -86,17 +86,17 @@ describe("PipelinePanel", () => {
   });
 
   it("applies a Scoreboard handoff (focus loads the collection/task/model)", async () => {
-    render(<PipelinePanel focus={{ collection: "curated", taskId: "w", model: "m1" }} />);
-    await waitFor(() => expect(getBuiltinCollection).toHaveBeenCalledWith("curated"));
+    render(<PipelinePanel focus={{ collection: "easy-coding", taskId: "w", model: "m1" }} />);
+    await waitFor(() => expect(getBuiltinCollection).toHaveBeenCalledWith("easy-coding"));
     await waitFor(() => expect(screen.getByTestId("pipeline-model-select")).toHaveValue("m1"));
     expect(screen.getByTestId("pipeline-task-select")).toHaveValue("w");
   });
 
   it("shows a cached trace on handoff WITHOUT re-running inference", async () => {
     vi.mocked(loadToolcallTrace).mockResolvedValue(trace as never);
-    render(<PipelinePanel focus={{ collection: "curated", taskId: "w", model: "m1" }} />);
+    render(<PipelinePanel focus={{ collection: "easy-coding", taskId: "w", model: "m1" }} />);
 
-    await waitFor(() => expect(loadToolcallTrace).toHaveBeenCalledWith("curated", "m1", "w"));
+    await waitFor(() => expect(loadToolcallTrace).toHaveBeenCalledWith("easy-coding", "m1", "w"));
     // The saved verdict + output are shown straight away…
     await waitFor(() => expect(screen.getByTestId("pipeline-exec-state")).toHaveTextContent("Cached"));
     expect(screen.getByTestId("pipeline-validation")).toHaveTextContent("PASSED");

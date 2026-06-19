@@ -7,7 +7,9 @@ use crate::commands::eval::toolcall_cmd::endpoint_for;
 use crate::commands::prompt::prompt_options::{to_generate_options, validate_params};
 use crate::errors::AppError;
 use crate::inference::backend::backend_kind::BackendKind;
+use crate::inference::eval::agentic::difficulty::passk::pass_k_for;
 use crate::inference::eval::agentic::model_turn::{BackendTurn, NativeOllamaTurn};
+use crate::inference::eval::agentic::spec::Tier;
 use crate::inference::eval::agentic::step::TrajectoryStep;
 use crate::inference::eval::batch::{
     batch_summaries, fold_report, run_batch_resumable, run_native_fc_pass, BatchReport, BatchSink, CompletedUnit,
@@ -77,16 +79,39 @@ impl BatchSink for TauriBatchSink {
     }
 }
 
-/// Apply the run-time K / Max-Steps overrides to every agentic task — the UI
-/// controls override the persisted per-task spec.
-fn apply_overrides(mut tasks: Vec<ToolTask>, k: Option<u32>, max_steps: Option<u32>) -> Vec<ToolTask> {
+/// Apply the run-time difficulty / K / Max-Steps / decoy overrides to every agentic
+/// task — the UI controls override the persisted per-task spec. Non-agentic tasks are
+/// untouched.
+///
+/// `tier` set (a chosen tier or `Auto`) stamps `spec.tier` and, when the UI sends no
+/// explicit `k`, derives the locked Pass^k via `pass_k_for(tier)` and stamps it onto
+/// the spec so the run matches the locked display exactly (an authored per-task `k`
+/// no longer silently wins). An explicit `k` (the `Custom` escape hatch) always wins.
+/// `decoy_tools` set rewrites each spec's `axes.decoy_tools`; `None` leaves the
+/// task-authored decoys intact.
+fn apply_overrides(
+    mut tasks: Vec<ToolTask>,
+    k: Option<u32>,
+    max_steps: Option<u32>,
+    tier: Option<Tier>,
+    decoy_tools: Option<u32>,
+) -> Vec<ToolTask> {
     for t in &mut tasks {
         if let Some(spec) = t.agentic.as_mut() {
-            if k.is_some() {
-                spec.k = k;
+            if let Some(tier) = tier {
+                spec.tier = tier;
+            }
+            // Explicit UI `k` wins; otherwise a chosen tier derives the locked `k`.
+            if let Some(k) = k {
+                spec.k = Some(k);
+            } else if let Some(tier) = tier {
+                spec.k = Some(pass_k_for(tier));
             }
             if max_steps.is_some() {
                 spec.max_steps = max_steps;
+            }
+            if let Some(n) = decoy_tools {
+                spec.axes.get_or_insert_with(Default::default).decoy_tools = n;
             }
         }
     }
@@ -108,6 +133,8 @@ pub async fn run_batch_eval(
     params: Option<InferenceParams>,
     keep_alive: Option<i32>,
     run_native_fc: Option<bool>,
+    tier: Option<Tier>,
+    decoy_tools: Option<u32>,
 ) -> Result<BatchReport, AppError> {
     validate_tasks(&tasks)?;
     if let Some(p) = &params {
@@ -122,6 +149,8 @@ pub async fn run_batch_eval(
         params,
         keep_alive,
         native: run_native_fc.unwrap_or(false),
+        tier,
+        decoy_tools,
     };
     // Start a fresh job log (header only) — a leftover log means an interrupted run.
     queue::create(&queue::run_path(&jobs_dir(&app)?, &collection_id), &config)?;
@@ -148,7 +177,7 @@ pub(crate) async fn run_passes(
         }
         *g = Some(cancel.clone());
     }
-    let tasks = apply_overrides(config.tasks.clone(), config.k, config.max_steps);
+    let tasks = apply_overrides(config.tasks.clone(), config.k, config.max_steps, config.tier, config.decoy_tools);
     let sink: Arc<dyn BatchSink> = Arc::new(TauriBatchSink { app: app.clone() });
     let job_path = queue::run_path(&jobs_dir(app)?, &config.collection_id);
     let rec_path = job_path.clone();
@@ -302,4 +331,89 @@ pub async fn resume_batch_eval(
 #[tauri::command]
 pub fn discard_run(app: AppHandle, run_id: String) -> Result<(), AppError> {
     queue::delete(&queue::run_path(&jobs_dir(&app)?, &run_id))
+}
+
+#[cfg(test)]
+mod override_tests {
+    use super::*;
+    use crate::inference::eval::agentic::sandbox::EndStateRule;
+    use crate::inference::eval::agentic::spec::{AgenticSpec, DifficultyAxes};
+
+    fn agentic(id: &str, k: Option<u32>, tier: Tier, axes: Option<DifficultyAxes>) -> ToolTask {
+        ToolTask {
+            id: id.into(),
+            category: "agentic".into(),
+            prompt: "p".into(),
+            tools: vec![],
+            expected: Default::default(),
+            agentic: Some(AgenticSpec {
+                mocks: vec![],
+                end_state: EndStateRule::ExpectAbstainingText,
+                tier,
+                axes,
+                k,
+                max_steps: None,
+                faults: vec![],
+                max_recovery: None,
+                must_not_call: vec![],
+                world_state: None,
+                name_faults: vec![],
+                generated: false,
+            }),
+        }
+    }
+
+    fn single(id: &str) -> ToolTask {
+        ToolTask {
+            id: id.into(),
+            category: "single".into(),
+            prompt: "p".into(),
+            tools: vec![],
+            expected: Default::default(),
+            agentic: None,
+        }
+    }
+
+    fn spec(t: &ToolTask) -> &AgenticSpec {
+        t.agentic.as_ref().unwrap()
+    }
+
+    #[test]
+    fn tier_sets_tier_and_derives_locked_k_overriding_authored_k() {
+        // Authored k=3 must yield to the tier-derived k so the run matches the locked
+        // display (authored per-task k no longer silently wins under a chosen tier).
+        let tasks = apply_overrides(vec![agentic("a", Some(3), Tier::Easy, None)], None, None, Some(Tier::Hard), None);
+        let s = spec(&tasks[0]);
+        assert_eq!(s.tier, Tier::Hard);
+        assert_eq!(s.k, Some(pass_k_for(Tier::Hard))); // 16
+    }
+
+    #[test]
+    fn explicit_k_wins_over_the_tier_derived_value() {
+        // Custom escape hatch: an explicit UI k beats the tier policy.
+        let tasks = apply_overrides(vec![agentic("a", None, Tier::Easy, None)], Some(7), None, Some(Tier::Extreme), None);
+        assert_eq!(spec(&tasks[0]).k, Some(7));
+    }
+
+    #[test]
+    fn decoy_tools_sets_axes_creating_default_axes_when_absent() {
+        let tasks = apply_overrides(vec![agentic("a", None, Tier::Easy, None)], None, None, None, Some(4));
+        assert_eq!(spec(&tasks[0]).axes.as_ref().unwrap().decoy_tools, 4);
+    }
+
+    #[test]
+    fn no_overrides_leaves_the_authored_spec_intact() {
+        let axes = DifficultyAxes { decoy_tools: 2, ..Default::default() };
+        let tasks = apply_overrides(vec![agentic("a", Some(9), Tier::Medium, Some(axes))], None, None, None, None);
+        let s = spec(&tasks[0]);
+        assert_eq!(s.tier, Tier::Medium);
+        assert_eq!(s.k, Some(9));
+        assert_eq!(s.axes.as_ref().unwrap().decoy_tools, 2);
+    }
+
+    #[test]
+    fn non_agentic_tasks_are_untouched() {
+        let tasks = apply_overrides(vec![single("s")], Some(5), Some(8), Some(Tier::Hard), Some(3));
+        assert!(tasks[0].agentic.is_none());
+    }
 }

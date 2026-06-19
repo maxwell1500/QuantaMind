@@ -3,10 +3,9 @@ use crate::errors::AppError;
 use crate::inference::backend::backend_kind::BackendKind;
 use crate::inference::backend::endpoint;
 use crate::persistence::prompts::schema::InferenceParams;
+use crate::inference::eval::agentic::v2::scenarios::{v2_header, V2_SCENARIOS};
 use crate::inference::eval::toolcall::eval::{run_eval_traced, trace_one, ToolCallReport, TraceResult};
-use crate::inference::eval::toolcall::tasks::{
-    builtin_collection, tasks, validate_tasks, ToolTask, BUILTIN_COLLECTIONS,
-};
+use crate::inference::eval::toolcall::tasks::{builtin_collection, validate_tasks, ToolTask};
 use crate::inference::mlx::server::mlx_endpoint::mlx_endpoint;
 use crate::persistence::eval_trace_store;
 use serde::Serialize;
@@ -27,29 +26,51 @@ pub(crate) fn traces_dir(app: &tauri::AppHandle) -> Result<PathBuf, AppError> {
     Ok(dir.join("traces"))
 }
 
-/// The bundled curated suite, handed to the frontend so the runner is always
-/// given a `Vec<ToolTask>` (built-in or custom) and never touches files.
-#[tauri::command]
-pub fn get_builtin_tasks() -> Vec<ToolTask> {
-    tasks()
-}
-
+/// One built-in v2 tiered collection for the picker: the id (file stem), a short
+/// humanized domain `label`, and its `tier` — so the UI can group Easy→Extreme and
+/// label by domain, while flat dropdowns can still show `label`.
 #[derive(Serialize)]
 pub struct BuiltinCollectionInfo {
     pub id: String,
     pub label: String,
+    pub domain: String,
+    pub tier: String,
 }
 
-/// The read-only built-in presets (id + display label) for the dataset picker.
+/// Title-case a `-`/`_`-separated identifier ("supply-chain-recon" → "Supply Chain Recon").
+fn humanize(s: &str) -> String {
+    s.split(['-', '_'])
+        .filter(|w| !w.is_empty())
+        .map(|w| {
+            let mut c = w.chars();
+            c.next().map(|f| f.to_uppercase().chain(c).collect::<String>()).unwrap_or_default()
+        })
+        .collect::<Vec<_>>()
+        .join(" ")
+}
+
+/// The bundled v2 tiered scenario collections for the dataset picker. The runner is
+/// still handed a `Vec<ToolTask>` via `get_builtin_collection`.
 #[tauri::command]
 pub fn list_builtin_collections() -> Vec<BuiltinCollectionInfo> {
-    BUILTIN_COLLECTIONS
+    V2_SCENARIOS
         .iter()
-        .map(|(id, label)| BuiltinCollectionInfo { id: id.to_string(), label: label.to_string() })
+        .filter_map(|(id, json)| {
+            let h = v2_header(json)?;
+            let tier = h.tier.to_lowercase();
+            // Short domain label = id with the leading "<tier>-" stripped, humanized.
+            let short = id.strip_prefix(&format!("{tier}-")).unwrap_or(id);
+            Some(BuiltinCollectionInfo {
+                id: id.to_string(),
+                label: humanize(short),
+                domain: h.domain,
+                tier,
+            })
+        })
         .collect()
 }
 
-/// Tasks for a built-in preset id (e.g. "curated" / "finance").
+/// Tasks for a built-in collection id (a v2 scenario file stem, e.g. "easy-coding").
 #[tauri::command]
 pub fn get_builtin_collection(id: String) -> Result<Vec<ToolTask>, AppError> {
     builtin_collection(&id).ok_or_else(|| AppError::NotFound(format!("built-in collection '{id}'")))

@@ -1,5 +1,5 @@
 import React from "react";
-import type { AgentPath, MemoryProfile, ModelVerdict } from "../../../shared/ipc/eval/readiness";
+import type { AgentPath, MemoryProfile, ModelVerdict, ReadinessVerdict, Tier } from "../../../shared/ipc/eval/readiness";
 import type { BackendKind } from "../../../shared/ipc/models/storage";
 import { StatusBadge } from "./StatusBadge";
 import { parseQuant } from "../../models/parse_quant";
@@ -8,6 +8,26 @@ const PATH_LABEL: Record<AgentPath, string> = {
   prompt_based: "Prompt-Based",
   native_fc: "Native FC",
 };
+
+const TIER_RANK: Record<Tier, number> = { easy: 0, medium: 1, hard: 2, extreme: 3 };
+const capitalize = (s: string) => s.charAt(0).toUpperCase() + s.slice(1);
+
+/// Graduated readiness: "cleared X / requires Y". Hidden for an untiered profile
+/// (required_tier absent or Easy) so single-tier collections stay uncluttered.
+function TierLine({ verdict }: { verdict: ReadinessVerdict }) {
+  const required = verdict.required_tier;
+  if (!required || required === "easy") return null;
+  const cleared = verdict.cleared_tier ?? null;
+  const met = cleared != null && TIER_RANK[cleared] >= TIER_RANK[required];
+  return (
+    <div
+      data-testid="tier-line"
+      className={`text-[11px] font-semibold mt-1 ${met ? "text-emerald-600" : "text-amber-600"}`}
+    >
+      {met ? "✓" : "▸"} cleared {cleared ? capitalize(cleared) : "none"} / requires {capitalize(required)}
+    </div>
+  );
+}
 
 const gb = (bytes: number) => (bytes / 1024 ** 3).toFixed(1);
 
@@ -38,10 +58,20 @@ function cliffColor(c: ModelVerdict["cliff"]): string {
 
 function getIndicatorLabel(reason: string): string {
   const lower = reason.toLowerCase();
-  if (lower.includes("pass^k") || lower.includes("pass") || lower.includes("fail")) return "Reliability";
+  if (
+    lower.includes("pass^k") ||
+    lower.includes("pass") ||
+    lower.includes("fail") ||
+    lower.includes("false") ||
+    lower.includes("'done'") ||
+    lower.includes("hallucinat")
+  )
+    return "Reliability";
   if (lower.includes("loop") || lower.includes("infinite")) return "Loops";
   if (lower.includes("cliff") || lower.includes("context") || lower.includes("token")) return "Context";
-  if (lower.includes("vram") || lower.includes("memory") || lower.includes("pressure") || lower.includes("fit")) return "Hardware";
+  if (lower.includes("vram") || lower.includes("memory") || lower.includes("pressure") || lower.includes("fit") || lower.includes("offload")) return "Hardware";
+  if (lower.includes("native") || lower.includes("tool-calling")) return "Native FC";
+  if (lower.includes("error")) return "Run Error";
   if (lower.includes("slow") || lower.includes("latency") || lower.includes("ms") || lower.includes("speed")) return "Performance";
   if (lower.includes("step") || lower.includes("efficiency") || lower.includes("effort")) return "Efficiency";
   return "System";
@@ -231,6 +261,7 @@ export function VerdictTable({
                   <div className="text-[11px] font-semibold text-slate-500 mt-1">
                     ({PATH_LABEL[m.verdict.path]})
                   </div>
+                  <TierLine verdict={m.verdict} />
                 </td>
 
                 {/* 2. Quant Column */}

@@ -28,7 +28,7 @@ beforeEach(() => {
   vi.clearAllMocks();
   vi.mocked(getBuiltinCollection).mockResolvedValue(builtinTasks as never);
   useEvalRegistryStore.setState({
-    presets: [{ id: "curated", label: "Curated Suite" }],
+    presets: [{ id: "easy-coding", label: "Coding", domain: "coding", tier: "easy" }],
     collections: [],
     init: vi.fn().mockResolvedValue(undefined),
   });
@@ -42,7 +42,7 @@ describe("ToolCallPanel", () => {
   it("renders the four sub-scores + composite and a per-task table", async () => {
     vi.mocked(runToolcallEval).mockResolvedValue(report);
     render(<ToolCallPanel />);
-    await waitFor(() => expect(getBuiltinCollection).toHaveBeenCalledWith("curated"));
+    await waitFor(() => expect(getBuiltinCollection).toHaveBeenCalledWith("easy-coding"));
     fireEvent.change(screen.getByTestId("toolcall-model-select"), { target: { value: "m" } });
     await waitFor(() => expect(screen.getByTestId("toolcall-run")).not.toBeDisabled());
     fireEvent.click(screen.getByTestId("toolcall-run"));
@@ -69,6 +69,6 @@ describe("ToolCallPanel", () => {
     await waitFor(() => expect(screen.getByTestId("toolcall-row-weather")).toBeTruthy());
     fireEvent.change(screen.getByTestId("toolcall-model-select"), { target: { value: "m" } });
     fireEvent.click(screen.getByTestId("toolcall-view-trace-weather"));
-    expect(onViewTrace).toHaveBeenCalledWith({ collection: "curated", taskId: "weather", model: "m" });
+    expect(onViewTrace).toHaveBeenCalledWith({ collection: "easy-coding", taskId: "weather", model: "m" });
   });
 });

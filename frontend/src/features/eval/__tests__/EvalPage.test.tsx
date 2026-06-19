@@ -22,9 +22,9 @@ beforeEach(() => {
   useBatchStore.getState().reset();
   useBackendStore.setState({ selectedBackend: "ollama" });
   useEvalRegistryStore.setState({
-    presets: [{ id: "curated", label: "Curated Suite" }],
+    presets: [{ id: "easy-coding", label: "Coding", domain: "coding", tier: "easy" }],
     collections: [],
-    selected: "curated",
+    selected: "easy-coding",
     tasks: [],
     init,
   });
@@ -54,7 +54,7 @@ describe("EvalPage (3-pane workspace)", () => {
     render(<EvalPage />);
     act(() =>
       useBatchStore.setState({
-        report: { collection_id: "curated", columns: [{ model: "llama3.2:1b", backend: "ollama", toolcall: null, agentic: null, error: null }] },
+        report: { collection_id: "easy-coding", columns: [{ model: "llama3.2:1b", backend: "ollama", toolcall: null, agentic: null, error: null }] },
       }),
     );
     expect(useBatchStore.getState().report).not.toBeNull();
@@ -66,7 +66,7 @@ describe("EvalPage (3-pane workspace)", () => {
     render(<EvalPage />);
     act(() =>
       useBatchStore.setState({
-        report: { collection_id: "curated", columns: [{ model: "llama3.2:1b", backend: "ollama", toolcall: null, agentic: null, error: null }] },
+        report: { collection_id: "easy-coding", columns: [{ model: "llama3.2:1b", backend: "ollama", toolcall: null, agentic: null, error: null }] },
         outcomeByKey: { "llama3.2:1b weather": { kind: "single", passed: true, trace: {} } } as never,
       }),
     );

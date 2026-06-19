@@ -61,7 +61,14 @@ pub struct ToolTask {
     pub agentic: Option<AgenticSpec>,
 }
 
-const CATEGORIES: [&str; 5] = ["single", "parallel", "select", "abstain", "agentic"];
+const CATEGORIES: [&str; 6] = ["single", "parallel", "select", "abstain", "agentic", "agent_loop"];
+
+/// Categories that run on the multi-turn agentic engine (score via
+/// `agentic.end_state`, not `expected`). Phase 9-v2 added `agent_loop` — the v2
+/// authored scenarios — alongside the original `agentic`; both route identically.
+pub fn is_agentic(category: &str) -> bool {
+    category == "agentic" || category == "agent_loop"
+}
 
 /// A tool's `parameters` must be a JSON-Schema object: `type:"object"`, a
 /// `properties` map, and an optional `required` list. Used only to validate
@@ -117,7 +124,7 @@ pub fn validate_tasks(tasks: &[ToolTask]) -> AppResult<()> {
         for tool in &t.tools {
             validate_tool(&t.id, tool)?;
         }
-        if t.category == "agentic" {
+        if is_agentic(&t.category) {
             // The agentic path scores via `agentic.end_state`, not `expected`, so
             // the single-turn abstain/expected rule below is skipped entirely.
             let spec = t
@@ -151,9 +158,9 @@ pub fn validate_tasks(tasks: &[ToolTask]) -> AppResult<()> {
 fn validate_agentic(id: &str, tools: &[ToolSchema], spec: &AgenticSpec) -> AppResult<()> {
     let known = |name: &str| tools.iter().any(|t| t.name == name);
     match &spec.end_state {
-        EndStateRule::RequireSequence(cps) => {
+        EndStateRule::RequireSequence(cps) | EndStateRule::RequireAll(cps) => {
             if cps.is_empty() {
-                return Err(bad(id, "agentic", "end-state require_sequence needs at least one checkpoint"));
+                return Err(bad(id, "agentic", "end-state needs at least one checkpoint"));
             }
             for cp in cps {
                 if !known(&cp.tool) {
@@ -168,72 +175,31 @@ fn validate_agentic(id: &str, tools: &[ToolSchema], spec: &AgenticSpec) -> AppRe
             return Err(bad(id, "agentic", &format!("mock references unknown tool '{}'", m.call.name)));
         }
     }
+    // v2: every must_not_call entry must name a declared tool (real or decoy) — a
+    // typo'd trap silently never fires and the task becomes easier than authored.
+    for trap in &spec.must_not_call {
+        let name = match trap {
+            crate::inference::eval::agentic::v2::r#match::MustNotCall::Name(n) => n,
+            crate::inference::eval::agentic::v2::r#match::MustNotCall::Pair { name, .. } => name,
+        };
+        if !known(name) {
+            return Err(bad(id, "agentic", &format!("must_not_call names unknown tool '{name}'")));
+        }
+    }
     if matches!(spec.k, Some(0)) || matches!(spec.max_steps, Some(0)) {
         return Err(bad(id, "agentic", "k and max_steps must be >= 1"));
     }
     Ok(())
 }
 
-const FIXTURE: &str = include_str!("tasks.json");
-const FINANCE_FIXTURE: &str = include_str!("tasks_finance.json");
-const AGENTIC_FIXTURE: &str = include_str!("tasks_agentic.json");
-const AGENTIC3_FIXTURE: &str = include_str!("tasks_agentic_3.json");
-const AGENTIC5_FIXTURE: &str = include_str!("tasks_agentic_5.json");
-const AGENTIC8_FIXTURE: &str = include_str!("tasks_agentic_8.json");
-
-/// The bundled, curated tool-call task set (single / parallel / select /
-/// abstain). Embedded at compile time — indicative, prompt-based, not a
-/// leaderboard.
-pub fn tasks() -> Vec<ToolTask> {
-    serde_json::from_str(FIXTURE).expect("bundled toolcall tasks.json is valid")
-}
-
-/// A finance-themed tool-call set (balances / sums / transaction search +
-/// abstain). Structural tool-call reliability — NOT a PDF/data parser.
-pub fn finance_tasks() -> Vec<ToolTask> {
-    serde_json::from_str(FINANCE_FIXTURE).expect("bundled tasks_finance.json is valid")
-}
-
-/// A multi-step agentic preset (a required-sequence transfer + a correct
-/// abstention). Exercises the sandbox loop, Pass^k, and the anti-cheat.
-pub fn agentic_tasks() -> Vec<ToolTask> {
-    serde_json::from_str(AGENTIC_FIXTURE).expect("bundled tasks_agentic.json is valid")
-}
-
-/// Larger multi-step agentic presets (3 / 5 / 8 ordered-sequence tasks across
-/// finance / ops / devops) so you can run a real Pass^k batch without importing.
-pub fn agentic_3_tasks() -> Vec<ToolTask> {
-    serde_json::from_str(AGENTIC3_FIXTURE).expect("bundled tasks_agentic_3.json is valid")
-}
-pub fn agentic_5_tasks() -> Vec<ToolTask> {
-    serde_json::from_str(AGENTIC5_FIXTURE).expect("bundled tasks_agentic_5.json is valid")
-}
-pub fn agentic_8_tasks() -> Vec<ToolTask> {
-    serde_json::from_str(AGENTIC8_FIXTURE).expect("bundled tasks_agentic_8.json is valid")
-}
-
-/// Read-only built-in presets: `(id, label)`. The runner is still handed a
-/// `Vec<ToolTask>` — these just enumerate the bundled sets.
-pub const BUILTIN_COLLECTIONS: &[(&str, &str)] = &[
-    ("curated", "Curated Suite"),
-    ("finance", "Finance (preset)"),
-    ("agentic", "Agentic (preset)"),
-    ("agentic_3", "Agentic · 3 Multi-Step"),
-    ("agentic_5", "Agentic · 5 Multi-Step"),
-    ("agentic_8", "Agentic · 8 Multi-Step"),
-];
-
-/// Tasks for a built-in preset id, or `None` if unknown.
+/// Tasks for a built-in collection by id (the v2 scenario file stem, e.g.
+/// "easy-coding"), or `None` for an unknown id. Phase 9-v2: the bundled tiered
+/// scenarios ARE the eval content — the old hand-coded single/multi fixtures
+/// (curated/finance/agentic*) were removed.
 pub fn builtin_collection(id: &str) -> Option<Vec<ToolTask>> {
-    match id {
-        "curated" => Some(tasks()),
-        "finance" => Some(finance_tasks()),
-        "agentic" => Some(agentic_tasks()),
-        "agentic_3" => Some(agentic_3_tasks()),
-        "agentic_5" => Some(agentic_5_tasks()),
-        "agentic_8" => Some(agentic_8_tasks()),
-        _ => None,
-    }
+    use crate::inference::eval::agentic::v2::collection::load_v2_collection;
+    use crate::inference::eval::agentic::v2::scenarios::v2_json;
+    v2_json(id).and_then(|json| load_v2_collection(json).ok())
 }
 
 #[cfg(test)]

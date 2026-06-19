@@ -5,6 +5,7 @@ import { ToolCallReportSchema, TraceResultSchema } from "./toolcall";
 import type { ModelTarget } from "./matrix";
 import type { ToolTask } from "./registry";
 import type { InferenceParams } from "../workspace/prompts";
+import type { Tier } from "./readiness";
 
 export const EVENT_BATCH_PROGRESS = "batch-progress";
 export const EVENT_AGENTIC_STEP = "agentic-step";
@@ -19,6 +20,8 @@ export const StepKindSchema = z.enum([
   "hallucinated_completion",
   "end_state_reached",
   "infinite_loop",
+  "forbidden_call",
+  "turn_timeout",
 ]);
 export type StepKind = z.infer<typeof StepKindSchema>;
 
@@ -37,6 +40,8 @@ export const TopErrorSchema = z.enum([
   "hallucinated",
   "malformed_json",
   "malformed_schema",
+  "forbidden_call",
+  "turn_timeout",
 ]);
 export type TopError = z.infer<typeof TopErrorSchema>;
 
@@ -45,6 +50,12 @@ export const FailureTrackerSchema = z.object({
   hallucinated_completions: z.number().int(),
   malformed_json_calls: z.number().int(),
   schema_unrecovered_calls: z.number().int(),
+  // Phase 9 / 9B: decoy distraction, must_not_call traps, and per-step timeouts — added
+  // to the tracker after the original four. `.optional()` so pre-9B reports (and existing
+  // typed fixtures) still parse; consumers treat an absent count as 0.
+  unknown_tool_calls: z.number().int().optional(),
+  forbidden_calls: z.number().int().optional(),
+  turn_timeouts: z.number().int().optional(),
 });
 export type FailureTracker = z.infer<typeof FailureTrackerSchema>;
 
@@ -141,6 +152,9 @@ export const BatchCompletePayloadSchema = z.object({ report: BatchReportSchema }
 /// The one streaming eval command. Returns the final report (also delivered via
 /// the `batch-complete` event); progress arrives on `batch-progress` /
 /// `agentic-step`. K / Max-Steps override the per-task agentic spec at run time.
+/// `tier` (Phase 9) stamps the difficulty tier + derived Pass^k onto each agentic
+/// spec (an explicit `k` still wins — the Custom path); `decoyTools` injects the
+/// anti-saturation decoy budget. Both `undefined` preserves pre-Phase-9 behavior.
 export async function runBatchEval(
   collectionId: string,
   targets: ModelTarget[],
@@ -150,9 +164,22 @@ export async function runBatchEval(
   params?: InferenceParams,
   keepAlive?: number,
   runNativeFc?: boolean,
+  tier?: Tier,
+  decoyTools?: number,
 ): Promise<BatchReport> {
   return BatchReportSchema.parse(
-    await invoke("run_batch_eval", { collectionId, targets, tasks, k, maxSteps, params, keepAlive, runNativeFc }),
+    await invoke("run_batch_eval", {
+      collectionId,
+      targets,
+      tasks,
+      k,
+      maxSteps,
+      params,
+      keepAlive,
+      runNativeFc,
+      tier,
+      decoyTools,
+    }),
   );
 }
 

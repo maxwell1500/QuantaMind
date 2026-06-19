@@ -63,7 +63,7 @@ Built with Tauri, Rust, React, and Ollama. Local-first. No telemetry. No cloud.
 | **Analysis** (Compare) | Run the same prompt through multiple models side-by-side, with a hardware feasibility check up front and Markdown/JSON export. |
 | **Inspector** | Per-token timing forensics for a run — TTFT phase breakdown, a per-token latency timeline, and an inter-token latency histogram. |
 | **Model Management** | Install, inspect, and uninstall models from three sources — Ollama library, Hugging Face GGUF, local files — without touching a terminal. |
-| **Eval** | Score models on single-turn tool-calling and multi-step agentic tasks (Pass^k, schema resilience, context-cliff), with custom collections + CSV import. |
+| **Eval** | Score models on graduated **tiered agentic scenarios** (Easy→Extreme across coding, finance, medical, legal, ops…) — world-state discovery, `must_not_call` traps, tier-scaled Pass^k — plus schema resilience and the context-cliff probe; custom collections + JSON/CSV import. |
 | **Quant** | Compare quantizations of one model family — size vs quality vs whether it fits in memory. |
 | **Agent Report** | Turn the measurements into a per-model **Ready / Conditional / Not Ready** verdict against a chosen readiness profile and your hardware. |
 
@@ -145,7 +145,8 @@ Three design commitments shape every decision:
 - Cold- vs warm-start comparison, memory-leak heuristic, regression alerts, HTML report export
 
 ### Eval
-- Score models on **single-turn tool-calling** and **multi-step agentic** tasks
+- Score models on **graduated tiered agentic scenarios** (Easy→Extreme) — the bundled suites span coding, finance, medical, legal, ecommerce, support, supply-chain, math/science, and clinical-trial domains; users add tasks or import JSON/CSV per tier
+- **Difficulty Tier** run control (`Auto`/Easy…Extreme/`Custom`): a tier locks **Pass^k** to its policy (Easy 5 / Medium 8 / Hard 16 / Extreme 24) and stamps it onto every task, `Auto` follows your machine's hardware class (shown as a "HW: …GB · class · tier recommended" hint), and `Custom` restores a free `k`. An **Anti-Saturation** toggle shuffles N never-correct decoy tools into each task to resist contamination; the scoreboard header echoes the live run as `Tier · K · Decoys`
 - Deterministic, sandbox-free scoring: composite tool-call accuracy (parse · tool · args · abstain), **Pass^k** reliability, avg steps, effort, **schema resilience**, dominant failure mode
 - **Context-cliff** probe — backend engine that pads tasks with license-clean synthetic presets, sweeps the instruction across mid-document depths, and verifies each rung to ±5% of the target, finding the prompt length where tool-call accuracy collapses (real measured prompt tokens, never an estimate); the deep rungs are slow (a quarter-to-full context window of inference), so live progress is reported at *task* granularity — "rung r/N · padding to Nk tokens · position p/3 · task t/M" with an elapsed/ETA readout and an overall % bar — so a long rung shows continuous movement instead of looking stuck; the % bar is **monotonic and never reads a false 100%** — within-rung fill is capped below each rung boundary (it only crosses when the rung authoritatively completes) so a verify-and-adjust re-sweep can't bounce it back, and it snaps to 100% when an early-stopped probe finishes; every rung keeps a per-step trace — the exact system prompt + each needle position's output (pass or fail), streamed live per rung — surfaced as a per-row **View trace** in the results table (with an ⓘ explaining how Accuracy is scored) so a red "0% / Broken" shows *what* the model saw and emitted, not just that it failed
 - Author custom collections by hand or bulk-load single-turn tasks via CSV import
@@ -160,7 +161,8 @@ Three design commitments shape every decision:
 - Per-model **Ready / Conditional / Not Ready** verdict with the exact blocking + conditional reasons
 - Hardware-aware: VRAM fit (exact weights + KV cache vs an allocation cap, with a pressure flag)
 - Configurable readiness profiles (min Pass^k, forbid loops/false-done, require full VRAM, min context, require native FC)
-- Export the verdict table as a standalone HTML report
+- **Per-model deep-dive (Phase 9B):** an **Executive Verdict** judged against the tier you actually ran (hardware class shown as advice, never a forced fail), a **Tier Progression Matrix** (per-tier Pass^k + avg-steps with CLEAR / SATURATED / FAIL / NOT-TESTED badges — saturation at a glance), and a **Failure Taxonomy** (decoy / forbidden-call / loop / hallucination distribution across the tested tiers)
+- Export the verdict table as a standalone HTML report, or the deep-dive as versioned JSON
 
 ---
 

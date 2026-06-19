@@ -11,8 +11,8 @@ import {
   type BuiltinCollectionInfo,
 } from "../../../shared/ipc/eval/registry";
 
-/// The default read-only preset id (the curated suite).
-export const DEFAULT_PRESET = "curated";
+/// The default read-only collection id (the first Easy-tier scenario).
+export const DEFAULT_PRESET = "easy-coding";
 
 /// Sentinel `selected` value for an unsaved, brand-new collection. It is never a
 /// real preset id nor a sanitized file stem, and is never sent to the backend —

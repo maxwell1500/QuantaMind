@@ -60,7 +60,7 @@ beforeEach(() => {
   useParamsStore.setState({ globalParams: {} });
   // Bypass real init (IPC) — seed presets so the panel loads its own dataset.
   useEvalRegistryStore.setState({
-    presets: [{ id: "curated", label: "Curated Suite" }],
+    presets: [{ id: "easy-coding", label: "Coding", domain: "coding", tier: "easy" }],
     collections: [],
     init: vi.fn().mockResolvedValue(undefined),
   });
@@ -79,7 +79,7 @@ describe("ContextCliffPanel", () => {
       reportOf({ status: "Collapsed", depth: 8300 }, [rung(120, 1.0), rung(4200, 1.0), rung(8300, 0.5), rung(12400, 0.4), rung(16500, 0.3)], 4200) as never,
     );
     render(<ContextCliffPanel />);
-    await waitFor(() => expect(getBuiltinCollection).toHaveBeenCalledWith("curated"));
+    await waitFor(() => expect(getBuiltinCollection).toHaveBeenCalledWith("easy-coding"));
 
     await waitFor(() => expect(screen.getByTestId("cliff-run")).not.toBeDisabled());
     fireEvent.click(screen.getByTestId("cliff-run"));
@@ -196,10 +196,10 @@ describe("ContextCliffPanel", () => {
   it("pre-fills model + collection + max tokens + steps from a Matrix request and does NOT auto-run", async () => {
     const { useCliffStore } = await import("../state/cliffStore");
     // The Matrix sets this before navigating to Audit.
-    useCliffStore.setState({ request: { model: "m2", backend: "ollama", collectionId: "curated", maxTokens: 8192, steps: 7 } });
+    useCliffStore.setState({ request: { model: "m2", backend: "ollama", collectionId: "easy-coding", maxTokens: 8192, steps: 7 } });
 
     render(<ContextCliffPanel />);
-    await waitFor(() => expect(getBuiltinCollection).toHaveBeenCalledWith("curated"));
+    await waitFor(() => expect(getBuiltinCollection).toHaveBeenCalledWith("easy-coding"));
 
     // All four fields land pre-selected (the override model, not the header "m").
     expect((screen.getByTestId("cliff-model-select") as HTMLSelectElement).value).toBe("m2");
@@ -269,7 +269,7 @@ describe("ContextCliffPanel", () => {
     render(<ContextCliffPanel />);
     await waitFor(() => expect(getBuiltinCollection).toHaveBeenCalled());
     // No request at mount → header model. Then the user clicks Run probe on the Matrix:
-    act(() => useCliffStore.setState({ request: { model: "m3", backend: "ollama", collectionId: "curated", maxTokens: 4096, steps: 3 } }));
+    act(() => useCliffStore.setState({ request: { model: "m3", backend: "ollama", collectionId: "easy-coding", maxTokens: 4096, steps: 3 } }));
     await waitFor(() => expect((screen.getByTestId("cliff-model-select") as HTMLSelectElement).value).toBe("m3"));
     expect((screen.getByTestId("cliff-test-steps") as HTMLInputElement).value).toBe("3");
     expect(useCliffStore.getState().request).toBeNull(); // consumed

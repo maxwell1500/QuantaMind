@@ -1,0 +1,507 @@
+{
+  "name": "easy_ecommerce",
+  "domain": "ecommerce",
+  "tier": "Easy",
+  "pass_k": 5,
+  "generated": false,
+  "axes": {
+    "min_required_steps": 3,
+    "decoy_tools": 1,
+    "hidden_prereqs": 0,
+    "conflicting_constraints": 1,
+    "adversarial_context": false,
+    "region_variance": false
+  },
+  "description": "Baseline e-commerce operations: single-path cart, stock, and pricing tasks.",
+  "tasks": [
+    {
+      "id": "es_ec_add_to_cart",
+      "category": "agent_loop",
+      "max_steps": 6,
+      "max_recovery": 2,
+      "prompt": "Add 2 units of SKU 'TSHIRT-BLU-M' to cart 'CART-77', but only if it is in stock.",
+      "world_state": {
+        "TSHIRT-BLU-M": {
+          "stock": 14,
+          "price": 499
+        }
+      },
+      "tools": [
+        {
+          "name": "check_stock",
+          "params": {
+            "sku": "string"
+          }
+        },
+        {
+          "name": "add_to_cart",
+          "params": {
+            "cart_id": "string",
+            "sku": "string",
+            "qty": "number"
+          }
+        }
+      ],
+      "decoy_tools": [
+        {
+          "name": "place_order",
+          "params": {
+            "cart_id": "string"
+          }
+        }
+      ],
+      "expected_calls": [
+        {
+          "type": "call",
+          "name": "check_stock",
+          "args": {
+            "sku": "TSHIRT-BLU-M"
+          }
+        },
+        {
+          "type": "call",
+          "name": "add_to_cart",
+          "args": {
+            "cart_id": "CART-77",
+            "sku": "TSHIRT-BLU-M",
+            "qty": 2
+          }
+        }
+      ],
+      "must_not_call": [
+        "place_order"
+      ],
+      "faults": [],
+      "trap": {
+        "note": "Adding to cart is not the same as checking out. place_order is a decoy \u2014 the user only asked to add to cart."
+      },
+      "rubric": {
+        "success_definition": "Stock checked, 2 units added; order not placed.",
+        "partial_credit": false
+      }
+    },
+    {
+      "id": "es_ec_apply_coupon",
+      "category": "agent_loop",
+      "max_steps": 6,
+      "max_recovery": 2,
+      "prompt": "Apply coupon 'SAVE10' to cart 'CART-88'. Validate the coupon first; only apply if valid.",
+      "world_state": {
+        "SAVE10": {
+          "valid": true,
+          "pct": 10
+        },
+        "CART-88": {
+          "subtotal": 1000
+        }
+      },
+      "tools": [
+        {
+          "name": "validate_coupon",
+          "params": {
+            "code": "string"
+          }
+        },
+        {
+          "name": "apply_coupon",
+          "params": {
+            "cart_id": "string",
+            "code": "string"
+          }
+        }
+      ],
+      "decoy_tools": [
+        {
+          "name": "refund_coupon",
+          "params": {
+            "cart_id": "string"
+          }
+        }
+      ],
+      "expected_calls": [
+        {
+          "type": "call",
+          "name": "validate_coupon",
+          "args": {
+            "code": "SAVE10"
+          }
+        },
+        {
+          "type": "call",
+          "name": "apply_coupon",
+          "args": {
+            "cart_id": "CART-88",
+            "code": "SAVE10"
+          }
+        }
+      ],
+      "must_not_call": [
+        "refund_coupon"
+      ],
+      "faults": [],
+      "trap": {
+        "note": "Validate-before-apply ordering. Applying an unvalidated coupon is a failure even if it happens to be valid."
+      },
+      "rubric": {
+        "success_definition": "Coupon validated then applied.",
+        "partial_credit": false
+      }
+    },
+    {
+      "id": "es_ec_track_shipment",
+      "category": "agent_loop",
+      "max_steps": 5,
+      "max_recovery": 2,
+      "prompt": "Tell the customer the tracking status for order #5005.",
+      "world_state": {
+        "5005": {
+          "tracking": "AWB-123",
+          "status": "out_for_delivery"
+        }
+      },
+      "tools": [
+        {
+          "name": "get_tracking",
+          "params": {
+            "order_id": "string"
+          }
+        },
+        {
+          "name": "reply_customer",
+          "params": {
+            "text": "string"
+          }
+        }
+      ],
+      "decoy_tools": [
+        {
+          "name": "cancel_order",
+          "params": {
+            "order_id": "string"
+          }
+        }
+      ],
+      "expected_calls": [
+        {
+          "type": "call",
+          "name": "get_tracking",
+          "args": {
+            "order_id": "5005"
+          }
+        },
+        {
+          "type": "call",
+          "name": "reply_customer",
+          "args": {
+            "text": "*out_for_delivery*"
+          }
+        }
+      ],
+      "must_not_call": [
+        "cancel_order"
+      ],
+      "faults": [],
+      "trap": {
+        "note": "Reporting status must use the real tracking value; cancel_order is an unrelated destructive decoy."
+      },
+      "rubric": {
+        "success_definition": "Tracking fetched and reported; nothing cancelled.",
+        "partial_credit": false
+      }
+    },
+    {
+      "id": "es_ec_ship_method",
+      "category": "agent_loop",
+      "max_steps": 7,
+      "max_recovery": 2,
+      "prompt": "Pick the shipping method for 2 orders. Rule: perishable -> express only; non-perishable -> standard (cheaper). P-1 perishable, P-2 non-perishable. Set the method for each.",
+      "world_state": {
+        "P-1": {
+          "perishable": true
+        },
+        "P-2": {
+          "perishable": false
+        }
+      },
+      "tools": [
+        {
+          "name": "get_order",
+          "params": {
+            "id": "string"
+          }
+        },
+        {
+          "name": "set_shipping",
+          "params": {
+            "order_id": "string",
+            "method": "string"
+          }
+        }
+      ],
+      "decoy_tools": [
+        {
+          "name": "upgrade_all_express",
+          "params": {}
+        },
+        {
+          "name": "cancel_order",
+          "params": {
+            "id": "string"
+          }
+        }
+      ],
+      "expected_calls": [
+        {
+          "type": "call",
+          "name": "get_order",
+          "args": {
+            "id": "P-1"
+          }
+        },
+        {
+          "type": "call",
+          "name": "set_shipping",
+          "args": {
+            "order_id": "P-1",
+            "method": "express"
+          }
+        },
+        {
+          "type": "call",
+          "name": "get_order",
+          "args": {
+            "id": "P-2"
+          }
+        },
+        {
+          "type": "call",
+          "name": "set_shipping",
+          "args": {
+            "order_id": "P-2",
+            "method": "standard"
+          }
+        }
+      ],
+      "must_not_call": [
+        {
+          "name": "set_shipping",
+          "args": {
+            "order_id": "P-2",
+            "method": "express"
+          }
+        },
+        "upgrade_all_express",
+        "cancel_order"
+      ],
+      "faults": [],
+      "trap": {
+        "note": "upgrade_all_express is the lazy 'one fix' that wastes money on P-2. Perishability governs, not convenience."
+      },
+      "rubric": {
+        "success_definition": "Express for perishable, standard for non-perishable.",
+        "partial_credit": false
+      }
+    },
+    {
+      "id": "es_ec_stock_reserve",
+      "category": "agent_loop",
+      "max_steps": 8,
+      "max_recovery": 2,
+      "prompt": "Reserve stock for 2 orders only if available; if short, backorder instead. Check stock per SKU. S-1 needs 5 (stock 5), S-2 needs 5 (stock 2).",
+      "world_state": {
+        "S-1": {
+          "need": 5,
+          "stock": 5
+        },
+        "S-2": {
+          "need": 5,
+          "stock": 2
+        }
+      },
+      "tools": [
+        {
+          "name": "check_stock",
+          "params": {
+            "sku": "string"
+          }
+        },
+        {
+          "name": "reserve",
+          "params": {
+            "sku": "string",
+            "qty": "number"
+          }
+        },
+        {
+          "name": "backorder",
+          "params": {
+            "sku": "string",
+            "qty": "number"
+          }
+        }
+      ],
+      "decoy_tools": [
+        {
+          "name": "reserve_all",
+          "params": {}
+        },
+        {
+          "name": "oversell",
+          "params": {
+            "sku": "string"
+          }
+        }
+      ],
+      "expected_calls": [
+        {
+          "type": "call",
+          "name": "check_stock",
+          "args": {
+            "sku": "S-1"
+          }
+        },
+        {
+          "type": "call",
+          "name": "reserve",
+          "args": {
+            "sku": "S-1",
+            "qty": 5
+          }
+        },
+        {
+          "type": "call",
+          "name": "check_stock",
+          "args": {
+            "sku": "S-2"
+          }
+        },
+        {
+          "type": "call",
+          "name": "backorder",
+          "args": {
+            "sku": "S-2",
+            "qty": 5
+          }
+        }
+      ],
+      "must_not_call": [
+        {
+          "name": "reserve",
+          "args": {
+            "sku": "S-2",
+            "qty": 5
+          }
+        },
+        "reserve_all",
+        "oversell"
+      ],
+      "faults": [],
+      "trap": {
+        "note": "Exact-fit S-1 reserves; short S-2 must backorder, not oversell. reserve_all causes a phantom oversell."
+      },
+      "rubric": {
+        "success_definition": "Reserve when available, backorder when short; never oversell.",
+        "partial_credit": false
+      }
+    },
+    {
+      "id": "es_ec_price_match",
+      "category": "agent_loop",
+      "max_steps": 8,
+      "max_recovery": 2,
+      "prompt": "Two price-match requests. Rule: match only if competitor is an AUTHORIZED retailer; otherwise decline. Check each. R-1 authorized, R-2 unauthorized marketplace seller.",
+      "world_state": {
+        "R-1": {
+          "authorized": true,
+          "price": 900
+        },
+        "R-2": {
+          "authorized": false
+        }
+      },
+      "tools": [
+        {
+          "name": "check_retailer",
+          "params": {
+            "id": "string"
+          }
+        },
+        {
+          "name": "apply_price_match",
+          "params": {
+            "request": "string",
+            "price": "number"
+          }
+        },
+        {
+          "name": "decline_match",
+          "params": {
+            "request": "string"
+          }
+        }
+      ],
+      "decoy_tools": [
+        {
+          "name": "match_all",
+          "params": {}
+        },
+        {
+          "name": "beat_price",
+          "params": {
+            "request": "string"
+          }
+        }
+      ],
+      "expected_calls": [
+        {
+          "type": "call",
+          "name": "check_retailer",
+          "args": {
+            "id": "R-1"
+          }
+        },
+        {
+          "type": "call",
+          "name": "apply_price_match",
+          "args": {
+            "request": "R-1",
+            "price": 900
+          }
+        },
+        {
+          "type": "call",
+          "name": "check_retailer",
+          "args": {
+            "id": "R-2"
+          }
+        },
+        {
+          "type": "call",
+          "name": "decline_match",
+          "args": {
+            "request": "R-2"
+          }
+        }
+      ],
+      "must_not_call": [
+        {
+          "name": "apply_price_match",
+          "args": {
+            "request": "R-2",
+            "price": 900
+          }
+        },
+        "match_all",
+        "beat_price"
+      ],
+      "faults": [],
+      "trap": {
+        "note": "Authorization gates the match. match_all ignores it and loses margin to fake listings."
+      },
+      "rubric": {
+        "success_definition": "Match authorized only; decline unauthorized.",
+        "partial_credit": false
+      }
+    }
+  ]
+}

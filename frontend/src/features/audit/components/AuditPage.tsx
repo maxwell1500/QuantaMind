@@ -1,5 +1,5 @@
 import { useEffect, useState } from "react";
-import { useEvalRegistryStore } from "../../eval/state/evalRegistryStore";
+import { useEvalRegistryStore, DEFAULT_PRESET } from "../../eval/state/evalRegistryStore";
 import { useBatchStore } from "../../eval/state/batchStore";
 import { useInstalledModelsStore } from "../../models/state/installedModelsStore";
 import { useBackendStore } from "../../../shared/state/backendStore";
@@ -37,7 +37,7 @@ export function AuditPage() {
   const report = useBatchStore((s) => s.report);
   const models = useInstalledModelsStore((s) => s.list);
   const selectedBackend = useBackendStore((s) => s.selectedBackend);
-  const [collection, setCollection] = useState("curated");
+  const [collection, setCollection] = useState(DEFAULT_PRESET);
   const [history, setHistory] = useState<RunSummary[]>([]);
   // Show only the selected backend's regression history — a backend switch
   // shouldn't keep displaying the previous backend's model runs.
