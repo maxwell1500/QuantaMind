@@ -408,7 +408,7 @@ dropped background never exports white-on-transparent) and `pixelRatio:2`.
 | `components/EditProfileModal.tsx` | a real editor for the active profile's gates (Min Pass^k, forbid loops/hallucination, require full VRAM / native FC, max steps/latency, min context); `numOrNull` maps blank→`null` ("off"); saves via `save_readiness_profile` then re-assesses. |
 | `components/ExportMenu.tsx` | dropdown → PNG (`snapshotPng`→`save`→`save_readiness_image`), Copy Markdown (`buildReadinessMarkdown`→clipboard, surfaces focus rejections), Export HTML (`buildReadinessHtml`→download). All offline, no auth. |
 | `components/StatusBadge.tsx` | `[ 🟢 READY ]` / `[ 🟡 WARN ]` / `[ 🔴 FAIL ]` chip. |
-| `components/HostHardwareProfile.tsx`, `ProfileSelector.tsx` | standalone hardware/profile panels (UMA-vs-discrete arch chips, cap dropdown, threshold list). Largely superseded by the inlined controls in `AgentReportPage`. |
+| `components/HostHardwareProfile.tsx` | standalone hardware panel (UMA-vs-discrete arch chips, cap dropdown, threshold list). Largely superseded by the inlined controls in `AgentReportPage`. |
 | `capBytes.ts` | `defaultCapBytes` (UMA total / VRAM / RAM); `capOptions` offers only caps ≤ physical memory (simulating a *smaller* box is meaningful, more than you have isn't); `archLabel`. |
 | `reportHtml.ts` | self-contained HTML one-pager (inline CSS, every string escaped); per-row VRAM line + reasons; reuses inspector's `esc`. |
 | `readinessHelp.tsx` | in-app InfoButton copy explaining the verdict model, native-FC path, VRAM cap, and profiles. |

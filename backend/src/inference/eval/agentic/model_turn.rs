@@ -18,6 +18,15 @@ use tokio_util::sync::CancellationToken;
 #[allow(async_fn_in_trait)]
 pub trait ModelTurn {
     async fn run(&self, spec: &GenerateSpec) -> AppResult<(String, GenerateStats)>;
+
+    /// Best-effort: load the model resident BEFORE the first scored turn so its
+    /// cold-load latency (weights into VRAM) isn't charged to the first task as a
+    /// `TurnTimeout` — which would systematically penalize every model's first task and
+    /// corrupt cross-model comparison. Default no-op: scripted test models need no
+    /// warming, and a backend that can't warm simply runs cold (the prior behavior).
+    async fn warm_up(&self) -> AppResult<()> {
+        Ok(())
+    }
 }
 
 /// Real path: dispatch by `BackendKind` (the trait isn't object-safe), accumulate
@@ -57,6 +66,27 @@ impl ModelTurn for BackendTurn {
             BackendKind::Mlx => MlxBackend::new(self.endpoint.clone(), self.model.clone()).generate(&spec, cancel, push).await?,
         };
         Ok((out, stats))
+    }
+
+    /// Issue a 1-token generation to force the model resident (honoring `keep_alive` so
+    /// it stays loaded across this model's tasks). The output is discarded; only the
+    /// load side-effect matters. Bypasses the global eval `options` so warming is cheap.
+    async fn warm_up(&self) -> AppResult<()> {
+        let spec = GenerateSpec {
+            model: self.model.clone(),
+            prompt: "ok".into(),
+            system: None,
+            options: Some(GenerateOptions { num_predict: Some(1), temperature: Some(0.0), ..Default::default() }),
+            keep_alive: self.keep_alive,
+        };
+        let cancel = self.cancel.clone();
+        let sink = |_: &str| {};
+        match self.backend {
+            BackendKind::Ollama => OllamaBackend::new(self.endpoint.clone()).generate(&spec, cancel, sink).await?,
+            BackendKind::LlamaCpp => LlamaCppBackend::new(self.endpoint.clone()).generate(&spec, cancel, sink).await?,
+            BackendKind::Mlx => MlxBackend::new(self.endpoint.clone(), self.model.clone()).generate(&spec, cancel, sink).await?,
+        };
+        Ok(())
     }
 }
 

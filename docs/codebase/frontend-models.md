@@ -39,7 +39,6 @@ sub-tabs of one page:
 | Inspect installed model | `useModelInspect` | `inspect_model` (/api/show) | — |
 | Delete | `DownloadsInstalled` | `remove_model`, `delete_llama_model`, `delete_mlx_model`, `delete_stt_model` | `models-changed` |
 | Storage | `Storage*` sections | `get_disk_usage`, `get_storage_path`, `validate_storage_path`, `resolve_models_folder`, `get/set_user_settings`, `clear_app_cache` | — |
-| Disk pre-check (Compare) | — | `check_install_feasibility` | — |
 
 The four progress events all funnel through one subscription (`downloadEventBus`) into one
 Zustand store (`modelStore.downloads`). The installed list has its own single subscription
@@ -493,13 +492,6 @@ error (message + dismiss).
 | `ModelsFolderSection.tsx` | The shared GGUF weights folder (used by llama.cpp directly, imported into Ollama) via `resolve_models_folder` / `get/set_user_settings`; refreshes the installed list after a change. |
 | `storage/ClearCacheConfirm.tsx` | Type-`CLEAR`-to-confirm guard for wiping regenerable caches; copy spells out that models/collections/settings are kept. |
 
-**Disk pre-check.** The backend enforces a free-space floor via `check_install_feasibility`
-([`feasibility.rs`](../../backend/src/commands/system/feasibility.rs)): `assess(free, estimated)`
-applies a 5% safety margin, **blocks** when projected free-after drops under
-`BLOCK_THRESHOLD_BYTES = 2 GiB`, **warns** under 10 GiB, else **Ok**. The Models install commands
-refuse on insufficient space at the Rust layer; the Compare feature surfaces the verdict in its
-UI (`shared/ipc/compare/feasibility.ts`).
-
 ---
 
 ## Data-flow walkthrough — browse → install → everywhere
@@ -512,8 +504,8 @@ UI (`shared/ipc/compare/feasibility.ts`).
    (`memoryFit(sizeBytes, snapshot.available_memory_bytes)` → green/amber/red). `classifyHfVariant`
    disables `mmproj`/`lora` rows. Already-installed rows (matched via `hfVariantModelName`) show
    "Installed ✓".
-3. **Fit / disk check.** The fit badge is advisory (RAM). The hard floor is the backend's
-   `check_install_feasibility` — under 2 GiB projected-free, the install command refuses.
+3. **Fit check.** The fit badge is advisory (RAM): `memoryFit(sizeBytes, available_memory_bytes)`
+   colours green/amber/red but never blocks the install.
 4. **Install.** Click Install → `useHfInstall.install(repo, filename, name)`. Guard: refuse if
    another HF/MLX install is in flight. `setActiveHfName(name)` + an initial `downloading` entry,
    then `install_hf_gguf(repo, filename, name, selectedBackend)`.
@@ -538,8 +530,7 @@ UI (`shared/ipc/compare/feasibility.ts`).
   `pull_model`/`cancel_pull`, MLX install/list/delete, the `hf-progress`/`pull-progress`/
   `local-install-progress` event contracts.
 - [`backend-prompt-workspace-system.md`](./backend-prompt-workspace-system.md) — storage commands
-  (`get_disk_usage`, `get/validate_storage_path`, `resolve_models_folder`, `clear_app_cache`) and
-  the `check_install_feasibility` disk pre-check.
+  (`get_disk_usage`, `get/validate_storage_path`, `resolve_models_folder`, `clear_app_cache`).
 - [`frontend-overview.md`](./frontend-overview.md) — shared IPC layer + `shared/models/modelLabel`.
 - [`frontend-workspace.md`](./frontend-workspace.md), [`frontend-compare-analysis.md`](./frontend-compare-analysis.md)
   — model pickers that consume `installedModelsStore`.

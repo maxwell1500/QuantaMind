@@ -193,7 +193,7 @@ The `invoke_handler!` table registers **123** commands. Grouped by
 | `workspace` | 15 | Workspace open/close/current/tree/recent, prompt file CRUD (load/save/create/rename/delete), run history (append/list/get/clear/remove). | [backend-persistence.md](backend-persistence.md) |
 | `settings` | 7 | Model settings (get + set temperature), storage path get/validate, user settings get/set + resolve models folder. | `commands/settings`, [backend-persistence.md](backend-persistence.md) |
 | `mlx` | 7 | MLX health, list/delete/install models, server start/stop/status. | [backend-inference-backends.md](backend-inference-backends.md) |
-| `system` | 6 | Install-feasibility check, hardware snapshot, loaded models, Ollama RSS, Ollama health, onboarding-workspace scaffold. | `commands/system` |
+| `system` | 5 | Hardware snapshot, loaded models, Ollama RSS, Ollama health, onboarding-workspace scaffold. | `commands/system` |
 | `hf` | 6 | HuggingFace search, repo files (+all), model card, install GGUF, cancel install. | [backend-models-hf-gguf.md](backend-models-hf-gguf.md) |
 | `models` | 5 | Ollama list/inspect, KV-cache estimate, pull/cancel-pull. | [backend-models-hf-gguf.md](backend-models-hf-gguf.md) |
 | `llama` | 5 | llama-server start/stop + health, list/delete llama models. | [backend-inference-backends.md](backend-inference-backends.md) |

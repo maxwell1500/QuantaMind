@@ -38,7 +38,8 @@
           "params": {
             "customer_id": "string",
             "email": "string"
-          }
+          },
+          "returns_entity": false
         }
       ],
       "decoy_tools": [
@@ -101,7 +102,8 @@
           "name": "reply_customer",
           "params": {
             "text": "string"
-          }
+          },
+          "returns_entity": false
         }
       ],
       "decoy_tools": [
@@ -164,7 +166,8 @@
           "params": {
             "customer_id": "string",
             "phone": "string"
-          }
+          },
+          "returns_entity": false
         }
       ],
       "decoy_tools": [
@@ -222,7 +225,8 @@
           "name": "reply_customer",
           "params": {
             "text": "string"
-          }
+          },
+          "returns_entity": false
         }
       ],
       "decoy_tools": [
@@ -278,13 +282,15 @@
           "name": "book_immediate_callback",
           "params": {
             "customer_id": "string"
-          }
+          },
+          "returns_entity": false
         },
         {
           "name": "book_scheduled_callback",
           "params": {
             "customer_id": "string"
-          }
+          },
+          "returns_entity": false
         }
       ],
       "decoy_tools": [
@@ -364,7 +370,8 @@
           "params": {
             "ticket": "string",
             "lang": "string"
-          }
+          },
+          "returns_entity": false
         }
       ],
       "decoy_tools": [
@@ -465,13 +472,15 @@
           "name": "issue_credit",
           "params": {
             "order_id": "string"
-          }
+          },
+          "returns_entity": false
         },
         {
           "name": "issue_cash_refund",
           "params": {
             "order_id": "string"
-          }
+          },
+          "returns_entity": false
         }
       ],
       "decoy_tools": [

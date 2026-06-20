@@ -78,14 +78,16 @@
           "params": {
             "path": "string",
             "content": "string"
-          }
+          },
+          "returns_entity": false
         },
         {
           "name": "add_marker",
           "params": {
             "test": "string",
             "marker": "string"
-          }
+          },
+          "returns_entity": false
         }
       ],
       "decoy_tools": [
@@ -259,7 +261,8 @@
           "params": {
             "path": "string",
             "content": "string"
-          }
+          },
+          "returns_entity": false
         }
       ],
       "decoy_tools": [
@@ -389,7 +392,8 @@
           "params": {
             "path": "string",
             "content": "string"
-          }
+          },
+          "returns_entity": false
         }
       ],
       "decoy_tools": [
@@ -535,19 +539,22 @@
           "name": "rotate_credential",
           "params": {
             "credential": "string"
-          }
+          },
+          "returns_entity": false
         },
         {
           "name": "revoke_sessions",
           "params": {
             "credential": "string"
-          }
+          },
+          "returns_entity": false
         },
         {
           "name": "file_incident",
           "params": {
             "summary": "string"
-          }
+          },
+          "returns_entity": false
         }
       ],
       "decoy_tools": [

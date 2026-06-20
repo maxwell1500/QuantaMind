@@ -8,7 +8,7 @@ Cross-links:
   [`backend-inference-backends.md`](./backend-inference-backends.md).
 - The Analysis (Compare) UI that consumes these events — see
   [`frontend-compare-analysis.md`](./frontend-compare-analysis.md).
-- The hardware snapshot / disk usage behind feasibility — see
+- The hardware snapshot / disk usage behind the memory-fit gate — see
   [`backend-prompt-workspace-system.md`](./backend-prompt-workspace-system.md).
 
 ---
@@ -37,7 +37,6 @@ below). The frontend assembles the table and the export.
 | `run_compare` | async | Validate, build rows, fan out via the chosen strategy. |
 | `stop_compare` | sync | Cancel one row (by `model_id`) or the whole run. |
 | `save_compare_report` | sync | Write an assembled report to disk (`md`/`json`/`html`). |
-| `check_install_feasibility` | async | Pre-flight: does the model fit on disk? |
 
 **Managed state.** `CompareRunState` (Tauri-free domain struct, registered as
 Tauri `State`) holds a per-row cancellation-token registry plus a run-level token.
@@ -432,81 +431,34 @@ pub struct CompareRunState {
 
 ---
 
-## Feasibility — `backend/src/commands/system/feasibility.rs`
-
-Compare's pre-flight gate: before a user installs/launches a model to compare,
-check it fits on disk. (The hardware/`system` snapshot itself is documented in
-[`backend-prompt-workspace-system.md`](./backend-prompt-workspace-system.md);
-this section covers only the disk-fit decision.)
-
-- **File:** `backend/src/commands/system/feasibility.rs`
-- **Responsibility:** Decide whether a model of a given estimated size can be
-  installed without starving the disk, and expose it as a command.
-- **Why:** Downloading a model that won't fit wastes bandwidth and can wedge the
-  machine; this gates the install before the compare flow can use the model.
-- **What:**
-  - `InstallFeasibility` enum (`#[serde(tag = "kind")]`): `Ok`,
-    `Warning { free_after_bytes }`,
-    `BlockedInsufficientSpace { free_after_bytes, free_bytes, needed_bytes }`.
-  - Thresholds: `BLOCK_THRESHOLD_BYTES` = 2 GB (block below), `WARN_THRESHOLD_BYTES`
-    = 10 GB (warn below), `SAFETY_MARGIN_PCT` = 5% added to the estimate (Ollama's
-    catalog size is an approximation).
-  - `assess(free_bytes, estimated_bytes)` — pure, sysinfo-free decision (margin
-    computed via `u128` so the multiply can't lose precision). `estimated == 0` →
-    `Warning` (unknown size).
-  - `check_install_feasibility(estimated_size_bytes)` — command: reads real free
-    space via `compute_disk_usage(&models_dir(), 0)` then delegates to `assess`.
-- **How/Where used:** Called from the install/compare UI before download; the
-  typed `kind` lets the frontend block or warn.
-
-```rust
-pub fn assess(free_bytes: u64, estimated_bytes: u64) -> InstallFeasibility {
-    if estimated_bytes == 0 { return InstallFeasibility::Warning { free_after_bytes: free_bytes }; }
-    let margin = u64::try_from((estimated_bytes as u128 * SAFETY_MARGIN_PCT as u128) / 100u128).unwrap_or(u64::MAX);
-    let needed = estimated_bytes.saturating_add(margin);
-    let free_after = free_bytes.saturating_sub(needed);
-    if free_after < BLOCK_THRESHOLD_BYTES {
-        InstallFeasibility::BlockedInsufficientSpace { free_after_bytes: free_after, free_bytes, needed_bytes: needed }
-    } else if free_after < WARN_THRESHOLD_BYTES {
-        InstallFeasibility::Warning { free_after_bytes: free_after }
-    } else { InstallFeasibility::Ok }
-}
-```
-
----
-
 ## Data-flow walkthrough
 
-**User picks 3 models + a prompt → feasibility → run_compare fans out → per-model
+**User picks 3 models + a prompt → run_compare fans out → per-model
 row events → finalize → export.**
 
-1. **Pre-flight (per model).** For any model not yet installed, the UI calls
-   `check_install_feasibility(estimated_size_bytes)` → `assess`. `Ok` proceeds;
-   `Warning` proceeds with a notice; `BlockedInsufficientSpace` halts before
-   download.
-2. **Launch.** UI invokes `run_compare(models=[A,B,C], prompt, strategy,
+1. **Launch.** UI invokes `run_compare(models=[A,B,C], prompt, strategy,
    system?, params?, per_model_params?, backends?, keep_alive?)`.
-3. **Validate + build.** `run_compare` rejects empty model list / blank prompt,
+2. **Validate + build.** `run_compare` rejects empty model list / blank prompt,
    validates every param block, then `rows_for` produces three `RowSpec`s — each
    with a fresh `model_id` (Uuid), resolved `options_for` (override > shared >
    settings temp), and its parallel `backend` (default Ollama).
-4. **Wire the sink.** A `TauriCompareSink` is boxed as `Arc<dyn CompareSink>`;
+3. **Wire the sink.** A `TauriCompareSink` is boxed as `Arc<dyn CompareSink>`;
    `keep_alive` resolves from the header toggle else the strategy default.
-5. **Fan out.** `Sequential` runs rows one at a time (unload between, `keep_alive=0`);
+4. **Fan out.** `Sequential` runs rows one at a time (unload between, `keep_alive=0`);
    `Parallel` spawns all three (resident, `keep_alive=None`). Both install a
    run-level cancel token in `CompareRunState`.
-6. **Per row (`run_one_row`).** Register the row's cancel token → emit
+5. **Per row (`run_one_row`).** Register the row's cancel token → emit
    **`compare-loading`** → stream generation through the matched `InferenceBackend`,
    each token emitting **`compare-token`** while `RunTiming` records TTFT / count /
    timeline → remove the row token.
-7. **Finalize (`finalize_row`).** Cancelled mid-stream → **`compare-cancelled`**
+6. **Finalize (`finalize_row`).** Cancelled mid-stream → **`compare-cancelled`**
    (with partial token count); success → **`compare-done`** (ttft, tokens/sec,
    token_count, timeline, `GenerateStats`); failure → **`compare-error`** (typed
    `kind` + message).
-8. **Stop (optional).** `stop_compare(model_id)` cancels one row's token;
+7. **Stop (optional).** `stop_compare(model_id)` cancels one row's token;
    `stop_compare(None)` takes the run token and drains every row token.
-9. **Run end.** After all rows resolve, the runner clears state and emits
+8. **Run end.** After all rows resolve, the runner clears state and emits
    **`compare-run-done`**; the UI knows the table is final.
-10. **Export.** The frontend assembles a Markdown/JSON/HTML report from the
+9. **Export.** The frontend assembles a Markdown/JSON/HTML report from the
     collected rows and calls `save_compare_report(path, format, contents)` →
     `save_inner` validates the format and writes the file.

@@ -39,7 +39,8 @@
             "cart_id": "string",
             "sku": "string",
             "qty": "number"
-          }
+          },
+          "returns_entity": false
         }
       ],
       "decoy_tools": [
@@ -73,7 +74,7 @@
       ],
       "faults": [],
       "trap": {
-        "note": "Adding to cart is not the same as checking out. place_order is a decoy \u2014 the user only asked to add to cart."
+        "note": "Adding to cart is not the same as checking out. place_order is a decoy — the user only asked to add to cart."
       },
       "rubric": {
         "success_definition": "Stock checked, 2 units added; order not placed.",
@@ -107,7 +108,8 @@
           "params": {
             "cart_id": "string",
             "code": "string"
-          }
+          },
+          "returns_entity": false
         }
       ],
       "decoy_tools": [
@@ -170,7 +172,8 @@
           "name": "reply_customer",
           "params": {
             "text": "string"
-          }
+          },
+          "returns_entity": false
         }
       ],
       "decoy_tools": [
@@ -235,7 +238,8 @@
           "params": {
             "order_id": "string",
             "method": "string"
-          }
+          },
+          "returns_entity": false
         }
       ],
       "decoy_tools": [
@@ -330,14 +334,16 @@
           "params": {
             "sku": "string",
             "qty": "number"
-          }
+          },
+          "returns_entity": false
         },
         {
           "name": "backorder",
           "params": {
             "sku": "string",
             "qty": "number"
-          }
+          },
+          "returns_entity": false
         }
       ],
       "decoy_tools": [
@@ -431,13 +437,15 @@
           "params": {
             "request": "string",
             "price": "number"
-          }
+          },
+          "returns_entity": false
         },
         {
           "name": "decline_match",
           "params": {
             "request": "string"
-          }
+          },
+          "returns_entity": false
         }
       ],
       "decoy_tools": [

@@ -70,6 +70,13 @@ pub struct DeterministicSandbox {
     /// Phase 9-v2 trap calls — invoking any is an immediate terminal failure.
     /// Empty for v1 sandboxes (the guard then never fires).
     pub must_not_call: Vec<MustNotCall>,
+    /// Phase 9-v2 getter set: tool names that RETURN entity data in `WorldState` mode
+    /// (a tool's authored `returns_entity`). A tool NOT in this set is an ACTION — it
+    /// gets a generic `{"ok":true}` ack instead of echoing the entity blob, so an
+    /// action can't hand the model the field it was supposed to reason to. EMPTY means
+    /// "every tool is a getter" (v1 / legacy / pre-field tasks) — back-compat. Unused in
+    /// `StaticMocks` mode (those use explicit authored mocks).
+    pub entity_tools: std::collections::HashSet<String>,
 }
 
 impl DeterministicSandbox {
@@ -88,7 +95,15 @@ impl DeterministicSandbox {
             faults: HashMap::new(),
             responder: ResponderKind::StaticMocks,
             must_not_call: Vec::new(),
+            entity_tools: std::collections::HashSet::new(),
         }
+    }
+
+    /// Attach the Phase 9-v2 getter set (tools that return entity data). Any tool not
+    /// listed acks instead of echoing the world_state entity. Empty → all are getters.
+    pub fn with_entity_tools(mut self, getters: impl IntoIterator<Item = String>) -> Self {
+        self.entity_tools = getters.into_iter().collect();
+        self
     }
 
     /// Attach Phase 9-v2 `must_not_call` traps (builder form).
@@ -125,7 +140,15 @@ impl DeterministicSandbox {
     pub fn respond(&self, call: &Call) -> Option<String> {
         match &self.responder {
             ResponderKind::StaticMocks => self.mock_responses.get(&canonical(call)).cloned(),
-            ResponderKind::WorldState(ws) => Some(crate::inference::eval::agentic::v2::world_state::derive_response(ws, call)),
+            ResponderKind::WorldState(ws) => {
+                // ACTION tools ack; only GETTERS surface the entity blob. An empty getter
+                // set means every tool is a getter (legacy/back-compat).
+                if self.entity_tools.is_empty() || self.entity_tools.contains(&call.name) {
+                    Some(crate::inference::eval::agentic::v2::world_state::derive_response(ws, call))
+                } else {
+                    Some(r#"{"ok":true}"#.to_string())
+                }
+            }
         }
     }
 }
@@ -251,6 +274,38 @@ mod tests {
         let a = call("t", json!({ "a": 1, "b": 2 }));
         let b = call("t", json!({ "b": 2, "a": 1 }));
         assert_eq!(canonical(&a), canonical(&b));
+    }
+
+    #[test]
+    fn action_tools_ack_while_getters_return_the_entity_blob() {
+        // get_dep is a getter; pin_and_flag is an action. Both take the same entity id,
+        // but only the getter surfaces the blob — the action acks (no answer-leniency).
+        let sb = DeterministicSandbox::new(
+            "p".into(),
+            vec![],
+            vec![],
+            EndStateRule::RequireAll(vec![TaskCheckpoint { tool: "pin_and_flag".into(), args: json!({}) }]),
+        )
+        .with_world_state(json!({ "D-1": { "kind": "major" } }))
+        .with_entity_tools(["get_dep".to_string()]); // only get_dep is a getter
+        assert_eq!(
+            sb.respond(&call("get_dep", json!({ "id": "D-1" }))).as_deref(),
+            Some(r#"{"kind":"major"}"#)
+        );
+        assert_eq!(sb.respond(&call("pin_and_flag", json!({ "dep": "D-1" }))).as_deref(), Some(r#"{"ok":true}"#));
+    }
+
+    #[test]
+    fn empty_getter_set_means_every_tool_returns_entity_data() {
+        // Back-compat: no entity_tools → legacy behavior (every tool echoes the blob).
+        let sb = DeterministicSandbox::new(
+            "p".into(),
+            vec![],
+            vec![],
+            EndStateRule::RequireAll(vec![TaskCheckpoint { tool: "t".into(), args: json!({}) }]),
+        )
+        .with_world_state(json!({ "D-1": { "kind": "major" } }));
+        assert_eq!(sb.respond(&call("any_tool", json!({ "dep": "D-1" }))).as_deref(), Some(r#"{"kind":"major"}"#));
     }
 
     #[test]

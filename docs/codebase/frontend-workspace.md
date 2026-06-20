@@ -274,7 +274,6 @@ reflects the **active** backend, not always Ollama; metrics via `formatMetrics`.
 | `LlamaServerControl.tsx` | Play/Stop the `llama-server` sidecar on the selected llama.cpp model's GGUF (`model.path`); disabled with no path; shows start error. |
 | `MlxServerControl.tsx` | Play/Stop the app-managed `mlx_lm.server` on the selected MLX model's dir; the busy spinner covers the multi-minute first-run weight load. |
 | `OllamaEmptyState.tsx` | Ollama-down recovery card: Start / Install (opens download page) / Retry, with `starting` / `success` / `not_installed` / `error` states. |
-| `WorkspaceError.tsx` | `ErrorCard` from a classified error string; "Open Models" action when the hint is `open_models`, else Retry. |
 | `backendStatus.ts` | Pure: dot+label+aria per backend — Ollama names its version; llama.cpp/MLX name the loaded model and their run state. |
 
 ---

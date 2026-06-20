@@ -526,3 +526,186 @@ async fn a_stalled_turn_times_out_and_terminates() {
     assert_eq!(outcome.failure, Some(FailureKind::TurnTimeout));
     assert_eq!(drain(&mut rx).last().unwrap().kind, StepKind::TurnTimeout);
 }
+
+// --- Fix 1: process EVERY parsed call in a turn, not just the first ----------------
+
+#[tokio::test]
+async fn parallel_calls_in_one_turn_satisfy_two_checkpoints() {
+    // A JSON array of two calls in ONE turn → both checkpoints consumed in one turn.
+    // The OLD `.next()` runner dropped the second call: it never finished.
+    let model =
+        ScriptedModel::new(vec![(r#"[{"name":"act","args":{"id":"A"}},{"name":"act","args":{"id":"B"}}]"#, 9)]);
+    let (tx, mut rx) = unbounded_channel();
+    let outcome = run_once(&model, &require_all_sandbox(), 8, 2, 0, &tx).await.unwrap();
+    drop(tx);
+    assert!(outcome.reached_end);
+    assert_eq!(outcome.steps, 1); // both calls handled in a single turn
+    let steps = drain(&mut rx);
+    assert_eq!(steps.len(), 1); // one streamed step for the turn
+    assert_eq!(steps[0].kind, StepKind::EndStateReached);
+}
+
+#[tokio::test]
+async fn dep_pin_style_two_turns_of_batched_pairs_reach_end() {
+    // Mirrors es_co_dep_pin: 4 checkpoints over two entities, the model batches each
+    // turn as a pair. OLD code credited only the first of each pair (2/4) and stalled.
+    let sandbox = DeterministicSandbox::new(
+        "Verify then handle D-1 and D-2.".into(),
+        vec![],
+        vec![
+            MockResponse { call: Call { name: "get_dep".into(), args: json!({ "id": "D-1" }) }, response: r#"{"kind":"major"}"#.into() },
+            MockResponse { call: Call { name: "get_dep".into(), args: json!({ "id": "D-2" }) }, response: r#"{"kind":"patch"}"#.into() },
+        ],
+        EndStateRule::RequireAll(vec![
+            TaskCheckpoint { tool: "get_dep".into(), args: json!({ "id": "D-1" }) },
+            TaskCheckpoint { tool: "pin_and_flag".into(), args: json!({ "dep": "D-1" }) },
+            TaskCheckpoint { tool: "get_dep".into(), args: json!({ "id": "D-2" }) },
+            TaskCheckpoint { tool: "apply_update".into(), args: json!({ "dep": "D-2" }) },
+        ]),
+    );
+    let model = ScriptedModel::new(vec![
+        (r#"[{"name":"get_dep","args":{"id":"D-1"}},{"name":"get_dep","args":{"id":"D-2"}}]"#, 12),
+        (r#"[{"name":"pin_and_flag","args":{"dep":"D-1"}},{"name":"apply_update","args":{"dep":"D-2"}}]"#, 12),
+    ]);
+    let (tx, _rx) = unbounded_channel();
+    let outcome = run_once(&model, &sandbox, 8, 2, 0, &tx).await.unwrap();
+    assert!(outcome.reached_end);
+    assert_eq!(outcome.steps, 2); // two batched turns, not four serial ones
+}
+
+#[tokio::test]
+async fn mixed_valid_invalid_valid_array_advances_both_valid_calls() {
+    use crate::inference::eval::toolcall::tasks::ToolSchema;
+    // Schema active so the middle call is genuinely schema-invalid (missing `id`).
+    let sandbox = DeterministicSandbox::new(
+        "Handle A and B.".into(),
+        vec![ToolSchema {
+            name: "act".into(),
+            description: "t".into(),
+            parameters: json!({ "type": "object", "properties": { "id": { "type": "string" } }, "required": ["id"] }),
+        }],
+        vec![],
+        EndStateRule::RequireAll(vec![
+            TaskCheckpoint { tool: "act".into(), args: json!({ "id": "A" }) },
+            TaskCheckpoint { tool: "act".into(), args: json!({ "id": "B" }) },
+        ]),
+    );
+    // [valid A, schema-invalid {}, valid B] in ONE turn — A and B must BOTH advance;
+    // the invalid sibling burns one recovery but never drops the valid C (issue 1, no-drop).
+    let model = ScriptedModel::new(vec![(
+        r#"[{"name":"act","args":{"id":"A"}},{"name":"act","args":{}},{"name":"act","args":{"id":"B"}}]"#,
+        12,
+    )]);
+    let (tx, _rx) = unbounded_channel();
+    let outcome = run_once(&model, &sandbox, 8, 2, 0, &tx).await.unwrap();
+    assert!(outcome.reached_end); // both valid checkpoints satisfied despite the invalid sibling
+    assert_eq!(outcome.steps, 1);
+    assert!(outcome.hit_schema_error); // the {} call burned a recovery, did not terminate the run
+}
+
+#[tokio::test]
+async fn forbidden_call_anywhere_in_a_turn_traps_even_with_a_winning_call() {
+    use crate::inference::eval::agentic::v2::r#match::MustNotCall;
+    // The winning call comes FIRST, the forbidden call second — the trap must still
+    // spring (issue 2: forbidden dominates the whole turn; no laundering by ordering).
+    let sandbox = DeterministicSandbox::new(
+        "Finish the task; never call danger.".into(),
+        vec![],
+        vec![],
+        EndStateRule::RequireAll(vec![TaskCheckpoint { tool: "finish".into(), args: json!({ "ok": true }) }]),
+    )
+    .with_must_not_call(vec![MustNotCall::Name("danger".into())]);
+    let model =
+        ScriptedModel::new(vec![(r#"[{"name":"finish","args":{"ok":true}},{"name":"danger","args":{}}]"#, 9)]);
+    let (tx, mut rx) = unbounded_channel();
+    let outcome = run_once(&model, &sandbox, 8, 2, 0, &tx).await.unwrap();
+    drop(tx);
+    assert!(!outcome.reached_end);
+    assert_eq!(outcome.failure, Some(FailureKind::ForbiddenCall));
+    assert_eq!(drain(&mut rx).last().unwrap().kind, StepKind::ForbiddenCall);
+}
+
+#[tokio::test]
+async fn a_schema_invalid_forbidden_call_recovers_instead_of_trapping() {
+    use crate::inference::eval::agentic::v2::r#match::MustNotCall;
+    use crate::inference::eval::toolcall::tasks::ToolSchema;
+    // `danger` is forbidden by name, but emitted MALFORMED (missing required `x`). The
+    // pre-scan only traps SCHEMA-VALID calls, so this recovers (preserving the prior
+    // "can't escape a trap by emitting it malformed" rule, applied in the other direction).
+    let tool = |name: &str, key: &str| ToolSchema {
+        name: name.into(),
+        description: "t".into(),
+        parameters: json!({ "type": "object", "properties": { key: { "type": "string" } }, "required": [key] }),
+    };
+    let sandbox = DeterministicSandbox::new(
+        "Finish; danger is forbidden.".into(),
+        vec![tool("danger", "x"), tool("finish", "y")],
+        vec![],
+        EndStateRule::RequireAll(vec![TaskCheckpoint { tool: "finish".into(), args: json!({ "y": "ok" }) }]),
+    )
+    .with_must_not_call(vec![MustNotCall::Name("danger".into())]);
+    let model = ScriptedModel::new(vec![
+        (r#"{"name":"danger","args":{}}"#, 6),      // schema-invalid forbidden call → recovers
+        (r#"{"name":"finish","args":{"y":"ok"}}"#, 6), // then completes
+    ]);
+    let (tx, mut rx) = unbounded_channel();
+    let outcome = run_once(&model, &sandbox, 8, 2, 0, &tx).await.unwrap();
+    drop(tx);
+    assert!(outcome.reached_end);
+    assert!(outcome.hit_schema_error);
+    let steps = drain(&mut rx);
+    assert_eq!(steps[0].kind, StepKind::SchemaError); // recovery, NOT ForbiddenCall
+    assert_eq!(steps.last().unwrap().kind, StepKind::EndStateReached);
+}
+
+#[tokio::test]
+async fn duplicate_calls_in_a_turn_consume_at_most_one_checkpoint_each() {
+    // Two IDENTICAL wildcard checkpoints; consume-once means a single matching call
+    // satisfies only ONE — two calls are needed (no double-credit across the array).
+    let sandbox = DeterministicSandbox::new(
+        "Log two denials.".into(),
+        vec![],
+        vec![],
+        EndStateRule::RequireAll(vec![
+            TaskCheckpoint { tool: "log".into(), args: json!({ "reason": "*denied*" }) },
+            TaskCheckpoint { tool: "log".into(), args: json!({ "reason": "*denied*" }) },
+        ]),
+    );
+    // One call → only one checkpoint (the loop caps at max_steps=1 without completing).
+    let one = ScriptedModel::new(vec![(r#"{"name":"log","args":{"reason":"denied: a"}}"#, 5)]);
+    let (tx, _rx) = unbounded_channel();
+    let solo = run_once(&one, &sandbox, 1, 2, 0, &tx).await.unwrap();
+    assert!(!solo.reached_end);
+    // Two DISTINCT calls (both glob `*denied*`) in one turn → both consumed → success.
+    // Distinct args matter: `extract_calls` collapses byte-identical calls, so two
+    // identical lines would dedup to one — the consume-once guard is what's under test.
+    let two = ScriptedModel::new(vec![(
+        r#"[{"name":"log","args":{"reason":"denied: a"}},{"name":"log","args":{"reason":"denied: b"}}]"#,
+        9,
+    )]);
+    let (tx2, _rx2) = unbounded_channel();
+    let outcome = run_once(&two, &sandbox, 8, 2, 0, &tx2).await.unwrap();
+    assert!(outcome.reached_end);
+    assert_eq!(outcome.steps, 1);
+}
+
+#[tokio::test]
+async fn single_element_array_matches_a_bare_object() {
+    // N=1 parity (issue 6): `[{call}]` must stream byte-identically to a bare `{call}` —
+    // same kinds, same injection bytes, same step count as `reaches_end_state_after_a_tool_call`.
+    let model = ScriptedModel::new(vec![
+        (r#"[{"name":"get_balance","args":{"account_id":"ACC-123"}}]"#, 40),
+        (r#"[{"name":"execute_transfer","args":{"amount":450.0}}]"#, 30),
+    ]);
+    let (tx, mut rx) = unbounded_channel();
+    let outcome = run_once(&model, &sandbox(), 8, 2, 0, &tx).await.unwrap();
+    drop(tx);
+    assert!(outcome.reached_end);
+    assert_eq!(outcome.steps, 2);
+    let steps = drain(&mut rx);
+    assert_eq!(steps.len(), 2);
+    assert_eq!(steps[0].kind, StepKind::ToolCall);
+    assert_eq!(steps[0].injection.as_deref(), Some(r#"Tool result: {"balance":450.0}"#));
+    assert_eq!(steps[1].kind, StepKind::EndStateReached);
+    assert_eq!(steps[1].injection, None);
+}

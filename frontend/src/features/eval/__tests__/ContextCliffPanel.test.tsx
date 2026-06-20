@@ -8,6 +8,9 @@ vi.mock("../../../shared/ipc/eval/cliff", () => ({
   stopContextCliff: vi.fn().mockResolvedValue(undefined),
   getCliffResults: vi.fn().mockResolvedValue({}),
   EVENT_CLIFF_PROGRESS: "cliff-progress",
+  // The store subscribes to the fine-grained cliff-step stream too; without this the
+  // mock-access throws inside runProbe and the probe aborts before the chart renders.
+  EVENT_CLIFF_STEP: "cliff-step",
 }));
 vi.mock("../../../shared/ipc/eval/registry", () => ({
   getBuiltinCollection: vi.fn(),

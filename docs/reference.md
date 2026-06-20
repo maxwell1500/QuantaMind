@@ -370,6 +370,16 @@ an agent — entirely offline and deterministic. Read the scores with these cave
   calls**, so a chatty model that prints its call inline *and* echoes it in a
   trailing ```` ```json ```` block isn't wrongly failed by the cardinality guard;
   genuinely distinct parallel calls are kept.
+- **Plain-JSON tool-call contract.** The system prompt asks for a bare JSON
+  object `{"name":…,"args":…}` (or a JSON array for several calls). The parser is
+  lenient about wrappers and ```` ```json ```` fences, but it does **not** decode
+  provider-specific tool envelopes — a model that emits harmony / channel tokens
+  (`<channel|>…<tool_call|>…`) or unquoted-key pseudo-JSON is scored
+  `malformed_json`, even when the *intended* call was correct. That's deliberate:
+  a real prompt-based agent expecting JSON would also break, so the format failure
+  is a true capability signal, not a harness artifact. (A tolerant pre-parser that
+  repairs non-standard envelopes and reports format-compliance separately is a
+  possible future feature — intentionally not done, so scores aren't inflated.)
 - **Single-turn, greedy (temp 0), ~13-task fixture.** No multi-turn / agent
   loops; greedy decoding makes scores reproducible and comparable across quants
   (and sidesteps MLX's missing seed). The fixture is small and curated —
@@ -837,13 +847,15 @@ the micro "why did this one fail?" trace.
 the Phase-9 levers inline, so the chosen tier and decoy budget genuinely shape the batch (they flow into
 `run_batch_eval` → `apply_overrides`, which rewrites each agentic spec at run time):
 
-- **Difficulty Tier** dropdown — `Auto · Easy · Medium · Hard · Extreme · Custom`. A tier sends `tier`
-  to the backend with `k = None`; the backend derives the locked Pass^k via `pass_k_for` (Easy 5 /
-  Medium 8 / Hard 16 / Extreme 24) and **stamps it onto every agentic spec**, so an authored per-task
-  `k` no longer silently wins under a chosen tier. `Auto` resolves to the machine's recommended tier
-  (see below). The **Iterations (k)** field is read-only (a 🔒 lock) for a tier and shows that derived
-  value (TS mirror `PASS_K_BY_TIER`, source of truth `passk.rs`). **`Custom`** is the escape hatch:
-  it restores today's behavior — a free `k` input, no tier sent, authored tiers untouched.
+- **Difficulty Tier** dropdown — `Auto · Easy · Medium · Hard · Extreme`. The chosen tier **filters the
+  Built-In collection list to that tier only** (selecting a tier auto-picks the first in-tier collection;
+  `Auto` = the machine's recommended tier). The tier also flows to the backend as `tier`.
+- **Iterations (k)** — **always editable**, pre-filled with the chosen tier's *recommended* Pass^k
+  (Easy 5 / Medium 8 / Hard 16 / Extreme 24; TS mirror `PASS_K_BY_TIER`, source of truth `passk.rs`)
+  shown as a "recommended: N" hint. The (possibly hand-edited) `k` is always sent and **wins** over the
+  tier policy in `apply_overrides`. The pre-fill is a programmatic write guarded by a synchronous ref so
+  the async `Auto`-resolves-from-hardware path can never clobber a value the user typed (or a concrete
+  tier they just picked).
 - **HW hint** — "HW: 16GB RAM · Mainstream · Medium recommended" comes from the new `get_hardware_tier`
   command (the single source of truth; the GB thresholds + class→tier policy live in `hwclass.rs`, never
   duplicated in TS).
@@ -852,6 +864,14 @@ the Phase-9 levers inline, so the chosen tier and decoy budget genuinely shape t
   the presented tool list); disabled (the default) leaves the task-authored decoys untouched.
 - **Scoreboard header chips** echo the active run's shape: `Target: <model> · Tier: <…> · K: <k> ·
   Decoys: <n/off>`.
+- **Per-task authoring** — there is no collection-level "Edit" button; instead, **clicking a collection**
+  in the left sidebar expands/collapses its task list beneath it (accordion; clicking also selects it),
+  and each task row reveals **Edit** + **Delete** on hover. Edit opens that task in the configurator; Delete removes it (a built-in is read-only, so a
+  delete/edit **forks the collection to a saved custom copy** — the bundled original is untouched). New
+  blank collections are created via **+ New Collection** at the end of the collection list.
+- **Sidebar order** (top→bottom): Model → Difficulty Tier → Collections (data-source toggle + tier-filtered
+  list + New/Import JSON/CSV) → Iterations → Max Steps → Anti-Saturation (with an ⓘ explaining decoys) →
+  Native-FC + RUN BATCH + Export.
 
 Deferred (flagged, not faked): **Max Steps stays a normal editable input** — the backend has no
 tier→max-steps policy to lock it to. A **"Conditional" per-task status** isn't shown (task outcomes are

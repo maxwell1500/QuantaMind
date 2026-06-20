@@ -57,14 +57,16 @@
           "name": "approve_replacement",
           "params": {
             "customer_id": "string"
-          }
+          },
+          "returns_entity": false
         },
         {
           "name": "log_decision",
           "params": {
             "customer_id": "string",
             "reason": "string"
-          }
+          },
+          "returns_entity": false
         }
       ],
       "decoy_tools": [
@@ -248,14 +250,16 @@
           "params": {
             "id": "string",
             "pct": "number"
-          }
+          },
+          "returns_entity": false
         },
         {
           "name": "log_decision",
           "params": {
             "id": "string",
             "reason": "string"
-          }
+          },
+          "returns_entity": false
         }
       ],
       "decoy_tools": [
@@ -396,7 +400,7 @@
         }
       ],
       "trap": {
-        "note": "T-1 and T-2 are the SAME plan but different credit because EU mandates 15%>5%. T-3 same region as T-1 but higher plan. The governing value is max(plan,region) \u2014 neither alone is right for all three."
+        "note": "T-1 and T-2 are the SAME plan but different credit because EU mandates 15%>5%. T-3 same region as T-1 but higher plan. The governing value is max(plan,region) — neither alone is right for all three."
       },
       "rubric": {
         "success_definition": "Greater-of rule applied per ticket; T-2 gets 15%; no flat/refund decoys.",
@@ -431,20 +435,23 @@
           "name": "send_email",
           "params": {
             "customer": "string"
-          }
+          },
+          "returns_entity": false
         },
         {
           "name": "send_sms",
           "params": {
             "customer": "string"
-          }
+          },
+          "returns_entity": false
         },
         {
           "name": "log_skip",
           "params": {
             "customer": "string",
             "reason": "string"
-          }
+          },
+          "returns_entity": false
         }
       ],
       "decoy_tools": [
@@ -540,7 +547,7 @@
       "category": "agent_loop",
       "max_steps": 16,
       "max_recovery": 2,
-      "prompt": "Three account-access requests. If the account has an active fraud hold, you must NOT reset credentials even if the caller is verified \u2014 route to fraud team. If no hold and identity verified, reset. If no hold and identity NOT verified, deny. A-1 hold+verified, A-2 nohold+verified, A-3 nohold+unverified.",
+      "prompt": "Three account-access requests. If the account has an active fraud hold, you must NOT reset credentials even if the caller is verified — route to fraud team. If no hold and identity verified, reset. If no hold and identity NOT verified, deny. A-1 hold+verified, A-2 nohold+verified, A-3 nohold+unverified.",
       "world_state": {
         "A-1": {
           "fraud_hold": true,
@@ -578,20 +585,23 @@
           "name": "reset_credentials",
           "params": {
             "id": "string"
-          }
+          },
+          "returns_entity": false
         },
         {
           "name": "route_fraud",
           "params": {
             "id": "string"
-          }
+          },
+          "returns_entity": false
         },
         {
           "name": "deny",
           "params": {
             "id": "string",
             "reason": "string"
-          }
+          },
+          "returns_entity": false
         }
       ],
       "decoy_tools": [
@@ -716,7 +726,7 @@
         }
       ],
       "trap": {
-        "note": "A-1 is VERIFIED yet must be refused (fraud hold overrides verification) \u2014 reset_all_verified is the trap that resets a fraud-flagged account. Verification alone is insufficient; the hold is the hidden governing condition."
+        "note": "A-1 is VERIFIED yet must be refused (fraud hold overrides verification) — reset_all_verified is the trap that resets a fraud-flagged account. Verification alone is insufficient; the hold is the hidden governing condition."
       },
       "rubric": {
         "success_definition": "Hold checked first; A-1 routed to fraud, A-2 reset, A-3 denied; no override/auto.",

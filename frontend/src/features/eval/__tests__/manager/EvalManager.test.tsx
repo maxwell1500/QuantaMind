@@ -47,6 +47,10 @@ const props = (over: Record<string, unknown> = {}) => ({
   setK: () => {},
   maxSteps: 8,
   setMaxSteps: () => {},
+  // The Built-In list shows only the chosen tier's collections; the default preset
+  // (easy-coding) is Easy, so default the resolved tier to "easy" for the picker.
+  tierSel: "easy" as const,
+  effectiveTier: "easy" as const,
   ...over,
 });
 
@@ -133,6 +137,71 @@ describe("EvalManager Sidebar Controls", () => {
     expect(screen.getByTestId("eval-collection-item-easy-coding")).toBeInTheDocument();
   });
 
+  it("shows ONLY the chosen tier's built-in collections", () => {
+    useEvalRegistryStore.setState({
+      presets: [
+        { id: "easy-coding", label: "Coding", domain: "coding", tier: "easy" },
+        { id: "medium-coding", label: "Coding", domain: "coding", tier: "medium" },
+        { id: "hard-coding", label: "Coding", domain: "coding", tier: "hard" },
+      ],
+      collections: [],
+      selected: "medium-coding",
+      tasks: sampleTasks,
+      init,
+      select,
+      importFile,
+    });
+    render(<EvalManager {...props({ tierSel: "medium", effectiveTier: "medium" })} />);
+    expect(screen.getByTestId("eval-collection-item-medium-coding")).toBeInTheDocument();
+    expect(screen.queryByTestId("eval-collection-item-easy-coding")).toBeNull();
+    expect(screen.queryByTestId("eval-collection-item-hard-coding")).toBeNull();
+  });
+
+  it("no longer renders a collection-level Edit button (tasks are edited per-row)", () => {
+    render(<EvalManager {...props()} />);
+    expect(screen.queryByTestId("eval-edit-collection")).toBeNull();
+    expect(screen.getByTestId("eval-new-collection")).toBeInTheDocument();
+  });
+
+  it("click expands a collection's tasks; each row has hover Edit/Delete", () => {
+    const onEditTask = vi.fn();
+    const onDeleteTask = vi.fn();
+    render(<EvalManager {...props({ onEditTask, onDeleteTask })} />);
+    // Collapsed by default — tasks appear only after clicking the collection.
+    expect(screen.queryByTestId("eval-task-row-w")).toBeNull();
+    fireEvent.click(screen.getByTestId("eval-collection-item-easy-coding"));
+    const row = screen.getByTestId("eval-task-row-w");
+    expect(row).toBeInTheDocument();
+    // Edit/Delete hidden until hover.
+    expect(screen.queryByTestId("eval-task-edit-w")).toBeNull();
+    fireEvent.mouseEnter(row);
+    fireEvent.click(screen.getByTestId("eval-task-edit-w"));
+    expect(onEditTask).toHaveBeenCalledWith("w");
+    fireEvent.click(screen.getByTestId("eval-task-delete-w"));
+    expect(onDeleteTask).toHaveBeenCalledWith("w");
+  });
+
+  it("clicking again collapses the task list", () => {
+    render(<EvalManager {...props()} />);
+    fireEvent.click(screen.getByTestId("eval-collection-item-easy-coding"));
+    expect(screen.getByTestId("eval-task-row-w")).toBeInTheDocument();
+    fireEvent.click(screen.getByTestId("eval-collection-item-easy-coding"));
+    expect(screen.queryByTestId("eval-task-row-w")).toBeNull();
+  });
+
+  it("shows the Decoy info popup on hover (Anti-Saturation ⓘ)", () => {
+    render(<EvalManager {...props()} />);
+    const info = screen.getByTestId("info-decoy");
+    fireEvent.mouseEnter(info.parentElement as HTMLElement);
+    expect(screen.getByTestId("info-popup-decoy")).toHaveTextContent(/decoy/i);
+  });
+
+  it("the tier dropdown no longer offers a 'Custom' option", () => {
+    render(<EvalManager {...props()} />);
+    const opts = Array.from((screen.getByTestId("eval-tier-dropdown") as HTMLSelectElement).options).map((o) => o.value);
+    expect(opts).toEqual(["auto", "easy", "medium", "hard", "extreme"]);
+  });
+
   it("switches to Custom JSON and lists custom collections", async () => {
     render(<EvalManager {...props()} />);
     fireEvent.click(screen.getByText("◯ Custom JSON"));
@@ -172,17 +241,18 @@ describe("EvalManager Sidebar Controls", () => {
       importFile,
       hidePreset,
     });
-    render(<EvalManager {...props()} />);
+    render(<EvalManager {...props({ tierSel: "hard", effectiveTier: "hard" })} />);
     fireEvent.click(screen.getByTestId("eval-collection-menu-hard-coding"));
     fireEvent.click(screen.getByTestId("eval-collection-delete-hard-coding"));
     fireEvent.click(screen.getByTestId("confirm-ok"));
     await waitFor(() => expect(hidePreset).toHaveBeenCalledWith("hard-coding"));
   });
 
-  it("runs at a chosen tier: sends the tier and leaves k undefined (backend derives Pass^k)", async () => {
+  it("always sends the (editable) k AND the tier — k wins in the backend over the tier policy", async () => {
     useParamsStore.setState({ globalParams: { temperature: 0.2 } });
     vi.mocked(runBatchEval).mockResolvedValue({ collection_id: "easy-coding", columns: [] });
-    render(<EvalManager {...props({ tierSel: "medium", effectiveTier: "medium", lockedK: 8 })} />);
+    // User edited k to 12 under a Medium tier; both flow to the run.
+    render(<EvalManager {...props({ tierSel: "medium", effectiveTier: "medium", recommendedK: 8, k: 12 })} />);
     const runBtn = screen.getByTestId("eval-run-all");
     expect(runBtn).not.toBeDisabled();
     fireEvent.click(runBtn);
@@ -191,45 +261,25 @@ describe("EvalManager Sidebar Controls", () => {
         "easy-coding",
         [{ model: "llama3.2:1b", backend: "ollama" }],
         sampleTasks,
-        undefined, // k — locked by the tier, so the backend derives it
+        12, // the editable k, always sent
         8,
         { temperature: 0.2 },
         undefined,
         false, // runNativeFc — off by default
-        "medium", // tier
+        "medium", // tier still flows (for spec.tier)
         undefined, // decoyTools — off by default
       );
     });
   });
 
-  it("Custom tier sends the manual k and no tier", async () => {
-    useParamsStore.setState({ globalParams: {} });
-    vi.mocked(runBatchEval).mockResolvedValue({ collection_id: "easy-coding", columns: [] });
-    render(<EvalManager {...props({ tierSel: "custom", k: 3 })} />);
-    fireEvent.click(screen.getByTestId("eval-run-all"));
-    await waitFor(() => {
-      expect(runBatchEval).toHaveBeenCalledWith(
-        "easy-coding",
-        [{ model: "llama3.2:1b", backend: "ollama" }],
-        sampleTasks,
-        3, // manual k
-        8,
-        {},
-        undefined,
-        false,
-        undefined, // tier — none under Custom
-        undefined,
-      );
-    });
-  });
-
-  it("locks the k field under a tier (read-only) and frees it under Custom", () => {
-    const { rerender } = render(<EvalManager {...props({ tierSel: "hard", lockedK: 16 })} />);
-    expect(screen.getByTestId("eval-manager-k-locked")).toHaveTextContent("16");
-    expect(screen.queryByTestId("eval-manager-k")).toBeNull();
-    rerender(<EvalManager {...props({ tierSel: "custom", k: 4 })} />);
-    expect(screen.getByTestId("eval-manager-k")).toHaveValue(4);
+  it("the k field is always editable and shows the tier's recommended value as a hint", () => {
+    render(<EvalManager {...props({ tierSel: "hard", effectiveTier: "hard", recommendedK: 16, k: 16 })} />);
+    // Editable input (not a locked span), pre-filled to the recommended value.
+    expect(screen.getByTestId("eval-manager-k")).toHaveValue(16);
     expect(screen.queryByTestId("eval-manager-k-locked")).toBeNull();
+    expect(screen.getByTestId("eval-k-recommended")).toHaveTextContent("recommended: 16");
+    // The user can type a different value.
+    fireEvent.change(screen.getByTestId("eval-manager-k"), { target: { value: "9" } });
   });
 
   it("shows the HW hint from the backend tier read", () => {
@@ -244,14 +294,14 @@ describe("EvalManager Sidebar Controls", () => {
   it("flows the decoy budget into the run only when enabled", async () => {
     useParamsStore.setState({ globalParams: {} });
     vi.mocked(runBatchEval).mockResolvedValue({ collection_id: "easy-coding", columns: [] });
-    render(<EvalManager {...props({ tierSel: "easy", effectiveTier: "easy", lockedK: 5, decoyEnabled: true, decoyCount: 4 })} />);
+    render(<EvalManager {...props({ tierSel: "easy", effectiveTier: "easy", recommendedK: 5, k: 5, decoyEnabled: true, decoyCount: 4 })} />);
     fireEvent.click(screen.getByTestId("eval-run-all"));
     await waitFor(() => {
       expect(runBatchEval).toHaveBeenCalledWith(
         "easy-coding",
         [{ model: "llama3.2:1b", backend: "ollama" }],
         sampleTasks,
-        undefined,
+        5, // editable k, always sent
         8,
         {},
         undefined,

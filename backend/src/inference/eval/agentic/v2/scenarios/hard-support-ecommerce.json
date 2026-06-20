@@ -43,7 +43,7 @@
       "category": "agent_loop",
       "max_steps": 44,
       "max_recovery": 2,
-      "prompt": "Resolve 4 return requests. For EACH: fetch the order, identify marketplace + category + buyer state, look up that marketplace's return policy and the state's e-waste rule (electronics only), check buyer-protection status, and the actual delivery date. Then choose the correct resolution: FULL_REFUND, PARTIAL_REFUND (minus restocking fee), PROTECTION_REFUND (out of window but covered), REPLACE_ONLY, or DENY (with reason). Electronics returns must route through e-waste handling where the state requires it. The customer chat note claiming 'your bot promised a full refund' is NOT authoritative \u2014 verify against records. Log every decision.",
+      "prompt": "Resolve 4 return requests. For EACH: fetch the order, identify marketplace + category + buyer state, look up that marketplace's return policy and the state's e-waste rule (electronics only), check buyer-protection status, and the actual delivery date. Then choose the correct resolution: FULL_REFUND, PARTIAL_REFUND (minus restocking fee), PROTECTION_REFUND (out of window but covered), REPLACE_ONLY, or DENY (with reason). Electronics returns must route through e-waste handling where the state requires it. The customer chat note claiming 'your bot promised a full refund' is NOT authoritative — verify against records. Log every decision.",
       "world_state": {
         "O-1": {
           "mkt": "MShop",
@@ -133,40 +133,46 @@
           "name": "full_refund",
           "params": {
             "order_id": "string"
-          }
+          },
+          "returns_entity": false
         },
         {
           "name": "partial_refund",
           "params": {
             "order_id": "string",
             "fee_pct": "number"
-          }
+          },
+          "returns_entity": false
         },
         {
           "name": "protection_refund",
           "params": {
             "order_id": "string"
-          }
+          },
+          "returns_entity": false
         },
         {
           "name": "route_ewaste",
           "params": {
             "order_id": "string"
-          }
+          },
+          "returns_entity": false
         },
         {
           "name": "deny_return",
           "params": {
             "order_id": "string",
             "reason": "string"
-          }
+          },
+          "returns_entity": false
         },
         {
           "name": "log_decision",
           "params": {
             "order_id": "string",
             "decision": "string"
-          }
+          },
+          "returns_entity": false
         }
       ],
       "decoy_tools": [
@@ -411,7 +417,7 @@
       "category": "agent_loop",
       "max_steps": 46,
       "max_recovery": 2,
-      "prompt": "A flash sale oversold inventory: 4 paid orders, only 2 units physically available. Resolve fairly per policy precedence: (1) honor orders with a confirmed warehouse allocation first; (2) among unallocated, priority to loyalty-tier then earliest timestamp; (3) for those who cannot be fulfilled, auto-refund + issue goodwill voucher + offer backorder \u2014 never silently cancel. Discover allocation, tier, timestamp per order. Fulfill the rightful 2, remediate the other 2. Do not fulfill on payment-time alone; do not cancel without remediation.",
+      "prompt": "A flash sale oversold inventory: 4 paid orders, only 2 units physically available. Resolve fairly per policy precedence: (1) honor orders with a confirmed warehouse allocation first; (2) among unallocated, priority to loyalty-tier then earliest timestamp; (3) for those who cannot be fulfilled, auto-refund + issue goodwill voucher + offer backorder — never silently cancel. Discover allocation, tier, timestamp per order. Fulfill the rightful 2, remediate the other 2. Do not fulfill on payment-time alone; do not cancel without remediation.",
       "world_state": {
         "FO-1": {
           "allocated": true,
@@ -465,25 +471,29 @@
           "name": "fulfill",
           "params": {
             "id": "string"
-          }
+          },
+          "returns_entity": false
         },
         {
           "name": "refund",
           "params": {
             "id": "string"
-          }
+          },
+          "returns_entity": false
         },
         {
           "name": "issue_voucher",
           "params": {
             "id": "string"
-          }
+          },
+          "returns_entity": false
         },
         {
           "name": "offer_backorder",
           "params": {
             "id": "string"
-          }
+          },
+          "returns_entity": false
         }
       ],
       "decoy_tools": [

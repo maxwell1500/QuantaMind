@@ -282,8 +282,13 @@ and the loop runs `k` times for Pass^k reliability.
   causes a miss; one environment shared (immutable) across all `k` runs.
 - **What:** `MockResponse{call,response}`, `TaskCheckpoint{tool,args}`,
   `EndStateRule::{RequireSequence(Vec<TaskCheckpoint>), ExpectAbstainingText}`,
-  `DeterministicSandbox` (`new`, `with_faults`, `respond(&Call) -> Option<&str>`),
+  `DeterministicSandbox` (`new`, `with_faults`, `with_entity_tools`, `respond(&Call) -> Option<&str>`),
   `SandboxState{attempts}` (`fault_for`), `pub fn canonical(&Call) -> String`.
+- **Getter vs action (v2 WorldState):** `respond` consults `entity_tools` (the
+  authored `returns_entity` getter set). A GETTER surfaces the world_state entity blob
+  (`derive_response`); an ACTION not in the set gets a generic `{"ok":true}` ack — so an
+  action can't echo the field the model was supposed to reason to (answer-leniency). An
+  EMPTY set means "every tool is a getter" (v1 / legacy back-compat).
 
 ```rust
 FaultInjection::TransientError { status_code, clears_after } => {
@@ -314,10 +319,17 @@ FaultInjection::TransientError { status_code, clears_after } => {
 - **Why:** The runner depends on the trait, not a backend, so it's unit-testable
   with a scripted model; the native Ollama path translates structured `tool_calls`
   back into canonical `{name,args}` JSON so sandbox/scoring stay byte-identical.
-- **What:** `trait ModelTurn { async fn run(&self, &GenerateSpec) -> AppResult<(String, GenerateStats)> }`;
+- **What:** `trait ModelTurn { async fn run(&self, &GenerateSpec) -> …; async fn warm_up(&self) -> AppResult<()> { Ok(()) } }`;
   `BackendTurn{backend,endpoint,model,cancel,options,keep_alive}` (dispatch by
   `BackendKind`); `NativeOllamaTurn{endpoint,model,tools,options}` (`/api/chat` +
   `synthesize_calls`).
+- **Warm-up:** `run_batch_resumable` calls `turn.warm_up()` once per model before its
+  first scored task. `BackendTurn` issues a 1-token generate (honoring `keep_alive`) to
+  load the weights resident, so cold-load latency isn't charged to the first task as a
+  `TurnTimeout` (which would penalize every model's first task). Default is a no-op
+  (scripted models / backends that can't warm just run cold, as before). Note: warm-up
+  loads *weights* — a runtime that allocates more on first *large* context (cliff probe)
+  could still pay that on the first rung; out of scope here.
 
 ### File: `endstate.rs`
 - **Responsibility:** Checkpoint matching + Driver-D semantic schema validation.
@@ -358,6 +370,15 @@ schema_resilience: (schema_hits > 0).then(|| schema_recovered as f64 / schema_hi
   sandbox; iterative `while step < max_steps` (no async recursion). Fault traps
   (Driver B) fire *before* checkpoint advance so a trapped call can never be a fake
   pass; schema recovery (Driver D) injects an error and retries up to `max_recovery`.
+- **Multi-call turns:** a turn processes **every** parsed call in array order (the
+  system prompt invites a JSON array; `extract_calls` returns all of them) — never just
+  the first. A **forbidden pre-scan** runs first: any schema-valid `must_not_call` match
+  *anywhere* in the turn is terminal, so a trap can't be laundered by batching it with a
+  winning move (malformed forbidden calls are exempted — they fall to schema recovery). A
+  schema-invalid call corrects and burns one recovery but **does not drop** its valid
+  siblings; two calls can satisfy two checkpoints in one turn. The raw turn is pushed once,
+  then one tool-result line per call; the turn streams a single `TrajectoryStep` carrying
+  every injection. A single-call turn is byte-identical to the pre-multi-call path.
 - **What:** `AgenticConfig{k,max_steps,max_recovery}` (Default `{5,10,2}`);
   `run_agentic(turn,sandbox,config,tx) -> AppResult<AgenticReport>`;
   `run_once(turn,sandbox,max_steps,max_recovery,run_index,tx) -> AppResult<RunOutcome>`;
@@ -373,45 +394,42 @@ pub async fn run_agentic<M: ModelTurn>(turn, sandbox, config, tx) -> AppResult<A
 }
 ```
 
-**The step loop** (trimmed) — emit a step, parse a call, validate, fault-trap,
-advance checkpoints, or classify a terminal failure:
+**The step loop** (trimmed) — emit a step, parse ALL calls, forbidden-pre-scan, then
+per call validate / fault-trap / advance / inject; or classify a terminal failure:
 
 ```rust
 for step_index in 0..max_steps {
     let (raw, stats) = turn.run(&spec).await?;            // greedy temp 0, prompt = convo.render()
     output_tokens += stats.eval_count.unwrap_or(0);
-    match extract_calls(&raw).and_then(|c| c.into_iter().next()) {
-        Some(call) => match &sandbox.end_state {
-            EndStateRule::ExpectAbstainingText =>                 // acted when it should decline
-                return Ok(RunOutcome::failure(step_index+1, output_tokens, FailureKind::Hallucinated)),
-            EndStateRule::RequireSequence(checkpoints) => {
-                if let Err(msg) = endstate::validate_call(&call, &sandbox.tools) {   // Driver D
-                    if recoveries >= max_recovery {
-                        return Ok(RunOutcome::failure(step_index+1, output_tokens, FailureKind::MalformedSchema).with_schema(true,false));
-                    }
-                    recoveries += 1; convo.push_tool_result(&format!("[Schema error: {msg}]")); continue;
-                }
-                if let Some(err) = state.fault_for(&call, &sandbox.faults) {        // Driver B (before advance)
-                    convo.push_tool_result(&err); continue;
-                }
-                let advances = endstate::checkpoint_matches(&checkpoints[next_cp], &call);
-                if advances && next_cp+1 == checkpoints.len() {
-                    return Ok(RunOutcome::success(step_index+1, output_tokens).with_schema(hit_schema_error, schema_recovered));
-                }
-                if advances { next_cp += 1; }
-                let result = sandbox.respond(&call).map(str::to_string).unwrap_or(UNKNOWN_TOOL.into());
-                convo.push_model(&raw); convo.push_tool_result(&result);
-            }
-        },
-        None => match &sandbox.end_state {
-            EndStateRule::ExpectAbstainingText =>                 // correctly declined
-                return Ok(RunOutcome::success(step_index+1, output_tokens)),
-            EndStateRule::RequireSequence(_) => {
-                let failure = if looks_like_broken_json(&raw) { FailureKind::Malformed } else { FailureKind::Hallucinated };
-                return Ok(RunOutcome::failure(step_index+1, output_tokens, failure).with_schema(hit_schema_error, schema_recovered));
-            }
-        },
+    let calls = match extract_calls(&raw) {               // ALL parsed calls, not just the first
+        None => return /* abstain success | malformed (broken JSON) | hallucinated yield */,
+        Some(calls) => calls,
+    };
+    if matches!(sandbox.end_state, ExpectAbstainingText) {  // acted when it should decline
+        return Ok(RunOutcome::failure(step_index+1, output_tokens, FailureKind::Hallucinated));
     }
+    for call in &calls {                                  // step 1 — forbidden dominates the whole turn
+        let schema_ok = sandbox.tools.is_empty() || validate_call(call, &sandbox.tools).is_ok();
+        if schema_ok && sandbox.must_not_call.iter().any(|m| m.matches(call)) {
+            return Ok(RunOutcome::failure(step_index+1, output_tokens, FailureKind::ForbiddenCall));
+        }
+    }
+    let mut model_pushed = false;                         // step 2 — process every call in order
+    for call in &calls {
+        if let Err(msg) = validate_call(call, &sandbox.tools) {           // Driver D — no-drop
+            if recoveries >= max_recovery { return MalformedSchema; }
+            recoveries += 1; push_model_once(); convo.push_tool_result(&schema_err(msg)); continue;
+        }
+        if let Some(err) = state.fault_for(call, &sandbox.faults) {       // Driver B (before advance)
+            push_model_once(); convo.push_tool_result(&err); continue;
+        }
+        if advance_checkpoint(call) /* RequireAll consume-once | RequireSequence ordered */ {
+            return Ok(RunOutcome::success(step_index+1, output_tokens));  // race-free: forbidden pre-scanned
+        }
+        let result = sandbox.respond(call).unwrap_or(UNKNOWN_TOOL);       // ack | entity blob | unknown-tool
+        push_model_once(); convo.push_tool_result(&result);
+    }
+    send_one_step_for_the_turn(/* joined injections */); // one TrajectoryStep per turn
 }
 // step cap exhausted → infinite loop
 Ok(RunOutcome::failure(max_steps, output_tokens, FailureKind::InfiniteLoop).with_schema(hit_schema_error, schema_recovered))
@@ -778,12 +796,15 @@ let _ = queue::delete(&job_path);
    `(DeterministicSandbox, AgenticConfig{k,max_steps,max_recovery})`.
 2. `run_agentic` runs `run_once` `k` times on the shared immutable sandbox, fresh
    `Conversation` each iteration.
-3. Per step: model emits text → `extract_calls` → Driver D (`validate_call`, inject
-   error + retry up to `max_recovery`) → Driver B (`fault_for` trap *before* advance)
-   → `checkpoint_matches` advances the sequence → `sandbox.respond` injects the
-   result; each step streams a `TrajectoryStep` to the `BatchSink`.
+3. Per step: model emits text → `extract_calls` (ALL calls) → forbidden pre-scan
+   (any schema-valid `must_not_call` anywhere in the turn → terminal) → then per call:
+   Driver D (`validate_call`, inject error + burn one recovery, no-drop) → Driver B
+   (`fault_for` trap *before* advance) → `checkpoint_matches` advances → `sandbox.respond`
+   injects the result; the turn streams ONE `TrajectoryStep` (joined injections) to the
+   `BatchSink`.
 4. Terminal: `EndStateReached` (success), `Hallucinated`/`Malformed`/`MalformedSchema`/
-   `InfiniteLoop` (failure). `AgenticReport::from_outcomes` computes strict Pass^k
+   `ForbiddenCall`/`TurnTimeout`/`InfiniteLoop` (failure). `AgenticReport::from_outcomes`
+   computes strict Pass^k
    (all-k-pass), avg steps, effort (success only), `schema_resilience`, `top_error`.
 
 ### (c) Batch run resume after crash

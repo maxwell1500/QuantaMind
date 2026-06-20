@@ -69,9 +69,10 @@ pub fn sandbox_for(task: &ToolTask) -> AppResult<(DeterministicSandbox, AgenticC
     )
     .with_faults(spec.faults.clone())
     .with_must_not_call(spec.must_not_call.clone());
-    // v2: ground-truth responder when the task carries a world_state.
+    // v2: ground-truth responder when the task carries a world_state. The getter set
+    // (authored `returns_entity`) splits entity-returning tools from acting tools.
     if let Some(ws) = &spec.world_state {
-        sandbox = sandbox.with_world_state(ws.clone());
+        sandbox = sandbox.with_world_state(ws.clone()).with_entity_tools(spec.entity_tools.clone());
     }
     // v2: name-keyed faults (on_call trips on any call to that tool).
     if !spec.name_faults.is_empty() {
@@ -132,6 +133,7 @@ mod tests {
                 world_state: None,
                 name_faults: vec![],
                 generated: false,
+                entity_tools: vec![],
             }),
         }
     }

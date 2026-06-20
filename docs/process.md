@@ -717,6 +717,34 @@ aggregate **Pass^k per rung** against `agentic.end_state`. **Activate when:** a 
 (not just format) context-headroom signal for agentic workloads. **Why deferred:** it's a new multi-turn
 engine (padding placement across turns, per-rung Pass^k), not a tweak to the single-turn probe.
 
+### Medium/Hard answer-key reachability
+
+The v2 reachability guard (`scenarios.rs::every_required_easy_world_state_fact_is_tool_reachable`)
+asserts that a world_state fact a checkpoint forces the model to echo is retrievable through some
+getter — but it is **enforced on the Easy tier only**. The **Extreme** tier is deliberately excluded
+(its required values — chosen statistical method, etc. — are *reasoned conclusions*, not facts to
+fetch), and **Medium/Hard are tracked here**. Diagnostic worklist of unreachable facts:
+`medium-coding/md_co_trace_root_cause`→`payments/round.py`,
+`medium-coding/md_co_rollback_by_severity`→`checkout_v2`,
+`hard-coding/hd_co_ci_multifile`→`billing/format.py`+`billing/rounding.py`,
+`hard-coding/hd_co_incident_forensics`→`key-reports-3`+`svc-reports`.
+
+**The load-bearing principle (do NOT skip):** the Medium/Hard pass is **not** "make every flagged fact
+reachable." It is **classify each required fact as RETRIEVAL vs DERIVATION, then enforce reachability
+only on the retrieval ones.** Over-enforcing turns a reasoning challenge into a lookup (the Extreme
+mistake, one tier down); under-enforcing leaves the harness-fails-a-correct-model bug. The Extreme
+exclusion is the worked example — carry it into this work.
+
+**Why deferred (it's NOT another mechanical key-fix):** the Easy repairs were key-alignment (re-key
+`cart_tests`→`cart`, flatten `symbol`) — mechanical. Medium/Hard needs the per-fact retrieval/derivation
+judgment AND **re-validating that the procedurally-generated instances still produce the intended
+difficulty** after the world_state restructure (these tiers carry `generator`/`instance0` + entity
+remap; reshaping world_state can perturb instantiation). That generated-instance re-validation is the
+real cost. **Activate when:** a phase invests in Medium/Hard answer-key correctness. **Mechanics:**
+restructure world_state so retrieval facts resolve through a called getter, then widen the reachability
+test to those tiers (drop the Easy-only `continue`) and re-run BOTH the oracle test and the
+generated-instance satisfiability checks to confirm gradeability + preserved challenge.
+
 ### Additional STT engines (faster-whisper)
 
 **Removed:** `mlx-audio` was trialed as a second STT engine but removed — its
