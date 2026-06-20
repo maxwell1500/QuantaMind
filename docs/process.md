@@ -745,6 +745,27 @@ restructure world_state so retrieval facts resolve through a called getter, then
 test to those tiers (drop the Easy-only `continue`) and re-run BOTH the oracle test and the
 generated-instance satisfiability checks to confirm gradeability + preserved challenge.
 
+### Retrieval-vs-derivation over-enforcement is already live on Easy (`branch_target`)
+
+The over-enforcement the section above frames as a Medium/Hard *future* risk is **already biting on
+Easy**. `easy-coding/es_co_branch_target` lists `get_change{id:C-1}` and `get_change{id:C-2}` as
+required `RequireAll` checkpoints — but the prompt itself **states** "C-1 is a hotfix, C-2 a feature."
+The change kind is *given*, so a model that correctly derives the base branch (hotfix→`release`,
+feature→`develop`) and opens both PRs **without** calling `get_change` is doing the task's actual
+skill, yet fails as `HallucinatedCompletion` (it satisfied 2/4 — only the `open_pr` calls). Confirmed
+**not** an echo/ack bug: the action-ack composes correctly (`runner_tests.rs::worldstate_multi_call_actions_each_ack_not_echo_entity`),
+so the failure reason is purely "skipped the discovery calls." The consequence is the founding
+inversion — the benchmark **understates** a capable model.
+
+**The decision is mutually exclusive — you cannot have both:** (a) drop `get_change` from
+`branch_target`'s required checkpoints (the task's skill is *routing by kind*, not *calling a getter*;
+the kind is disclosed, so the lookup is ceremony), OR (b) remove the kind from the prompt so the
+`get_change` lookup is genuinely required (the model must discover it). Leaking the answer in the
+prompt **and** mandating the lookup is the contradiction. Lean **(a)** for `branch_target` — but it's a
+per-task judgment, same as the Medium/Hard worklist above. **Action:** audit EVERY Easy task for the
+same shape (prompt discloses a fact a checkpoint then forces a getter to re-fetch) and fold the hits
+into the retrieval-vs-derivation worklist — Easy is no longer exempt.
+
 ### Additional STT engines (faster-whisper)
 
 **Removed:** `mlx-audio` was trialed as a second STT engine but removed — its
