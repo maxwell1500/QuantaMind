@@ -1,6 +1,29 @@
 use std::path::Path;
+use std::process::Command;
+
+/// Short git commit the binary was built from, stamped into the binary as
+/// `QM_BUILD_HASH` (read via `env!`). It rides on the publish payload as
+/// build-provenance so the leaderboard can tell two builds at the same crate
+/// version apart and dedup/verify submissions. Falls back to `unknown` outside a
+/// git checkout (e.g. a source tarball) — never fails the build.
+fn emit_build_hash() {
+    let hash = Command::new("git")
+        .args(["rev-parse", "--short", "HEAD"])
+        .output()
+        .ok()
+        .filter(|o| o.status.success())
+        .map(|o| String::from_utf8_lossy(&o.stdout).trim().to_string())
+        .filter(|s| !s.is_empty())
+        .unwrap_or_else(|| "unknown".to_string());
+    println!("cargo:rustc-env=QM_BUILD_HASH={hash}");
+    // Re-run when HEAD moves (new commit / branch switch) so the stamp stays fresh.
+    println!("cargo:rerun-if-changed=../.git/HEAD");
+    println!("cargo:rerun-if-changed=../.git/refs");
+}
 
 fn main() {
+    emit_build_hash();
+
     // `binaries/` is bundled as a Tauri resource (tauri.conf.json) but is
     // gitignored (multi-MB sidecar artifacts: llama-server, the shared
     // libggml-* dylibs whisper.cpp also loads). A fresh clone has no such

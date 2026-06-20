@@ -31,6 +31,17 @@ pub fn pre_validate(rows: &[PublishRow]) -> Result<(), (usize, String)> {
                 return bad(format!("avg_steps {s} must be >= 0"));
             }
         }
+        if r.collection_name.trim().is_empty() {
+            return bad("collection_name is empty".into());
+        }
+        if r.collection_hash.trim().is_empty() {
+            return bad("collection_hash is empty".into());
+        }
+        for t in &r.by_tier {
+            if !(0.0..=1.0).contains(&t.pass_k_rate) || t.pass_k_rate.is_nan() {
+                return bad(format!("by_tier pass_k_rate {} out of range 0..=1", t.pass_k_rate));
+            }
+        }
     }
     Ok(())
 }

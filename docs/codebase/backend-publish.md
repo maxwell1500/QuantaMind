@@ -26,19 +26,27 @@ no completion text ever leaves the machine — only ranked aggregates.
 
 ### What is shared — the canonical row
 The wire shape is `PublishRow` (`persistence/publish/row.rs`): `model`, `quant`,
-`cohort_key` (derived hardware bucket), `tool_version`, and a metrics bag
-(`pass_k` required; `effort`/`avg_steps` optional). Everything else in `ModelVerdict`
-(verdict reasons, memory profile, backend internals) is deliberately dropped. Rows are
-serialized to **canonical JSON** (sorted keys, no whitespace) and a **SHA-256 hash** is
-sent alongside for transit-integrity.
+`cohort_key` (derived hardware bucket), `tool_version`, a metrics bag (`pass_k`
+required; `effort`/`avg_steps` optional), and — since the Phase 9 extension — the
+graduated tier verdict (`status`, `eval_method`, `tier_tested`, `cleared_tier`,
+`hardware_class`, `recommended_tier`), the per-tier saturation curve
+(`by_tier: [{tier, pass_k_rate, k, avg_steps?, decoy_count?}]`), the failure
+**distribution** (`failure_distribution` — counts by mode, never the failing runs),
+the collection identity (`collection_name` + `collection_hash`), and build provenance
+(`schema_version`, `engine_version`, `build_hash`). The row is built by **allowlist**:
+everything in `ModelVerdict` not named here (verdict reasons, memory profile, backend
+internals, traces) is dropped, so a new `ModelVerdict` field is private until someone
+adds it to `project` on purpose. Rows are serialized to **canonical JSON** (sorted
+keys, no whitespace) and a **SHA-256 hash** is sent alongside for transit-integrity —
+the hash covers the full extended row deterministically.
 
 ### How — IPC commands
 | Command | File | Gate | Purpose |
 |---|---|---|---|
 | `save_readiness_image(path, bytes)` | `export_cmd.rs` | always built | Offline: write the readiness card PNG to disk. No auth, no network. |
 | `start_login(app, state)` | `identity/login_cmd.rs` | `not(enterprise)` | PKCE browser sign-in → caches access token, stores rotated refresh token. |
-| `preview_publish_payload(verdicts)` | `preview_cmd.rs` | `not(enterprise)` | Build the exact payload (rows + canonical JSON + hash + cohort + excluded count + first validation error). Offline. |
-| `publish_to_board(state, verdicts, link)` | `publish_cmd.rs` | `not(enterprise)` | Validate → resolve token → POST one batch to `api.quantamind.co`. |
+| `preview_publish_payload(verdicts, params, collection_id)` | `preview_cmd.rs` | `not(enterprise)` | Build the exact payload (rows + canonical JSON + hash + cohort + excluded count + first validation error). `collection_id` stamps the collection identity/hash and excludes custom-collection rows. Offline. |
+| `publish_to_board(state, verdicts, params, collection_id, link)` | `publish_cmd.rs` | `not(enterprise)` | Validate → resolve token → POST one batch to `api.quantamind.co`. |
 
 ### Managed state & the enterprise gate
 - **`AuthState`** (`auth_state.rs`) is `.manage()`d in `lib.rs` in **every** build (un-gated)
@@ -137,21 +145,23 @@ pub fn save_readiness_image(path: String, bytes: Vec<u8>) -> Result<(), AppError
   JSON + hash, the derived cohort, how many models were dropped as unmeasured, and any
   local validation failure — *before* anything leaves the machine.
 - **What:** `PublishPreview { rows, canonical_json, hash, cohort_key, excluded_count,
-  invalid: Option<InvalidRow> }`. `build_preview` is the pure core (cohort + version
-  injected) so the previewed payload is **byte-identical** to the sent one and is unit
-  testable. Unmeasured/unquantized verdicts are dropped (`excluded_count`).
-- **How/Where used:** `preview_publish_payload` IPC handler calls `build_preview` on the
-  local `snapshot()` cohort + `CARGO_PKG_VERSION`. Shared with `publish_cmd`.
+  invalid: Option<InvalidRow> }`. `publish_context` assembles the run-wide
+  `PublishContext` (cohort + hardware class from the local snapshot; collection
+  identity/hash + per-tier decoy axes from the active `collection_id`; engine/build
+  provenance); `build_preview` is the pure core (context injected) so the previewed
+  payload is **byte-identical** to the sent one and is unit testable.
+  Unmeasured/unquantized/custom-collection verdicts are dropped (`excluded_count`).
+- **How/Where used:** `preview_publish_payload(verdicts, params, collection_id)` IPC handler
+  builds the context then calls `build_preview`. Shared with `publish_cmd`.
 
 ```rust
-pub(crate) fn build_preview(verdicts: &[ModelVerdict], cohort: String, tool_version: &str)
+pub(crate) fn build_preview(verdicts: &[ModelVerdict], ctx: &PublishContext)
     -> Result<PublishPreview, AppError> {
-    let rows: Vec<PublishRow> =
-        verdicts.iter().filter_map(|v| PublishRow::project(v, cohort.clone(), tool_version)).collect();
+    let rows: Vec<PublishRow> = verdicts.iter().filter_map(|v| PublishRow::project(v, ctx)).collect();
     let excluded_count = verdicts.len() - rows.len();
     let invalid = pre_validate(&rows).err().map(|(index, reason)| InvalidRow { index, reason });
     Ok(PublishPreview { canonical_json: canonical_json(&rows)?, hash: canonical_hash(&rows)?,
-        cohort_key: cohort, excluded_count, invalid, rows })
+        cohort_key: ctx.cohort_key.clone(), excluded_count, invalid, rows })
 }
 ```
 
@@ -313,29 +323,41 @@ publish-specific semantics are below.
 - **Why:** Group the pure publish record shape away from Tauri/command code.
 
 ### File: `row.rs` — the canonical row + publishability rule
-- **Responsibility:** Define `PublishMetrics` + `PublishRow` and project a `ModelVerdict`
-  into a publishable row.
+- **Responsibility:** Define `PublishMetrics`, `TierMetric`, `FailureDistribution`,
+  `PublishRow` + `PUBLISH_SCHEMA_VERSION`, and the `PublishContext` that `project`
+  threads, then project a `ModelVerdict` into a publishable row by **allowlist**.
 - **Why:** This is the **whole wire shape**; everything not named here is dropped, and the
-  projection is the **client half of the null-poisoning guard**.
+  projection is the **client half of the null-poisoning guard** plus the
+  custom-collection exclusion.
 - **What:**
   - `PublishMetrics { pass_k: f64 (required), effort?, avg_steps? }`. Soft metrics omitted
     when unmeasured (`skip_serializing_if = "Option::is_none"`) — the JSONB bag stays
     additive/forward-compatible. **No task content ever lives here.**
-  - `PublishRow { model, quant, cohort_key, tool_version, metrics }`.
-  - `project(v, cohort_key, tool_version) -> Option<PublishRow>` returns **`None` unless the
-    verdict has both a measured `pass_k` AND a real `quantization`** — i.e. **a row needs
-    pass_k + quantization to be publishable**. Unmeasured rows are excluded, never sent as a
-    null that would skew the server's baseline `n`/percentiles.
+  - `TierMetric { tier, pass_k_rate, k, avg_steps?, decoy_count? }` — one tier's point on
+    the saturation curve (`k` from `pass_k_for`, `decoy_count` from the collection axes).
+  - `FailureDistribution { infinite_loop, hallucinated, malformed_json, schema_unrecovered,
+    unknown_tool_calls, forbidden_calls, turn_timeouts, reported_in_prose }` — counts only,
+    mapped **field-by-field** from `FailureTracker` (NOT serialized directly, so a new
+    tracker counter never auto-publishes).
+  - `PublishRow { model, quant, cohort_key, tool_version, metrics, params, status,
+    eval_method, tier_tested?, cleared_tier?, hardware_class, recommended_tier, by_tier,
+    failure_distribution, collection_name, collection_hash, schema_version, engine_version,
+    build_hash }`. Run-wide fields are repeated per row (matching the `cohort_key`/
+    `tool_version` precedent) so the canonical hash stays one hash over `[PublishRow]`.
+  - `project(v, ctx) -> Option<PublishRow>` returns **`None` unless the verdict has a
+    measured `pass_k`, a real `quantization`, AND `ctx.collection_hash` is `Some`** — i.e.
+    **a row needs pass_k + quantization + a built-in collection to be publishable**. A
+    `None` collection hash (custom/user-authored collection) excludes the row, alongside
+    the unmeasured/unquantized exclusions that would skew the server's baseline `n`.
 - **How/Where used:** `build_preview` filters verdicts through `project`; the dropped count
-  becomes `excluded_count`.
+  becomes `excluded_count`. `PublishContext` is assembled by `preview_cmd::publish_context`.
 
 ```rust
-pub fn project(v: &ModelVerdict, cohort_key: String, tool_version: &str) -> Option<PublishRow> {
-    let pass_k = v.pass_k?;                 // must be measured
-    let quant = v.quantization.clone()?;    // must be a real quantization
-    Some(PublishRow { model: v.model.clone(), quant, cohort_key,
-        tool_version: tool_version.to_string(),
-        metrics: PublishMetrics { pass_k, effort: v.effort, avg_steps: v.avg_steps } })
+pub fn project(v: &ModelVerdict, ctx: &PublishContext) -> Option<PublishRow> {
+    let pass_k = v.pass_k?;                          // must be measured
+    let quant = v.quantization.clone()?;             // must be a real quantization
+    let collection_hash = ctx.collection_hash.clone()?; // must be a built-in collection
+    // … map by_tier (rate/k/decoy), tier_tested = max tier, failure_distribution …
 }
 ```
 

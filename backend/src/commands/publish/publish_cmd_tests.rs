@@ -1,16 +1,15 @@
 use super::*;
-use crate::persistence::prompts::schema::InferenceParams;
-use crate::persistence::publish::row::{PublishMetrics, PublishRow};
+use crate::persistence::publish::row::PublishRow;
 
 fn rows() -> Vec<PublishRow> {
-    vec![PublishRow {
-        model: "qwen".into(),
-        quant: "Q4_K_M".into(),
-        cohort_key: "apple-silicon/m3-pro/32-64gb".into(),
-        tool_version: "0.2.0".into(),
-        metrics: PublishMetrics { pass_k: 0.9, effort: Some(1.2), avg_steps: Some(3.0) },
-        params: InferenceParams::default(),
-    }]
+    vec![PublishRow::sample("qwen", 0.9)]
+}
+
+#[test]
+fn build_provenance_is_stamped() {
+    // build.rs emits QM_BUILD_HASH (short git commit, or "unknown"); env! resolves it.
+    assert!(!BUILD_HASH.is_empty(), "QM_BUILD_HASH must be stamped by build.rs");
+    assert!(!ENGINE_VERSION.is_empty());
 }
 
 #[tokio::test]
