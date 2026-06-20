@@ -239,13 +239,6 @@
             "value": "number",
             "rule": "string"
           }
-        },
-        {
-          "name": "reply",
-          "params": {
-            "text": "string"
-          },
-          "returns_entity": false
         }
       ],
       "decoy_tools": [
@@ -338,13 +331,6 @@
             "k": "number",
             "to": "string"
           }
-        },
-        {
-          "name": "reply",
-          "params": {
-            "text": "string"
-          },
-          "returns_entity": false
         }
       ],
       "decoy_tools": [

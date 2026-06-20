@@ -253,24 +253,10 @@
       "expected_calls": [
         {
           "type": "call",
-          "name": "get_change",
-          "args": {
-            "id": "C-1"
-          }
-        },
-        {
-          "type": "call",
           "name": "open_pr",
           "args": {
             "change": "C-1",
             "base": "release"
-          }
-        },
-        {
-          "type": "call",
-          "name": "get_change",
-          "args": {
-            "id": "C-2"
           }
         },
         {
