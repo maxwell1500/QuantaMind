@@ -233,8 +233,10 @@ on first use.
 ### MLX not detected {#mlx-not-detected}
 
 The **MLX** backend appears in the workspace rail only on Apple Silicon. Install
-mlx-lm once (`pip install mlx-lm`). MLX models then work like every other
-backend: **download → select → Start → run/eval/quant.**
+mlx-lm once into a virtual env (`python3 -m venv ~/mlx-env`,
+`source ~/mlx-env/bin/activate`, `pip install -U mlx-lm`) — the in-app backend
+setup guide shows these three copy-able commands. MLX models then work like every
+other backend: **download → select → Start → run/eval/quant.**
 
 **Download:** in **Models → HuggingFace**, flip the **GGUF / MLX** toggle to MLX
 and search. Each toggle filters search to that library tag — GGUF to `gguf`-tagged

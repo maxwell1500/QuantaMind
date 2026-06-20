@@ -56,10 +56,14 @@ const ENGINES: Engine[] = [
     blurb: "Apple-Silicon-native inference via mlx_lm.server.",
     runs: "mlx-community models (4-bit / 8-bit)",
     appleOnly: true,
-    commands: [{ label: "Install", cmd: "pip install mlx-lm" }],
+    commands: [
+      { label: "Create a virtual env", cmd: "python3 -m venv ~/mlx-env" },
+      { label: "Activate it", cmd: "source ~/mlx-env/bin/activate" },
+      { label: "Install mlx-lm", cmd: "pip install -U mlx-lm" },
+    ],
     links: [{ text: "mlx-lm project", href: "https://github.com/ml-explore/mlx-lm" }],
     steps: [
-      "Install mlx-lm with the command above.",
+      "Run the three commands above to install mlx-lm in ~/mlx-env.",
       "Download an MLX model in Models → Hugging Face.",
       "Pick MLX + your model in the header, then press ▶.",
     ],
