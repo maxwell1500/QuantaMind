@@ -370,6 +370,16 @@ an agent — entirely offline and deterministic. Read the scores with these cave
   calls**, so a chatty model that prints its call inline *and* echoes it in a
   trailing ```` ```json ```` block isn't wrongly failed by the cardinality guard;
   genuinely distinct parallel calls are kept.
+- **Plain-JSON tool-call contract.** The system prompt asks for a bare JSON
+  object `{"name":…,"args":…}` (or a JSON array for several calls). The parser is
+  lenient about wrappers and ```` ```json ```` fences, but it does **not** decode
+  provider-specific tool envelopes — a model that emits harmony / channel tokens
+  (`<channel|>…<tool_call|>…`) or unquoted-key pseudo-JSON is scored
+  `malformed_json`, even when the *intended* call was correct. That's deliberate:
+  a real prompt-based agent expecting JSON would also break, so the format failure
+  is a true capability signal, not a harness artifact. (A tolerant pre-parser that
+  repairs non-standard envelopes and reports format-compliance separately is a
+  possible future feature — intentionally not done, so scores aren't inflated.)
 - **Single-turn, greedy (temp 0), ~13-task fixture.** No multi-turn / agent
   loops; greedy decoding makes scores reproducible and comparable across quants
   (and sidesteps MLX's missing seed). The fixture is small and curated —
