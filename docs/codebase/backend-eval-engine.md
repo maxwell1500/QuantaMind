@@ -663,7 +663,12 @@ crash-resume.
   model + assert VRAM cleared, `Err` halts); `BatchSink` (`task_started` /
   `agentic_turn` / `task_done`); `AggAgentic` (strict Pass^k: `tasks_passed` =
   tasks where every run passed; `pass_k() = tasks_passed/tasks_total`; `by_tier:
-  Vec<TierStat>`); `TierStat{tier, tasks_passed, tasks_total, avg_steps, failures}`
+  Vec<TierStat>`; native-FC only: `tasks_errored` = tasks whose every run hit a
+  backend `Err` — carried SEPARATELY from `tasks_total` so `pass_k` is never diluted
+  by infra, making the native denominator's shrink visible not silent; `native_error_class:
+  NativeErrorClass{None, InfraHost, SchemaRejected, Mixed}` distinguishes a host/infra
+  crash from a native-path schema rejection so an OOM never reads as model incapability);
+  `TierStat{tier, tasks_passed, tasks_total, avg_steps, failures}`
   (Phase 9B: `agg_agentic` buckets reports by tier and computes per-tier `avg_steps`
   + merged `failures` alongside the strict Pass^k — feeding the Agent Report deep-dive);
   `BatchColumn{model, backend, toolcall, agentic, agentic_native_fc, error}`;
@@ -671,8 +676,10 @@ crash-resume.
 - **Functions:** `run_batch` (test wrapper, no gate), `run_batch_resumable`
   (the VRAM-safe resumable loop — folds `prior` units silently, runs the rest,
   streams + records), `fold_report` (repaint Matrix from completed units only,
-  no execution), `run_native_fc_pass` (parallel native-FC aggregate),
-  `batch_summaries`, `agg_agentic`.
+  no execution), `run_native_fc_pass` (parallel native-FC aggregate — a task whose
+  every run errors is COUNTED into `tasks_errored` + classified, never silently dropped;
+  an all-errored pass still emits a column, which `inputs.rs` filters on `total_runs>0`
+  so it never pollutes the verdict), `batch_summaries`, `agg_agentic`.
 
 **Pass^k is strict** — a task is credited only when *all k runs* succeed:
 

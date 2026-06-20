@@ -163,6 +163,57 @@ pub struct AggAgentic {
     /// difficulty tier the model cleared. `#[serde(default)]` for back-compat.
     #[serde(default)]
     pub by_tier: Vec<TierStat>,
+    /// Native-FC only: tasks whose every run ERRORED (a backend `Err`, not a scored
+    /// failure) and so produced no report. Carried SEPARATELY from `tasks_total` (the
+    /// scored denominator) so `pass_k` is never diluted by infra — the shrink is visible,
+    /// not silent: a column reads "0/3 scored, 2 errored"; attempted = total + errored.
+    #[serde(default)]
+    pub tasks_errored: u32,
+    /// What KIND of error the errored tasks hit. An infra/host crash (`InfraHost`) must
+    /// never read as model incapability — only a native-path schema rejection does.
+    #[serde(default)]
+    pub native_error_class: NativeErrorClass,
+}
+
+/// Why a native-FC task produced no scored result (every run errored). Kept distinct from
+/// model FAILURES (which are scored) so an infra/host error is never read as incapability —
+/// the misattribution the timeout finding warned about, one layer down.
+#[derive(Serialize, Deserialize, Clone, Copy, Debug, PartialEq, Eq, Default)]
+#[serde(rename_all = "snake_case")]
+pub enum NativeErrorClass {
+    /// No task errored.
+    #[default]
+    None,
+    /// Backend/transport error (Ollama OOM-killed or crashed under host pressure, a 5xx, a
+    /// dropped connection, a transport timeout). NOT a capability signal — the machine.
+    InfraHost,
+    /// The native tool API rejected the request (a 4xx): this model can't express the
+    /// task's tool schema natively. A legitimate "can't run native", not host pressure.
+    SchemaRejected,
+    /// Both kinds occurred across the errored tasks.
+    Mixed,
+}
+
+/// Classify a native-pass task error. A 4xx from `/api/chat` means the request/tool-schema
+/// was rejected (`SchemaRejected`); everything else — 5xx, connection lost, transport
+/// timeout — is `InfraHost` and must never imply model incapability. Defaults to
+/// `InfraHost` on anything ambiguous (the safe direction: blame the machine, not the model).
+fn classify_native_error(msg: &str) -> NativeErrorClass {
+    if msg.contains("HTTP 4") {
+        NativeErrorClass::SchemaRejected
+    } else {
+        NativeErrorClass::InfraHost
+    }
+}
+
+/// Fold a task's error class into the column's running class (`None` is identity; two
+/// different non-`None` classes become `Mixed`).
+fn merge_error_class(acc: NativeErrorClass, next: NativeErrorClass) -> NativeErrorClass {
+    match (acc, next) {
+        (NativeErrorClass::None, x) | (x, NativeErrorClass::None) => x,
+        (a, b) if a == b => a,
+        _ => NativeErrorClass::Mixed,
+    }
 }
 
 impl AggAgentic {
@@ -280,6 +331,8 @@ fn agg_agentic(reports: &[AgenticReport]) -> AggAgentic {
         top_error,
         failures,
         by_tier,
+        tasks_errored: 0,
+        native_error_class: NativeErrorClass::None,
     }
 }
 
@@ -580,6 +633,8 @@ where
             }
         }
         let mut reports: Vec<AgenticReport> = Vec::new();
+        let mut errored: u32 = 0; // tasks whose every run errored (a backend Err)
+        let mut error_class = NativeErrorClass::None;
         for task in &agentic_tasks {
             if cancel.is_cancelled() {
                 break;
@@ -597,20 +652,37 @@ where
             let result = run_agentic_for(&turn, task, &col.model, &sandbox, cfg, &cancel, &tx).await;
             drop(tx);
             let _ = drain.await;
-            if let Ok(report) = result {
-                let report = report.with_tier(task_tier(task));
-                record(&CompletedUnit {
-                    model: col.model.clone(),
-                    task_id: task.id.clone(),
-                    category: task.category.clone(),
-                    outcome: TaskOutcome::Agentic { report: report.clone() },
-                    is_native: true,
-                });
-                reports.push(report);
+            match result {
+                Ok(report) => {
+                    let report = report.with_tier(task_tier(task));
+                    record(&CompletedUnit {
+                        model: col.model.clone(),
+                        task_id: task.id.clone(),
+                        category: task.category.clone(),
+                        outcome: TaskOutcome::Agentic { report: report.clone() },
+                        is_native: true,
+                    });
+                    reports.push(report);
+                }
+                // Every run of this task errored — a backend `Err`, NOT a scored failure (a
+                // turn timeout is already scored). Count it visibly and classify the cause so
+                // a host/infra crash is never read as model incapability. The dropped task is
+                // why the native denominator silently shrank before this fix.
+                Err(e) => {
+                    errored += 1;
+                    error_class = merge_error_class(error_class, classify_native_error(&e.to_string()));
+                }
             }
         }
-        if !reports.is_empty() {
-            col.agentic_native_fc = Some(agg_agentic(&reports));
+        // Emit the column when ANYTHING ran OR errored — an all-errored native pass now
+        // surfaces "0 scored, N errored" instead of vanishing to `None`. `agg_agentic(&[])`
+        // is empty-safe (total_runs 0), and `inputs.rs` filters native on `total_runs > 0`,
+        // so an all-errored column never pollutes the verdict — it's pure visibility.
+        if !reports.is_empty() || errored > 0 {
+            let mut agg = agg_agentic(&reports);
+            agg.tasks_errored = errored;
+            agg.native_error_class = error_class;
+            col.agentic_native_fc = Some(agg);
         }
         prev = Some(col.model.clone());
     }
