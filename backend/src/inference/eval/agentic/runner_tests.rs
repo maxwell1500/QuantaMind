@@ -894,3 +894,15 @@ async fn single_element_array_matches_a_bare_object() {
     assert_eq!(steps[1].kind, StepKind::EndStateReached);
     assert_eq!(steps[1].injection, None);
 }
+
+#[test]
+fn num_ctx_scales_with_max_steps_and_clamps_to_the_memory_safe_window() {
+    use crate::inference::eval::agentic::runner::agentic_num_ctx;
+    // Floor: a tiny run never drops below the minimum window.
+    assert_eq!(agentic_num_ctx(1), 4096);
+    // Hard (~20 steps): covered in full, no overflow, well under the ceiling.
+    assert_eq!(agentic_num_ctx(20), 2048 + 20 * 384); // 9728
+    // Extreme (85 steps): would need ~35k but clamps to the 16GB-safe ceiling.
+    assert_eq!(agentic_num_ctx(85), 16384);
+    assert_eq!(agentic_num_ctx(u32::MAX), 16384); // saturating, never overflows
+}

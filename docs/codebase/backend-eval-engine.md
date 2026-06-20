@@ -341,6 +341,18 @@ FaultInjection::TransientError { status_code, clears_after } => {
   (scripted models / backends that can't warm just run cold, as before). Note: warm-up
   loads *weights* — a runtime that allocates more on first *large* context (cliff probe)
   could still pay that on the first rung; out of scope here.
+- **Keep-alive floor:** `batch_cmd::agentic_keep_alive` floors the batch `keep_alive`
+  at `AGENTIC_KEEP_ALIVE_SECS=600` when the UI leaves it unset (an explicit value, incl.
+  `-1`=forever, still wins). Without it Ollama's default 5-min idle unload can evict the
+  model — and its prefix-KV cache — across an inter-task/inter-turn gap mid-batch, so the
+  warm-up's load wouldn't survive the ~k×max_steps sequential calls.
+- **Context window (`num_ctx`):** the agentic loop re-sends the whole growing transcript
+  every step; `runner::agentic_num_ctx(max_steps)` sizes `num_ctx` to
+  `clamp(2048 + max_steps·384, 4096, 16384)`. Left at the model default (~4096) a
+  multi-step transcript overflows → Ollama context-shift, which busts the automatic
+  prefix-KV cache (full re-prefill every turn — the stall) AND silently drops the
+  earliest turns. The 16384 ceiling is memory-safe on a 16GB host; the deepest Extreme
+  (85-step ≈ 30k-token) runs still shift there — a hardware limit, not a regression.
 
 ### File: `endstate.rs`
 - **Responsibility:** Checkpoint matching + Driver-D semantic schema validation.
