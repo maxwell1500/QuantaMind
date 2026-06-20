@@ -1,6 +1,23 @@
 import { invoke } from "@tauri-apps/api/core";
 import { z } from "zod";
 import { BackendKindSchema } from "../models/storage";
+import { FailureTrackerSchema } from "./batch";
+
+/// Phase 9 difficulty tier (mirror of the Rust `Tier`). `.optional()` at each use
+/// site keeps payloads written before Phase 9 (and existing typed fixtures) valid.
+export const TierSchema = z.enum(["easy", "medium", "hard", "extreme"]);
+export type Tier = z.infer<typeof TierSchema>;
+
+/// Tier → locked Pass^k (mirror of Rust `pass_k_for` in `passk.rs` — that is the
+/// source of truth; keep these in sync). Drives the eval page's read-only `k` field
+/// when a difficulty tier is selected, so the displayed `k` matches what the backend
+/// stamps onto each spec.
+export const PASS_K_BY_TIER: Record<Tier, number> = {
+  easy: 5,
+  medium: 8,
+  hard: 16,
+  extreme: 24,
+};
 
 /// A use-case preset the verdict is measured against (mirror of the Rust
 /// `ReadinessProfile`). Hard gates (`require_*`, `min_*`) block; soft targets
@@ -16,6 +33,10 @@ export const ReadinessProfileSchema = z.object({
   forbid_hallucinated_completion: z.boolean(),
   require_full_vram: z.boolean(),
   require_native_fc: z.boolean(),
+  /// Phase 9: the difficulty tier this profile requires. `.optional()` keeps old
+  /// profiles + fixtures valid; the EditProfileModal `{...profile}` spread carries
+  /// it through on save, so editing a profile never drops it.
+  required_tier: TierSchema.optional(),
 });
 export type ReadinessProfile = z.infer<typeof ReadinessProfileSchema>;
 
@@ -31,6 +52,10 @@ export const ReadinessVerdictSchema = z.object({
   blocking: z.array(z.string()),
   conditions: z.array(z.string()),
   path: AgentPathSchema,
+  /// The tier this profile requires, and the highest tier the model cleared at the
+  /// profile's bar — graduated readiness ("cleared Medium; requires Extreme").
+  required_tier: TierSchema.optional(),
+  cleared_tier: TierSchema.nullable().optional(),
 });
 export type ReadinessVerdict = z.infer<typeof ReadinessVerdictSchema>;
 
@@ -59,6 +84,18 @@ export const CliffStatusSchema = z.discriminatedUnion("status", [
 ]);
 export type CliffStatus = z.infer<typeof CliffStatusSchema>;
 
+/// Phase 9B per-tier breakdown (mirror of the Rust `TierStat`): the strict Pass^k
+/// numerator/denominator plus the tier's mean steps and failure tally. `avg_steps` null →
+/// "—" (never fabricated). The Agent Report's Tier Progression Matrix reads these.
+export const TierStatSchema = z.object({
+  tier: TierSchema,
+  tasks_passed: z.number().int(),
+  tasks_total: z.number().int(),
+  avg_steps: z.number().nullish(),
+  failures: FailureTrackerSchema,
+});
+export type TierStat = z.infer<typeof TierStatSchema>;
+
 export const ModelVerdictSchema = z.object({
   model: z.string(),
   backend: BackendKindSchema,
@@ -77,6 +114,12 @@ export const ModelVerdictSchema = z.object({
   // Absent → treated as NotProbed ("N/A"). The hard gate only blocks when a profile
   // sets `min_context_tokens` (strict: NoCliff passes iff tested ≥ min).
   cliff: CliffStatusSchema.optional(),
+  // Phase 9B: the native-first per-tier breakdown + overall failure tally — the same
+  // source the verdict gated on — feeding the Agent Report's Tier Progression Matrix and
+  // Failure Taxonomy. Optional (the backend always emits `[]`, but older payloads / test
+  // fixtures may omit it) — the deep-dive components treat absent as "no agentic run".
+  by_tier: z.array(TierStatSchema).optional(),
+  failures: FailureTrackerSchema.optional(),
 });
 export type ModelVerdict = z.infer<typeof ModelVerdictSchema>;
 

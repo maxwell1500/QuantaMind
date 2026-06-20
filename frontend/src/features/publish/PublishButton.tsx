@@ -5,6 +5,7 @@ import { formatIpcError } from "../../shared/ipc/core/error";
 import { publishToBoard, startLogin } from "../../shared/ipc/publish/publish";
 import type { PublishPreview } from "../../shared/ipc/publish/preview";
 import type { ModelVerdict } from "../../shared/ipc/eval/readiness";
+import type { InferenceParams } from "../../shared/ipc/workspace/prompts";
 import { PublishDialog } from "./PublishDialog";
 
 /// Opens the privacy-gate dialog and handles every publish outcome WITHOUT ever
@@ -17,9 +18,9 @@ export function PublishButton({ verdicts }: { verdicts: ModelVerdict[] }) {
   /// `retried` guards the auto-publish-after-login path: on first `needs_auth` we
   /// open sign-in then re-attempt once. If it still needs auth (sign-in cancelled
   /// or failed), we stop and ask the user instead of looping forever.
-  const onPublish = async (preview: PublishPreview, link: string, retried = false) => {
+  const onPublish = async (preview: PublishPreview, link: string, params: InferenceParams, retried = false) => {
     try {
-      const outcome = await publishToBoard(verdicts, link);
+      const outcome = await publishToBoard(verdicts, params, link);
       switch (outcome.kind) {
         case "ok":
           toast("Published to the board ✓");
@@ -42,7 +43,7 @@ export function PublishButton({ verdicts }: { verdicts: ModelVerdict[] }) {
           if (!persisted) {
             toast("Signed in for this session — Keychain access was denied, so you may need to sign in again next launch");
           }
-          await onPublish(preview, link, true);
+          await onPublish(preview, link, params, true);
           break;
         }
         case "invalid":

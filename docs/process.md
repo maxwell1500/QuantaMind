@@ -463,7 +463,8 @@ one. Built one step at a time.
   required keys + top-level types. Honest framing: a quality *smoke test*, not a
   rigorous benchmark. `inference/eval` (pure scoring, Tauri-free) + `commands/eval`
   (`list_evals`, `run_eval_task` — runs temp-0, accumulates output, scores).
-- **5.5 Smart quant recommender (done).** A **Quant** tab: pick a model that has
+- **5.5 Smart quant recommender (done).** A **Quant** view — reached via the
+  **Analysis → Quant** sub-tab: pick a model that has
   several installed quantizations (grouped by family + size in `quantPick.ts`)
   and a use case (fast-chat / quality-writing / coding / reasoning) → a
   recommended quant + plain-language why. Pure `recommendQuant` combines the
@@ -664,7 +665,36 @@ are labelled **"community-reported"** (self-fabrication is deterred via validati
 outliers + GitHub identity + report/remove, never cryptographically prevented). The
 **export (B4) is ungated** — it ships in every build, including enterprise.
 
-### Phase 8+
+### Phase 9 — Difficulty tiers & anti-saturation
+
+Graduated difficulty for the agentic eval: per-task **tiers** (Easy→Extreme) that
+scale Pass^k, **hardware-calibrated** readiness (the bar rises with the machine), a
+**v2 scenario engine** (19 bundled tiered collections replace the hand-coded
+fixtures), seeded **decoy** injection, and **procedural instancing** for
+contamination resistance. The engine internals are documented in
+[reference.md](reference.md) (difficulty tiers + the v2 scenario engine); the run-UI
+surface is under [reference.md#eval-runner](reference.md#eval-runner).
+
+| # | Step | Status |
+| --- | --- | --- |
+| 9A | `Tier` + `DifficultyAxes` on `AgenticSpec` (serde-default, byte-identical round-trip); seeded decoy injection (`agentic/difficulty/decoys.rs`); `pass_k_for(tier)` (Easy 5 / Medium 8 / Hard 16 / Extreme 24, explicit `k` wins); `unknown_tool_calls` distraction tally (excluded from `top_error`); trivial-agent + decoy-isolation gate tests | done |
+| 9B | Hardware-calibrated tier gate: `hwclass.rs` (memory → `HardwareClass` → `default_required_tier`); `AggAgentic.by_tier` strict Pass^k per tier; `ReadinessProfile.required_tier` + `assess()` blocks only when the required tier was **exercised but not cleared** (untested = NotAttempted, never a guessed fail); verdict carries `required_tier`/`cleared_tier`; Agent Report renders graduated readiness per row | done |
+| v2 | Full v2 scenario engine (`agentic/v2/`): `world_state` discovery, `RequireAll` unordered checkpoints, `must_not_call` traps, name-keyed faults; 19 bundled tiered collections become THE eval content (old fixtures deleted); runs on the unchanged agentic runner; integrity + oracle gates prove all 434 tasks satisfiable and a trivial agent scores 0 | done |
+| C1–C2 | Per-run sandbox factory (`run_agentic_with`) + procedural instancing (`v2/generator.rs::instantiate`): seeded bijective entity-id rename per Pass^k run (oracle-safe, novel per run, replay fallback when no numbered entities); `AgenticSpec.generated` threaded through both streaming + native passes | done |
+| A5b/B2 | Runtime safety for heavy v2 runs: per-step 180s turn timeout (`TurnTimeout`); mid-run cancellation checked between Pass^k runs; worst-case pre-run cost estimate beside the Matrix Run button | done |
+| 9-UI | **Inline tier + anti-saturation run controls** on the Eval page: Difficulty Tier dropdown (`Auto`/Easy…Extreme/`Custom`) with tier-locked Pass^k (`PASS_K_BY_TIER` mirrors `passk.rs`), `get_hardware_tier` command driving `Auto` + the HW hint, an Enable-Decoy-Tools budget, and scoreboard header chips (`Tier · K · Decoys`). `tier`/`decoyTools` flow through `run_batch_eval` → `apply_overrides` onto each agentic spec | done |
+| 9B-report | **Agent Report deep-dive** (per-model, augmenting the multi-model table): per-tier `avg_steps` + `failures` now computed in `agg_agentic` (enriched `TierStat`) and exposed on `ModelVerdict.by_tier`/`failures` via one `native_first_source` helper (same source the gate reads). Three new components — **Executive Verdict** (run-tier headline = highest tier exercised; hardware class is an advisory lens, never a gate; status = "cleared what it ran" via a contiguous `clearsThrough`), **Tier Progression Matrix** (CLEAR/SATURATED/FAIL/NOT-TESTED on the same `min_pass_k` bar as `cleared_tier`; Task Parameters from real task axes or "not declared"), **Failure Taxonomy** (failure-mode distribution across the *tested* tiers, honest event denominator). Versioned JSON export | done |
+
+Locked decisions: an authored per-task `k` **no longer silently wins** under a chosen
+tier (the backend stamps the derived Pass^k so the locked display matches the run);
+`Custom` is the escape hatch that restores free-`k`, no-tier behavior. **Max Steps
+stays editable** — there is no tier→max-steps policy to lock it to. The GB→class→tier
+thresholds live **once** in `hwclass.rs` (read via `get_hardware_tier`), never
+duplicated in TS. Deferred: deep per-template *semantic* generation (instancing does
+generic id-remap only), replay-vs-varied status per collection, tier-tagging of
+imported custom collections, and the D-series leaderboard (needs Phase 8).
+
+### Phase 9+
 
 Owners flesh out the next phase's section here when the current lands.
 
@@ -686,6 +716,91 @@ would run the sandbox conversation under padding, decide where the needle lands 
 aggregate **Pass^k per rung** against `agentic.end_state`. **Activate when:** a phase wants correctness
 (not just format) context-headroom signal for agentic workloads. **Why deferred:** it's a new multi-turn
 engine (padding placement across turns, per-rung Pass^k), not a tweak to the single-turn probe.
+
+### Medium/Hard answer-key reachability
+
+The v2 reachability guard (`scenarios.rs::every_required_easy_world_state_fact_is_tool_reachable`)
+asserts that a world_state fact a checkpoint forces the model to echo is retrievable through some
+getter — but it is **enforced on the Easy tier only**. The **Extreme** tier is deliberately excluded
+(its required values — chosen statistical method, etc. — are *reasoned conclusions*, not facts to
+fetch), and **Medium/Hard are tracked here**. Diagnostic worklist of unreachable facts:
+`medium-coding/md_co_trace_root_cause`→`payments/round.py`,
+`medium-coding/md_co_rollback_by_severity`→`checkout_v2`,
+`hard-coding/hd_co_ci_multifile`→`billing/format.py`+`billing/rounding.py`,
+`hard-coding/hd_co_incident_forensics`→`key-reports-3`+`svc-reports`.
+
+**The load-bearing principle (do NOT skip):** the Medium/Hard pass is **not** "make every flagged fact
+reachable." It is **classify each required fact as RETRIEVAL vs DERIVATION, then enforce reachability
+only on the retrieval ones.** Over-enforcing turns a reasoning challenge into a lookup (the Extreme
+mistake, one tier down); under-enforcing leaves the harness-fails-a-correct-model bug. The Extreme
+exclusion is the worked example — carry it into this work.
+
+**Why deferred (it's NOT another mechanical key-fix):** the Easy repairs were key-alignment (re-key
+`cart_tests`→`cart`, flatten `symbol`) — mechanical. Medium/Hard needs the per-fact retrieval/derivation
+judgment AND **re-validating that the procedurally-generated instances still produce the intended
+difficulty** after the world_state restructure (these tiers carry `generator`/`instance0` + entity
+remap; reshaping world_state can perturb instantiation). That generated-instance re-validation is the
+real cost. **Activate when:** a phase invests in Medium/Hard answer-key correctness. **Mechanics:**
+restructure world_state so retrieval facts resolve through a called getter, then widen the reachability
+test to those tiers (drop the Easy-only `continue`) and re-run BOTH the oracle test and the
+generated-instance satisfiability checks to confirm gradeability + preserved challenge.
+
+### Retrieval-vs-derivation over-enforcement is already live on Easy (`branch_target`)
+
+The over-enforcement the section above frames as a Medium/Hard *future* risk is **already biting on
+Easy**. `easy-coding/es_co_branch_target` lists `get_change{id:C-1}` and `get_change{id:C-2}` as
+required `RequireAll` checkpoints — but the prompt itself **states** "C-1 is a hotfix, C-2 a feature."
+The change kind is *given*, so a model that correctly derives the base branch (hotfix→`release`,
+feature→`develop`) and opens both PRs **without** calling `get_change` is doing the task's actual
+skill, yet fails as `HallucinatedCompletion` (it satisfied 2/4 — only the `open_pr` calls). Confirmed
+**not** an echo/ack bug: the action-ack composes correctly (`runner_tests.rs::worldstate_multi_call_actions_each_ack_not_echo_entity`),
+so the failure reason is purely "skipped the discovery calls." The consequence is the founding
+inversion — the benchmark **understates** a capable model.
+
+**The decision is mutually exclusive — you cannot have both:** (a) drop `get_change` from
+`branch_target`'s required checkpoints (the task's skill is *routing by kind*, not *calling a getter*;
+the kind is disclosed, so the lookup is ceremony), OR (b) remove the kind from the prompt so the
+`get_change` lookup is genuinely required (the model must discover it). Leaking the answer in the
+prompt **and** mandating the lookup is the contradiction. Lean **(a)** for `branch_target` — but it's a
+per-task judgment, same as the Medium/Hard worklist above. **Action:** audit EVERY Easy task for the
+same shape (prompt discloses a fact a checkpoint then forces a getter to re-fetch) and fold the hits
+into the retrieval-vs-derivation worklist — Easy is no longer exempt.
+
+### Grader-bug fixes landed (G1/G2/G3) + the abstain-pattern audit
+
+The Qwen run (clean JSON, no format noise) surfaced grader bugs failing capable models. Fixed:
+- **G1 (prompt↔grader contradiction):** the system prompt's closing line is now end_state-gated
+  (`build_system_for(tools, TerminalGuidance)`) — act-tasks mandate a tool, abstain-tasks keep plain
+  text. The 9 reporter tasks (terminal `reply`/`reply_customer`) no longer fail a correct prose answer.
+- **G2 (ceremony getter):** dropped the redundant `read_file` checkpoint from `es_co_run_failing_test`
+  (the failing-test name comes from `run_tests`; `read_file` could only ack a wildcard path) and
+  softened its prompt. NO broad getter-resolvability guard — verified it false-fires on Easy derivation
+  getters (`chem_lookup`/`convert_units`/`convert_temp`/`format_value` ack by design; the answer is
+  *derived*, not retrieved).
+- **G3 (honest label):** `reported_in_prose` failure mode — a no-call yield where every other
+  checkpoint is satisfied and the prose matches the lone reporter checkpoint's text glob (the
+  "exactly one unsatisfied" guard stops a weak glob like `*3*` relabeling a real hallucination).
+- **G1 follow-up (reply-tool-aware mandate):** G1's first wording told every act-task to "use the
+  `reply` tool" — but ~55 action-only tasks have none, so a model that couldn't complete tried a
+  phantom `reply` call → schema-error→timeout. Fixed: `build_system_for` now names the REAL reporter
+  via `reply_tool_name` (or, action-only, "your tool actions are your answer"). The all-collections
+  invariant guard surfaced 2 tasks (`es_ms_sigfig_domain`, `es_ms_temp_scale`) carrying a **vestigial
+  `reply` tool** the grader never required (terminal is `format_value`/`convert_temp`) — removed it so
+  they're cleanly action-only.
+- **`es_co_branch_target` get_change over-enforcement — RESOLVED (lean (a)).** Dropped the two
+  `get_change` checkpoints (the prompt states the kinds; the skill is routing, not the lookup); now
+  passes for a model that routes hotfix→release/feature→develop. `must_not_call` traps unchanged
+  (guarded by `runner_tests.rs::branch_target_wrong_base_trap_stays_terminal_after_get_change_drop`).
+
+**OPEN — abstain-pattern audit (follow-up).** `es_cs_abstain_no_tool` was a true mis-authoring
+(named/intended as abstention but authored `RequireAll([reply_customer])`); fixed by converting it to
+`ExpectAbstainingText`. A scan for the general shape (name/prompt implies abstention/no-action but
+end_state is `RequireAll`) found other candidates that are **legitimate decline-VIA-action** — they
+have a dedicated decline tool: `es_ec_price_match`→`decline_match`, `md_lg_data_request_by_law`→
+`refuse`, `hd_se_flash_sale_oversell`→`offer_backorder`, `hd_fi_margin_call_cascade`→`log_decision`.
+**Do NOT "fix" these** — a decline routed through a real action tool is correct RequireAll. Only a
+name-implies-abstain task with NO decline tool (so the only way to "pass" is an unrelated reply) is a
+mis-authoring like `abstain_no_tool` was.
 
 ### Additional STT engines (faster-whisper)
 

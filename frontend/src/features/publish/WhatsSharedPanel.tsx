@@ -1,5 +1,6 @@
 const INCLUDED = [
   "Metrics — Pass^k, effort, avg steps",
+  "Inference params — temperature, top-p/k, context, seed (only the ones you set)",
   "Hardware cohort tags (chip class, memory tier)",
   "Model name + quantization",
   "Integrity hash + signature",

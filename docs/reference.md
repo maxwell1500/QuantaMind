@@ -283,7 +283,9 @@ it reads as fixable, not broken. The classifier (`ImportError` in
 - **"This GGUF file is incomplete"** (truncated / file-too-small) — the download or copy
   was cut off; it isn't the full model. Re-download the complete `.gguf`. Real models are
   hundreds of MB to several GB; a tiny file is truncated. From Hugging Face, fetch the
-  real `.gguf` via **Git LFS**, not a small pointer stub.
+  real `.gguf` via **Git LFS**, not a small pointer stub. Note: the parser grows its
+  metadata read window on demand (up to 256 MiB), so a large-vocab tokenizer (e.g. Qwen3)
+  no longer trips this — a truncation error now means the file really is incomplete.
 - **"This isn't a valid GGUF file"** (bad magic / wrong extension) — pick a `.gguf`, not
   `.safetensors`, `.bin`, or a zip.
 - **"Unsupported GGUF version"** — QuantaMind reads GGUF v1–v3; get a compatible export.
@@ -368,6 +370,30 @@ an agent — entirely offline and deterministic. Read the scores with these cave
   calls**, so a chatty model that prints its call inline *and* echoes it in a
   trailing ```` ```json ```` block isn't wrongly failed by the cardinality guard;
   genuinely distinct parallel calls are kept.
+- **Plain-JSON tool-call contract.** The system prompt asks for a bare JSON
+  object `{"name":…,"args":…}` (or a JSON array for several calls). The parser is
+  lenient about wrappers and ```` ```json ```` fences, but it does **not** decode
+  provider-specific tool envelopes — a model that emits harmony / channel tokens
+  (`<channel|>…<tool_call|>…`) or unquoted-key pseudo-JSON is scored
+  `malformed_json`, even when the *intended* call was correct. That's deliberate:
+  a real prompt-based agent expecting JSON would also break, so the format failure
+  is a true capability signal, not a harness artifact. (A tolerant pre-parser that
+  repairs non-standard envelopes and reports format-compliance separately is a
+  possible future feature — intentionally not done, so scores aren't inflated.)
+- **Act-vs-abstain closing instruction (G1), reply-tool-AWARE.** The closing line of
+  the system prompt is gated on the task's end_state, NOT fixed. An ABSTAIN task
+  (`ExpectAbstainingText`) keeps *"If no tool is needed, just answer in plain text."*
+  An ACT task (`RequireAll` / `RequireSequence`) mandates a tool — but the mandate is
+  tailored to the toolset: if a **reporter tool is present** (the first tool with a
+  `text` param — `reply` / `reply_customer`) it is named explicitly (*"call the
+  `reply_customer` tool"*); on an **action-only** task (no reporter) the mandate is
+  *"your tool actions are your final answer … do not call a tool that is not listed."*
+  The naming fixes a `reply`-vs-`reply_customer` misnomer, and the action-only branch
+  prevents a phantom `reply` call on the ~55 tasks whose deliverable IS their actions.
+  This resolves the prior contradiction (a terminal-`reply` task used to invite plain
+  text, failing a correct prose answer). A prose answer to an act-task is now scored
+  `reported_in_prose` (content-correct, wrong-channel), distinct from a true
+  hallucination — see the failure taxonomy.
 - **Single-turn, greedy (temp 0), ~13-task fixture.** No multi-turn / agent
   loops; greedy decoding makes scores reproducible and comparable across quants
   (and sidesteps MLX's missing seed). The fixture is small and curated —
@@ -410,11 +436,19 @@ Error), with a click-through Trace Debugger. See [the workspace](#eval-runner).
   plain-text refusal with **no** tool call (so a robust planner that declines an
   unsafe/unnecessary action isn't mis-scored as lazy); acting anyway fails.
 - **Pass^k consistency.** The loop runs `k` times (default 5) with absolute
-  isolation between runs. The per-task `AgenticReport` carries `passes/total_runs`, a
+  isolation between runs. A per-run **backend** error (e.g. Ollama timed out or
+  crashed on one attempt) does **not** abort the batch: that attempt is skipped and
+  the remaining runs still execute, then the report folds the runs that completed —
+  an infra fault is not a model task-failure, so a skipped run never reaches
+  `total_runs`. Only when **every** run errors does the error propagate (the task
+  then shows as Error and re-runs on resume — the backend is genuinely down). The
+  per-task `AgenticReport` carries `passes/total_runs`, a
   `FailureTracker` with **distinct** tallies (`infinite_loop_hits` = hit the step
   cap, `hallucinated_completions` = fake done, `malformed_json_calls` = broken
   JSON, `schema_unrecovered_calls` = exhausted the recovery budget), and a
-  `top_error` headline. The **collection-level Pass^k** (the Matrix headline and
+  `top_error` headline. `unknown_tool_calls` is a Phase-9 **diagnostic** tally
+  (decoy / hallucinated-tool calls) — it captures *how* a model coped with decoys
+  but is **not** a terminal failure, so it is excluded from `top_error`. The **collection-level Pass^k** (the Matrix headline and
   the readiness/leaderboard gate) is **strict**: `AggAgentic` credits a task only
   when **all k** of its runs reached the end state (`tasks_passed/tasks_total`), so a
   flaky 3/5 task counts as a failure, not 0.6 — reliability compounds and a model
@@ -441,6 +475,64 @@ Error), with a click-through Trace Debugger. See [the workspace](#eval-runner).
   report's `schema_resilience` is recovered ÷ runs-that-hit-an-error — **n/a** (UI
   "—") when no run ever hit one, never a fabricated 0. Constrained-decoding paths
   can't emit syntactically-broken calls, so this targets **semantic** faults.
+- **Difficulty tiers (Phase 9) + the v2 scenario engine.** Eval content is now the
+  **19 bundled tiered scenario collections** (Easy→Extreme across coding, finance,
+  medical, legal, ecommerce, support, supply-chain, math/science, clinical) under
+  `agentic/v2/scenarios/`. They **replaced** the old hand-coded single/multi fixtures.
+  Each collection is one JSON object (`{name, domain, tier, pass_k, axes, tasks[]}`);
+  `v2/collection.rs::load_v2_collection` transpiles it to engine `ToolTask`s
+  (`category:"agent_loop"`, routed through the unchanged agentic runner — no second
+  execution path). v2 task mechanics:
+  - **`world_state`** — ground truth the model discovers via tools; the sandbox's
+    `WorldState` responder returns the whole entity sub-object for the first arg that
+    names a `world_state` key (`v2/world_state.rs`), so there are no static mocks.
+  - **`expected_calls` → `EndStateRule::RequireAll`** — an unordered, consume-once
+    set (multi-entity tasks have independent sub-sequences, so strict order would
+    false-negative a correct model). Args match via `args_match_v2`: a `*…*` string is
+    an ordered, case-insensitive multi-segment glob; everything else is exact.
+  - **`must_not_call`** traps — invoking one (bare name, or `{name,args}` matched
+    wildcard-aware) is an immediate terminal `ForbiddenCall`, checked after
+    schema-validate (a malformed trap takes the recovery path first). pass^k
+    punishes a model that springs a trap even once.
+  - **`decoy_tools`** authored per task (presented but never expected); **`faults`**
+    keyed by tool name (`on_call`, trips on any args, transient `clears_after` is a
+    global per-tool counter).
+  - **`tier`/`pass_k`** scale reliability — Easy 5 / Medium 8 / Hard 16 / Extreme 24
+    (τ-bench: top models cluster at pass^1, spread at pass^8). `axes` document the
+    tier (`min_required_steps`, decoys, hidden prereqs, conflicting constraints,
+    adversarial/region variance). A permanent integrity test + an **oracle gate**
+    (replays each task's expected_calls) prove all 434 authored tasks are satisfiable
+    and a trivial agent scores 0.
+  - **Procedural instancing** (`v2/generator.rs`) — a `generated` collection builds a
+    FRESH instance each Pass^k run: `instantiate(task, seed_for(model, run_index))`
+    consistently renames the task's numbered entity ids (its `world_state` keys) by a
+    seeded offset across the prompt, world_state, checkpoints, and `must_not_call`. It's
+    a bijective alpha-rename — decision logic untouched (oracle-safe), surface ids novel
+    per run (contamination resistance), reproducible for a given `(model, run_index)`. A
+    task with no numbered entities replays its worked instance unchanged (honest: runs,
+    not varied). Deep per-template semantic generation (e.g. re-deriving which entity is
+    sanctioned) is deferred.
+  - **Runtime safety (v2 is heavy: ~80 steps × pass^24).** Each model turn has a 180s
+    wall-clock budget (`run_once`) — the streaming client has no body deadline, so a
+    stalled model would otherwise hang; a turn over budget ends the run as a terminal
+    `TurnTimeout`. Cancellation is checked between Pass^k runs (`run_agentic_with`), so
+    interrupting a big-k task halts within ≤1 run, not after all k. The Matrix panel
+    shows a worst-case **cost estimate** ("~N model calls (~H h)") before a run.
+- **Hardware-calibrated tier gate (Phase 9B).** `AggAgentic.by_tier` carries strict
+  Pass^k bucketed per tier; the readiness `assess()` derives the highest tier a model
+  cleared (`pass^k ≥ profile.min_pass_k`) and blocks when the profile's
+  `required_tier` was **exercised by the collection** but not cleared. An untested
+  tier is **NotAttempted**, never a guessed fail — so an all-Easy collection never
+  trips a Hard profile. `readiness/hardware/hwclass.rs` maps total memory to a
+  `HardwareClass` (rounded to the nearest GB to avoid boundary flip-flop) and a
+  default required tier; built-in profiles ship `required_tier` Hard (coding) /
+  Medium (rag, general), while a pre-Phase-9 saved profile defaults `Easy` and never
+  blocks (exact old behavior). The verdict carries `required_tier` + `cleared_tier`,
+  and the Agent Report renders graduated readiness per row ("✓ cleared Extreme /
+  requires Extreme" or "▸ cleared Medium / requires Extreme") — shown only for a
+  tiered profile, hidden for an untiered (Easy) one. A standalone hardware-class
+  label in the header is deferred (the hardware-calibrated `required_tier` already
+  conveys the bar).
 - **Relative effort, not absolute joules.** `avg_output_tokens_success` is the mean
   output-token count (`eval_count`) over the **successful** runs only — **n/a**
   when there are zero successes, never a divide-by-zero. Prompt tokens are
@@ -765,6 +857,41 @@ Each Scoreboard row has a **View Trace** button: clicking it flips the toggle to
 that exact collection + task + model, ready to ▶ — connecting the macro "which tasks failed?" view to
 the micro "why did this one fail?" trace.
 
+**Run Controls — difficulty tier + anti-saturation (Phase 9).** The Eval Manager's run controls expose
+the Phase-9 levers inline, so the chosen tier and decoy budget genuinely shape the batch (they flow into
+`run_batch_eval` → `apply_overrides`, which rewrites each agentic spec at run time):
+
+- **Difficulty Tier** dropdown — `Auto · Easy · Medium · Hard · Extreme`. The chosen tier **filters the
+  Built-In collection list to that tier only** (selecting a tier auto-picks the first in-tier collection;
+  `Auto` = the machine's recommended tier). The tier also flows to the backend as `tier`.
+- **Iterations (k)** — **always editable**, pre-filled with the chosen tier's *recommended* Pass^k
+  (Easy 5 / Medium 8 / Hard 16 / Extreme 24; TS mirror `PASS_K_BY_TIER`, source of truth `passk.rs`)
+  shown as a "recommended: N" hint. The (possibly hand-edited) `k` is always sent and **wins** over the
+  tier policy in `apply_overrides`. The pre-fill is a programmatic write guarded by a synchronous ref so
+  the async `Auto`-resolves-from-hardware path can never clobber a value the user typed (or a concrete
+  tier they just picked).
+- **HW hint** — "HW: 16GB RAM · Mainstream · Medium recommended" comes from the new `get_hardware_tier`
+  command (the single source of truth; the GB thresholds + class→tier policy live in `hwclass.rs`, never
+  duplicated in TS).
+- **Anti-Saturation** — an `Enable Decoy Tools` checkbox + `Decoy Count`. Enabled sends `decoyTools = N`,
+  which rewrites each agentic spec's `axes.decoy_tools` (N never-correct distractor tools shuffled into
+  the presented tool list); disabled (the default) leaves the task-authored decoys untouched.
+- **Scoreboard header chips** echo the active run's shape: `Target: <model> · Tier: <…> · K: <k> ·
+  Decoys: <n/off>`.
+- **Per-task authoring** — there is no collection-level "Edit" button; instead, **clicking a collection**
+  in the left sidebar expands/collapses its task list beneath it (accordion; clicking also selects it),
+  and each task row reveals **Edit** + **Delete** on hover. Edit opens that task in the configurator; Delete removes it (a built-in is read-only, so a
+  delete/edit **forks the collection to a saved custom copy** — the bundled original is untouched). New
+  blank collections are created via **+ New Collection** at the end of the collection list.
+- **Sidebar order** (top→bottom): Model → Difficulty Tier → Collections (data-source toggle + tier-filtered
+  list + New/Import JSON/CSV) → Iterations → Max Steps → Anti-Saturation (with an ⓘ explaining decoys) →
+  Native-FC + RUN BATCH + Export.
+
+Deferred (flagged, not faked): **Max Steps stays a normal editable input** — the backend has no
+tier→max-steps policy to lock it to. A **"Conditional" per-task status** isn't shown (task outcomes are
+Pass/Fail only; Conditional exists for readiness verdicts, not per task). The trace panel's AST tab +
+inline decoy/hallucination annotations are out of scope (the Evaluator/Trace panel is untouched).
+
 ## Context-cliff probe {#context-cliff}
 
 Runs a dataset at increasing prompt lengths and graphs where tool-call accuracy collapses
@@ -798,6 +925,18 @@ before any padded rung runs, and the **first collapse** stops the ladder (deeper
 re-confirm failure at the highest cost). Three needle positions, one sweep per rung, and early-stop keep
 a probe affordable; lowering **Test Steps** / **Max Tokens** trims it further.
 
+**Live progress (monotonic, never a false 100%).** The bar/percentage read a single fraction
+(`frac`) owned by `cliffStore` (`progressFraction`), not a value recomputed in the panel. Rung
+boundaries are anchored on the authoritative per-rung counter (`done`/`total` from the `cliff-progress`
+/ `on_rung` event); the fine-grained `cliff-step` stream only fills **within** the current incomplete
+rung, **capped at `RUNG_FILL_CAP` (0.9)** of that rung's slice. The cap reserves headroom so a single
+sweep can never claim the rung is finished before `on_rung` confirms it — which is what made the old bar
+hit 100% and then jump back to ~80% when a **verify-and-adjust** re-sweep reset the position/task
+counters. `frac` is also kept **monotonic** across the run (a re-sweep holds the bar, never walks it
+back) and is **snapped to 1 on completion**, so an **early-stopped** probe — which stops below the last
+rung — still reads 100% rather than freezing short. The ETA is a labelled `~` extrapolation from
+`elapsed ÷ frac`, never presented as exact.
+
 The probe owns its own **Active Collection** picker (independent of the EvalManager editor), so it
 always has a real dataset to run. The **Max Tokens** control sets the deepest rung and is capped at the
 model's reported **context window** when known (Ollama `/api/show` dims), falling back to a fixed
@@ -816,7 +955,7 @@ tool call** at that depth (`verdict.parsed`); tool/arg correctness is the end-st
 probe's (`engine::cliff_score` / `cliff_failed`). So an all-agentic collection yields a genuine
 **formatting cliff** — the context length where the model's tool-call JSON stops parsing — and a rung's
 composite **blends** single-turn correctness with agentic well-formedness by task count (both in [0,1]).
-Broken JSON at a depth is captured as a failure sample just like any other failing rung. Full end-state
+Broken JSON at a depth is captured in the rung's trace (marked `passed: false`) like any other failing step. Full end-state
 agentic scoring under padding (the sandbox loop, needle across turns, Pass^k per rung) remains a separate
 future probe — see `process.md#future-considerations`.
 
@@ -845,15 +984,23 @@ healthy plateau to "fall off", so it is **never** dressed up as "✓ no cliff" �
 tool-call failure (not a context-length limit). Single-turn, greedy — a failed rung is a gap, never a
 fabricated score.
 
-**Failure evidence (the raw completion, not just a 0%).** A bare "Broken" / 0% is undebuggable on its
+**Per-step trace (padded input + output, not just a 0%).** A bare "Broken" / 0% is undebuggable on its
 own — you can't tell a prose answer from a refusal from a wrong-schema call. So each rung now carries a
-capped list of **`FailureSample { task_id, depth, output }`** on `CliffPoint.samples`: the verbatim
-model completion for every *failing* task at that rung (a pass needs no explanation, so passing tasks add
-nothing). Output is char-capped (`MAX_SAMPLE_CHARS`) and the list is bounded (`MAX_SAMPLES_PER_RUNG`) so
-the diagnostic crumb never hauls a full transcript through IPC per rung × depth × task. The panel renders
-these under **"What the model emitted — failing tasks"**, turning a red 0% into an inspectable cause
-without re-running inference — the same transparency the standalone Tool-Call Trace Debugger gives, folded
-into the probe itself.
+**`TaskTrace { task_id, outputs: TraceOutput[] }`** list on `CliffPoint.trace`, grouped by task: every needle
+position's `TraceOutput { depth, prompt, output, passed }` — captured for **every** task at that rung, pass
+*or* fail (not failure-only), so the trace shows what the model actually saw and emitted at each step.
+`prompt` is the **padded input** (the synthetic padding with the instruction injected at `depth`), head+tail-capped
+(`MAX_PROMPT_CHARS`) so the enormous context is visible — the needle at the front or back survives the cap —
+without hauling the full multi-KB prompt through IPC. The system prompt (the same boilerplate + tool-schema JSON
+every turn) is deliberately NOT carried — it's noise in a per-step trace. System/output are char-capped (`MAX_SYSTEM_CHARS` /
+`MAX_OUTPUT_CHARS`) and the task list is bounded (`MAX_TRACE_TASKS`) so it never hauls a full transcript
+through IPC. The trace **streams per rung** with the live `cliff-progress` events (not bundled only in the
+final report), so each completed row's trace is inspectable as the probe runs. The panel surfaces it as a
+per-row **"View trace"** toggle (the table is `[Step][Tokens][Accuracy][Status][Trace]`, with an ⓘ on
+*Accuracy* explaining the composite) that expands the system prompt + per-position outputs on demand —
+nothing is dumped all at once. The *Accuracy* composite itself: single-turn = mean of parse / tool-select /
+arg / abstain; agentic = JSON well-formedness; the two blended by task count; the row shows the worst of
+the three needle positions.
 
 **Persistence + the Agent Report (three-state cliff).** Every terminal probe outcome is now persisted
 (not just a found collapse): the store holds a `CliffStatus` per (collection, model) —
@@ -916,9 +1063,14 @@ exact reasons. Pick a target collection + a profile, click **Run readiness**.
 - 🟡 **Conditional** — passes the hard gates but trips a *soft target* (e.g. slow,
   or inefficient step count). The reason carries the interpolated math, e.g.
   `slow: 8400ms/step > 5000ms target`.
-- 🔴 **NotReady** — trips a *hard gate*. Reasons are explicit, e.g.
-  `pass^k 0.40 < 0.80 required`, `loops on some runs`, or `run error: …` for a
-  column that failed to produce data.
+- 🔴 **NotReady** — trips a *hard gate*. Reasons are explicit and carry the exact
+  measured counts, e.g. `pass^k 0.40 < 0.80 required`, `loops on 2 runs`,
+  `false 'done' on 1 run`, or `run error: …` for a column that failed to produce
+  data. The report's BLOCKING line tags each by category with a ✗ marker
+  (`[✗ Reliability] [✗ Loops]`, plus `Context`, `Hardware`, `Native FC`,
+  `Run Error`, `Performance`, `Efficiency`); every backend reason maps to a real
+  category — none falls through to a bare `System`. The Details line below shows
+  the interpolated numbers/message verbatim.
 
 **Blocking vs conditions.** Hard gates push to `blocking[]` (→ NotReady); soft
 targets push to `conditions[]` (→ Conditional). Status = NotReady if any blocking,
@@ -930,6 +1082,36 @@ with no VRAM-fit measurement, or `min_context_tokens` with no cliff probe), that
 **blocking** — ignorance is not a pass; the report tells you to run the missing
 diagnostic. The `pass^k` core gate likewise blocks when no agentic run was recorded.
 Float comparisons are epsilon-guarded (`1e-6`) so a true `0.80` can't false-block.
+
+**The per-model deep-dive (Phase 9B).** Below the multi-model table a model selector
+opens a three-section drill-down for one model, sourced from `ModelVerdict.by_tier` /
+`failures` — the **same native-first aggregate the gate read** (one `native_first_source`
+helper feeds the gate, the per-tier breakdown, and the taxonomy, so they can't drift):
+
+- **Executive Verdict** — the headline tier is the **tier that actually ran** (the highest
+  tier exercised in `by_tier`), *not* the profile's `required_tier`. The hardware class
+  (`get_hardware_tier`) is an **advisory lens, never a gate**: a Workstation user who
+  deliberately runs Easy gets *Ready (Easy)* plus a soft "run a harder tier for a
+  production-grade verdict" note, never a forced NotReady. Status answers "did it clear the
+  tier it was tested at" via a contiguous `clearsThrough` — READY when it clears up to the
+  hardest tested tier, CONDITIONAL for a cleared prefix **or** a non-monotonic curve (a
+  higher tier cleared above a failed lower one — flagged inconsistent), NOT READY when
+  nothing cleared.
+- **Tier Progression Matrix** — four tier cards with measured per-tier Pass^k + avg-steps
+  and a CLEAR / SATURATED / FAIL badge on the **same `min_pass_k` bar** the verdict's
+  `cleared_tier` uses, so a card and the headline can't contradict. A tier the run never
+  exercised is **NOT TESTED** (gray), never a guessed fail. "Task Parameters"
+  (Horizon/Decoys) come from the collection's **real task axes** or read "not declared" —
+  the mockup's illustrative `3–8 steps` / `2–4 decoys` ranges are never printed as measured.
+- **Failure Taxonomy** — the distribution of failure modes (`unknown_tool_calls`→decoys,
+  `forbidden_calls`→`must_not_call`, loops, hallucinations, …) summed across the **tiers
+  that actually ran** (named in the heading — not a hardcoded Hard+Extreme, so a Mainstream
+  Easy/Medium run gets a truthful section), as a share of tracked failure **events** (not a
+  1:1 failed-run count). The deep-dive exports as **versioned** JSON (`schema_version`).
+
+Pool-injected **decoys reach only the prompt-based pass** (the native tool_calls API is
+handed the raw `task.tools`); a `Decoys: N` figure therefore describes the prompt column,
+not the native one — a pre-existing asymmetry, documented so it isn't misread.
 
 **Profiles** are flat JSON files under the OS app-config dir (`readiness/`),
 editable by power users and seeded on first run with three built-ins:
@@ -1019,9 +1201,14 @@ share lever (see `process.md#phase-roadmap`, step 8.B4).
 offline export, an *opt-in* publish path can contribute a verdict to a shared
 leaderboard. What's sent is **metrics-only**: a `PublishRow` per measured model —
 `model`, `quant`, a **hardware `cohort_key`** (`{platform}/{accel}/{mem_tier}`, e.g.
-`apple-silicon/m3-pro/32-64gb`), `tool_version`, and the metrics bag (`pass_k`,
-`effort?`, `avg_steps?`). **Never sent:** task content, prompts, file names, raw model
-output, or any identity beyond the GitHub handle. The payload is built in Rust
+`apple-silicon/m3-pro/32-64gb`), `tool_version`, the metrics bag (`pass_k`, `effort?`,
+`avg_steps?`), and the **inference `params`** the run used (temperature, top-p/k,
+max_tokens, repeat_penalty, seed, num_ctx) so the board knows the sampling/context a
+`pass_k` was measured under. The params are the **global-header** snapshot in effect at
+publish time (the single source every run reads — architecture.md rule 7); only keys the
+user actually set are sent (each field skip-serializes when unset), so an empty `{}`
+honestly means "ran on the backend defaults" — never a fabricated value. **Never sent:**
+task content, prompts, file names, raw model output, or any identity beyond the GitHub handle. The payload is built in Rust
 (`persistence/publish/` + `commands/publish/`), serialized to **deterministic
 canonical JSON** (object keys sorted at every depth) and hashed (SHA-256) so transit
 tampering is detectable; unmeasured/unquantized rows are dropped (never sent as a null

@@ -1,4 +1,5 @@
 use super::*;
+use crate::persistence::prompts::schema::InferenceParams;
 use crate::persistence::publish::row::{PublishMetrics, PublishRow};
 
 fn row(model: &str, pass_k: f64) -> PublishRow {
@@ -8,6 +9,7 @@ fn row(model: &str, pass_k: f64) -> PublishRow {
         cohort_key: "apple-silicon/m-series/32-64gb".to_string(),
         tool_version: "0.2.0".to_string(),
         metrics: PublishMetrics { pass_k, effort: Some(1.2), avg_steps: Some(3.0) },
+        params: InferenceParams::default(),
     }
 }
 

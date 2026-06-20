@@ -1,4 +1,5 @@
 use super::*;
+use crate::persistence::prompts::schema::InferenceParams;
 use crate::persistence::publish::row::{PublishMetrics, PublishRow};
 
 fn rows() -> Vec<PublishRow> {
@@ -8,6 +9,7 @@ fn rows() -> Vec<PublishRow> {
         cohort_key: "apple-silicon/m3-pro/32-64gb".into(),
         tool_version: "0.2.0".into(),
         metrics: PublishMetrics { pass_k: 0.9, effort: Some(1.2), avg_steps: Some(3.0) },
+        params: InferenceParams::default(),
     }]
 }
 

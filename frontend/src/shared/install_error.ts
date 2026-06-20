@@ -37,6 +37,9 @@ export function friendlyInstallError(raw: unknown): string {
       || lower.includes("file does not exist") || lower.includes("model not found")) {
     return "That model wasn't found. Double-check the name and tag — `ollama.com/library/<model>` lists the valid tags.";
   }
+  if (kind === "truncated" || lower.includes("gguf truncated")) {
+    return "The download was incomplete — this isn't the full model file. Check your connection and try downloading it again.";
+  }
   if (lower.includes("big-endian") || lower.includes("bad magic")
       || lower.includes("invalid gguf") || lower.includes("unsupported quant")
       || lower.includes("unsupported architecture")) {

@@ -17,7 +17,7 @@ const VERDICTS: ModelVerdict[] = [
 ];
 
 const PREVIEW = {
-  rows: [{ model: "qwen", quant: "Q4_K_M", cohort_key: "c", tool_version: "0.2.0", metrics: { pass_k: 0.9 } }],
+  rows: [{ model: "qwen", quant: "Q4_K_M", cohort_key: "c", tool_version: "0.2.0", metrics: { pass_k: 0.9 }, params: {} }],
   canonical_json: '[{"model":"qwen"}]', hash: "h", cohort_key: "c", excluded_count: 0, invalid: null,
 };
 

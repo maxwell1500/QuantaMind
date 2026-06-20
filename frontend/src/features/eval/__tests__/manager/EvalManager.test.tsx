@@ -24,6 +24,7 @@ import { useSelectedModelStore } from "../../../../shared/state/selectedModelSto
 import { runBatchEval } from "../../../../shared/ipc/eval/batch";
 import { useParamsStore } from "../../../../shared/state/paramsStore";
 import { useBackendStore } from "../../../../shared/state/backendStore";
+import { useBatchStore } from "../../state/batchStore";
 
 const sampleTasks = [{
   id: "w",
@@ -46,11 +47,18 @@ const props = (over: Record<string, unknown> = {}) => ({
   setK: () => {},
   maxSteps: 8,
   setMaxSteps: () => {},
+  // The Built-In list shows only the chosen tier's collections; the default preset
+  // (easy-coding) is Easy, so default the resolved tier to "easy" for the picker.
+  tierSel: "easy" as const,
+  effectiveTier: "easy" as const,
   ...over,
 });
 
 beforeEach(() => {
   vi.clearAllMocks();
+  // A mocked run never receives its batch-complete event, so `running` would stay
+  // true and the next click would hit the Stop path — reset it between tests.
+  useBatchStore.getState().reset();
   useBackendStore.setState({ selectedBackend: "ollama" });
   useInstalledModelsStore.setState({
     list: [{ name: "llama3.2:1b", size_bytes: 1, modified_at: "", family: "", parameter_size: "", quantization: "Q4_0", backend: "ollama" }],
@@ -59,9 +67,9 @@ beforeEach(() => {
   // The eval model dropdown is driven by the GLOBAL selection (not a per-page list).
   useSelectedModelStore.setState({ selectedModels: [{ name: "llama3.2:1b", backend: "ollama", size_bytes: 1 }] });
   useEvalRegistryStore.setState({
-    presets: [{ id: "curated", label: "Curated Suite" }],
+    presets: [{ id: "easy-coding", label: "Coding", domain: "coding", tier: "easy" }],
     collections: ["my-evals"],
-    selected: "curated",
+    selected: "easy-coding",
     tasks: sampleTasks,
     init,
     select,
@@ -126,7 +134,72 @@ describe("EvalManager Sidebar Controls", () => {
 
   it("renders presets under collections when Built-in is selected", () => {
     render(<EvalManager {...props()} />);
-    expect(screen.getByTestId("eval-collection-item-curated")).toBeInTheDocument();
+    expect(screen.getByTestId("eval-collection-item-easy-coding")).toBeInTheDocument();
+  });
+
+  it("shows ONLY the chosen tier's built-in collections", () => {
+    useEvalRegistryStore.setState({
+      presets: [
+        { id: "easy-coding", label: "Coding", domain: "coding", tier: "easy" },
+        { id: "medium-coding", label: "Coding", domain: "coding", tier: "medium" },
+        { id: "hard-coding", label: "Coding", domain: "coding", tier: "hard" },
+      ],
+      collections: [],
+      selected: "medium-coding",
+      tasks: sampleTasks,
+      init,
+      select,
+      importFile,
+    });
+    render(<EvalManager {...props({ tierSel: "medium", effectiveTier: "medium" })} />);
+    expect(screen.getByTestId("eval-collection-item-medium-coding")).toBeInTheDocument();
+    expect(screen.queryByTestId("eval-collection-item-easy-coding")).toBeNull();
+    expect(screen.queryByTestId("eval-collection-item-hard-coding")).toBeNull();
+  });
+
+  it("no longer renders a collection-level Edit button (tasks are edited per-row)", () => {
+    render(<EvalManager {...props()} />);
+    expect(screen.queryByTestId("eval-edit-collection")).toBeNull();
+    expect(screen.getByTestId("eval-new-collection")).toBeInTheDocument();
+  });
+
+  it("click expands a collection's tasks; each row has hover Edit/Delete", () => {
+    const onEditTask = vi.fn();
+    const onDeleteTask = vi.fn();
+    render(<EvalManager {...props({ onEditTask, onDeleteTask })} />);
+    // Collapsed by default — tasks appear only after clicking the collection.
+    expect(screen.queryByTestId("eval-task-row-w")).toBeNull();
+    fireEvent.click(screen.getByTestId("eval-collection-item-easy-coding"));
+    const row = screen.getByTestId("eval-task-row-w");
+    expect(row).toBeInTheDocument();
+    // Edit/Delete hidden until hover.
+    expect(screen.queryByTestId("eval-task-edit-w")).toBeNull();
+    fireEvent.mouseEnter(row);
+    fireEvent.click(screen.getByTestId("eval-task-edit-w"));
+    expect(onEditTask).toHaveBeenCalledWith("w");
+    fireEvent.click(screen.getByTestId("eval-task-delete-w"));
+    expect(onDeleteTask).toHaveBeenCalledWith("w");
+  });
+
+  it("clicking again collapses the task list", () => {
+    render(<EvalManager {...props()} />);
+    fireEvent.click(screen.getByTestId("eval-collection-item-easy-coding"));
+    expect(screen.getByTestId("eval-task-row-w")).toBeInTheDocument();
+    fireEvent.click(screen.getByTestId("eval-collection-item-easy-coding"));
+    expect(screen.queryByTestId("eval-task-row-w")).toBeNull();
+  });
+
+  it("shows the Decoy info popup on hover (Anti-Saturation ⓘ)", () => {
+    render(<EvalManager {...props()} />);
+    const info = screen.getByTestId("info-decoy");
+    fireEvent.mouseEnter(info.parentElement as HTMLElement);
+    expect(screen.getByTestId("info-popup-decoy")).toHaveTextContent(/decoy/i);
+  });
+
+  it("the tier dropdown no longer offers a 'Custom' option", () => {
+    render(<EvalManager {...props()} />);
+    const opts = Array.from((screen.getByTestId("eval-tier-dropdown") as HTMLSelectElement).options).map((o) => o.value);
+    expect(opts).toEqual(["auto", "easy", "medium", "hard", "extreme"]);
   });
 
   it("switches to Custom JSON and lists custom collections", async () => {
@@ -138,7 +211,7 @@ describe("EvalManager Sidebar Controls", () => {
   it("confirms before deleting a custom collection", async () => {
     const remove = vi.fn().mockResolvedValue(undefined);
     useEvalRegistryStore.setState({
-      presets: [{ id: "curated", label: "Curated Suite" }],
+      presets: [{ id: "easy-coding", label: "Coding", domain: "coding", tier: "easy" }],
       collections: ["my-evals"],
       selected: "my-evals",
       tasks: sampleTasks,
@@ -159,39 +232,82 @@ describe("EvalManager Sidebar Controls", () => {
   it("removes a built-in preset from the list via its ⋯ menu", async () => {
     const hidePreset = vi.fn();
     useEvalRegistryStore.setState({
-      presets: [{ id: "agentic_3", label: "Agentic · 3 Multi-Step" }],
+      presets: [{ id: "hard-coding", label: "Coding (Hard)", domain: "coding", tier: "hard" }],
       collections: [],
-      selected: "agentic_3",
+      selected: "hard-coding",
       tasks: sampleTasks,
       init,
       select,
       importFile,
       hidePreset,
     });
-    render(<EvalManager {...props()} />);
-    fireEvent.click(screen.getByTestId("eval-collection-menu-agentic_3"));
-    fireEvent.click(screen.getByTestId("eval-collection-delete-agentic_3"));
+    render(<EvalManager {...props({ tierSel: "hard", effectiveTier: "hard" })} />);
+    fireEvent.click(screen.getByTestId("eval-collection-menu-hard-coding"));
+    fireEvent.click(screen.getByTestId("eval-collection-delete-hard-coding"));
     fireEvent.click(screen.getByTestId("confirm-ok"));
-    await waitFor(() => expect(hidePreset).toHaveBeenCalledWith("agentic_3"));
+    await waitFor(() => expect(hidePreset).toHaveBeenCalledWith("hard-coding"));
   });
 
-  it("runs the chosen global model when ▶ RUN BATCH is clicked", async () => {
+  it("always sends the (editable) k AND the tier — k wins in the backend over the tier policy", async () => {
     useParamsStore.setState({ globalParams: { temperature: 0.2 } });
-    vi.mocked(runBatchEval).mockResolvedValue({ collection_id: "curated", columns: [] });
-    render(<EvalManager {...props()} />);
+    vi.mocked(runBatchEval).mockResolvedValue({ collection_id: "easy-coding", columns: [] });
+    // User edited k to 12 under a Medium tier; both flow to the run.
+    render(<EvalManager {...props({ tierSel: "medium", effectiveTier: "medium", recommendedK: 8, k: 12 })} />);
     const runBtn = screen.getByTestId("eval-run-all");
     expect(runBtn).not.toBeDisabled();
     fireEvent.click(runBtn);
     await waitFor(() => {
       expect(runBatchEval).toHaveBeenCalledWith(
-        "curated",
+        "easy-coding",
         [{ model: "llama3.2:1b", backend: "ollama" }],
         sampleTasks,
-        1,
+        12, // the editable k, always sent
         8,
         { temperature: 0.2 },
         undefined,
         false, // runNativeFc — off by default
+        "medium", // tier still flows (for spec.tier)
+        undefined, // decoyTools — off by default
+      );
+    });
+  });
+
+  it("the k field is always editable and shows the tier's recommended value as a hint", () => {
+    render(<EvalManager {...props({ tierSel: "hard", effectiveTier: "hard", recommendedK: 16, k: 16 })} />);
+    // Editable input (not a locked span), pre-filled to the recommended value.
+    expect(screen.getByTestId("eval-manager-k")).toHaveValue(16);
+    expect(screen.queryByTestId("eval-manager-k-locked")).toBeNull();
+    expect(screen.getByTestId("eval-k-recommended")).toHaveTextContent("recommended: 16");
+    // The user can type a different value.
+    fireEvent.change(screen.getByTestId("eval-manager-k"), { target: { value: "9" } });
+  });
+
+  it("shows the HW hint from the backend tier read", () => {
+    render(
+      <EvalManager
+        {...props({ hwTier: { total_memory_bytes: 16 * 1024 ** 3, class: "Mainstream", recommended_tier: "medium" } })}
+      />,
+    );
+    expect(screen.getByTestId("eval-hw-hint")).toHaveTextContent("HW: 16GB RAM · Mainstream · Medium recommended");
+  });
+
+  it("flows the decoy budget into the run only when enabled", async () => {
+    useParamsStore.setState({ globalParams: {} });
+    vi.mocked(runBatchEval).mockResolvedValue({ collection_id: "easy-coding", columns: [] });
+    render(<EvalManager {...props({ tierSel: "easy", effectiveTier: "easy", recommendedK: 5, k: 5, decoyEnabled: true, decoyCount: 4 })} />);
+    fireEvent.click(screen.getByTestId("eval-run-all"));
+    await waitFor(() => {
+      expect(runBatchEval).toHaveBeenCalledWith(
+        "easy-coding",
+        [{ model: "llama3.2:1b", backend: "ollama" }],
+        sampleTasks,
+        5, // editable k, always sent
+        8,
+        {},
+        undefined,
+        false,
+        "easy",
+        4, // decoyTools
       );
     });
   });

@@ -75,10 +75,17 @@ fn agentic_task(id: &str, k: u32) -> ToolTask {
         agentic: Some(AgenticSpec {
             mocks: vec![],
             end_state: EndStateRule::RequireSequence(vec![TaskCheckpoint { tool: "ping".into(), args: json!({}) }]),
+            tier: Default::default(),
+            axes: None,
             k: Some(k),
             max_steps: Some(4),
             faults: vec![],
             max_recovery: None,
+            must_not_call: vec![],
+            world_state: None,
+            name_faults: vec![],
+            generated: false,
+            entity_tools: vec![],
         }),
     }
 }
@@ -161,9 +168,76 @@ async fn native_fc_pass_aggregates_into_the_column_for_supported_models_only() {
     assert!(m2.agentic_native_fc.is_none()); // unsupported → never a fabricated native score
 }
 
+/// A native turn that ALWAYS errors with a fixed message (so every run errors → the task
+/// produces no scored report), or pings to success when `err` is `None`.
+struct NativeErrModel {
+    err: Option<String>,
+}
+impl ModelTurn for NativeErrModel {
+    async fn run(&self, _s: &GenerateSpec) -> AppResult<(String, GenerateStats)> {
+        match &self.err {
+            Some(m) => Err(crate::errors::AppError::Inference(m.clone())),
+            None => Ok((r#"{"name":"ping","args":{}}"#.into(), GenerateStats { eval_count: Some(5), ..Default::default() })),
+        }
+    }
+}
+
+#[tokio::test]
+async fn native_errored_tasks_are_counted_and_labeled_not_silently_dropped() {
+    // Three native tasks: one scores, two error (every run) — one host/infra (5xx), one
+    // schema-rejection (4xx). Before the fix the two errored tasks vanished from the
+    // aggregate and the denominator silently shrank 3→1. Guard VISIBILITY, not arithmetic:
+    // the scored denominator is honest AND the errored count + class are carried.
+    let targets = vec![target("m1")];
+    let tasks = vec![agentic_task("a_ok", 2), agentic_task("a_infra", 2), agentic_task("a_schema", 2)];
+    let sink = Arc::new(CountingSink::default());
+    let mut report = run_batch("c", &targets, &tasks, CancellationToken::new(), sink, make_turn).await.unwrap();
+
+    let supported: std::collections::HashSet<String> = ["m1".to_string()].into_iter().collect();
+    run_native_fc_pass(
+        &mut report,
+        &tasks,
+        &supported,
+        CancellationToken::new(),
+        |_model, task| {
+            let err = match task.id.as_str() {
+                "a_infra" => Some("chat HTTP 500: ollama out of memory".to_string()),
+                "a_schema" => Some("chat HTTP 400: tools not supported".to_string()),
+                _ => None,
+            };
+            NativeErrModel { err }
+        },
+        &[],
+        &|_| {},
+        &NoVramGate,
+    )
+    .await
+    .unwrap();
+
+    let agg = report.columns[0].agentic_native_fc.as_ref().expect("native column emitted despite errors");
+    assert_eq!(agg.tasks_passed, 1); // only a_ok scored a pass
+    assert_eq!(agg.tasks_total, 1); // scored denominator is NOT inflated by infra (pass_k stays honest)
+    assert_eq!(agg.tasks_errored, 2); // ...but the 2 dropped tasks are now VISIBLE, not silent
+    // Both an infra and a schema error occurred → Mixed (proves the labels did NOT collapse).
+    assert_eq!(agg.native_error_class, NativeErrorClass::Mixed);
+}
+
+#[test]
+fn native_error_classification_keeps_host_and_schema_labels_distinct() {
+    // A 4xx is the native path rejecting the tool schema (a real "can't run native");
+    // everything else is infra/host and must NEVER read as model incapability.
+    assert_eq!(classify_native_error("chat HTTP 400: tools not supported"), NativeErrorClass::SchemaRejected);
+    assert_eq!(classify_native_error("chat HTTP 500: ollama out of memory"), NativeErrorClass::InfraHost);
+    assert_eq!(classify_native_error("connect to Ollama: connection refused"), NativeErrorClass::InfraHost);
+    // The two never silently collapse — mixing distinct classes yields Mixed, not a merge.
+    assert_eq!(merge_error_class(NativeErrorClass::InfraHost, NativeErrorClass::SchemaRejected), NativeErrorClass::Mixed);
+    assert_eq!(merge_error_class(NativeErrorClass::None, NativeErrorClass::SchemaRejected), NativeErrorClass::SchemaRejected);
+    assert_eq!(merge_error_class(NativeErrorClass::InfraHost, NativeErrorClass::InfraHost), NativeErrorClass::InfraHost);
+}
+
 #[test]
 fn agg_agentic_sums_failure_breakdown_not_just_top_error() {
-    use crate::inference::eval::agentic::report::{AgenticReport, FailureKind, RunOutcome};
+    use crate::inference::eval::agentic::scoring::report::{AgenticReport, FailureKind, RunOutcome};
     // Task A loops once; task B hallucinates nine times. `top_error` is Hallucinated
     // (9 > 1), but a `forbid_infinite_loop` verdict must still see the single loop —
     // the gap this aggregate closes.
@@ -179,7 +253,7 @@ fn agg_agentic_sums_failure_breakdown_not_just_top_error() {
     assert_eq!(agg.failures.hallucinated_completions, 9);
 }
 
-use crate::inference::eval::agentic::report::{AgenticReport, FailureKind, RunOutcome};
+use crate::inference::eval::agentic::scoring::report::{AgenticReport, FailureKind, RunOutcome};
 use std::sync::Mutex as StdMutex;
 
 /// A gate that always fails — to prove the run halts (assert-and-fail) rather than
@@ -298,6 +372,71 @@ fn pass_k_credits_a_task_only_when_all_k_runs_pass() {
 }
 
 #[test]
+fn agg_buckets_strict_pass_k_by_tier() {
+    use crate::inference::eval::agentic::spec::Tier;
+    // Two Hard tasks (one all-k pass, one flaky) and one Easy task (all-k pass).
+    let reports = vec![
+        task_report(5, 5).with_tier(Tier::Easy),
+        task_report(16, 16).with_tier(Tier::Hard),
+        task_report(3, 5).with_tier(Tier::Hard),
+    ];
+    let agg = agg_agentic(&reports);
+
+    let easy = agg.by_tier.iter().find(|s| s.tier == Tier::Easy).unwrap();
+    assert_eq!((easy.tasks_passed, easy.tasks_total), (1, 1));
+    assert_eq!(easy.pass_k(), Some(1.0));
+
+    let hard = agg.by_tier.iter().find(|s| s.tier == Tier::Hard).unwrap();
+    assert_eq!((hard.tasks_passed, hard.tasks_total), (1, 2)); // only the all-k task counts
+    assert_eq!(hard.pass_k(), Some(0.5));
+
+    // Buckets are sorted ascending by tier (the readiness gate walks them).
+    assert!(agg.by_tier.windows(2).all(|w| w[0].tier <= w[1].tier));
+    // Medium had no task → it's simply absent, never a fabricated 0.
+    assert!(!agg.by_tier.iter().any(|s| s.tier == Tier::Medium));
+}
+
+#[test]
+fn agg_buckets_per_tier_avg_steps_and_failures() {
+    use crate::inference::eval::agentic::spec::Tier;
+    // One clean Easy task, one clean Hard task, one flaky Hard task (2 of its 5 runs
+    // hallucinate). Every run takes 2 steps (the task_report helper).
+    let reports = vec![
+        task_report(5, 5).with_tier(Tier::Easy),
+        task_report(16, 16).with_tier(Tier::Hard),
+        task_report(3, 5).with_tier(Tier::Hard),
+    ];
+    let agg = agg_agentic(&reports);
+
+    let easy = agg.by_tier.iter().find(|s| s.tier == Tier::Easy).unwrap();
+    let hard = agg.by_tier.iter().find(|s| s.tier == Tier::Hard).unwrap();
+
+    // Per-tier avg steps = mean of that tier's reports' avg_steps (every run took 2 steps).
+    assert_eq!(easy.avg_steps, Some(2.0));
+    assert_eq!(hard.avg_steps, Some(2.0));
+
+    // Failures are bucketed per tier, NOT smeared across tiers: the 2 hallucinated runs
+    // belong to the Hard bucket only; Easy carries none.
+    assert_eq!(hard.failures.hallucinated_completions, 2);
+    assert_eq!(easy.failures.hallucinated_completions, 0);
+
+    // The overall aggregate still sums failures across all tiers (unchanged behavior).
+    assert_eq!(agg.failures.hallucinated_completions, 2);
+}
+
+#[test]
+fn tier_stat_deserializes_a_pre_9b_payload_with_defaulted_per_tier_fields() {
+    use crate::inference::eval::agentic::spec::Tier;
+    // A TierStat written before Phase 9B carries no `avg_steps`/`failures` — they must
+    // default (None / zeroed), never fail the parse.
+    let s: TierStat =
+        serde_json::from_value(serde_json::json!({ "tier": "hard", "tasks_passed": 1, "tasks_total": 2 })).unwrap();
+    assert_eq!(s.tier, Tier::Hard);
+    assert_eq!(s.avg_steps, None);
+    assert_eq!(s.failures, FailureTracker::default());
+}
+
+#[test]
 fn pass_k_is_the_fraction_of_fully_passing_tasks() {
     // One task clean (5/5), one fully failing (0/5): one of two tasks credited → 0.5.
     let agg = agg_agentic(&[task_report(5, 5), task_report(0, 5)]);
@@ -306,4 +445,44 @@ fn pass_k_is_the_fraction_of_fully_passing_tasks() {
     assert_eq!(agg.pass_k(), Some(0.5));
     // Both tasks clean → 1.0.
     assert_eq!(agg_agentic(&[task_report(5, 5), task_report(5, 5)]).pass_k(), Some(1.0));
+}
+
+/// A model that records each `warm_up` and `run` event with its model name, proving
+/// the batch warms a model resident BEFORE running any of its scored tasks.
+struct WarmTrackModel {
+    log: Arc<Mutex<Vec<String>>>,
+    model: String,
+}
+
+impl ModelTurn for WarmTrackModel {
+    async fn run(&self, _s: &GenerateSpec) -> AppResult<(String, GenerateStats)> {
+        self.log.lock().unwrap().push(format!("run:{}", self.model));
+        Ok((r#"{"name":"ping","args":{}}"#.into(), GenerateStats { eval_count: Some(5), ..Default::default() }))
+    }
+    async fn warm_up(&self) -> AppResult<()> {
+        self.log.lock().unwrap().push(format!("warm:{}", self.model));
+        Ok(())
+    }
+}
+
+#[tokio::test]
+async fn warms_up_each_model_once_before_its_first_scored_task() {
+    let log = Arc::new(Mutex::new(Vec::<String>::new()));
+    let l2 = log.clone();
+    let make = move |t: &ModelTarget| WarmTrackModel { log: l2.clone(), model: t.model.clone() };
+    let targets = vec![target("m1"), target("m2")];
+    let tasks: Vec<ToolTask> = (0..3).map(|i| single_task(&format!("t{i}"))).collect();
+    let sink = Arc::new(CountingSink::default());
+    run_batch("c", &targets, &tasks, CancellationToken::new(), sink, make).await.unwrap();
+
+    let ev = log.lock().unwrap().clone();
+    // Warmed exactly once per model.
+    assert_eq!(ev.iter().filter(|e| e.as_str() == "warm:m1").count(), 1);
+    assert_eq!(ev.iter().filter(|e| e.as_str() == "warm:m2").count(), 1);
+    // Each model's warm precedes every one of its runs (cold-load isn't charged to t0).
+    for m in ["m1", "m2"] {
+        let warm = ev.iter().position(|e| *e == format!("warm:{m}")).unwrap();
+        let first_run = ev.iter().position(|e| *e == format!("run:{m}")).unwrap();
+        assert!(warm < first_run, "{m}: warm_up must precede the first scored run");
+    }
 }

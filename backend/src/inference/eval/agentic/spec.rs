@@ -1,6 +1,8 @@
 use crate::inference::eval::agentic::sandbox::{EndStateRule, MockResponse};
+use crate::inference::eval::agentic::v2::r#match::MustNotCall;
 use crate::inference::eval::toolcall::tasks::Call;
 use serde::{Deserialize, Serialize};
+use serde_json::Value;
 
 /// A Driver-B lazy-agent trap: how a specific mocked call fails before it would
 /// succeed. `TransientError` clears after `clears_after` attempts (a robust agent
@@ -23,6 +25,51 @@ pub struct FaultRule {
     pub fault: FaultInjection,
 }
 
+/// Phase 9-v2 fault keyed by tool NAME (`faults[].on_call`) — trips on any call to
+/// that tool, regardless of args (v1 `FaultRule` keys by the exact call).
+#[derive(Serialize, Deserialize, Clone, Debug, PartialEq)]
+pub struct NameFault {
+    pub on_call: String,
+    pub fault: FaultInjection,
+}
+
+/// Phase 9 difficulty tier. `Ord` is deliberate: readiness compares a model's
+/// cleared tier against the tier its hardware class requires (`cleared < required`
+/// blocks). A pre-Phase-9 task with no `tier` deserializes to `Easy`.
+#[derive(Serialize, Deserialize, Clone, Copy, Debug, PartialEq, Eq, Hash, PartialOrd, Ord, Default)]
+#[serde(rename_all = "snake_case")]
+pub enum Tier {
+    #[default]
+    Easy,
+    Medium,
+    Hard,
+    Extreme,
+}
+
+impl Tier {
+    /// `skip_serializing_if` hook: an `Easy` (default) tier is omitted on save so a
+    /// pre-Phase-9 fixture round-trips byte-identically.
+    fn is_easy(&self) -> bool {
+        matches!(self, Tier::Easy)
+    }
+}
+
+/// The measurable axes that DEFINE a tier — documentation + validation, never a
+/// magic difficulty knob. A missing `axes` resolves to strict `Default` (all-zero,
+/// `adversarial_context = false`): an absent measurement is never a guessed value.
+#[derive(Serialize, Deserialize, Clone, Debug, PartialEq, Eq, Default)]
+pub struct DifficultyAxes {
+    /// Horizon: the minimum number of correct tool calls the task demands.
+    pub min_required_steps: u32,
+    /// Distractor tools shuffled into the presented tool list (never expected).
+    pub decoy_tools: u32,
+    /// Calls that must be discovered/ordered rather than stated in the prompt.
+    pub hidden_prereqs: u32,
+    pub conflicting_constraints: u32,
+    /// Misleading filler context vs. clean filler.
+    pub adversarial_context: bool,
+}
+
 /// The agentic extension of a `ToolTask`: the deterministic sandbox mocks, the
 /// success criterion, optional Pass^k / step-cap overrides, the fault traps, and
 /// the semantic-recovery budget. Carried as an optional field on `ToolTask` so one
@@ -33,6 +80,14 @@ pub struct FaultRule {
 pub struct AgenticSpec {
     pub mocks: Vec<MockResponse>,
     pub end_state: EndStateRule,
+    /// Phase 9 difficulty tier. Defaults to `Easy` so pre-Phase-9 fixtures load
+    /// and run exactly as before; scales Pass^k and gates readiness by hardware.
+    #[serde(default, skip_serializing_if = "Tier::is_easy")]
+    pub tier: Tier,
+    /// The axes that define this task's difficulty. `None` for pre-Phase-9 tasks
+    /// (and any task that doesn't declare them) — strictly absent, never inferred.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub axes: Option<DifficultyAxes>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub k: Option<u32>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
@@ -45,4 +100,83 @@ pub struct AgenticSpec {
     /// the run is scored `MalformedSchema`. `None` falls back to the engine default.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub max_recovery: Option<u8>,
+    /// Phase 9-v2: `must_not_call` trap entries — invoking any auto-fails the run.
+    /// Empty for v1 tasks (omitted on save).
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub must_not_call: Vec<MustNotCall>,
+    /// Phase 9-v2: ground-truth the model discovers via tools (drives the sandbox's
+    /// WorldState responder). `None` for v1 tasks (static mocks).
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub world_state: Option<Value>,
+    /// Phase 9-v2: name-keyed faults (`on_call` trips on any call to that tool).
+    /// Empty for v1 tasks (which use the canonical-keyed `faults`).
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub name_faults: Vec<NameFault>,
+    /// Phase 9-v2/C2: this task is procedurally instanced — the runner builds a fresh
+    /// instance per Pass^k run (seeded entity-id remap) for contamination resistance.
+    /// `false` for static tasks (which reuse one sandbox across runs).
+    #[serde(default, skip_serializing_if = "is_false")]
+    pub generated: bool,
+    /// Phase 9-v2: tool names that RETURN entity data (authored `returns_entity`).
+    /// Tools absent from this list are ACTIONS — the WorldState responder acks them
+    /// instead of echoing the entity blob. Empty → every tool is a getter (back-compat).
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub entity_tools: Vec<String>,
+}
+
+fn is_false(b: &bool) -> bool {
+    !b
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use serde_json::json;
+
+    #[test]
+    fn pre_phase9_spec_loads_as_easy_with_no_axes() {
+        // An AgenticSpec authored before Phase 9 carries no `tier`/`axes`.
+        let spec: AgenticSpec = serde_json::from_value(json!({
+            "mocks": [],
+            "end_state": "expect_abstaining_text",
+        }))
+        .unwrap();
+        assert_eq!(spec.tier, Tier::Easy); // serde default, not a guessed value
+        assert!(spec.axes.is_none()); // strictly absent, never inferred
+    }
+
+    #[test]
+    fn tier_orders_easy_below_extreme_for_the_readiness_gate() {
+        assert!(Tier::Easy < Tier::Medium);
+        assert!(Tier::Medium < Tier::Hard);
+        assert!(Tier::Hard < Tier::Extreme);
+    }
+
+    #[test]
+    fn an_easy_no_axes_spec_serializes_without_the_new_keys() {
+        // Back-compat on save: a default tier + absent axes don't bloat the JSON,
+        // so a round-tripped pre-Phase-9 fixture stays byte-identical.
+        let spec = AgenticSpec {
+            mocks: vec![],
+            end_state: EndStateRule::ExpectAbstainingText,
+            tier: Tier::Easy,
+            axes: None,
+            k: None,
+            max_steps: None,
+            faults: vec![],
+            max_recovery: None,
+            must_not_call: vec![],
+            world_state: None,
+            name_faults: vec![],
+            generated: false,
+            entity_tools: vec![],
+        };
+        let v = serde_json::to_value(&spec).unwrap();
+        assert!(v.get("tier").is_none()); // Easy is the default → omitted
+        assert!(v.get("axes").is_none());
+        // v2 fields are absent on a v1 spec → byte-compat preserved.
+        assert!(v.get("must_not_call").is_none());
+        assert!(v.get("world_state").is_none());
+        assert!(v.get("entity_tools").is_none()); // empty → omitted
+    }
 }

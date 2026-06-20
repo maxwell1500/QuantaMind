@@ -1,6 +1,7 @@
 use super::super::profile::{builtins, ReadinessProfile};
 use super::super::types::{CliffStatus, NativeFcStatus, Readiness, ReadinessInputs};
 use super::assess;
+use crate::inference::eval::agentic::spec::Tier;
 
 /// A lenient profile: only the Pass^k core gate is active, everything else off.
 fn lenient() -> ReadinessProfile {
@@ -15,6 +16,7 @@ fn lenient() -> ReadinessProfile {
         forbid_hallucinated_completion: false,
         require_full_vram: false,
         require_native_fc: false,
+        required_tier: crate::inference::eval::agentic::spec::Tier::Easy,
     }
 }
 
@@ -30,6 +32,7 @@ fn clean_inputs() -> ReadinessInputs {
         loops: 0,
         hallucinated: 0,
         native_fc: NativeFcStatus::NotSupported,
+        tier_pass_k: vec![],
     }
 }
 
@@ -77,8 +80,9 @@ fn forbidden_loop_and_hallucination_each_block() {
     i.hallucinated = 2;
     let v = assess(&i, &p);
     assert_eq!(v.status, Readiness::NotReady);
-    assert!(v.blocking.contains(&"loops on some runs".to_string()));
-    assert!(v.blocking.contains(&"false 'done' on some runs".to_string()));
+    // The exact affected-run counts are interpolated (loops=1 → singular, hallucinated=2 → plural).
+    assert!(v.blocking.contains(&"loops on 1 run".to_string()));
+    assert!(v.blocking.contains(&"false 'done' on 2 runs".to_string()));
 }
 
 #[test]
@@ -214,4 +218,52 @@ fn profile_edit_flips_the_verdict_deterministically() {
     assert_eq!(assess(&i, &p).status, Readiness::Ready); // 0.82 ≥ 0.80
     p.min_pass_k = 0.90; // raise the bar
     assert_eq!(assess(&i, &p).status, Readiness::NotReady); // 0.82 < 0.90
+}
+
+#[test]
+fn tier_gate_blocks_when_an_exercised_required_tier_is_not_cleared() {
+    let p = ReadinessProfile { required_tier: Tier::Hard, min_pass_k: 0.8, ..lenient() };
+    // The collection ran Hard tasks, but the model cleared only Easy (Hard 0.4 < 0.8).
+    let i = ReadinessInputs {
+        pass_k: Some(0.9), // clears the core gate, so only the tier gate can block
+        tier_pass_k: vec![(Tier::Easy, 1.0), (Tier::Hard, 0.4)],
+        ..clean_inputs()
+    };
+    let v = assess(&i, &p);
+    assert_eq!(v.status, Readiness::NotReady);
+    assert!(v.blocking.iter().any(|b| b.contains("Easy") && b.contains("Hard")), "{:?}", v.blocking);
+    // The verdict surfaces the graduated readiness for the report header.
+    assert_eq!(v.cleared_tier, Some(Tier::Easy));
+    assert_eq!(v.required_tier, Tier::Hard);
+}
+
+#[test]
+fn tier_gate_is_silent_when_the_required_tier_was_not_exercised() {
+    // Only Easy tasks ran → Hard is NotAttempted, never a guessed fail.
+    let p = ReadinessProfile { required_tier: Tier::Hard, min_pass_k: 0.8, ..lenient() };
+    let i = ReadinessInputs { pass_k: Some(0.9), tier_pass_k: vec![(Tier::Easy, 1.0)], ..clean_inputs() };
+    let v = assess(&i, &p);
+    assert_eq!(v.status, Readiness::Ready);
+    assert!(v.blocking.is_empty(), "{:?}", v.blocking);
+}
+
+#[test]
+fn tier_gate_passes_when_the_required_tier_is_cleared() {
+    let p = ReadinessProfile { required_tier: Tier::Hard, min_pass_k: 0.8, ..lenient() };
+    let i = ReadinessInputs {
+        pass_k: Some(0.9),
+        tier_pass_k: vec![(Tier::Easy, 1.0), (Tier::Hard, 0.9)], // Hard 0.9 ≥ 0.8
+        ..clean_inputs()
+    };
+    let v = assess(&i, &p);
+    assert_eq!(v.status, Readiness::Ready);
+    assert_eq!(v.cleared_tier, Some(Tier::Hard)); // highest tier cleared at the bar
+}
+
+#[test]
+fn an_easy_required_tier_never_blocks_on_the_tier_gate() {
+    // A pre-Phase-9 profile defaults required_tier=Easy → the gate is inert.
+    let p = ReadinessProfile { required_tier: Tier::Easy, ..lenient() };
+    let i = ReadinessInputs { tier_pass_k: vec![], ..clean_inputs() };
+    assert_eq!(assess(&i, &p).status, Readiness::Ready);
 }

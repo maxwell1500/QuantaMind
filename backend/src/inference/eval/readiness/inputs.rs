@@ -1,7 +1,15 @@
 use super::profile::ReadinessProfile;
 use super::types::{AgentPath, CliffStatus, ModelVerdict, NativeFcStatus, Readiness, ReadinessInputs, ReadinessVerdict};
 use super::verdict::assess;
-use crate::inference::eval::batch::{BatchColumn, BatchReport};
+use crate::inference::eval::batch::{AggAgentic, BatchColumn, BatchReport};
+
+/// The native-first agentic aggregate — the NATIVE pass when it actually ran (`total_runs
+/// > 0`), else the prompt-based proxy. The single selector every readiness read shares, so
+/// the gated metrics, the per-tier breakdown, and the failure taxonomy can never come from
+/// different passes (native-FC defaults off, so both must fall back identically).
+pub fn native_first_source(col: &BatchColumn) -> Option<&AggAgentic> {
+    col.agentic_native_fc.as_ref().filter(|a| a.total_runs > 0).or(col.agentic.as_ref())
+}
 
 /// Build the measured inputs for `assess` from a Matrix column. Agentic metrics
 /// come from the column; the hardware facts (`fits_in_vram`, `vram_pressure`) are
@@ -18,14 +26,19 @@ pub fn from_column(
     // production agent actually uses. Native present → source the gated metrics
     // from it and label the path NativeFc; otherwise the prompt-based proxy.
     let native = col.agentic_native_fc.as_ref().filter(|a| a.total_runs > 0);
-    let (source, native_fc) = match native {
-        Some(n) => (Some(n), NativeFcStatus::Tested { pass_k: n.pass_k().unwrap_or(0.0) }),
-        None => (col.agentic.as_ref(), NativeFcStatus::NotSupported),
+    let native_fc = match native {
+        Some(n) => NativeFcStatus::Tested { pass_k: n.pass_k().unwrap_or(0.0) },
+        None => NativeFcStatus::NotSupported,
     };
+    let source = native_first_source(col);
     let pass_k = source.and_then(|a| a.pass_k());
     let (loops, hallucinated) = source
         .map(|a| (a.failures.infinite_loop_hits, a.failures.hallucinated_completions))
         .unwrap_or((0, 0));
+    // Phase 9: per-tier strict Pass^k for the tier gate — from the SAME (native-first)
+    // aggregate the other gates read, so the verdict is internally consistent.
+    let tier_pass_k =
+        source.map(|a| a.by_tier.iter().filter_map(|s| s.pass_k().map(|pk| (s.tier, pk))).collect()).unwrap_or_default();
     ReadinessInputs {
         pass_k,
         avg_steps: source.and_then(|a| a.avg_steps),
@@ -36,6 +49,7 @@ pub fn from_column(
         loops,
         hallucinated,
         native_fc,
+        tier_pass_k,
     }
 }
 
@@ -57,6 +71,8 @@ pub fn verdict_for(
             blocking: vec![format!("run error: {err}")],
             conditions: Vec::new(),
             path: AgentPath::PromptBased,
+            required_tier: profile.required_tier,
+            cleared_tier: None, // an errored column measured nothing
         },
         None => assess(&from_column(col, fits_in_vram, vram_pressure, cliff), profile),
     }
@@ -66,12 +82,7 @@ pub fn verdict_for(
 /// **native-first**, the exact aggregate the verdict gates on, so the recommender
 /// praises the same telemetry the verdict was computed from (not the wrong column).
 pub fn agentic_metrics(col: &BatchColumn) -> (Option<f64>, Option<f64>) {
-    if let Some(n) = &col.agentic_native_fc {
-        if n.total_runs > 0 {
-            return (n.avg_steps, n.avg_output_tokens_success);
-        }
-    }
-    match &col.agentic {
+    match native_first_source(col) {
         Some(a) => (a.avg_steps, a.avg_output_tokens_success),
         None => (None, None),
     }
@@ -80,12 +91,7 @@ pub fn agentic_metrics(col: &BatchColumn) -> (Option<f64>, Option<f64>) {
 /// The measured Pass^k the verdict gated on — **native-first**, as a raw fraction.
 /// `None` when no agentic run produced data (the row then renders "N/A").
 pub fn pass_k_of(col: &BatchColumn) -> Option<f64> {
-    let source = col
-        .agentic_native_fc
-        .as_ref()
-        .filter(|a| a.total_runs > 0)
-        .or(col.agentic.as_ref());
-    source.and_then(|a| a.pass_k())
+    native_first_source(col).and_then(|a| a.pass_k())
 }
 
 /// Assess every model in a persisted batch report against a profile, with no
@@ -96,6 +102,10 @@ pub fn assess_report(report: &BatchReport, profile: &ReadinessProfile) -> Vec<Mo
         .iter()
         .map(|col| {
             let (avg_steps, effort) = agentic_metrics(col);
+            // Per-tier breakdown + failures from the SAME native-first source the verdict
+            // gated on (so the Agent Report's Matrix/Taxonomy can't drift from the gate).
+            let (by_tier, failures) =
+                native_first_source(col).map(|a| (a.by_tier.clone(), a.failures.clone())).unwrap_or_default();
             ModelVerdict {
                 model: col.model.clone(),
                 backend: col.backend,
@@ -106,6 +116,8 @@ pub fn assess_report(report: &BatchReport, profile: &ReadinessProfile) -> Vec<Mo
                 pass_k: pass_k_of(col),
                 quantization: None, // the no-hardware path has no registry to read the real quant
                 cliff: CliffStatus::NotProbed, // the no-hardware/CLI path has no cliff store to read
+                by_tier,
+                failures,
             }
         })
         .collect()

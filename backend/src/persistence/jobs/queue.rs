@@ -1,4 +1,5 @@
 use crate::errors::{AppError, AppResult};
+use crate::inference::eval::agentic::spec::Tier;
 use crate::inference::eval::batch::CompletedUnit;
 use crate::inference::eval::toolcall::matrix::ModelTarget;
 use crate::inference::eval::toolcall::tasks::ToolTask;
@@ -25,6 +26,16 @@ pub struct RunConfig {
     pub params: Option<InferenceParams>,
     pub keep_alive: Option<i32>,
     pub native: bool,
+    /// Phase 9: the difficulty tier the run was launched at. `None` is the legacy
+    /// (Custom / free-`k`) path. `#[serde(default)]` keeps pre-Phase-9 job logs
+    /// resumable — an interrupted run written before this field still parses.
+    #[serde(default)]
+    pub tier: Option<Tier>,
+    /// Phase 9 anti-saturation: decoy-tool budget injected per agentic task. `None`
+    /// leaves each task's authored decoys untouched. `#[serde(default)]` for the
+    /// same back-compat reason as `tier`.
+    #[serde(default)]
+    pub decoy_tools: Option<u32>,
 }
 
 /// One `.jsonl` line: the run header (first line) or a completed unit.

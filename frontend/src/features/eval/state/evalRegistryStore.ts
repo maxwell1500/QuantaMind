@@ -11,8 +11,8 @@ import {
   type BuiltinCollectionInfo,
 } from "../../../shared/ipc/eval/registry";
 
-/// The default read-only preset id (the curated suite).
-export const DEFAULT_PRESET = "curated";
+/// The default read-only collection id (the first Easy-tier scenario).
+export const DEFAULT_PRESET = "easy-coding";
 
 /// Sentinel `selected` value for an unsaved, brand-new collection. It is never a
 /// real preset id nor a sanitized file stem, and is never sent to the backend —
@@ -66,7 +66,12 @@ export const useEvalRegistryStore = create<EvalRegistryStore>((set, get) => ({
     const hidden = loadHidden();
     const [allPresets, collections] = await Promise.all([listBuiltinCollections(), listCustomCollections()]);
     const presets = allPresets.filter((p) => !hidden.includes(p.id));
-    set({ presets, collections, hiddenPresets: hidden, tasks: await getBuiltinCollection(DEFAULT_PRESET), selected: DEFAULT_PRESET });
+    // Publish the picker FIRST, so a single bad default-collection load can never
+    // blank the whole Built-in list (that silent failure left the page stuck on
+    // "Custom JSON" with no collections). A throw below still propagates to the
+    // caller, which surfaces it instead of swallowing it.
+    set({ presets, collections, hiddenPresets: hidden, selected: DEFAULT_PRESET });
+    set({ tasks: await getBuiltinCollection(DEFAULT_PRESET) });
   },
   hidePreset: (id) => {
     const hidden = [...get().hiddenPresets, id];

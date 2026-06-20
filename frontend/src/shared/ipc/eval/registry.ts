@@ -31,10 +31,12 @@ const TaskCheckpointSchema = z.object({ tool: z.string().min(1), args: z.record(
 const MockResponseSchema = z.object({ call: CallSchema, response: z.string() });
 
 /// Mirrors the externally-tagged Rust `EndStateRule`: a unit variant serializes
-/// to the bare string `"expect_abstaining_text"`; the tuple variant to
-/// `{ "require_sequence": [...] }`.
+/// to the bare string `"expect_abstaining_text"`; the tuple variants to
+/// `{ "require_sequence": [...] }` (v1, ordered) and `{ "require_all": [...] }`
+/// (Phase 9-v2, unordered consume-once — the shape EVERY bundled v2 scenario uses).
 export const EndStateRuleSchema = z.union([
   z.object({ require_sequence: z.array(TaskCheckpointSchema).min(1) }),
+  z.object({ require_all: z.array(TaskCheckpointSchema).min(1) }),
   z.literal("expect_abstaining_text"),
 ]);
 
@@ -46,6 +48,18 @@ export const FaultInjectionSchema = z.union([
 ]);
 const FaultRuleSchema = z.object({ call: CallSchema, fault: FaultInjectionSchema });
 
+/// The measurable axes that DEFINE a difficulty tier (Phase 9). The Agent Report reads
+/// `min_required_steps` + `decoy_tools` to show a tier's real "Task Parameters" instead of
+/// the mockup's illustrative ranges. Defaulted so a partial/hand-authored axes still parses.
+const DifficultyAxesSchema = z.object({
+  min_required_steps: z.number().int().nonnegative().default(0),
+  decoy_tools: z.number().int().nonnegative().default(0),
+  hidden_prereqs: z.number().int().nonnegative().default(0),
+  conflicting_constraints: z.number().int().nonnegative().default(0),
+  adversarial_context: z.boolean().default(false),
+});
+export type DifficultyAxes = z.infer<typeof DifficultyAxesSchema>;
+
 export const AgenticSpecSchema = z.object({
   mocks: z.array(MockResponseSchema),
   end_state: EndStateRuleSchema,
@@ -55,43 +69,61 @@ export const AgenticSpecSchema = z.object({
   faults: z.array(FaultRuleSchema).optional(),
   /// Driver D semantic-recovery budget; omitted to use the engine default.
   max_recovery: z.number().int().nonnegative().optional(),
+  /// Phase 9 difficulty tier (Easy when absent) — inlined enum to avoid a value-import
+  /// cycle with readiness.ts (the existing pattern for the tier enum in this file).
+  tier: z.enum(["easy", "medium", "hard", "extreme"]).optional(),
+  /// Phase 9 difficulty axes; absent for pre-Phase-9 tasks → the Matrix shows "not declared".
+  axes: DifficultyAxesSchema.optional(),
+  /// Phase 9-v2 opaque fields. The frontend never reads them, but it DOES hand the
+  /// parsed tasks straight back to `run_batch_eval` — so they must survive the parse
+  /// or a built-in scenario loses its oracle/traps and every run fails. Typed as
+  /// `unknown` (permissive: a UX mirror must never reject a valid backend task).
+  must_not_call: z.array(z.unknown()).optional(),
+  world_state: z.unknown().optional(),
+  name_faults: z.array(z.unknown()).optional(),
+  generated: z.boolean().optional(),
 });
 export type AgenticSpec = z.infer<typeof AgenticSpecSchema>;
+
+/// Categories that run on the multi-turn agentic engine (mirror of the Rust
+/// `is_agentic`). `agent_loop` is the Phase 9-v2 authored-scenario category.
+const isAgentic = (category: string) => category === "agentic" || category === "agent_loop";
 
 export const ToolTaskSchema = z
   .object({
     id: z.string().min(1),
-    category: z.enum(["single", "parallel", "select", "abstain", "agentic"]),
+    category: z.enum(["single", "parallel", "select", "abstain", "agentic", "agent_loop"]),
     prompt: z.string().min(1),
     tools: z.array(ToolSchemaSchema).min(1),
     expected: ExpectedSchema,
     agentic: AgenticSpecSchema.optional(),
   })
   .superRefine((t, ctx) => {
-    if (t.category === "agentic" && !t.agentic)
+    if (isAgentic(t.category) && !t.agentic)
       ctx.addIssue({ code: "custom", message: "agentic task requires an agentic spec", path: ["agentic"] });
-    if (t.category !== "agentic" && t.agentic)
+    if (!isAgentic(t.category) && t.agentic)
       ctx.addIssue({ code: "custom", message: "only agentic tasks may carry an agentic spec", path: ["agentic"] });
   });
 export type ToolTask = z.infer<typeof ToolTaskSchema>;
 
 const TaskArraySchema = z.array(ToolTaskSchema);
 
-/// The bundled curated suite (read once, behind a command, so the runner is
-/// always handed a Vec).
-export async function getBuiltinTasks(): Promise<ToolTask[]> {
-  return TaskArraySchema.parse(await invoke("get_builtin_tasks"));
-}
-
-export const BuiltinCollectionInfoSchema = z.object({ id: z.string(), label: z.string() });
+/// A bundled v2 tiered scenario collection for the picker: id (file stem), short
+/// domain, and tier (so the UI groups Easy→Extreme and labels by domain).
+export const BuiltinCollectionInfoSchema = z.object({
+  id: z.string(),
+  label: z.string(),
+  domain: z.string(),
+  tier: z.enum(["easy", "medium", "hard", "extreme"]),
+});
 export type BuiltinCollectionInfo = z.infer<typeof BuiltinCollectionInfoSchema>;
 
-/// The read-only built-in presets (id + label) for the dataset picker.
+/// The bundled v2 tiered scenario collections for the dataset picker.
 export async function listBuiltinCollections(): Promise<BuiltinCollectionInfo[]> {
   return z.array(BuiltinCollectionInfoSchema).parse(await invoke("list_builtin_collections"));
 }
 
-/// Tasks for a built-in preset id (e.g. "curated" / "finance").
+/// Tasks for a built-in collection id (a v2 scenario file stem, e.g. "easy-coding").
 export async function getBuiltinCollection(id: string): Promise<ToolTask[]> {
   return TaskArraySchema.parse(await invoke("get_builtin_collection", { id }));
 }

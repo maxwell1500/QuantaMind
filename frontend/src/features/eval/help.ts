@@ -37,6 +37,10 @@ export const TOOL_HELP = {
     title: "Iterations (k)",
     body: "How many times each Multi-Step (agentic) task is re-run — the k in Pass^k. A real agent loops many steps where small failures compound, so passing once isn't enough: with k=5 a task runs 5× and the model only counts as reliable if it passes consistently (shown as passes/total, e.g. 4/5). Higher k = a stricter reliability bar (and longer runs); k=1 = run once, no consistency check. No effect on single-turn tasks (they always run once).",
   },
+  decoys: {
+    title: "Anti-Saturation (Decoy Tools)",
+    body: "Shuffles N never-correct 'decoy' tools into every agentic task's presented tool list — plausible-looking distractors the model must avoid. It tests whether a model is misled into calling the wrong tool as the menu grows, resisting benchmark saturation. Off (default) leaves each task's authored decoys untouched. No effect on single-turn tasks.",
+  },
 } satisfies Record<string, Help>;
 
 /// How each metric is computed. Used both in InfoButtons and as clip-safe Tooltip
@@ -69,6 +73,10 @@ export const METRIC_HELP = {
   passRate: {
     title: "Pass rate",
     body: "Aggregate passes ÷ total runs across the whole collection, as a percentage.",
+  },
+  cliffAccuracy: {
+    title: "Accuracy (per rung)",
+    body: "The composite tool-call score at this context depth, 0–100%. Single-turn tasks score the mean of four sub-metrics — parse rate (valid JSON call), tool selection (right tool), argument accuracy (right parameters), and abstention (correctly made no call when none was needed); agentic tasks score on JSON well-formedness alone (did the model emit a parseable tool call). The two groups are blended by task count. Each rung is measured at three needle positions (start/middle/end of the padding) and the row shows the WORST position — robust means correct everywhere. A rung is a Pass at ≥50%; the cliff is the first rung that drops ≥20 percentage points below the unpadded baseline.",
   },
 } satisfies Record<string, Help>;
 

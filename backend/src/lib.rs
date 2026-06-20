@@ -28,6 +28,7 @@ pub fn run() {
         .manage(commands::workspace::workspaces::WorkspaceState::default())
         .manage(commands::settings::user_settings::UserSettingsState::default())
         .manage(commands::eval::batch_cmd::BatchRunState::default())
+        .manage(commands::eval::readiness_cmd::CliffRunState::default())
         .manage(commands::publish::auth_state::AuthState::default())
         .setup(|app| {
             // Reclaim any sidecars a previous instance orphaned by dying without
@@ -48,7 +49,6 @@ pub fn run() {
             Ok(())
         })
         .invoke_handler(tauri::generate_handler![
-            commands::system::feasibility::check_install_feasibility,
             commands::gguf::gguf_cmd::inspect_gguf,
             commands::system::hardware::get_hardware_snapshot,
             commands::system::loaded_models::get_loaded_models,
@@ -136,7 +136,6 @@ pub fn run() {
             commands::eval::toolcall_cmd::run_toolcall_eval,
             commands::eval::toolcall_cmd::trace_toolcall_task,
             commands::eval::toolcall_cmd::load_toolcall_trace,
-            commands::eval::toolcall_cmd::get_builtin_tasks,
             commands::eval::toolcall_cmd::list_builtin_collections,
             commands::eval::toolcall_cmd::get_builtin_collection,
             commands::eval::eval_registry::list_custom_collections,
@@ -156,9 +155,11 @@ pub fn run() {
             commands::eval::readiness_cmd::save_readiness_profile,
             commands::eval::readiness_cmd::delete_readiness_profile,
             commands::eval::readiness_cmd::assess_readiness,
+            commands::eval::readiness_cmd::get_hardware_tier,
             commands::eval::readiness_cmd::save_cliff_result,
             commands::eval::readiness_cmd::get_cliff_results,
             commands::eval::readiness_cmd::run_context_cliff,
+            commands::eval::readiness_cmd::stop_context_cliff,
             commands::workspace::workspace_prompts::load_prompt,
             commands::workspace::workspace_prompts::save_prompt,
             commands::workspace::workspace_prompts::create_prompt,

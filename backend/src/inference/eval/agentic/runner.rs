@@ -1,19 +1,72 @@
 use crate::errors::AppResult;
 use crate::inference::eval::agentic::context::{tool_result_line, Conversation};
-use crate::inference::eval::agentic::endstate;
+use crate::inference::eval::agentic::scoring::endstate;
 use crate::inference::eval::agentic::model_turn::ModelTurn;
-use crate::inference::eval::agentic::report::{AgenticReport, FailureKind, RunOutcome};
-use crate::inference::eval::agentic::sandbox::{DeterministicSandbox, EndStateRule, SandboxState};
+use crate::inference::eval::agentic::scoring::report::{AgenticReport, FailureKind, RunOutcome};
+use crate::inference::eval::agentic::sandbox::{DeterministicSandbox, EndStateRule, SandboxState, TaskCheckpoint};
+use crate::inference::eval::agentic::v2::r#match::text_matches;
 use crate::inference::eval::agentic::step::{StepKind, TrajectoryStep};
 use crate::inference::eval::toolcall::parse::{extract_calls, looks_like_broken_json};
-use crate::inference::eval::toolcall::prompt::build_system_for;
+use crate::inference::eval::toolcall::prompt::{build_system_for, TerminalGuidance};
 use crate::inference::generate::generate_options::GenerateOptions;
 use crate::inference::generate::generate_spec::GenerateSpec;
 use tokio::sync::mpsc::UnboundedSender;
+use tokio_util::sync::CancellationToken;
 
 const MAX_TOKENS: u32 = 256;
 const UNKNOWN_TOOL: &str =
     "Tool not found or arguments unrecognized. Choose a tool from the provided schema.";
+
+/// Push the raw model turn to the transcript exactly once per turn, lazily — the
+/// first injected result triggers it, so a turn that terminates before any injection
+/// (end-state on the first call, a budget-spent schema error) pushes nothing, matching
+/// the old single-call terminal path byte-for-byte.
+fn ensure_model_pushed(convo: &mut Conversation, raw: &str, pushed: &mut bool) {
+    if !*pushed {
+        convo.push_model(raw);
+        *pushed = true;
+    }
+}
+
+/// Join a turn's per-call injection lines into the single `TrajectoryStep.injection`
+/// the UI renders. `None` when the turn injected nothing (a terminal turn) — so a
+/// single-call terminal step still streams `injection: None`, unchanged.
+fn join_injection(lines: &[(StepKind, String)]) -> Option<String> {
+    (!lines.is_empty()).then(|| lines.iter().map(|(_, l)| l.as_str()).collect::<Vec<_>>().join("\n"))
+}
+
+/// Collapse a non-terminal turn's per-call lines into one `(kind, injection)` for the
+/// streamed step. A single call keeps its exact kind (so the single-call path is
+/// byte-identical to before); a homogeneous multi-call turn keeps the shared kind;
+/// a mixed multi-call turn reports `ToolCall` (the turn ran tools), with every result
+/// in the joined injection.
+fn summarize_turn(lines: &[(StepKind, String)]) -> (StepKind, Option<String>) {
+    match lines {
+        [] => (StepKind::ToolCall, None),
+        [(kind, _), ..] if lines.iter().all(|(k, _)| k == kind) => (kind.clone(), join_injection(lines)),
+        _ => (StepKind::ToolCall, join_injection(lines)),
+    }
+}
+
+/// A checkpoint's reporter text glob, if it is a reporter (carries a `text` string arg).
+fn reporter_text(cp: &TaskCheckpoint) -> Option<&str> {
+    cp.args.get("text").and_then(|v| v.as_str())
+}
+
+/// G3: is a no-call yield a content-correct, wrong-channel answer rather than a true
+/// hallucination? True ONLY when EXACTLY ONE checkpoint is unsatisfied, that checkpoint is
+/// a reporter (a `text` glob), and the model's prose matches it. The "exactly one" guard is
+/// load-bearing: a weak glob like `*3*` must not relabel a model that SKIPPED the work and
+/// happened to emit the answer token — requiring every other checkpoint satisfied makes the
+/// prose match evidence the model did the task, not a coincidence.
+fn reported_in_prose(end_state: &EndStateRule, satisfied: &[bool], next_cp: usize, raw: &str) -> bool {
+    let unsatisfied: Vec<&TaskCheckpoint> = match end_state {
+        EndStateRule::RequireAll(cps) => cps.iter().zip(satisfied).filter(|(_, &s)| !s).map(|(c, _)| c).collect(),
+        EndStateRule::RequireSequence(cps) => cps.get(next_cp..).unwrap_or(&[]).iter().collect(),
+        EndStateRule::ExpectAbstainingText => return false,
+    };
+    matches!(unsatisfied.as_slice(), [cp] if reporter_text(cp).is_some_and(|p| text_matches(p, raw)))
+}
 
 /// Pass^k inputs: how many independent runs (default 5), the per-run step cap, and
 /// the per-run semantic-recovery budget (how many schema errors a run may correct
@@ -34,15 +87,66 @@ impl Default for AgenticConfig {
 /// outcomes into an `AgenticReport`. Each `run_once` builds a fresh transcript and
 /// token counter over the shared (immutable) sandbox — absolute isolation, no
 /// state bleed between iterations.
+///
+/// A per-run backend error (e.g. Ollama timed out or crashed on one of the k
+/// attempts) does NOT abort the batch: that run is skipped and the remaining
+/// attempts still execute, then the report folds the runs that completed. An infra
+/// fault is not a model task-failure, so a skipped run never reaches the
+/// denominator. Only when EVERY run errored does the error propagate — the task
+/// then shows as Error and re-runs on resume (the backend is genuinely down).
 pub async fn run_agentic<M: ModelTurn>(
     turn: &M,
     sandbox: &DeterministicSandbox,
     config: AgenticConfig,
     tx: &UnboundedSender<TrajectoryStep>,
 ) -> AppResult<AgenticReport> {
-    let mut outcomes = Vec::with_capacity(config.k as usize);
-    for run_index in 0..config.k {
-        outcomes.push(run_once(turn, sandbox, config.max_steps, config.max_recovery, run_index, tx).await?);
+    // Non-generated tasks reuse one sandbox for every run (a constant factory).
+    let never = CancellationToken::new();
+    run_agentic_with(turn, config.k, |_| Ok((sandbox.clone(), config.max_steps, config.max_recovery)), &never, tx)
+        .await
+}
+
+/// Pass^k with a per-run sandbox FACTORY. `make(run_index)` returns the sandbox +
+/// (max_steps, max_recovery) for that repetition — so a generated task can build a
+/// FRESH instance per run (contamination resistance) while a static task returns
+/// the same sandbox each time. A factory `Err` (e.g. a generation failure) skips
+/// that run like an infra error; only when EVERY run is skipped/errored does the
+/// error propagate. The infra-error-skip semantics are otherwise unchanged.
+pub async fn run_agentic_with<M, F>(
+    turn: &M,
+    k: u32,
+    make: F,
+    cancel: &CancellationToken,
+    tx: &UnboundedSender<TrajectoryStep>,
+) -> AppResult<AgenticReport>
+where
+    M: ModelTurn,
+    F: Fn(u32) -> AppResult<(DeterministicSandbox, u32, u8)>,
+{
+    let mut outcomes = Vec::with_capacity(k as usize);
+    let mut last_err = None;
+    for run_index in 0..k {
+        // Halt a long Pass^k task promptly on cancel (the batch loop also checks
+        // between tasks; this bounds an interrupt to ≤1 run of a big-k task).
+        if cancel.is_cancelled() {
+            break;
+        }
+        let (sandbox, max_steps, max_recovery) = match make(run_index) {
+            Ok(t) => t,
+            Err(e) => {
+                last_err = Some(e); // a generation failure skips this run
+                continue;
+            }
+        };
+        match run_once(turn, &sandbox, max_steps, max_recovery, run_index, tx).await {
+            Ok(outcome) => outcomes.push(outcome),
+            Err(e) => last_err = Some(e),
+        }
+    }
+    if outcomes.is_empty() {
+        if let Some(e) = last_err {
+            return Err(e);
+        }
     }
     Ok(AgenticReport::from_outcomes(&outcomes))
 }
@@ -61,14 +165,49 @@ pub async fn run_once<M: ModelTurn>(
     run_index: u32,
     tx: &UnboundedSender<TrajectoryStep>,
 ) -> AppResult<RunOutcome> {
-    let system = build_system_for(&sandbox.tools);
+    run_once_inner(turn, sandbox, max_steps, max_recovery, STEP_TIMEOUT, run_index, tx).await
+}
+
+/// Per-step wall-clock budget. The streaming HTTP client has no body deadline, so a
+/// stalled model would otherwise hang the loop forever; a turn over this budget ends
+/// the run as `TurnTimeout`. Generous vs. local tok/s so a legitimately slow turn
+/// (long generation, a fault-injected retry) isn't killed.
+const STEP_TIMEOUT: std::time::Duration = std::time::Duration::from_secs(180);
+
+/// `run_once` with an injectable per-step timeout (so the timeout path is testable
+/// without waiting the full budget).
+#[allow(clippy::too_many_arguments)]
+async fn run_once_inner<M: ModelTurn>(
+    turn: &M,
+    sandbox: &DeterministicSandbox,
+    max_steps: u32,
+    max_recovery: u8,
+    step_timeout: std::time::Duration,
+    run_index: u32,
+    tx: &UnboundedSender<TrajectoryStep>,
+) -> AppResult<RunOutcome> {
+    // Act-tasks must route every result — including the final report — through a tool;
+    // abstain-tasks keep the plain-text option (prose IS the correct output there). Gating
+    // here is the G1 fix for the prompt↔grader contradiction (a correct prose answer to a
+    // RequireAll task otherwise yields → HallucinatedCompletion).
+    let terminal = match &sandbox.end_state {
+        EndStateRule::ExpectAbstainingText => TerminalGuidance::PlainTextOk,
+        EndStateRule::RequireAll(_) | EndStateRule::RequireSequence(_) => TerminalGuidance::MustUseTools,
+    };
+    let system = build_system_for(&sandbox.tools, terminal);
     let mut convo = Conversation::new(sandbox.initial_prompt.clone());
     let mut output_tokens = 0u32;
     let mut next_cp = 0usize; // progress through a RequireSequence end-state
+    // RequireAll (v2): per-checkpoint consumed flags (unordered, consume-once).
+    let mut satisfied: Vec<bool> = match &sandbox.end_state {
+        EndStateRule::RequireAll(cps) => vec![false; cps.len()],
+        _ => Vec::new(),
+    };
     let mut state = SandboxState::new(); // per-run fault attempt counters (Driver B)
     let mut recoveries = 0u8; // schema corrections used this run (Driver D)
     let mut hit_schema_error = false; // this run emitted a schema-invalid call
     let mut schema_recovered = false; // ...and later produced a valid one
+    let mut unknown_tools = 0u32; // decoy / unknown-tool calls this run (Phase 9 distraction signal)
 
     for step_index in 0..max_steps {
         let spec = GenerateSpec {
@@ -82,98 +221,169 @@ pub async fn run_once<M: ModelTurn>(
             }),
             keep_alive: None,
         };
-        let (raw, stats) = turn.run(&spec).await?;
+        let (raw, stats) = match tokio::time::timeout(step_timeout, turn.run(&spec)).await {
+            Ok(r) => r?, // backend returned; an Err propagates (infra fault → run skipped upstream)
+            Err(_elapsed) => {
+                // The turn blew the wall-clock — a stalled model. Terminal: a hanging
+                // agent isn't production-ready, so it counts as a failure (not a skip).
+                let _ = tx.send(TrajectoryStep {
+                    run_index,
+                    step_index,
+                    raw_output: String::new(),
+                    injection: None,
+                    kind: StepKind::TurnTimeout,
+                });
+                return Ok(RunOutcome::failure(step_index + 1, output_tokens, FailureKind::TurnTimeout)
+                    .with_schema(hit_schema_error, schema_recovered)
+                    .with_unknown_tools(unknown_tools));
+            }
+        };
         output_tokens += stats.eval_count.unwrap_or(0);
         let send = |kind: StepKind, injection: Option<String>| {
             let _ = tx.send(TrajectoryStep { run_index, step_index, raw_output: raw.clone(), injection, kind });
         };
 
-        match extract_calls(&raw).and_then(|c| c.into_iter().next()) {
-            Some(call) => match &sandbox.end_state {
-                // Acted (called a tool) when the task wanted a plain-text
-                // abstention — declining was correct, so this is a failure.
-                EndStateRule::ExpectAbstainingText => {
-                    send(StepKind::HallucinatedCompletion, None);
-                    return Ok(RunOutcome::failure(step_index + 1, output_tokens, FailureKind::Hallucinated));
-                }
-                EndStateRule::RequireSequence(checkpoints) => {
-                    // Driver D: SEMANTIC validation precedes everything (only when the
-                    // task declares tool schemas to validate against). An invalid call
-                    // gets a precise correction injected and burns one recovery;
-                    // exhausting the budget ends the run as MalformedSchema.
-                    if !sandbox.tools.is_empty() {
-                        if let Err(msg) = endstate::validate_call(&call, &sandbox.tools) {
-                            hit_schema_error = true;
-                            if recoveries >= max_recovery {
-                                send(StepKind::SchemaError, None); // terminal: budget spent
-                                return Ok(RunOutcome::failure(
-                                    step_index + 1,
-                                    output_tokens,
-                                    FailureKind::MalformedSchema,
-                                )
-                                .with_schema(true, false));
-                            }
-                            recoveries += 1;
-                            let err = format!("[Schema error: {msg}]");
-                            let line = tool_result_line(&err);
-                            convo.push_model(&raw);
-                            convo.push_tool_result(&err);
-                            send(StepKind::SchemaError, Some(line));
-                            continue;
-                        }
-                        // A schema-valid call after a prior schema error is the recovery.
-                        if hit_schema_error && !schema_recovered {
-                            schema_recovered = true;
-                        }
-                    }
-                    // Driver B: a fault trap fires BEFORE any checkpoint advance, so a
-                    // trapped call can never be a fake pass. Inject the HTTP-style
-                    // error and continue — a robust agent retries (transient) or
-                    // reports the failure (persistent) on the next turn.
-                    if let Some(err) = state.fault_for(&call, &sandbox.faults) {
-                        let line = tool_result_line(&err);
-                        convo.push_model(&raw);
-                        convo.push_tool_result(&err);
-                        send(StepKind::ToolError, Some(line));
-                        continue;
-                    }
-                    let advances = endstate::checkpoint_matches(&checkpoints[next_cp], &call);
-                    if advances && next_cp + 1 == checkpoints.len() {
-                        send(StepKind::EndStateReached, None); // final checkpoint hit
-                        return Ok(RunOutcome::success(step_index + 1, output_tokens)
-                            .with_schema(hit_schema_error, schema_recovered));
-                    }
-                    if advances {
-                        next_cp += 1; // intermediate checkpoint reached, keep going
-                    }
-                    let (kind, result) = match sandbox.respond(&call) {
-                        Some(r) => (StepKind::ToolCall, r.to_string()),
-                        None => (StepKind::UnknownTool, UNKNOWN_TOOL.to_string()),
-                    };
-                    let line = tool_result_line(&result);
-                    convo.push_model(&raw);
-                    convo.push_tool_result(&result);
-                    send(kind, Some(line));
-                }
-            },
+        // The model emits ZERO or MORE tool calls per turn (the system prompt invites a
+        // JSON array). We process EVERY parsed call in array order — dropping all but the
+        // first silently half-executes a correct batched agent. `extract_calls` is lenient:
+        // it returns the parseable calls and ignores unparseable slices, so `malformed_json`
+        // stays a whole-output property (zero calls parsed → the no-call arm below).
+        let calls = match extract_calls(&raw) {
             None => match &sandbox.end_state {
                 // Declined to call any tool, exactly as the task demanded.
                 EndStateRule::ExpectAbstainingText => {
                     send(StepKind::EndStateReached, None);
                     return Ok(RunOutcome::success(step_index + 1, output_tokens));
                 }
-                EndStateRule::RequireSequence(_) => {
+                // Yielded (no call) without completing the required checkpoints.
+                EndStateRule::RequireSequence(_) | EndStateRule::RequireAll(_) => {
                     let (kind, failure) = if looks_like_broken_json(&raw) {
                         (StepKind::MalformedJson, FailureKind::Malformed)
+                    } else if reported_in_prose(&sandbox.end_state, &satisfied, next_cp, &raw) {
+                        // G3: did ALL the work, only failed to route the final answer through
+                        // the reporter tool — content-correct, wrong-channel. NOT a hallucination.
+                        (StepKind::ReportedInProse, FailureKind::ReportedInProse)
                     } else {
                         (StepKind::HallucinatedCompletion, FailureKind::Hallucinated)
                     };
                     send(kind, None);
                     return Ok(RunOutcome::failure(step_index + 1, output_tokens, failure)
-                        .with_schema(hit_schema_error, schema_recovered));
+                        .with_schema(hit_schema_error, schema_recovered)
+                        .with_unknown_tools(unknown_tools));
                 }
             },
+            Some(calls) => calls,
+        };
+
+        // Acted (called ≥1 tool) when the task wanted a plain-text abstention — declining
+        // was correct, so this is a failure.
+        if matches!(sandbox.end_state, EndStateRule::ExpectAbstainingText) {
+            send(StepKind::HallucinatedCompletion, None);
+            return Ok(RunOutcome::failure(step_index + 1, output_tokens, FailureKind::Hallucinated));
         }
+
+        // Step 1 — FORBIDDEN PRE-SCAN (the trap dominates the whole turn). A forbidden
+        // action emitted ANYWHERE in the array springs the trap, even alongside a call that
+        // would complete the end-state — the model must not launder a trap by batching it
+        // with the winning move. Restricted to SCHEMA-VALID calls so a malformed forbidden
+        // call still takes the recovery path below (can't trap via malformed) — preserving
+        // the prior schema-before-forbidden ordering.
+        for call in &calls {
+            let schema_ok = sandbox.tools.is_empty() || endstate::validate_call(call, &sandbox.tools).is_ok();
+            if schema_ok && sandbox.must_not_call.iter().any(|m| m.matches(call)) {
+                send(StepKind::ForbiddenCall, None);
+                return Ok(RunOutcome::failure(step_index + 1, output_tokens, FailureKind::ForbiddenCall)
+                    .with_schema(hit_schema_error, schema_recovered)
+                    .with_unknown_tools(unknown_tools));
+            }
+        }
+
+        // Step 2 — process each call in array order. `model_pushed` defers pushing the raw
+        // model turn until the FIRST injected result, so a turn whose first call completes
+        // the end-state (or terminates) pushes nothing to the transcript — byte-identical to
+        // the old single-call terminal path. `turn_lines` collects each call's injected line
+        // so the turn streams ONE `TrajectoryStep` (the UI renders one card per turn) with
+        // every result joined, not just the first.
+        let mut model_pushed = false;
+        let mut turn_lines: Vec<(StepKind, String)> = Vec::new();
+        for call in &calls {
+            // 3a — Driver D semantic validation (only when the task declares schemas). An
+            // invalid call injects a correction and burns ONE recovery, then CONTINUES to the
+            // next call (no-drop: a sibling's schema error never discards a valid call).
+            // Exhausting the budget is terminal (MalformedSchema).
+            if !sandbox.tools.is_empty() {
+                if let Err(msg) = endstate::validate_call(call, &sandbox.tools) {
+                    hit_schema_error = true;
+                    if recoveries >= max_recovery {
+                        send(StepKind::SchemaError, join_injection(&turn_lines)); // terminal: budget spent
+                        return Ok(RunOutcome::failure(step_index + 1, output_tokens, FailureKind::MalformedSchema)
+                            .with_schema(true, schema_recovered)
+                            .with_unknown_tools(unknown_tools));
+                    }
+                    recoveries += 1;
+                    let err = format!("[Schema error: {msg}]");
+                    ensure_model_pushed(&mut convo, &raw, &mut model_pushed);
+                    convo.push_tool_result(&err);
+                    turn_lines.push((StepKind::SchemaError, tool_result_line(&err)));
+                    continue;
+                }
+                if hit_schema_error && !schema_recovered {
+                    schema_recovered = true; // a valid call after a schema error is the recovery
+                }
+            }
+            // 3b — Driver B fault trap, BEFORE any checkpoint advance, so a trapped call can
+            // never be a fake pass. The counter is per-call; a robust agent retries/reports.
+            if let Some(err) = state.fault_for(call, &sandbox.faults) {
+                ensure_model_pushed(&mut convo, &raw, &mut model_pushed);
+                convo.push_tool_result(&err);
+                turn_lines.push((StepKind::ToolError, tool_result_line(&err)));
+                continue;
+            }
+            // 3c — checkpoint progress: ordered (RequireSequence, exact) or unordered
+            // consume-once set (RequireAll, wildcard-aware). Two calls in one turn satisfy
+            // two distinct checkpoints — the whole point of processing the full array.
+            let complete = match &sandbox.end_state {
+                EndStateRule::RequireSequence(cps) => {
+                    if endstate::checkpoint_matches(&cps[next_cp], call) {
+                        next_cp += 1;
+                    }
+                    next_cp == cps.len()
+                }
+                EndStateRule::RequireAll(cps) => {
+                    for (i, cp) in cps.iter().enumerate() {
+                        if !satisfied[i] && endstate::checkpoint_matches_v2(cp, call) {
+                            satisfied[i] = true;
+                            break; // a call consumes at most one checkpoint
+                        }
+                    }
+                    satisfied.iter().all(|&s| s)
+                }
+                EndStateRule::ExpectAbstainingText => unreachable!("handled above"),
+            };
+            // 3d — terminal success the instant the last checkpoint is satisfied (race-free:
+            // step 1 already cleared the turn of forbidden calls).
+            if complete {
+                send(StepKind::EndStateReached, join_injection(&turn_lines));
+                return Ok(RunOutcome::success(step_index + 1, output_tokens)
+                    .with_schema(hit_schema_error, schema_recovered)
+                    .with_unknown_tools(unknown_tools));
+            }
+            // 3e — not complete: inject this call's tool result and continue.
+            let (kind, result) = match sandbox.respond(call) {
+                Some(r) => (StepKind::ToolCall, r),
+                None => {
+                    unknown_tools += 1; // a decoy or hallucinated tool — no mock exists
+                    (StepKind::UnknownTool, UNKNOWN_TOOL.to_string())
+                }
+            };
+            ensure_model_pushed(&mut convo, &raw, &mut model_pushed);
+            convo.push_tool_result(&result);
+            turn_lines.push((kind, tool_result_line(&result)));
+        }
+
+        // Turn complete, NON-terminal: stream one step carrying every injected result.
+        let (kind, injection) = summarize_turn(&turn_lines);
+        send(kind, injection);
     }
 
     let _ = tx.send(TrajectoryStep {
@@ -184,7 +394,8 @@ pub async fn run_once<M: ModelTurn>(
         kind: StepKind::InfiniteLoop,
     });
     Ok(RunOutcome::failure(max_steps, output_tokens, FailureKind::InfiniteLoop)
-        .with_schema(hit_schema_error, schema_recovered))
+        .with_schema(hit_schema_error, schema_recovered)
+        .with_unknown_tools(unknown_tools))
 }
 
 #[cfg(test)]

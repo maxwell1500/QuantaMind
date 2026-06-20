@@ -1,11 +1,17 @@
 import { describe, it, expect, vi, beforeEach } from "vitest";
 import { render, screen, fireEvent, waitFor } from "@testing-library/react";
 
-vi.mock("../../../shared/ipc/eval/readiness", () => ({
+// Spread the real module so the constants/schemas (PASS_K_BY_TIER, TierSchema, …) the
+// deep-dive components import survive; mock only the two IPC calls this test drives.
+vi.mock("../../../shared/ipc/eval/readiness", async (orig) => ({
+  ...(await orig<typeof import("../../../shared/ipc/eval/readiness")>()),
   listReadinessProfiles: vi.fn(),
   assessReadiness: vi.fn(),
 }));
-vi.mock("../../../shared/ipc/compare/hardware", () => ({ getHardwareSnapshot: vi.fn() }));
+vi.mock("../../../shared/ipc/compare/hardware", () => ({
+  getHardwareSnapshot: vi.fn(),
+  getHardwareTier: vi.fn(),
+}));
 
 import { listReadinessProfiles, assessReadiness, type ReadinessProfile } from "../../../shared/ipc/eval/readiness";
 import { getHardwareSnapshot } from "../../../shared/ipc/compare/hardware";
@@ -30,7 +36,7 @@ const profile = (id: string, name: string, min: number): ReadinessProfile => ({
 beforeEach(() => {
   vi.clearAllMocks();
   // Non-empty presets so the page doesn't trigger a registry init() in the test.
-  useEvalRegistryStore.setState({ presets: [{ id: "curated", label: "Curated Suite" }], collections: ["finance"], selected: "finance" });
+  useEvalRegistryStore.setState({ presets: [{ id: "easy-coding", label: "Coding", domain: "coding", tier: "easy" }], collections: ["finance"], selected: "finance" });
   useReadinessStore.setState({ profiles: [], selectedProfileId: "", verdicts: [], hardware: null, capBytes: null, assessed: false, loading: false, error: null });
   vi.mocked(listReadinessProfiles).mockResolvedValue([profile("coding-agent", "Coding agent", 0.8)]);
   vi.mocked(getHardwareSnapshot).mockResolvedValue({

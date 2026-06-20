@@ -1,4 +1,3 @@
-pub mod feasibility;
 pub mod gpu;
 pub mod hardware;
 pub mod hardware_mem;

@@ -10,6 +10,8 @@ import { useBatchRun } from "../../hooks/useBatchRun";
 import { formatIpcError } from "../../../../shared/ipc/core/error";
 import { useToast } from "../../../../shared/ui/Toast";
 import type { ToolTask } from "../../../../shared/ipc/eval/registry";
+import type { Tier } from "../../../../shared/ipc/eval/readiness";
+import type { HardwareTier } from "../../../../shared/ipc/compare/hardware";
 import { batchToCsv, download } from "../../exportBatch";
 import { ConfirmDialog } from "./ConfirmDialog";
 import { CsvImportModal } from "./CsvImportModal";
@@ -23,8 +25,20 @@ interface EvalManagerProps {
   setK: (k: number) => void;
   maxSteps: number;
   setMaxSteps: (steps: number) => void;
+  // Phase 9 difficulty levers (resolved in EvalPage; see its derivation).
+  tierSel: "auto" | Tier;
+  onTierChange: (t: "auto" | Tier) => void;
+  effectiveTier?: Tier;
+  recommendedK?: number;
+  hwTier: HardwareTier | null;
+  decoyEnabled: boolean;
+  setDecoyEnabled: (b: boolean) => void;
+  decoyCount: number;
+  setDecoyCount: (n: number) => void;
   onNewCollection: () => void;
-  onEditCollection: () => void;
+  // Per-task authoring (rendered under the selected collection, on hover).
+  onEditTask?: (taskId: string) => void;
+  onDeleteTask?: (taskId: string) => void;
 }
 
 export function EvalManager({
@@ -34,8 +48,18 @@ export function EvalManager({
   setK = () => {},
   maxSteps = 8,
   setMaxSteps = () => {},
+  tierSel = "auto",
+  onTierChange = () => {},
+  effectiveTier = undefined,
+  recommendedK = undefined,
+  hwTier = null,
+  decoyEnabled = false,
+  setDecoyEnabled = () => {},
+  decoyCount = 3,
+  setDecoyCount = () => {},
   onNewCollection = () => {},
-  onEditCollection = () => {},
+  onEditTask,
+  onDeleteTask,
 }: Partial<EvalManagerProps> = {}) {
   const { presets, collections, selected, tasks, init, select, isPreset, importFile, save, remove, hidePreset } =
     useEvalRegistryStore();
@@ -49,6 +73,11 @@ export function EvalManager({
   const { run, stop } = useBatchRun();
 
   const [collectionsExpanded, setCollectionsExpanded] = useState(true);
+  const [hoverTaskId, setHoverTaskId] = useState<string | null>(null);
+  // Which collection's task list is expanded (accordion). Toggled by double-clicking
+  // the collection; only the SELECTED collection's tasks are loaded, so the list shows
+  // when `expandedId === selected`.
+  const [expandedId, setExpandedId] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [deleteTarget, setDeleteTarget] = useState<string | null>(null);
   const [csvOpen, setCsvOpen] = useState(false);
@@ -63,9 +92,13 @@ export function EvalManager({
   // Determine dataSource based on the active selection
   const dataSource = isPreset(selected) ? "builtin" : "custom";
 
-  // Init on mount.
+  const cap = (s: string) => s.charAt(0).toUpperCase() + s.slice(1);
+  const gbLabel = (bytes: number) => `${Math.round(bytes / 1024 ** 3)}GB RAM`;
+
+  // Init on mount. Surface a failure in the panel's error banner instead of
+  // swallowing it — a silent init failure leaves the picker blank with no clue why.
   useEffect(() => {
-    void init().catch((e) => console.error("eval registry init failed (EvalManager):", e));
+    void init().catch((e) => setError(`Couldn't load eval collections: ${formatIpcError(e)}`));
   }, [init]);
 
   const handleDataSourceChange = async (source: "custom" | "builtin") => {
@@ -131,7 +164,19 @@ export function EvalManager({
     }
     const picked = selectedModels.find((m) => m.name === model);
     if (!picked || tasks.length === 0) return;
-    void run(selected, [{ model: picked.name, backend: picked.backend }], tasks, k, maxSteps, nativeFc);
+    // `k` is always user-set (read fresh from the prop here, not a stale closure) and
+    // always sent — it wins over the tier-derived value in the backend. The tier still
+    // flows (for spec.tier); decoys flow only when the checkbox is on.
+    void run(
+      selected,
+      [{ model: picked.name, backend: picked.backend }],
+      tasks,
+      k,
+      maxSteps,
+      nativeFc,
+      effectiveTier,
+      decoyEnabled ? decoyCount : undefined,
+    );
   };
 
   const runDisabled = !model || tasks.length === 0;
@@ -144,6 +189,69 @@ export function EvalManager({
         : tasks.length === 0
           ? "This collection has no tasks"
           : undefined;
+
+  // The selected collection's individual tasks, indented beneath it — each reveals
+  // Edit + Delete on hover (the authoring entry points live here, not the scoreboard).
+  const renderTasks = () =>
+    tasks.length === 0 ? (
+      <div style={{ fontSize: 11, color: "#94a3b8", fontStyle: "italic", padding: "2px 0 2px 22px" }}>No tasks</div>
+    ) : (
+      tasks.map((t) => {
+        const hov = hoverTaskId === t.id;
+        return (
+          <div
+            key={t.id}
+            onMouseEnter={() => setHoverTaskId(t.id)}
+            onMouseLeave={() => setHoverTaskId((h) => (h === t.id ? null : h))}
+            style={{ display: "flex", alignItems: "center", gap: 4, padding: "2px 0 2px 22px", background: hov ? "#f8fafc" : "transparent" }}
+            data-testid={`eval-task-row-${t.id}`}
+          >
+            <span style={{ fontSize: 12, color: "#64748b", fontFamily: "'JetBrains Mono', monospace", flex: 1, minWidth: 0, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
+              {t.id}
+            </span>
+            {hov && (
+              <>
+                <button type="button" onClick={(e) => { e.stopPropagation(); onEditTask?.(t.id); }} style={taskBtnStyle} data-testid={`eval-task-edit-${t.id}`} title="Edit task">✎</button>
+                <button type="button" onClick={(e) => { e.stopPropagation(); onDeleteTask?.(t.id); }} style={{ ...taskBtnStyle, color: "#b91c1c" }} data-testid={`eval-task-delete-${t.id}`} title="Delete task">🗑</button>
+              </>
+            )}
+          </div>
+        );
+      })
+    );
+
+  // Single-click toggles a collection's task list (accordion); opening also selects it
+  // (so its tasks load + it becomes the active run target). Clicking again collapses.
+  const toggleExpand = (id: string) => {
+    if (expandedId === id) {
+      setExpandedId(null);
+    } else {
+      void select(id);
+      setExpandedId(id);
+    }
+  };
+
+  // One collection row + (when expanded) its nested task list.
+  const collectionRow = (id: string, label: string, menuItems: { label: string; danger?: boolean; onClick: () => void; testid: string }[]) => {
+    const isExpanded = expandedId === id && selected === id;
+    return (
+      <div key={id}>
+        <div style={{ ...collectionItemStyle, justifyContent: "space-between", color: selected === id ? "#2563eb" : "#475569", fontWeight: selected === id ? 600 : 400 }}>
+          <span
+            onClick={() => toggleExpand(id)}
+            title="Click to open/close this collection's tasks"
+            style={{ display: "flex", alignItems: "center", cursor: "pointer", flex: 1, minWidth: 0, userSelect: "none" }}
+            data-testid={`eval-collection-item-${id}`}
+          >
+            <span style={{ marginRight: 6, fontSize: 10, color: "#94a3b8" }}>{isExpanded ? "▾" : "▸"}</span>
+            <span style={{ overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{label}</span>
+          </span>
+          <KebabMenu testid={`eval-collection-menu-${id}`} items={menuItems} />
+        </div>
+        {isExpanded && renderTasks()}
+      </div>
+    );
+  };
 
   return (
     <div
@@ -174,39 +282,59 @@ export function EvalManager({
 
       {/* Sidebar Controls Body */}
       <div style={{ padding: "16px 20px", display: "flex", flexDirection: "column", gap: 24, flex: 1, overflowY: "auto" }}>
-        
-        {/* DATA SOURCE Section */}
-        <div>
-          <div style={sectionHeaderStyle}>▾ DATA SOURCE</div>
-          <div style={{ display: "flex", flexDirection: "column", gap: 8, paddingLeft: 12, marginTop: 8 }}>
-            <label style={radioLabelStyle}>
-              <input
-                type="radio"
-                name="dataSource"
-                checked={dataSource === "custom"}
-                onChange={() => void handleDataSourceChange("custom")}
-                style={radioInputStyle}
-              />
-              <span style={{ fontSize: 13, color: dataSource === "custom" ? "#0f172a" : "#64748b" }}>
-                {dataSource === "custom" ? "◉" : "◯"} Custom JSON
+
+        {/* 1. RUN TARGET — Model + Difficulty Tier at the top. */}
+        <div style={{ display: "flex", flexDirection: "column", gap: 14 }}>
+          {/* Model — the one to eval, from the GLOBAL selection (pick at the top). */}
+          <div style={{ display: "flex", flexDirection: "column", gap: 6 }} data-testid="eval-manager-model-select">
+            <span style={controlLabelStyle}>Model:</span>
+            {selectedModels.length === 0 ? (
+              <span style={{ fontSize: 12, color: "#94a3b8", fontStyle: "italic" }} data-testid="eval-no-model">
+                Select a model at the top
               </span>
-            </label>
-            <label style={radioLabelStyle}>
-              <input
-                type="radio"
-                name="dataSource"
-                checked={dataSource === "builtin"}
-                onChange={() => void handleDataSourceChange("builtin")}
-                style={radioInputStyle}
-              />
-              <span style={{ fontSize: 13, color: dataSource === "builtin" ? "#0f172a" : "#64748b" }}>
-                {dataSource === "builtin" ? "◉" : "◯"} Built-in
+            ) : (
+              <select
+                value={model}
+                onChange={(e) => setModel(e.target.value)}
+                data-testid="eval-model-dropdown"
+                style={{ ...numberInputStyle, width: "100%", cursor: "pointer" }}
+              >
+                {selectedModels.map((m) => (
+                  <option key={m.name} value={m.name}>
+                    {m.name}
+                  </option>
+                ))}
+              </select>
+            )}
+          </div>
+
+          {/* Difficulty Tier (Phase 9) — Auto follows the machine's class; also filters
+              the collection list below to that tier. */}
+          <div style={{ display: "flex", flexDirection: "column", gap: 6 }} data-testid="eval-tier-select">
+            <span style={controlLabelStyle}>Difficulty Tier:</span>
+            <select
+              value={tierSel}
+              onChange={(e) => onTierChange(e.target.value as "auto" | Tier)}
+              data-testid="eval-tier-dropdown"
+              style={{ ...numberInputStyle, width: "100%", cursor: "pointer", textAlign: "left" }}
+            >
+              <option value="auto">Auto{hwTier ? ` (${cap(hwTier.recommended_tier)})` : ""}</option>
+              <option value="easy">Easy</option>
+              <option value="medium">Medium</option>
+              <option value="hard">Hard</option>
+              <option value="extreme">Extreme</option>
+            </select>
+            {hwTier && (
+              <span style={{ fontSize: 11, color: "#94a3b8", fontFamily: "Inter, sans-serif" }} data-testid="eval-hw-hint">
+                HW: {gbLabel(hwTier.total_memory_bytes)} · {hwTier.class} · {cap(hwTier.recommended_tier)} recommended
               </span>
-            </label>
+            )}
           </div>
         </div>
 
-        {/* COLLECTIONS Section */}
+        {/* 2. COLLECTIONS — data-source toggle + tier-filtered list (the selected
+            collection's tasks nest under it, each with hover Edit/Delete) + authoring
+            actions (New Collection, Import JSON/CSV) at the end of the list. */}
         <div>
           <div
             style={{ ...sectionHeaderStyle, cursor: "pointer", display: "flex", alignItems: "center", gap: 6 }}
@@ -216,8 +344,36 @@ export function EvalManager({
             <span>COLLECTIONS</span>
           </div>
           {collectionsExpanded && (
-            <div style={{ paddingLeft: 12, marginTop: 8, display: "flex", flexDirection: "column", gap: 6 }}>
-              {/* Collection list */}
+            <div style={{ paddingLeft: 12, marginTop: 8, display: "flex", flexDirection: "column", gap: 10 }}>
+              {/* Data source toggle */}
+              <div style={{ display: "flex", gap: 16 }}>
+                <label style={radioLabelStyle}>
+                  <input
+                    type="radio"
+                    name="dataSource"
+                    checked={dataSource === "builtin"}
+                    onChange={() => void handleDataSourceChange("builtin")}
+                    style={radioInputStyle}
+                  />
+                  <span style={{ fontSize: 13, color: dataSource === "builtin" ? "#0f172a" : "#64748b" }}>
+                    {dataSource === "builtin" ? "◉" : "◯"} Built-in
+                  </span>
+                </label>
+                <label style={radioLabelStyle}>
+                  <input
+                    type="radio"
+                    name="dataSource"
+                    checked={dataSource === "custom"}
+                    onChange={() => void handleDataSourceChange("custom")}
+                    style={radioInputStyle}
+                  />
+                  <span style={{ fontSize: 13, color: dataSource === "custom" ? "#0f172a" : "#64748b" }}>
+                    {dataSource === "custom" ? "◉" : "◯"} Custom JSON
+                  </span>
+                </label>
+              </div>
+
+              {/* Collection list (tasks nest under the selected one via collectionRow) */}
               <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
                 {dataSource === "custom" ? (
                   collections.length === 0 ? (
@@ -225,105 +381,64 @@ export function EvalManager({
                       No custom JSONs
                     </div>
                   ) : (
-                    collections.map((c) => (
-                      <div
-                        key={c}
-                        style={{
-                          ...collectionItemStyle,
-                          justifyContent: "space-between",
-                          color: selected === c ? "#2563eb" : "#475569",
-                          fontWeight: selected === c ? 600 : 400,
-                        }}
-                      >
-                        <span
-                          onClick={() => void select(c)}
-                          style={{ display: "flex", alignItems: "center", cursor: "pointer", flex: 1, minWidth: 0 }}
-                          data-testid={`eval-collection-item-${c}`}
-                        >
-                          <span style={{ marginRight: 6 }}>{selected === c ? "•" : "-"}</span>
-                          <span style={{ overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{c}</span>
-                        </span>
-                        <KebabMenu
-                          testid={`eval-collection-menu-${c}`}
-                          items={[{ label: "Delete collection", danger: true, onClick: () => setDeleteTarget(c), testid: `eval-collection-delete-${c}` }]}
-                        />
-                      </div>
-                    ))
+                    collections.map((c) =>
+                      collectionRow(c, c, [{ label: "Delete collection", danger: true, onClick: () => setDeleteTarget(c), testid: `eval-collection-delete-${c}` }]),
+                    )
                   )
                 ) : (
-                  presets.map((p) => (
-                    <div
-                      key={p.id}
-                      style={{
-                        ...collectionItemStyle,
-                        justifyContent: "space-between",
-                        color: selected === p.id ? "#2563eb" : "#475569",
-                        fontWeight: selected === p.id ? 600 : 400,
-                      }}
-                    >
-                      <span
-                        onClick={() => void select(p.id)}
-                        style={{ display: "flex", alignItems: "center", cursor: "pointer", flex: 1, minWidth: 0 }}
-                        data-testid={`eval-collection-item-${p.id}`}
-                      >
-                        <span style={{ marginRight: 6 }}>{selected === p.id ? "•" : "-"}</span>
-                        <span style={{ overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{p.label}</span>
-                      </span>
-                      <KebabMenu
-                        testid={`eval-collection-menu-${p.id}`}
-                        items={[{ label: "Remove from list", danger: true, onClick: () => setDeleteTarget(p.id), testid: `eval-collection-delete-${p.id}` }]}
-                      />
-                    </div>
-                  ))
+                  (() => {
+                    const items = effectiveTier ? presets.filter((p) => p.tier === effectiveTier) : [];
+                    if (items.length === 0) {
+                      return (
+                        <div style={{ color: "#64748b", fontSize: 12, fontStyle: "italic", paddingLeft: 8 }}>
+                          {effectiveTier ? `No ${effectiveTier} collections` : "Detecting tier…"}
+                        </div>
+                      );
+                    }
+                    return (
+                      <div data-testid={`eval-tier-group-${effectiveTier}`}>
+                        <div style={{ fontSize: 11, fontWeight: 700, textTransform: "uppercase", letterSpacing: 0.5, color: "#94a3b8", padding: "10px 0 2px" }}>
+                          {effectiveTier}
+                        </div>
+                        {items.map((p) =>
+                          collectionRow(p.id, p.label, [{ label: "Remove from list", danger: true, onClick: () => setDeleteTarget(p.id), testid: `eval-collection-delete-${p.id}` }]),
+                        )}
+                      </div>
+                    );
+                  })()
                 )}
+              </div>
+
+              {/* Authoring actions at the end of the collection list */}
+              <div style={{ display: "flex", flexDirection: "column", gap: 6, marginTop: 4 }}>
+                <button type="button" onClick={onNewCollection} style={actionBtnStyle} data-testid="eval-new-collection">
+                  + New Collection
+                </button>
+                <button type="button" onClick={() => void handleImport()} style={actionBtnStyle} data-testid="eval-manager-import">
+                  [↓] Import .json
+                </button>
+                <button type="button" onClick={() => setCsvOpen(true)} style={actionBtnStyle} data-testid="eval-manager-import-csv">
+                  [↓] Import CSV
+                </button>
               </div>
             </div>
           )}
-          {/* Authoring actions */}
-          <div style={{ display: "flex", gap: 8, paddingLeft: 12, marginTop: 10 }}>
-            <button type="button" onClick={onNewCollection} style={actionBtnStyle} data-testid="eval-new-collection">
-              + New Collection
-            </button>
-            <button type="button" onClick={onEditCollection} style={actionBtnStyle} data-testid="eval-edit-collection">
-              ✎ Edit
-            </button>
-          </div>
         </div>
 
-        {/* RUN CONTROLS Section */}
-        <div>
-          <div style={sectionHeaderStyle}>▾ RUN CONTROLS</div>
-          <div style={{ display: "flex", flexDirection: "column", gap: 14, paddingLeft: 12, marginTop: 10 }}>
-            
-            {/* Model — the one to eval, from the GLOBAL selection (pick at the top). */}
-            <div style={{ display: "flex", flexDirection: "column", gap: 6 }} data-testid="eval-manager-model-select">
-              <span style={controlLabelStyle}>Model:</span>
-              {selectedModels.length === 0 ? (
-                <span style={{ fontSize: 12, color: "#94a3b8", fontStyle: "italic" }} data-testid="eval-no-model">
-                  Select a model at the top
+        {/* 3. RUN PARAMS — Iterations, Max Steps, Anti-Saturation. */}
+        <div style={{ display: "flex", flexDirection: "column", gap: 14 }}>
+          {/* Iterations — always editable; pre-filled with the tier's recommended value. */}
+          <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between" }}>
+            <span style={{ ...controlLabelStyle, display: "inline-flex", alignItems: "center", gap: 6 }}>
+              Iterations (k):
+              <InfoButton {...TOOL_HELP.iterations} align="left" testId="iterations" />
+            </span>
+            <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
+              {recommendedK != null && (
+                <span style={{ fontSize: 11, color: "#94a3b8", fontFamily: "Inter, sans-serif" }} data-testid="eval-k-recommended">
+                  recommended: {recommendedK}
                 </span>
-              ) : (
-                <select
-                  value={model}
-                  onChange={(e) => setModel(e.target.value)}
-                  data-testid="eval-model-dropdown"
-                  style={{ ...numberInputStyle, width: "100%", cursor: "pointer" }}
-                >
-                  {selectedModels.map((m) => (
-                    <option key={m.name} value={m.name}>
-                      {m.name}
-                    </option>
-                  ))}
-                </select>
               )}
-            </div>
-
-            {/* Iterations Selector — Pass^k repeats; only affects Multi-Step tasks */}
-            <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between" }}>
-              <span style={{ ...controlLabelStyle, display: "inline-flex", alignItems: "center", gap: 6 }}>
-                Iterations (k):
-                <InfoButton {...TOOL_HELP.iterations} align="left" testId="iterations" />
-              </span>
               <input
                 type="number"
                 min={1}
@@ -333,136 +448,125 @@ export function EvalManager({
                 data-testid="eval-manager-k"
               />
             </div>
+          </div>
 
-            {/* Max Steps — agentic loop cap; only affects Multi-Step tasks */}
-            <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between" }}>
-              <span style={controlLabelStyle} title="Max turns an agentic task may take before it's marked a loop-cap failure. No effect on single-turn tasks.">
-                Max Steps:
-              </span>
-              <input
-                type="number"
-                min={1}
-                value={maxSteps}
-                onChange={(e) => setMaxSteps(Math.max(1, +e.target.value))}
-                style={numberInputStyle}
-                data-testid="eval-manager-max-steps"
-              />
+          {/* Max Steps — agentic loop cap; only affects Multi-Step tasks */}
+          <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between" }}>
+            <span style={controlLabelStyle} title="Max turns an agentic task may take before it's marked a loop-cap failure. No effect on single-turn tasks.">
+              Max Steps:
+            </span>
+            <input
+              type="number"
+              min={1}
+              value={maxSteps}
+              onChange={(e) => setMaxSteps(Math.max(1, +e.target.value))}
+              style={numberInputStyle}
+              data-testid="eval-manager-max-steps"
+            />
+          </div>
+
+          {/* ANTI-SATURATION (Phase 9) — decoy tools, with an ⓘ explaining the lever. */}
+          <div style={{ display: "flex", flexDirection: "column", gap: 8 }} data-testid="eval-anti-saturation">
+            <div style={{ ...sectionHeaderStyle, display: "inline-flex", alignItems: "center", gap: 6 }}>
+              ANTI-SATURATION
+              <InfoButton {...TOOL_HELP.decoys} align="left" testId="decoy" />
             </div>
-
-            {/* Native function-calling (Phase 7.2) — measure the Ollama tool_calls
-                path alongside the prompt-based proxy. */}
-            <label
-              style={{ ...controlLabelStyle, display: "flex", alignItems: "center", gap: 8, cursor: "pointer" }}
-              title="Also run each Ollama model through its native /api/chat tool_calls API and compare. llama.cpp / MLX show N/A."
-            >
+            <label style={{ ...controlLabelStyle, display: "flex", alignItems: "center", gap: 8, cursor: "pointer" }}>
               <input
                 type="checkbox"
-                checked={nativeFc}
-                onChange={(e) => setNativeFc(e.target.checked)}
-                data-testid="eval-native-fc"
+                checked={decoyEnabled}
+                onChange={(e) => setDecoyEnabled(e.target.checked)}
+                data-testid="eval-decoy-enabled"
               />
-              Measure native tool-calling (Ollama)
+              Enable Decoy Tools
             </label>
-
-            {/* Honesty nudge: when the native path is OFF, the batch is the
-                prompt-based proxy — a tool-tuned model that answers in prose is
-                scored Fail though its native API would pass. Point the blame at the
-                model's architecture + teach the toggle, so the gap isn't read as a
-                tool bug. Hidden once native is on (they've already opted in). */}
-            {!nativeFc && (
-              <div
-                data-testid="native-fc-hint"
-                style={{
-                  fontSize: 11,
-                  lineHeight: 1.5,
-                  color: "#64748b",
-                  background: "#f8fafc",
-                  border: "1px solid #e2e8f0",
-                  borderRadius: 6,
-                  padding: "7px 9px",
-                  fontFamily: "Inter, sans-serif",
-                }}
-              >
-                Prompt-based results may underrepresent native tool-calling capability. Enable{" "}
-                <strong style={{ color: "#475569" }}>Measure native tool-calling</strong> for strict API fidelity.
+            {decoyEnabled && (
+              <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between" }}>
+                <span style={controlLabelStyle}>Decoy Count:</span>
+                <input
+                  type="number"
+                  min={1}
+                  value={decoyCount}
+                  onChange={(e) => setDecoyCount(Math.max(1, +e.target.value))}
+                  style={numberInputStyle}
+                  data-testid="eval-decoy-count"
+                />
               </div>
             )}
-
-            {/* RUN BATCH Button */}
-            <button
-              type="button"
-              onClick={() => void handleRunBatch()}
-              disabled={runDisabled}
-              title={running ? undefined : runDisabledReason}
-              style={{
-                ...runBatchBtnStyle,
-                background: running
-                  ? "#fee2e2"
-                  : runDisabled
-                    ? "#f1f5f9"
-                    : "#dcfce7",
-                color: running
-                  ? "#991b1b"
-                  : runDisabled
-                    ? "#94a3b8"
-                    : "#166534",
-                borderColor: running
-                  ? "#fca5a5"
-                  : runDisabled
-                    ? "#e2e8f0"
-                    : "#bbf7d0",
-                cursor: runDisabled ? "not-allowed" : "pointer",
-              }}
-              data-testid="eval-run-all"
-            >
-              {running ? (
-                <span style={{ display: "inline-flex", alignItems: "center", justifyContent: "center", gap: 8 }}>
-                  <Spinner color="#991b1b" /> ■ STOP BATCH
-                </span>
-              ) : (
-                "▶ RUN BATCH"
-              )}
-            </button>
-            {running && (
-              <div style={{ fontSize: 11, color: "#64748b", fontFamily: "Inter, sans-serif", textAlign: "center", marginTop: -6 }}>
-                Evaluating… click to cancel.
-              </div>
-            )}
-
-            {/* Import & Export Links */}
-            <div style={{ display: "flex", flexDirection: "column", gap: 6, marginTop: 8 }}>
-              <button
-                type="button"
-                onClick={() => void handleImport()}
-                style={actionBtnStyle}
-                data-testid="eval-manager-import"
-              >
-                [↓] Import .json
-              </button>
-              <button
-                type="button"
-                onClick={() => setCsvOpen(true)}
-                style={actionBtnStyle}
-                data-testid="eval-manager-import-csv"
-              >
-                [↓] Import CSV
-              </button>
-              <button
-                type="button"
-                onClick={handleExport}
-                disabled={!report}
-                style={{
-                  ...actionBtnStyle,
-                  opacity: report ? 1 : 0.4,
-                  cursor: report ? "pointer" : "not-allowed",
-                }}
-                data-testid="export-csv"
-              >
-                [↓] Export Results
-              </button>
-            </div>
-
           </div>
+        </div>
+
+        {/* 4. ACTIONS — native-FC, RUN BATCH, Export. */}
+        <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
+          <label
+            style={{ ...controlLabelStyle, display: "flex", alignItems: "center", gap: 8, cursor: "pointer" }}
+            title="Also run each Ollama model through its native /api/chat tool_calls API and compare. llama.cpp / MLX show N/A."
+          >
+            <input
+              type="checkbox"
+              checked={nativeFc}
+              onChange={(e) => setNativeFc(e.target.checked)}
+              data-testid="eval-native-fc"
+            />
+            Measure native tool-calling (Ollama)
+          </label>
+
+          {!nativeFc && (
+            <div
+              data-testid="native-fc-hint"
+              style={{
+                fontSize: 11,
+                lineHeight: 1.5,
+                color: "#64748b",
+                background: "#f8fafc",
+                border: "1px solid #e2e8f0",
+                borderRadius: 6,
+                padding: "7px 9px",
+                fontFamily: "Inter, sans-serif",
+              }}
+            >
+              Prompt-based results may underrepresent native tool-calling capability. Enable{" "}
+              <strong style={{ color: "#475569" }}>Measure native tool-calling</strong> for strict API fidelity.
+            </div>
+          )}
+
+          <button
+            type="button"
+            onClick={() => void handleRunBatch()}
+            disabled={runDisabled}
+            title={running ? undefined : runDisabledReason}
+            style={{
+              ...runBatchBtnStyle,
+              background: running ? "#fee2e2" : runDisabled ? "#f1f5f9" : "#dcfce7",
+              color: running ? "#991b1b" : runDisabled ? "#94a3b8" : "#166534",
+              borderColor: running ? "#fca5a5" : runDisabled ? "#e2e8f0" : "#bbf7d0",
+              cursor: runDisabled ? "not-allowed" : "pointer",
+            }}
+            data-testid="eval-run-all"
+          >
+            {running ? (
+              <span style={{ display: "inline-flex", alignItems: "center", justifyContent: "center", gap: 8 }}>
+                <Spinner color="#991b1b" /> ■ STOP BATCH
+              </span>
+            ) : (
+              "▶ RUN BATCH"
+            )}
+          </button>
+          {running && (
+            <div style={{ fontSize: 11, color: "#64748b", fontFamily: "Inter, sans-serif", textAlign: "center", marginTop: -6 }}>
+              Evaluating… click to cancel.
+            </div>
+          )}
+
+          <button
+            type="button"
+            onClick={handleExport}
+            disabled={!report}
+            style={{ ...actionBtnStyle, opacity: report ? 1 : 0.4, cursor: report ? "pointer" : "not-allowed" }}
+            data-testid="export-csv"
+          >
+            [↓] Export Results
+          </button>
         </div>
 
       </div>
@@ -552,6 +656,18 @@ const numberInputStyle: React.CSSProperties = {
   outline: "none",
   width: 55,
   textAlign: "center",
+};
+
+/// A tiny inline icon button for the per-task hover Edit/Delete affordances.
+const taskBtnStyle: React.CSSProperties = {
+  background: "transparent",
+  border: "none",
+  cursor: "pointer",
+  fontSize: 12,
+  lineHeight: 1,
+  padding: "2px 4px",
+  color: "#475569",
+  flexShrink: 0,
 };
 
 const runBatchBtnStyle: React.CSSProperties = {

@@ -12,6 +12,7 @@ use crate::inference::hf::hf_resume::partial_path;
 use crate::inference::pull::pull_name::validate_name;
 use crate::sync::MutexExt;
 use std::fs;
+use std::path::Path;
 use std::sync::Mutex;
 use tauri::AppHandle;
 use tokio_util::sync::CancellationToken;
@@ -38,6 +39,15 @@ pub fn ollama_import_required(backend: BackendKind) -> bool {
     matches!(backend, BackendKind::Ollama)
 }
 
+/// Remove the on-disk artifacts of a download that didn't complete: the
+/// incomplete `.partial` stream and any half-written destination file. A failed
+/// or cancelled GGUF install must not leave a broken model behind. Idempotent —
+/// missing files are ignored.
+pub fn cleanup_incomplete_download(dest: &Path) {
+    let _ = fs::remove_file(partial_path(dest));
+    let _ = fs::remove_file(dest);
+}
+
 pub async fn install_hf_gguf_inner(
     app: AppHandle, state: &HfInstallState, endpoint: &str,
     repo: &str, filename: &str, name: &str, backend: BackendKind, dir: PathBuf,
@@ -62,10 +72,17 @@ pub async fn install_hf_gguf_inner(
     let dl = download_gguf(endpoint, repo, filename, &dest, on_dl, token.clone()).await;
     if token.is_cancelled() {
         *state.current.lock_recover() = None;
-        let _ = fs::remove_file(&dest); let _ = fs::remove_file(partial_path(&dest));
+        cleanup_incomplete_download(&dest);
         return Err(AppError::Validation("install cancelled".into()));
     }
-    dl?;
+    if let Err(e) = dl {
+        // A failed download yields no usable model — drop the incomplete file so
+        // nothing broken lingers and a retry starts clean, and free the
+        // single-install slot so the next attempt isn't blocked.
+        cleanup_incomplete_download(&dest);
+        *state.current.lock_recover() = None;
+        return Err(e);
+    }
 
     // Import into Ollama when reachable; the GGUF is kept for llama.cpp regardless.
     let install_app = app.clone();

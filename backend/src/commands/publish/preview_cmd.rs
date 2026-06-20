@@ -2,6 +2,7 @@ use crate::commands::publish::cohort::cohort_key;
 use crate::commands::system::hardware::snapshot;
 use crate::errors::AppError;
 use crate::inference::eval::readiness::types::ModelVerdict;
+use crate::persistence::prompts::schema::InferenceParams;
 use crate::persistence::publish::canonical::{canonical_hash, canonical_json};
 use crate::persistence::publish::row::PublishRow;
 use crate::persistence::publish::validate::pre_validate;
@@ -36,16 +37,16 @@ pub struct PublishPreview {
 /// NOTE: this command (with auth/send) compiles OUT of enterprise builds once the
 /// `enterprise` feature gate lands in B1; export stays in.
 #[tauri::command]
-pub fn preview_publish_payload(verdicts: Vec<ModelVerdict>) -> Result<PublishPreview, AppError> {
-    build_preview(&verdicts, cohort_key(&snapshot()), env!("CARGO_PKG_VERSION"))
+pub fn preview_publish_payload(verdicts: Vec<ModelVerdict>, params: InferenceParams) -> Result<PublishPreview, AppError> {
+    build_preview(&verdicts, &params, cohort_key(&snapshot()), env!("CARGO_PKG_VERSION"))
 }
 
 /// The pure core (no `snapshot()`/Tauri) so the projection + canonicalization are
 /// testable with a fixed cohort and version. Shared with `publish_cmd` so the
 /// previewed payload is byte-identical to the one sent.
-pub(crate) fn build_preview(verdicts: &[ModelVerdict], cohort: String, tool_version: &str) -> Result<PublishPreview, AppError> {
+pub(crate) fn build_preview(verdicts: &[ModelVerdict], params: &InferenceParams, cohort: String, tool_version: &str) -> Result<PublishPreview, AppError> {
     let rows: Vec<PublishRow> =
-        verdicts.iter().filter_map(|v| PublishRow::project(v, cohort.clone(), tool_version)).collect();
+        verdicts.iter().filter_map(|v| PublishRow::project(v, params, cohort.clone(), tool_version)).collect();
     let excluded_count = verdicts.len() - rows.len();
     let invalid = pre_validate(&rows).err().map(|(index, reason)| InvalidRow { index, reason });
     Ok(PublishPreview {

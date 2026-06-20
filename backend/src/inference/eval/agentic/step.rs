@@ -27,6 +27,16 @@ pub enum StepKind {
     EndStateReached,
     /// The step cap was hit without success.
     InfiniteLoop,
+    /// Phase 9-v2: the model invoked a `must_not_call` trap — terminal the instant
+    /// it fires (the forbidden action never "happens").
+    ForbiddenCall,
+    /// Phase 9-v2: a model turn exceeded the per-step wall-clock budget (a stalled
+    /// model) — terminal.
+    TurnTimeout,
+    /// G3: the model did all the required work but reported the answer in plain text
+    /// instead of calling the required reporter tool — content correct, channel wrong.
+    /// A failure, but the mildest (rendered amber, not the red of a true hallucination).
+    ReportedInProse,
 }
 
 /// One turn of an agentic run, streamed to the UI as it happens. `injection` is

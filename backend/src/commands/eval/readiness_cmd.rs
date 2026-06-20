@@ -3,12 +3,15 @@ use crate::commands::eval::toolcall_cmd::endpoint_for;
 use crate::commands::models::model_inspect::fetch_dims;
 use crate::commands::prompt::prompt_options::{to_generate_options, validate_params};
 use crate::commands::storage::storage::fetch_installed_with_stats;
+use crate::commands::system::hardware::snapshot;
 use crate::errors::AppError;
 use crate::inference::backend::backend_kind::BackendKind;
 use crate::inference::backend::endpoint;
 use crate::inference::eval::agentic::model_turn::BackendTurn;
-use crate::inference::eval::cliff::{build_ladder, run_cliff_with, CliffPoint, CliffReport, CliffSource, DEFAULT_DEPTHS};
-use crate::inference::eval::readiness::inputs::{agentic_metrics, pass_k_of, verdict_for};
+use crate::inference::eval::agentic::spec::Tier;
+use crate::inference::eval::readiness::hardware::hwclass::{classify_bytes, default_required_tier, HardwareClass};
+use crate::inference::eval::cliff::{build_ladder, run_cliff_with, CliffPoint, CliffReport, CliffSource, StepProgress, DEFAULT_DEPTHS};
+use crate::inference::eval::readiness::inputs::{agentic_metrics, native_first_source, pass_k_of, verdict_for};
 use crate::inference::eval::readiness::recommend;
 use crate::inference::eval::readiness::profile::ReadinessProfile;
 use crate::inference::eval::readiness::types::{CliffStatus, ModelVerdict};
@@ -17,23 +20,60 @@ use crate::inference::eval::toolcall::tasks::{validate_tasks, ToolTask};
 use crate::inference::generate::generate_options::GenerateOptions;
 use crate::persistence::prompts::schema::InferenceParams;
 use crate::persistence::readiness::{cliff, profiles, reports};
+use crate::sync::MutexExt;
 use serde::Serialize;
 use std::collections::HashMap;
 use std::path::PathBuf;
+use std::sync::Mutex;
 use tauri::{AppHandle, Manager};
 use tokio_util::sync::CancellationToken;
 
 /// Live per-rung progress for the context-cliff probe (the panel's progress bar).
 pub const EVENT_CLIFF_PROGRESS: &str = "cliff-progress";
 
+/// Fine-grained sub-rung progress (per task generation) so the panel shows movement
+/// DURING a slow padded rung — without it the bar sits frozen between rungs and reads
+/// as "stuck" exactly when the model is working hardest (the deep-context rungs).
+pub const EVENT_CLIFF_STEP: &str = "cliff-step";
+
+/// Run-level cancellation for the context-cliff probe (mirrors `BatchRunState`): the
+/// running probe stores its token here so `stop_context_cliff` can cancel it, and a
+/// fresh run supersedes a previous one. Without this, Stop only hid the result in the
+/// UI while the backend kept calling the model through the entire ladder.
+#[derive(Default)]
+pub struct CliffRunState {
+    cancel: Mutex<Option<CancellationToken>>,
+}
+
 #[derive(Serialize, Clone)]
 struct CliffProgress {
+    /// The frontend's run token, echoed so a superseded run's late events can't be
+    /// folded into the new run's series (model alone doesn't distinguish two runs of
+    /// the same model).
+    run_id: u32,
     model: String,
     done: usize,
     total: usize,
     /// The rung that just finished — carries its verified depth + composite so the
     /// chart grows live, not only at the final report.
     point: CliffPoint,
+}
+
+/// One fine-grained step (a single task generation) within a rung — drives the panel's
+/// "rung r/N · position p/3 · task t/M" line and the ETA, so a long deep rung shows
+/// continuous progress instead of a frozen bar.
+#[derive(Serialize, Clone)]
+struct CliffStep {
+    /// The frontend's run token (same filtering contract as `CliffProgress`).
+    run_id: u32,
+    model: String,
+    rung: usize,
+    total_rungs: usize,
+    target_tokens: u32,
+    position: usize,
+    total_positions: usize,
+    task: usize,
+    total_tasks: usize,
 }
 
 /// Context window headroom over the deepest rung: the system prompt (tool schemas),
@@ -110,6 +150,8 @@ pub fn get_cliff_results(app: AppHandle, collection_id: String) -> Result<HashMa
 #[tauri::command]
 pub async fn run_context_cliff(
     app: AppHandle,
+    state: tauri::State<'_, CliffRunState>,
+    run_id: u32,
     model: String,
     backend: Option<BackendKind>,
     collection_id: String,
@@ -137,19 +179,58 @@ pub async fn run_context_cliff(
         options.num_ctx = Some(needed_ctx);
     }
 
+    // Register this run's cancel token so `stop_context_cliff` can abort it, and
+    // supersede any previous run (mirrors the batch dispatcher).
+    let cancel = CancellationToken::new();
+    {
+        let mut g = state.cancel.lock_recover();
+        if let Some(prev) = g.take() {
+            prev.cancel();
+        }
+        *g = Some(cancel.clone());
+    }
+
     let turn = BackendTurn {
         backend,
         endpoint: endpoint_for(backend),
         model: model.clone(),
-        cancel: CancellationToken::new(),
+        cancel: cancel.clone(),
         options: Some(options),
         keep_alive: None,
     };
 
     let ladder = build_ladder(max_tokens, steps);
-    let report = run_cliff_with(&turn, &model, &tasks, &source, &ladder, &DEFAULT_DEPTHS, &mut |done, total, point| {
-        log_emit(&app, EVENT_CLIFF_PROGRESS, CliffProgress { model: model.clone(), done, total, point: point.clone() });
-    })
+    // A Stop makes `run_cliff_with` return Err, so `?` short-circuits BEFORE the
+    // persistence below — a cancelled probe never overwrites the saved cliff status.
+    let report = run_cliff_with(
+        &turn,
+        &model,
+        &tasks,
+        &source,
+        &ladder,
+        &DEFAULT_DEPTHS,
+        &cancel,
+        &mut |done, total, point| {
+            log_emit(&app, EVENT_CLIFF_PROGRESS, CliffProgress { run_id, model: model.clone(), done, total, point: point.clone() });
+        },
+        &mut |s: StepProgress| {
+            log_emit(
+                &app,
+                EVENT_CLIFF_STEP,
+                CliffStep {
+                    run_id,
+                    model: model.clone(),
+                    rung: s.rung,
+                    total_rungs: s.total_rungs,
+                    target_tokens: s.target_tokens,
+                    position: s.position,
+                    total_positions: s.total_positions,
+                    task: s.task,
+                    total_tasks: s.total_tasks,
+                },
+            );
+        },
+    )
     .await?;
 
     // Persist the classified outcome (NotProbed is the absence of a record).
@@ -157,6 +238,53 @@ pub async fn run_context_cliff(
         let _ = cliff::save(&cliff_dir(&app)?, &collection_id, &model, report.status.clone());
     }
     Ok(report)
+}
+
+/// Cancel the in-flight context-cliff probe (the Stop Probe button). Cancelling the
+/// shared token aborts the current generation and the rung loop, so the model stops
+/// being called and the partial result is never persisted. A no-op when idle.
+#[tauri::command]
+pub fn stop_context_cliff(state: tauri::State<'_, CliffRunState>) -> Result<(), AppError> {
+    if let Some(t) = state.cancel.lock_recover().take() {
+        t.cancel();
+    }
+    Ok(())
+}
+
+/// Hardware → recommended difficulty tier, derived from total system memory. The
+/// single source of truth for the eval page's tier-`Auto` mode and HW hint: the GB
+/// thresholds + class→tier policy live in `hwclass.rs`, never duplicated in TS.
+#[derive(Serialize)]
+pub struct HardwareTier {
+    pub total_memory_bytes: u64,
+    pub class: String,
+    pub recommended_tier: Tier,
+}
+
+/// Stable human label for a class — decoupled from the `Debug` derive so the IPC
+/// contract can't shift if a variant is renamed.
+fn class_label(c: HardwareClass) -> &'static str {
+    match c {
+        HardwareClass::Constrained => "Constrained",
+        HardwareClass::Mainstream => "Mainstream",
+        HardwareClass::Workstation => "Workstation",
+        HardwareClass::Frontier => "Frontier",
+    }
+}
+
+/// Classify the running machine and recommend the difficulty tier its class should
+/// clear (the eval page's `Auto` tier + the "HW: …" hint read this). Reuses the
+/// readiness engine's `classify_bytes` + `default_required_tier` so the eval-run
+/// path and the readiness verdict agree on one set of thresholds.
+#[tauri::command]
+pub fn get_hardware_tier() -> Result<HardwareTier, AppError> {
+    let bytes = snapshot().total_memory_bytes;
+    let class = classify_bytes(bytes);
+    Ok(HardwareTier {
+        total_memory_bytes: bytes,
+        class: class_label(class).to_string(),
+        recommended_tier: default_required_tier(class),
+    })
 }
 
 #[tauri::command]
@@ -231,6 +359,10 @@ pub async fn assess_readiness(
         let cliff = registry_get(&cliffs, &col.model).copied().unwrap_or_default();
         let verdict = verdict_for(col, fits_in_vram, vram_pressure, cliff, &profile);
         let (avg_steps, effort) = agentic_metrics(col);
+        // Per-tier breakdown + failures from the SAME native-first source the verdict gated
+        // on, so the Agent Report's deep-dive can't drift from the gate (issue 5).
+        let (by_tier, failures) =
+            native_first_source(col).map(|a| (a.by_tier.clone(), a.failures.clone())).unwrap_or_default();
         out.push(ModelVerdict {
             model: col.model.clone(),
             backend: col.backend,
@@ -241,10 +373,43 @@ pub async fn assess_readiness(
             pass_k: pass_k_of(col),
             quantization: registry_get(&quants, &col.model).cloned(),
             cliff,
+            by_tier,
+            failures,
         });
     }
     // Phase 7.3: rank best-first (Ready > Conditional > NotReady, ties by effort
     // then steps) so the page's recommendation banner + leaderboard are correct.
     recommend::rank(&mut out);
     Ok(out)
+}
+
+#[cfg(test)]
+mod hardware_tier_tests {
+    use super::*;
+
+    #[test]
+    fn reports_a_real_machine_and_a_consistent_recommended_tier() {
+        let ht = get_hardware_tier().expect("hardware tier");
+        // Real bytes, not a guessed fallback.
+        assert!(ht.total_memory_bytes > 0);
+        // Class label is one of the four engine classes.
+        assert!(["Constrained", "Mainstream", "Workstation", "Frontier"].contains(&ht.class.as_str()));
+        // The command adds no policy of its own — it must agree with the engine.
+        let class = classify_bytes(ht.total_memory_bytes);
+        assert_eq!(ht.class, class_label(class));
+        assert_eq!(ht.recommended_tier, default_required_tier(class));
+    }
+
+    #[test]
+    fn serializes_with_the_ipc_contract_keys_and_snake_case_tier() {
+        let ht = HardwareTier {
+            total_memory_bytes: 16 * 1024 * 1024 * 1024,
+            class: "Mainstream".into(),
+            recommended_tier: Tier::Medium,
+        };
+        let v = serde_json::to_value(&ht).unwrap();
+        assert_eq!(v["total_memory_bytes"], 16u64 * 1024 * 1024 * 1024);
+        assert_eq!(v["class"], "Mainstream");
+        assert_eq!(v["recommended_tier"], "medium"); // matches TS TierSchema enum
+    }
 }

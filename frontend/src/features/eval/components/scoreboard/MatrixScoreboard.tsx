@@ -11,12 +11,20 @@ interface MatrixScoreboardProps {
   model: string;
   k: number;
   maxSteps: number;
+  /// Phase 9 run shape, echoed as header chips: the difficulty tier label and the
+  /// decoy-tool budget (`undefined` → "off"). They describe the LAST/active run's
+  /// levers alongside the target model.
+  tierLabel?: string;
+  decoys?: number;
   focusedTaskId: string | null;
   setFocusedTaskId: (taskId: string | null) => void;
 }
 
 export function MatrixScoreboard({
   model,
+  k,
+  tierLabel,
+  decoys,
   focusedTaskId,
   setFocusedTaskId,
 }: MatrixScoreboardProps) {
@@ -95,8 +103,12 @@ export function MatrixScoreboard({
             2. THE SIMULATOR (Batch Scoreboard)
           </span>
         </button>
-        <span style={{ fontSize: 13, color: "#2563eb", fontFamily: "'JetBrains Mono', monospace", fontWeight: 650 }}>
-          &nbsp;- [ Target: {modelTargetLabel} ]
+        <span
+          style={{ fontSize: 13, color: "#2563eb", fontFamily: "'JetBrains Mono', monospace", fontWeight: 650 }}
+          data-testid="scoreboard-run-chips"
+        >
+          &nbsp;- [ Target: {modelTargetLabel}
+          {tierLabel ? ` · Tier: ${tierLabel}` : ""} · K: {k} · Decoys: {decoys ?? "off"} ]
         </span>
         {collapsed && (
           <span data-testid="simulator-collapsed-summary" style={{ marginLeft: 10, fontSize: 12, color: "#64748b", fontFamily: "Inter, sans-serif" }}>

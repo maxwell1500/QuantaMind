@@ -3,13 +3,16 @@ use crate::inference::backend::backend_kind::BackendKind;
 use crate::inference::backend::endpoint;
 use crate::inference::eval::agentic::build::sandbox_for;
 use crate::inference::eval::agentic::model_turn::ModelTurn;
-use crate::inference::eval::agentic::report::{AgenticReport, FailureTracker, TopError};
-use crate::inference::eval::agentic::runner::run_agentic;
+use crate::inference::eval::agentic::sandbox::DeterministicSandbox;
+use crate::inference::eval::agentic::scoring::report::{AgenticReport, FailureTracker, TopError};
+use crate::inference::eval::agentic::runner::{run_agentic_with, AgenticConfig};
+use crate::inference::eval::agentic::spec::Tier;
 use crate::inference::eval::agentic::step::TrajectoryStep;
+use crate::inference::eval::agentic::v2::generator;
 use crate::inference::eval::toolcall::eval::{aggregate, trace_one_with, TaskResult, ToolCallReport, TraceResult};
 use crate::inference::eval::toolcall::matrix::ModelTarget;
 use crate::inference::eval::toolcall::score::verdict_passed;
-use crate::inference::eval::toolcall::tasks::ToolTask;
+use crate::inference::eval::toolcall::tasks::{is_agentic, ToolTask};
 use crate::inference::ollama::ollama::force_unload;
 use crate::persistence::eval_history::RunSummary;
 use serde::{Deserialize, Serialize};
@@ -100,6 +103,31 @@ pub trait BatchSink: Send + Sync {
     fn task_done(&self, model: &str, task_id: &str, outcome: &TaskOutcome);
 }
 
+/// Phase 9: a model's strict Pass^k within ONE difficulty tier. `by_tier` carries
+/// these so the readiness gate can derive the highest tier the model actually
+/// cleared (`pass_k() >= profile.min_pass_k`).
+#[derive(Serialize, Deserialize, Clone, Debug, PartialEq)]
+pub struct TierStat {
+    pub tier: Tier,
+    pub tasks_passed: u32,
+    pub tasks_total: u32,
+    /// Phase 9B: mean steps across this tier's runs — the Agent Report's Tier Progression
+    /// Matrix reads it. `None` when no run produced steps. `#[serde(default)]` for back-compat.
+    #[serde(default)]
+    pub avg_steps: Option<f64>,
+    /// Phase 9B: failure breakdown summed within this tier — the Failure Taxonomy reads it
+    /// per tier. `#[serde(default)]` so pre-9B reports (no per-tier failures) still load.
+    #[serde(default)]
+    pub failures: FailureTracker,
+}
+
+impl TierStat {
+    /// Strict Pass^k within this tier, or `None` when the tier had no task.
+    pub fn pass_k(&self) -> Option<f64> {
+        (self.tasks_total > 0).then(|| self.tasks_passed as f64 / self.tasks_total as f64)
+    }
+}
+
 /// Per-model aggregate of the collection's agentic tasks: Pass^k, mean
 /// steps/effort, dominant failure. Null metrics render "N/A", never fabricated.
 ///
@@ -130,6 +158,62 @@ pub struct AggAgentic {
     /// would hide a 1-loop/9-hallucination model from a `forbid_infinite_loop` profile.
     #[serde(default)]
     pub failures: FailureTracker,
+    /// Phase 9: per-tier strict Pass^k breakdown (sorted ascending by tier). Empty
+    /// for pre-Phase-9 reports. The readiness gate reads this to compute the highest
+    /// difficulty tier the model cleared. `#[serde(default)]` for back-compat.
+    #[serde(default)]
+    pub by_tier: Vec<TierStat>,
+    /// Native-FC only: tasks whose every run ERRORED (a backend `Err`, not a scored
+    /// failure) and so produced no report. Carried SEPARATELY from `tasks_total` (the
+    /// scored denominator) so `pass_k` is never diluted by infra — the shrink is visible,
+    /// not silent: a column reads "0/3 scored, 2 errored"; attempted = total + errored.
+    #[serde(default)]
+    pub tasks_errored: u32,
+    /// What KIND of error the errored tasks hit. An infra/host crash (`InfraHost`) must
+    /// never read as model incapability — only a native-path schema rejection does.
+    #[serde(default)]
+    pub native_error_class: NativeErrorClass,
+}
+
+/// Why a native-FC task produced no scored result (every run errored). Kept distinct from
+/// model FAILURES (which are scored) so an infra/host error is never read as incapability —
+/// the misattribution the timeout finding warned about, one layer down.
+#[derive(Serialize, Deserialize, Clone, Copy, Debug, PartialEq, Eq, Default)]
+#[serde(rename_all = "snake_case")]
+pub enum NativeErrorClass {
+    /// No task errored.
+    #[default]
+    None,
+    /// Backend/transport error (Ollama OOM-killed or crashed under host pressure, a 5xx, a
+    /// dropped connection, a transport timeout). NOT a capability signal — the machine.
+    InfraHost,
+    /// The native tool API rejected the request (a 4xx): this model can't express the
+    /// task's tool schema natively. A legitimate "can't run native", not host pressure.
+    SchemaRejected,
+    /// Both kinds occurred across the errored tasks.
+    Mixed,
+}
+
+/// Classify a native-pass task error. A 4xx from `/api/chat` means the request/tool-schema
+/// was rejected (`SchemaRejected`); everything else — 5xx, connection lost, transport
+/// timeout — is `InfraHost` and must never imply model incapability. Defaults to
+/// `InfraHost` on anything ambiguous (the safe direction: blame the machine, not the model).
+fn classify_native_error(msg: &str) -> NativeErrorClass {
+    if msg.contains("HTTP 4") {
+        NativeErrorClass::SchemaRejected
+    } else {
+        NativeErrorClass::InfraHost
+    }
+}
+
+/// Fold a task's error class into the column's running class (`None` is identity; two
+/// different non-`None` classes become `Mixed`).
+fn merge_error_class(acc: NativeErrorClass, next: NativeErrorClass) -> NativeErrorClass {
+    match (acc, next) {
+        (NativeErrorClass::None, x) | (x, NativeErrorClass::None) => x,
+        (a, b) if a == b => a,
+        _ => NativeErrorClass::Mixed,
+    }
 }
 
 impl AggAgentic {
@@ -203,24 +287,39 @@ pub fn batch_summaries(report: &BatchReport, ts: &str) -> Vec<RunSummary> {
 fn agg_agentic(reports: &[AgenticReport]) -> AggAgentic {
     let mut failures = FailureTracker::default();
     for r in reports {
-        failures.infinite_loop_hits += r.failures.infinite_loop_hits;
-        failures.hallucinated_completions += r.failures.hallucinated_completions;
-        failures.malformed_json_calls += r.failures.malformed_json_calls;
-        failures.schema_unrecovered_calls += r.failures.schema_unrecovered_calls;
+        failures.merge(&r.failures); // centralized — never drops a field (e.g. unknown/forbidden)
     }
-    // Same severity order as FailureTracker::top (schema above json).
-    let top_error = [
-        (failures.infinite_loop_hits, TopError::InfiniteLoop),
-        (failures.hallucinated_completions, TopError::Hallucinated),
-        (failures.schema_unrecovered_calls, TopError::MalformedSchema),
-        (failures.malformed_json_calls, TopError::MalformedJson),
-    ]
-    .into_iter()
-    .fold((0u32, TopError::None), |best, (n, e)| if n > best.0 { (n, e) } else { best })
-    .1;
+    let top_error = failures.top();
     let steps: Vec<f64> = reports.iter().filter_map(|r| r.avg_steps).collect();
     let eff: Vec<f64> = reports.iter().filter_map(|r| r.avg_output_tokens_success).collect();
     let resil: Vec<f64> = reports.iter().filter_map(|r| r.schema_resilience).collect();
+    // Phase 9 (Gap 2): bucket strict Pass^k by tier. A HashMap keeps this generic
+    // over whatever tiers exist (no hardcoded per-tier arms); the output is sorted
+    // by tier so the readiness gate can walk it highest-first.
+    let mut buckets: HashMap<Tier, Vec<&AgenticReport>> = HashMap::new();
+    for r in reports {
+        buckets.entry(r.tier).or_default().push(r);
+    }
+    let mut by_tier: Vec<TierStat> = buckets
+        .into_iter()
+        .map(|(tier, rs)| {
+            // Phase 9B: per-tier avg steps + failures, computed exactly like the overall
+            // fields but scoped to this tier's bucket (the Agent Report renders both).
+            let tier_steps: Vec<f64> = rs.iter().filter_map(|r| r.avg_steps).collect();
+            let mut tier_failures = FailureTracker::default();
+            for r in &rs {
+                tier_failures.merge(&r.failures);
+            }
+            TierStat {
+                tier,
+                tasks_passed: rs.iter().filter(|r| r.total_runs > 0 && r.passes == r.total_runs).count() as u32,
+                tasks_total: rs.len() as u32,
+                avg_steps: mean_f64(&tier_steps),
+                failures: tier_failures,
+            }
+        })
+        .collect();
+    by_tier.sort_by_key(|s| s.tier);
     AggAgentic {
         tasks_passed: reports.iter().filter(|r| r.total_runs > 0 && r.passes == r.total_runs).count() as u32,
         tasks_total: reports.len() as u32,
@@ -231,7 +330,15 @@ fn agg_agentic(reports: &[AgenticReport]) -> AggAgentic {
         schema_resilience: mean_f64(&resil),
         top_error,
         failures,
+        by_tier,
+        tasks_errored: 0,
+        native_error_class: NativeErrorClass::None,
     }
+}
+
+/// The difficulty tier a task declares (Easy for a single-turn or pre-Phase-9 task).
+fn task_tier(task: &ToolTask) -> Tier {
+    task.agentic.as_ref().map(|a| a.tier).unwrap_or_default()
 }
 
 /// Run one agentic task, forwarding its live `TrajectoryStep`s to the sink as
@@ -240,6 +347,7 @@ async fn run_one_agentic<M: ModelTurn + Send + Sync>(
     turn: &M,
     task: &ToolTask,
     model: &str,
+    cancel: &CancellationToken,
     sink: Arc<dyn BatchSink>,
 ) -> AppResult<AgenticReport> {
     let (sandbox, cfg) = sandbox_for(task)?;
@@ -250,10 +358,42 @@ async fn run_one_agentic<M: ModelTurn + Send + Sync>(
             s2.agentic_turn(&model2, &task2, &step);
         }
     });
-    let result = run_agentic(turn, &sandbox, cfg, &tx).await;
+    let result = run_agentic_for(turn, task, model, &sandbox, cfg, cancel, &tx).await;
     drop(tx);
     let _ = pump.await;
-    result
+    result.map(|r| r.with_tier(task_tier(task)))
+}
+
+/// Drive Pass^k for a task: a `generated` task builds a FRESH procedural instance
+/// per run (seeded by model + run_index → contamination resistance); a static task
+/// reuses the one `sandbox`. The shared seam both run paths (streaming + native FC)
+/// call so generation behaves identically in each.
+async fn run_agentic_for<M: ModelTurn>(
+    turn: &M,
+    task: &ToolTask,
+    model: &str,
+    sandbox: &DeterministicSandbox,
+    cfg: AgenticConfig,
+    cancel: &CancellationToken,
+    tx: &tokio::sync::mpsc::UnboundedSender<TrajectoryStep>,
+) -> AppResult<AgenticReport> {
+    let generated = task.agentic.as_ref().map(|s| s.generated).unwrap_or(false);
+    run_agentic_with(
+        turn,
+        cfg.k,
+        |run_index| {
+            if generated {
+                let inst = generator::instantiate(task, generator::seed_for(model, run_index));
+                let (sb, c) = sandbox_for(&inst)?;
+                Ok((sb, c.max_steps, c.max_recovery))
+            } else {
+                Ok((sandbox.clone(), cfg.max_steps, cfg.max_recovery))
+            }
+        },
+        cancel,
+        tx,
+    )
+    .await
 }
 
 /// The non-resumable dispatcher (tests, no hardware gate): a thin wrapper over
@@ -315,6 +455,10 @@ where
             }
         }
         let turn = make_turn(target);
+        // Warm the model resident before its first SCORED task, so cold-load latency
+        // (weights into VRAM) isn't charged to that task as a TurnTimeout. Best-effort:
+        // a warm-up error isn't fatal — the first real task will surface a genuine fault.
+        let _ = turn.warm_up().await;
         let mut single_tasks: Vec<ToolTask> = Vec::new();
         let mut single_results: Vec<TaskResult> = Vec::new();
         let mut agentic_reports: Vec<AgenticReport> = Vec::new();
@@ -329,8 +473,8 @@ where
                 continue;
             }
             sink.task_started(&target.model, &task.id, i, tasks.len(), &task.category);
-            if task.category == "agentic" {
-                match run_one_agentic(&turn, task, &target.model, sink.clone()).await {
+            if is_agentic(&task.category) {
+                match run_one_agentic(&turn, task, &target.model, &cancel, sink.clone()).await {
                     Ok(report) => {
                         let outcome = TaskOutcome::Agentic { report: report.clone() };
                         record(&unit_of(target, task, outcome.clone(), false));
@@ -463,7 +607,7 @@ where
     F: Fn(&str, &ToolTask) -> M,
     G: VramGate,
 {
-    let agentic_tasks: Vec<&ToolTask> = tasks.iter().filter(|t| t.category == "agentic").collect();
+    let agentic_tasks: Vec<&ToolTask> = tasks.iter().filter(|t| is_agentic(&t.category)).collect();
     if agentic_tasks.is_empty() {
         return Ok(());
     }
@@ -489,6 +633,8 @@ where
             }
         }
         let mut reports: Vec<AgenticReport> = Vec::new();
+        let mut errored: u32 = 0; // tasks whose every run errored (a backend Err)
+        let mut error_class = NativeErrorClass::None;
         for task in &agentic_tasks {
             if cancel.is_cancelled() {
                 break;
@@ -503,22 +649,40 @@ where
             let (sandbox, cfg) = sandbox_for(task)?;
             let (tx, mut rx) = unbounded_channel::<TrajectoryStep>();
             let drain = tokio::spawn(async move { while rx.recv().await.is_some() {} });
-            let result = run_agentic(&turn, &sandbox, cfg, &tx).await;
+            let result = run_agentic_for(&turn, task, &col.model, &sandbox, cfg, &cancel, &tx).await;
             drop(tx);
             let _ = drain.await;
-            if let Ok(report) = result {
-                record(&CompletedUnit {
-                    model: col.model.clone(),
-                    task_id: task.id.clone(),
-                    category: task.category.clone(),
-                    outcome: TaskOutcome::Agentic { report: report.clone() },
-                    is_native: true,
-                });
-                reports.push(report);
+            match result {
+                Ok(report) => {
+                    let report = report.with_tier(task_tier(task));
+                    record(&CompletedUnit {
+                        model: col.model.clone(),
+                        task_id: task.id.clone(),
+                        category: task.category.clone(),
+                        outcome: TaskOutcome::Agentic { report: report.clone() },
+                        is_native: true,
+                    });
+                    reports.push(report);
+                }
+                // Every run of this task errored — a backend `Err`, NOT a scored failure (a
+                // turn timeout is already scored). Count it visibly and classify the cause so
+                // a host/infra crash is never read as model incapability. The dropped task is
+                // why the native denominator silently shrank before this fix.
+                Err(e) => {
+                    errored += 1;
+                    error_class = merge_error_class(error_class, classify_native_error(&e.to_string()));
+                }
             }
         }
-        if !reports.is_empty() {
-            col.agentic_native_fc = Some(agg_agentic(&reports));
+        // Emit the column when ANYTHING ran OR errored — an all-errored native pass now
+        // surfaces "0 scored, N errored" instead of vanishing to `None`. `agg_agentic(&[])`
+        // is empty-safe (total_runs 0), and `inputs.rs` filters native on `total_runs > 0`,
+        // so an all-errored column never pollutes the verdict — it's pure visibility.
+        if !reports.is_empty() || errored > 0 {
+            let mut agg = agg_agentic(&reports);
+            agg.tasks_errored = errored;
+            agg.native_error_class = error_class;
+            col.agentic_native_fc = Some(agg);
         }
         prev = Some(col.model.clone());
     }

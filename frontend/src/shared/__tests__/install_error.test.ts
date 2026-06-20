@@ -31,6 +31,11 @@ describe("friendlyInstallError", () => {
     expect(friendlyInstallError(E("not_found", "model snowflake-arctic-embed:335m"))).toMatch(/wasn't found/);
   });
 
+  it("truncated kind → incomplete-download hint", () => {
+    expect(friendlyInstallError(E("truncated", "GGUF truncated: need 8 bytes at offset 8388605, have 3")))
+      .toMatch(/incomplete.*download it again|download.*again/i);
+  });
+
   it("big-endian GGUF → format/byte-order hint", () => {
     const e = E("inference", "create HTTP 400 Bad Request: bad magic: file looks big-endian");
     expect(friendlyInstallError(e)).toMatch(/big-endian|unsupported format/);

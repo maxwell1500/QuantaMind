@@ -6,6 +6,7 @@ use crate::commands::system::hardware::snapshot;
 use crate::errors::{AppError, AppResult};
 use crate::inference::eval::readiness::types::ModelVerdict;
 use crate::inference::http::http::{body_or_note, probe_client};
+use crate::persistence::prompts::schema::InferenceParams;
 use crate::persistence::publish::row::PublishRow;
 use reqwest::StatusCode;
 use serde::{Deserialize, Serialize};
@@ -92,8 +93,8 @@ fn net(e: reqwest::Error) -> AppError {
 /// payload the dialog previewed, resolves an access token (→ `NeedsAuth` if none),
 /// and sends one batch. A 401 clears the cached token so the next try re-auths.
 #[tauri::command]
-pub async fn publish_to_board(state: tauri::State<'_, AuthState>, verdicts: Vec<ModelVerdict>, link: Option<String>) -> Result<PublishOutcome, AppError> {
-    let preview = build_preview(&verdicts, cohort_key(&snapshot()), env!("CARGO_PKG_VERSION"))?;
+pub async fn publish_to_board(state: tauri::State<'_, AuthState>, verdicts: Vec<ModelVerdict>, params: InferenceParams, link: Option<String>) -> Result<PublishOutcome, AppError> {
+    let preview = build_preview(&verdicts, &params, cohort_key(&snapshot()), env!("CARGO_PKG_VERSION"))?;
     if let Some(inv) = preview.invalid {
         return Ok(PublishOutcome::Invalid { index: inv.index });
     }
