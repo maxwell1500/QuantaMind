@@ -1,8 +1,6 @@
-use crate::commands::publish::cohort::cohort_key;
-use crate::commands::publish::preview_cmd::build_preview;
+use crate::commands::publish::preview_cmd::{build_preview, publish_context};
 use crate::commands::publish::auth_state::AuthState;
 use crate::commands::publish::identity::token::access_token;
-use crate::commands::system::hardware::snapshot;
 use crate::errors::{AppError, AppResult};
 use crate::inference::eval::readiness::types::ModelVerdict;
 use crate::inference::http::http::{body_or_note, probe_client};
@@ -24,6 +22,13 @@ pub fn publish_api() -> &'static str {
     })
     .as_str()
 }
+
+/// Build provenance stamped on every publish row so the leaderboard can tell two
+/// builds at the same crate version apart and dedup/verify submissions:
+/// `ENGINE_VERSION` is the crate version, `BUILD_HASH` the short git commit from
+/// `build.rs` (`unknown` outside a git checkout — never empty).
+pub const ENGINE_VERSION: &str = env!("CARGO_PKG_VERSION");
+pub const BUILD_HASH: &str = env!("QM_BUILD_HASH");
 
 /// What the UI does next — every server status maps to one of these, so a failed
 /// publish never throws an opaque error that could freeze the dialog.
@@ -93,8 +98,8 @@ fn net(e: reqwest::Error) -> AppError {
 /// payload the dialog previewed, resolves an access token (→ `NeedsAuth` if none),
 /// and sends one batch. A 401 clears the cached token so the next try re-auths.
 #[tauri::command]
-pub async fn publish_to_board(state: tauri::State<'_, AuthState>, verdicts: Vec<ModelVerdict>, params: InferenceParams, link: Option<String>) -> Result<PublishOutcome, AppError> {
-    let preview = build_preview(&verdicts, &params, cohort_key(&snapshot()), env!("CARGO_PKG_VERSION"))?;
+pub async fn publish_to_board(state: tauri::State<'_, AuthState>, verdicts: Vec<ModelVerdict>, params: InferenceParams, collection_id: String, link: Option<String>) -> Result<PublishOutcome, AppError> {
+    let preview = build_preview(&verdicts, &publish_context(&collection_id, params))?;
     if let Some(inv) = preview.invalid {
         return Ok(PublishOutcome::Invalid { index: inv.index });
     }

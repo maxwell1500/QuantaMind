@@ -1199,23 +1199,36 @@ share lever (see `process.md#phase-roadmap`, step 8.B4).
 
 **Publishing to the community board (Phase 8 — privacy contract).** Separate from the
 offline export, an *opt-in* publish path can contribute a verdict to a shared
-leaderboard. What's sent is **metrics-only**: a `PublishRow` per measured model —
-`model`, `quant`, a **hardware `cohort_key`** (`{platform}/{accel}/{mem_tier}`, e.g.
+leaderboard. What's sent is **verdicts + metrics, never content or context** — a
+`PublishRow` per measured model, built by **allowlist** (only the named fields ship; a
+new `ModelVerdict` field stays private until added to `project` on purpose): `model`,
+`quant`, a **hardware `cohort_key`** (`{platform}/{accel}/{mem_tier}`, e.g.
 `apple-silicon/m3-pro/32-64gb`), `tool_version`, the metrics bag (`pass_k`, `effort?`,
-`avg_steps?`), and the **inference `params`** the run used (temperature, top-p/k,
-max_tokens, repeat_penalty, seed, num_ctx) so the board knows the sampling/context a
-`pass_k` was measured under. The params are the **global-header** snapshot in effect at
-publish time (the single source every run reads — architecture.md rule 7); only keys the
-user actually set are sent (each field skip-serializes when unset), so an empty `{}`
-honestly means "ran on the backend defaults" — never a fabricated value. **Never sent:**
-task content, prompts, file names, raw model output, or any identity beyond the GitHub handle. The payload is built in Rust
+`avg_steps?`), and — since the **Phase 9 extension** — the graduated tier verdict
+(`status`, `eval_method`, `tier_tested`, `cleared_tier`, `hardware_class`,
+`recommended_tier`), the per-tier saturation curve (`by_tier`:
+`{tier, pass_k_rate, k, avg_steps?, decoy_count?}`), the failure **distribution**
+(`failure_distribution` — counts by mode incl. the new `reported_in_prose`, never the
+failing runs), the collection identity (`collection_name` + a content `collection_hash`
+so results compare only across an identical scenario set), build provenance
+(`schema_version`, `engine_version`, `build_hash` — a short git commit from `build.rs`),
+and the **inference `params`** the run used (temperature, top-p/k, max_tokens,
+repeat_penalty, seed, num_ctx) so the board knows the sampling/context a `pass_k` was
+measured under. The params are the **global-header** snapshot in effect at publish time
+(the single source every run reads — architecture.md rule 7); only keys the user
+actually set are sent (each field skip-serializes when unset), so an empty `{}` honestly
+means "ran on the backend defaults" — never a fabricated value. **Never sent:** task
+content, prompts, file names, raw model output, traces, verdict reasons, results on
+**custom (non-built-in) collections** (dropped by the `collection_hash` gate), or any
+identity beyond the GitHub handle. The payload is built in Rust
 (`persistence/publish/` + `commands/publish/`), serialized to **deterministic
-canonical JSON** (object keys sorted at every depth) and hashed (SHA-256) so transit
-tampering is detectable; unmeasured/unquantized rows are dropped (never sent as a null
-that would skew server baselines), and the same plausibility checks the server runs are
-applied locally first (`pre_validate`). The `PublishDialog` shows the **exact raw
-payload** and the shared/never-shared breakdown behind a **default-OFF opt-in** before
-anything leaves the machine. Results are **community-reported** — self-fabrication is
+canonical JSON** (object keys sorted at every depth) and hashed (SHA-256, covering the
+full extended row) so transit tampering is detectable; unmeasured/unquantized/
+custom-collection rows are dropped (never sent as a null that would skew server
+baselines), and the same plausibility checks the server runs are applied locally first
+(`pre_validate`). The `PublishDialog` shows the **exact raw payload** and the
+shared/never-shared breakdown behind a **default-OFF opt-in** before anything leaves the
+machine. Results are **community-reported** — self-fabrication is
 deterred (validation, outliers, GitHub identity, report/remove), not cryptographically
 prevented. The closed backend (token authority, validation, dedup, leaderboard,
 baselines) is a separate hosted repo; the desktop app is fully functional offline

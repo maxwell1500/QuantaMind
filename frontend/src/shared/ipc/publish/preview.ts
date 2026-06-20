@@ -1,12 +1,38 @@
 import { invoke } from "@tauri-apps/api/core";
 import { z } from "zod";
-import { type ModelVerdict } from "../eval/readiness";
+import { AgentPathSchema, ReadinessSchema, TierSchema, type ModelVerdict } from "../eval/readiness";
 import { InferenceParamsSchema, type InferenceParams } from "../workspace/prompts";
 
 const PublishMetricsSchema = z.object({
   pass_k: z.number(),
   effort: z.number().optional(),
   avg_steps: z.number().optional(),
+});
+
+/// Hardware-class advisory bucket (mirror of the Rust publish `HardwareClass`).
+const HardwareClassSchema = z.enum(["constrained", "mainstream", "workstation", "frontier"]);
+
+/// One tier's point on the saturation curve (mirror of Rust `TierMetric`): the strict
+/// rate, the k it was scored at, and the decoy count the tier presented.
+const TierMetricSchema = z.object({
+  tier: TierSchema,
+  pass_k_rate: z.number(),
+  k: z.number(),
+  avg_steps: z.number().optional(),
+  decoy_count: z.number().optional(),
+});
+
+/// Failure counts by mode (mirror of Rust `FailureDistribution`) — a distribution,
+/// never the failing runs themselves.
+const FailureDistributionSchema = z.object({
+  infinite_loop: z.number(),
+  hallucinated: z.number(),
+  malformed_json: z.number(),
+  schema_unrecovered: z.number(),
+  unknown_tool_calls: z.number(),
+  forbidden_calls: z.number(),
+  turn_timeouts: z.number(),
+  reported_in_prose: z.number(),
 });
 
 export const PublishRowSchema = z.object({
@@ -18,6 +44,21 @@ export const PublishRowSchema = z.object({
   /// The global-header inference params the run used (unset keys omitted ⇒ backend
   /// default). Stamped on every row so the board knows the sampling/context behind a pass_k.
   params: InferenceParamsSchema,
+  // Verdict — the headline + graduated tier the leaderboard ranks on.
+  status: ReadinessSchema,
+  eval_method: AgentPathSchema,
+  tier_tested: TierSchema.optional(),
+  cleared_tier: TierSchema.optional(),
+  hardware_class: HardwareClassSchema,
+  recommended_tier: TierSchema,
+  by_tier: z.array(TierMetricSchema),
+  failure_distribution: FailureDistributionSchema,
+  // Collection identity + build provenance — same scenario set + dedup/verify.
+  collection_name: z.string(),
+  collection_hash: z.string(),
+  schema_version: z.number(),
+  engine_version: z.string(),
+  build_hash: z.string(),
 });
 export type PublishRow = z.infer<typeof PublishRowSchema>;
 
@@ -36,8 +77,9 @@ export const PublishPreviewSchema = z.object({
 export type PublishPreview = z.infer<typeof PublishPreviewSchema>;
 
 /// Build the publish payload preview from the current verdicts + the global-header
-/// params in effect. Offline + read-only — derives the cohort from the local
-/// hardware snapshot and sends nothing.
-export async function previewPublishPayload(verdicts: ModelVerdict[], params: InferenceParams): Promise<PublishPreview> {
-  return PublishPreviewSchema.parse(await invoke("preview_publish_payload", { verdicts, params }));
+/// params in effect + the active collection id (so the backend stamps the collection
+/// identity/hash and excludes custom-collection rows). Offline + read-only — derives
+/// the cohort from the local hardware snapshot and sends nothing.
+export async function previewPublishPayload(verdicts: ModelVerdict[], params: InferenceParams, collectionId: string): Promise<PublishPreview> {
+  return PublishPreviewSchema.parse(await invoke("preview_publish_payload", { verdicts, params, collectionId }));
 }

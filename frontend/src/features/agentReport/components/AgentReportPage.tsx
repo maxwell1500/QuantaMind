@@ -455,7 +455,7 @@ export function AgentReportPage() {
               hardware={hardware}
               cardRef={cardRef}
             />
-            <PublishButton verdicts={verdicts} />
+            <PublishButton verdicts={verdicts} collectionId={selected} />
           </div>
         )}
       </footer>

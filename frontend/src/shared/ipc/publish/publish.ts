@@ -14,11 +14,12 @@ export const PublishOutcomeSchema = z.discriminatedUnion("kind", [
 ]);
 export type PublishOutcome = z.infer<typeof PublishOutcomeSchema>;
 
-/// Publish the verdicts (+ the global-header params the run used + optional
-/// allow-listed write-up link) to the community board. One batch = one request; the
-/// Rust side handles nonce/hash/auth.
-export async function publishToBoard(verdicts: ModelVerdict[], params: InferenceParams, link: string): Promise<PublishOutcome> {
-  return PublishOutcomeSchema.parse(await invoke("publish_to_board", { verdicts, params, link: link || null }));
+/// Publish the verdicts (+ the global-header params the run used + the active
+/// collection id + optional allow-listed write-up link) to the community board. One
+/// batch = one request; the Rust side handles nonce/hash/auth and rebuilds the exact
+/// same payload the preview showed.
+export async function publishToBoard(verdicts: ModelVerdict[], params: InferenceParams, collectionId: string, link: string): Promise<PublishOutcome> {
+  return PublishOutcomeSchema.parse(await invoke("publish_to_board", { verdicts, params, collectionId, link: link || null }));
 }
 
 /// Start the PKCE browser sign-in (opens the system browser, catches the loopback

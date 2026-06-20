@@ -12,8 +12,15 @@ const VERDICTS: ModelVerdict[] = [
 ];
 
 const preview = (over: Partial<PublishPreview> = {}): PublishPreview => ({
-  rows: [{ model: "qwen", quant: "Q4_K_M", cohort_key: "apple-silicon/m3-pro/32-64gb", tool_version: "0.2.0", metrics: { pass_k: 0.9, effort: 1.2, avg_steps: 3 }, params: {} }],
-  canonical_json: '[{"cohort_key":"apple-silicon/m3-pro/32-64gb","metrics":{"avg_steps":3.0,"effort":1.2,"pass_k":0.9},"model":"qwen","quant":"Q4_K_M","tool_version":"0.2.0"}]',
+  rows: [{
+    model: "qwen", quant: "Q4_K_M", cohort_key: "apple-silicon/m3-pro/32-64gb", tool_version: "0.2.0",
+    metrics: { pass_k: 0.9, effort: 1.2, avg_steps: 3 }, params: {},
+    status: "ready", eval_method: "native_fc", tier_tested: "medium", cleared_tier: "medium",
+    hardware_class: "mainstream", recommended_tier: "medium", by_tier: [],
+    failure_distribution: { infinite_loop: 0, hallucinated: 0, malformed_json: 0, schema_unrecovered: 0, unknown_tool_calls: 0, forbidden_calls: 0, turn_timeouts: 0, reported_in_prose: 0 },
+    collection_name: "easy-coding", collection_hash: "abc", schema_version: 1, engine_version: "0.2.0", build_hash: "testhash",
+  }],
+  canonical_json: '[{"build_hash":"testhash","cohort_key":"apple-silicon/m3-pro/32-64gb","collection_hash":"abc","metrics":{"avg_steps":3.0,"effort":1.2,"pass_k":0.9},"model":"qwen","quant":"Q4_K_M","status":"ready","tool_version":"0.2.0"}]',
   hash: "abc123",
   cohort_key: "apple-silicon/m3-pro/32-64gb",
   excluded_count: 0,
@@ -28,7 +35,7 @@ beforeEach(() => vi.clearAllMocks());
 describe("PublishDialog", () => {
   it("shows the raw payload with no excluded fields, and strikes through what's never shared", async () => {
     vi.mocked(previewPublishPayload).mockResolvedValue(preview());
-    render(<PublishDialog verdicts={VERDICTS} onClose={noop} onPublish={noop} />);
+    render(<PublishDialog verdicts={VERDICTS} collectionId="easy-coding" onClose={noop} onPublish={noop} />);
     const raw = await screen.findByTestId("publish-raw-payload");
     expect(raw.textContent).toContain('"model":"qwen"');
     expect(raw.textContent).not.toContain("prompt");
@@ -38,7 +45,7 @@ describe("PublishDialog", () => {
 
   it("defaults to opt-out: Publish disabled until the checkbox is checked", async () => {
     vi.mocked(previewPublishPayload).mockResolvedValue(preview());
-    render(<PublishDialog verdicts={VERDICTS} onClose={noop} onPublish={noop} />);
+    render(<PublishDialog verdicts={VERDICTS} collectionId="easy-coding" onClose={noop} onPublish={noop} />);
     const confirm = await screen.findByTestId("publish-confirm");
     expect(confirm).toBeDisabled();
     expect((screen.getByTestId("publish-optin") as HTMLInputElement).checked).toBe(false);
@@ -49,7 +56,7 @@ describe("PublishDialog", () => {
   it("calls onPublish with the preview only after opt-in", async () => {
     const onPublish = vi.fn();
     vi.mocked(previewPublishPayload).mockResolvedValue(preview());
-    render(<PublishDialog verdicts={VERDICTS} onClose={noop} onPublish={onPublish} />);
+    render(<PublishDialog verdicts={VERDICTS} collectionId="easy-coding" onClose={noop} onPublish={onPublish} />);
     fireEvent.click(await screen.findByTestId("publish-optin"));
     fireEvent.click(screen.getByTestId("publish-confirm"));
     expect(onPublish).toHaveBeenCalledTimes(1);
@@ -58,7 +65,7 @@ describe("PublishDialog", () => {
 
   it("disables Publish on a disallowed write-up link, re-enables when cleared", async () => {
     vi.mocked(previewPublishPayload).mockResolvedValue(preview());
-    render(<PublishDialog verdicts={VERDICTS} onClose={noop} onPublish={noop} />);
+    render(<PublishDialog verdicts={VERDICTS} collectionId="easy-coding" onClose={noop} onPublish={noop} />);
     fireEvent.click(await screen.findByTestId("publish-optin"));
     const confirm = screen.getByTestId("publish-confirm");
     expect(confirm).toBeEnabled();
@@ -72,7 +79,7 @@ describe("PublishDialog", () => {
   it("passes the allow-listed link to onPublish", async () => {
     const onPublish = vi.fn();
     vi.mocked(previewPublishPayload).mockResolvedValue(preview());
-    render(<PublishDialog verdicts={VERDICTS} onClose={noop} onPublish={onPublish} />);
+    render(<PublishDialog verdicts={VERDICTS} collectionId="easy-coding" onClose={noop} onPublish={onPublish} />);
     fireEvent.click(await screen.findByTestId("publish-optin"));
     fireEvent.change(screen.getByTestId("publish-link"), { target: { value: "https://dev.to/me/post" } });
     fireEvent.click(screen.getByTestId("publish-confirm"));
@@ -82,7 +89,7 @@ describe("PublishDialog", () => {
 
   it("explains why Publish is disabled when there are no measured results", async () => {
     vi.mocked(previewPublishPayload).mockResolvedValue(preview({ rows: [], excluded_count: 3, canonical_json: "[]" }));
-    render(<PublishDialog verdicts={VERDICTS} onClose={noop} onPublish={noop} />);
+    render(<PublishDialog verdicts={VERDICTS} collectionId="easy-coding" onClose={noop} onPublish={noop} />);
     const empty = await screen.findByTestId("publish-empty");
     expect(empty).toHaveTextContent("Nothing to publish yet");
     expect(empty).toHaveTextContent("3 models were excluded");
@@ -95,7 +102,7 @@ describe("PublishDialog", () => {
 
   it("keeps Publish disabled when a row fails local validation", async () => {
     vi.mocked(previewPublishPayload).mockResolvedValue(preview({ invalid: { index: 0, reason: "pass_k 1.5 out of range 0..=1" } }));
-    render(<PublishDialog verdicts={VERDICTS} onClose={noop} onPublish={noop} />);
+    render(<PublishDialog verdicts={VERDICTS} collectionId="easy-coding" onClose={noop} onPublish={noop} />);
     fireEvent.click(await screen.findByTestId("publish-optin"));
     expect(screen.getByTestId("publish-confirm")).toBeDisabled();
     expect(screen.getByTestId("publish-invalid")).toHaveTextContent("out of range");

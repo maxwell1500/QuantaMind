@@ -44,6 +44,21 @@ pub fn v2_header(json: &str) -> Option<V2Header> {
     serde_json::from_str(json).ok()
 }
 
+/// Stable content hash of a bundled collection — lowercase-hex SHA-256 over its raw
+/// JSON bytes — so the leaderboard only compares results measured on the *same*
+/// scenario set (a pass^k on a v1 collection isn't comparable to an edited v2). The
+/// `include_str!` bytes are deterministic, so the hash is identical across builds.
+/// `None` for an unknown id, which the publish projection reads as "not a built-in" →
+/// the row is excluded (custom/user-authored collections never auto-publish).
+pub fn collection_hash(id: &str) -> Option<String> {
+    use sha2::{Digest, Sha256};
+    v2_json(id).map(|json| {
+        let mut h = Sha256::new();
+        h.update(json.as_bytes());
+        format!("{:x}", h.finalize())
+    })
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -320,6 +335,21 @@ mod tests {
             }
         }
         assert!(violations.is_empty(), "retrieval getters mistagged as actions:\n{}", violations.join("\n"));
+    }
+
+    #[test]
+    fn collection_hash_is_stable_for_builtins_and_none_for_custom() {
+        // Deterministic 64-char lowercase hex, identical across calls.
+        let a = collection_hash("easy-coding").expect("built-in must hash");
+        let b = collection_hash("easy-coding").expect("built-in must hash");
+        assert_eq!(a, b);
+        assert_eq!(a.len(), 64);
+        assert!(a.chars().all(|c| c.is_ascii_hexdigit() && !c.is_ascii_uppercase()));
+        // Distinct collections hash differently.
+        assert_ne!(a, collection_hash("hard-coding").unwrap());
+        // Unknown / custom ids are not built-ins → None (drives the exclusion gate).
+        assert_eq!(collection_hash("my-custom-collection"), None);
+        assert_eq!(collection_hash(""), None);
     }
 
     #[test]
