@@ -467,10 +467,24 @@ for step_index in 0..max_steps {
         push_model_once(); convo.push_tool_result(&result);
     }
     send_one_step_for_the_turn(/* joined injections */); // one TrajectoryStep per turn
+    // loop detector: identical (canonical) calls as the previous turn AND no checkpoint
+    // advanced → stall. After STALL_REPEAT_LIMIT (3) such turns in a row, fail fast as
+    // InfiniteLoop instead of grinding the whole budget. A differing/advancing turn resets.
+    if !progressed && this_turn_sig == prev_turn_sig { stalled_repeats += 1; } else { stalled_repeats = 0; }
+    if stalled_repeats + 1 >= STALL_REPEAT_LIMIT { return Ok(RunOutcome::failure(step_index+1, …, InfiniteLoop)); }
 }
 // step cap exhausted → infinite loop
 Ok(RunOutcome::failure(max_steps, output_tokens, FailureKind::InfiniteLoop).with_schema(hit_schema_error, schema_recovered))
 ```
+
+The loop detector matters because an action ack (`{"ok":true}`) gives a model no signal
+its args were wrong: a model calling the right tool with non-matching args (e.g.
+`add_marker(marker:"@flaky")` when the checkpoint wants `*flaky*`) would otherwise repeat
+the same turn for the full `max_steps`. The verdict is unchanged (`InfiniteLoop`), just
+reached in ~3 steps. (Authoring note: v2 checkpoints should glob tolerant string args —
+`marker:"*flaky*"`, not exact `"flaky"` — so a hint-following model isn't failed on a
+trivial convention difference; mismatches between a scenario's world_state hints and its
+checkpoint args otherwise read as model failures.)
 
 ---
 

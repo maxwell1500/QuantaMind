@@ -942,3 +942,59 @@ async fn worldstate_decoy_call_injects_the_unknown_tool_nudge_and_continues() {
     // The loop continued and the model recovered to the real end-state.
     assert!(outcome.reached_end);
 }
+
+#[tokio::test]
+async fn a_model_repeating_the_same_no_progress_turn_fails_fast_as_infinite_loop() {
+    // The model re-emits the identical [spin] turn every step. spin is a recognized action
+    // (acks {"ok":true}), so it gets a "success" signal but never satisfies the `finish`
+    // checkpoint. The loop detector must end the run as InfiniteLoop after STALL_REPEAT_LIMIT
+    // identical no-progress turns (step 3) instead of grinding the full max_steps (8 here).
+    let sandbox = DeterministicSandbox::new(
+        "Finish the task.".into(),
+        vec![],
+        vec![],
+        EndStateRule::RequireAll(vec![TaskCheckpoint { tool: "finish".into(), args: json!({}) }]),
+    )
+    .with_world_state(json!({ "E-1": { "kind": "x" } }))
+    .with_entity_tools(["peek".to_string()]) // non-empty → spin (an action) acks
+    .with_recognized_tools(["spin".to_string(), "finish".to_string()]); // spin is recognized
+
+    let model = ScriptedModel::new(vec![(r#"[{"name":"spin","args":{}}]"#, 10)]); // same turn forever
+    let (tx, mut rx) = unbounded_channel();
+    let outcome = run_once(&model, &sandbox, 8, 2, 0, &tx).await.unwrap();
+    drop(tx);
+
+    assert_eq!(outcome.failure, Some(FailureKind::InfiniteLoop));
+    assert_eq!(outcome.steps, 3, "should break at the 3rd identical turn, not run all 8");
+    assert!(!outcome.reached_end);
+    let steps = drain(&mut rx);
+    assert_eq!(steps.last().unwrap().kind, StepKind::InfiniteLoop);
+}
+
+#[tokio::test]
+async fn a_model_making_progress_each_turn_is_not_cut_by_the_loop_detector() {
+    // Two DISTINCT getter calls that each advance a checkpoint: the loop detector must NOT
+    // fire (turns differ AND progress is made), so the run completes normally.
+    let sandbox = DeterministicSandbox::new(
+        "Inspect both.".into(),
+        vec![],
+        vec![],
+        EndStateRule::RequireAll(vec![
+            TaskCheckpoint { tool: "get".into(), args: json!({ "id": "A" }) },
+            TaskCheckpoint { tool: "get".into(), args: json!({ "id": "B" }) },
+        ]),
+    )
+    .with_world_state(json!({ "A": { "v": 1 }, "B": { "v": 2 } }))
+    .with_entity_tools(["get".to_string()]);
+
+    let model = ScriptedModel::new(vec![
+        (r#"[{"name":"get","args":{"id":"A"}}]"#, 10),
+        (r#"[{"name":"get","args":{"id":"B"}}]"#, 10),
+    ]);
+    let (tx, rx) = unbounded_channel();
+    let outcome = run_once(&model, &sandbox, 8, 2, 0, &tx).await.unwrap();
+    drop(tx);
+    assert!(outcome.reached_end);
+    assert_eq!(outcome.steps, 2);
+    drop(rx);
+}

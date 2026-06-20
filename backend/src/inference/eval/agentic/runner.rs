@@ -3,7 +3,7 @@ use crate::inference::eval::agentic::context::{tool_result_line, Conversation};
 use crate::inference::eval::agentic::scoring::endstate;
 use crate::inference::eval::agentic::model_turn::ModelTurn;
 use crate::inference::eval::agentic::scoring::report::{AgenticReport, FailureKind, RunOutcome};
-use crate::inference::eval::agentic::sandbox::{DeterministicSandbox, EndStateRule, SandboxState, TaskCheckpoint};
+use crate::inference::eval::agentic::sandbox::{canonical, DeterministicSandbox, EndStateRule, SandboxState, TaskCheckpoint};
 use crate::inference::eval::agentic::v2::r#match::text_matches;
 use crate::inference::eval::agentic::step::{StepKind, TrajectoryStep};
 use crate::inference::eval::toolcall::parse::{extract_calls, looks_like_broken_json};
@@ -16,6 +16,14 @@ use tokio_util::sync::CancellationToken;
 const MAX_TOKENS: u32 = 256;
 const UNKNOWN_TOOL: &str =
     "Tool not found or arguments unrecognized. Choose a tool from the provided schema.";
+
+/// Identical, no-progress turns in a row before the run is declared a loop. A model that
+/// re-emits the exact same (tool + args) turn this many times without advancing the
+/// end-state is stuck (an ack like `{"ok":true}` gives it no signal to change), so fail it
+/// fast as `InfiniteLoop` instead of burning the whole `max_steps` budget — the verdict is
+/// the same, just reached in 3 steps instead of up to 85. A turn that DIFFERS or advances a
+/// checkpoint resets the counter, so legitimate multi-step progress is never cut short.
+const STALL_REPEAT_LIMIT: u32 = 3;
 
 /// `num_ctx` sizing for the agentic loop. The transcript re-sent every step grows by
 /// ~one assistant turn + tool result per step; left at the model default (~4096) a
@@ -230,6 +238,8 @@ async fn run_once_inner<M: ModelTurn>(
     let mut hit_schema_error = false; // this run emitted a schema-invalid call
     let mut schema_recovered = false; // ...and later produced a valid one
     let mut unknown_tools = 0u32; // decoy / unknown-tool calls this run (Phase 9 distraction signal)
+    let mut prev_turn_sig: Option<Vec<String>> = None; // canonical calls of the previous turn
+    let mut stalled_repeats = 0u32; // consecutive identical, no-progress turns (loop detector)
 
     // Sized once per run from the step cap: the transcript only grows within this run,
     // so a single window covers every step. Keeps the prefix-KV cache from being busted
@@ -308,6 +318,11 @@ async fn run_once_inner<M: ModelTurn>(
             send(StepKind::HallucinatedCompletion, None);
             return Ok(RunOutcome::failure(step_index + 1, output_tokens, FailureKind::Hallucinated));
         }
+
+        // Snapshot end-state progress before processing this turn's calls, so the loop
+        // detector below can tell a productive turn (advanced a checkpoint) from a stalled
+        // one. Sequence uses `next_cp`; RequireAll counts satisfied checkpoints.
+        let progress_before = next_cp + satisfied.iter().filter(|&&s| s).count();
 
         // Step 1 — FORBIDDEN PRE-SCAN (the trap dominates the whole turn). A forbidden
         // action emitted ANYWHERE in the array springs the trap, even alongside a call that
@@ -411,6 +426,30 @@ async fn run_once_inner<M: ModelTurn>(
         // Turn complete, NON-terminal: stream one step carrying every injected result.
         let (kind, injection) = summarize_turn(&turn_lines);
         send(kind, injection);
+
+        // Loop detector: a turn that re-emits the exact same calls as the previous turn
+        // AND advanced no checkpoint is a stall. After `STALL_REPEAT_LIMIT` such turns in a
+        // row, end the run as `InfiniteLoop` rather than grinding the whole step budget.
+        let progressed = next_cp + satisfied.iter().filter(|&&s| s).count() > progress_before;
+        let sig: Vec<String> = calls.iter().map(canonical).collect();
+        if !progressed && prev_turn_sig.as_ref() == Some(&sig) {
+            stalled_repeats += 1;
+        } else {
+            stalled_repeats = 0;
+        }
+        prev_turn_sig = Some(sig);
+        if stalled_repeats + 1 >= STALL_REPEAT_LIMIT {
+            let _ = tx.send(TrajectoryStep {
+                run_index,
+                step_index: step_index + 1,
+                raw_output: String::new(),
+                injection: None,
+                kind: StepKind::InfiniteLoop,
+            });
+            return Ok(RunOutcome::failure(step_index + 1, output_tokens, FailureKind::InfiniteLoop)
+                .with_schema(hit_schema_error, schema_recovered)
+                .with_unknown_tools(unknown_tools));
+        }
     }
 
     let _ = tx.send(TrajectoryStep {
