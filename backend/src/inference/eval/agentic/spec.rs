@@ -117,6 +117,11 @@ pub struct AgenticSpec {
     /// `false` for static tasks (which reuse one sandbox across runs).
     #[serde(default, skip_serializing_if = "is_false")]
     pub generated: bool,
+    /// Phase 9-v2: tool names that RETURN entity data (authored `returns_entity`).
+    /// Tools absent from this list are ACTIONS — the WorldState responder acks them
+    /// instead of echoing the entity blob. Empty → every tool is a getter (back-compat).
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub entity_tools: Vec<String>,
 }
 
 fn is_false(b: &bool) -> bool {
@@ -164,6 +169,7 @@ mod tests {
             world_state: None,
             name_faults: vec![],
             generated: false,
+            entity_tools: vec![],
         };
         let v = serde_json::to_value(&spec).unwrap();
         assert!(v.get("tier").is_none()); // Easy is the default → omitted
@@ -171,5 +177,6 @@ mod tests {
         // v2 fields are absent on a v1 spec → byte-compat preserved.
         assert!(v.get("must_not_call").is_none());
         assert!(v.get("world_state").is_none());
+        assert!(v.get("entity_tools").is_none()); // empty → omitted
     }
 }

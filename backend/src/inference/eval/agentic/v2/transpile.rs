@@ -36,11 +36,24 @@ fn default_recovery() -> u8 {
 }
 
 /// A v2 tool/decoy: `params` is a `{name: type-string}` map (not JSON-Schema).
+/// `returns_entity` declares whether the tool surfaces world_state entity data (a
+/// GETTER) or merely acts (an ACTION that acks). Absent → getter (back-compat: the
+/// pre-field behavior echoed for every tool). Action tools are tagged `false` so they
+/// can't hand the model the field it was supposed to reason to (answer-leniency).
 #[derive(Deserialize)]
 pub struct V2Tool {
     pub name: String,
     #[serde(default)]
     pub params: BTreeMap<String, String>,
+    #[serde(default)]
+    pub returns_entity: Option<bool>,
+}
+
+impl V2Tool {
+    /// A tool surfaces entity data unless explicitly tagged `returns_entity: false`.
+    fn is_getter(&self) -> bool {
+        self.returns_entity != Some(false)
+    }
 }
 
 /// A type-tagged expected call. Only `call` is supported; `parallel`/`none` are
@@ -109,6 +122,11 @@ pub fn transpile_task(t: V2Task, tier: Tier, pass_k: u32, axes: DifficultyAxes, 
     let mut tools: Vec<ToolSchema> = t.tools.iter().map(to_tool_schema).collect();
     tools.extend(t.decoy_tools.iter().map(to_tool_schema));
 
+    // The getter set the WorldState responder consults: real tools that surface entity
+    // data. Decoys are never getters (they ack), so they're excluded.
+    let entity_tools: Vec<String> =
+        t.tools.iter().filter(|tool| tool.is_getter()).map(|tool| tool.name.clone()).collect();
+
     let mut checkpoints = Vec::with_capacity(t.expected_calls.len());
     for ec in t.expected_calls {
         match ec {
@@ -145,6 +163,7 @@ pub fn transpile_task(t: V2Task, tier: Tier, pass_k: u32, axes: DifficultyAxes, 
         world_state,
         name_faults,
         generated,
+        entity_tools,
     };
     // All v2 tasks run on the agentic engine; the end-state (RequireAll vs
     // ExpectAbstainingText) — not the authored label — encodes act-vs-abstain.

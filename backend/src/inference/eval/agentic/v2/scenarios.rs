@@ -186,6 +186,140 @@ mod tests {
         }
     }
 
+    /// Every nested STRING value in `v` (object values + array elements; object KEYS
+    /// are not values, so they're excluded — a key is never a "discovered fact").
+    fn string_values(v: &Value, out: &mut Vec<String>) {
+        match v {
+            Value::String(s) => out.push(s.clone()),
+            Value::Array(a) => a.iter().for_each(|x| string_values(x, out)),
+            Value::Object(o) => o.values().for_each(|x| string_values(x, out)),
+            _ => {}
+        }
+    }
+
+    /// Replace each `*…*` glob string with its literal segments joined, so a getter's
+    /// wildcard discovery arg resolves to a concrete value the responder can key on.
+    fn concretize_args(v: &Value) -> Value {
+        match v {
+            Value::Object(o) => Value::Object(o.iter().map(|(k, x)| (k.clone(), concretize_args(x))).collect()),
+            Value::String(s) if s.contains('*') => {
+                let lit: String = s.split('*').filter(|p| !p.is_empty()).collect();
+                Value::String(if lit.is_empty() { "x".into() } else { lit })
+            }
+            other => other.clone(),
+        }
+    }
+
+    /// Answer-key REACHABILITY guard (the inverse of "every entity arg resolves to a
+    /// key"): every discovered-only world_state fact a checkpoint forces the model to
+    /// echo must be retrievable through SOME getter the model can call. A fact in
+    /// world_state but unreachable through any tool (the `es_co_run_failing_test` bug:
+    /// the failing test name lived under key `cart_tests`, but `run_tests{module:"cart"}`
+    /// resolved nothing) makes the task unsolvable by a real model — only the oracle's
+    /// replay "passes" it. Respects `returns_entity`: a getter mistagged as an action
+    /// stops surfacing its fact, so this also guards the tags.
+    ///
+    /// SCOPE: enforced on the **Easy** tier, where checkpoint args are pure retrieval
+    /// facts. Medium+ retrieval-chain reachability is a tracked follow-up — those tasks
+    /// mix retrieved facts with REASONED conclusions (e.g. the chosen statistical method
+    /// in the extreme clinical tasks is derived, not fetched), which this string-needle
+    /// heuristic can't distinguish without per-task authoring judgment.
+    #[test]
+    fn every_required_easy_world_state_fact_is_tool_reachable() {
+        use crate::inference::eval::agentic::v2::world_state::derive_response;
+        use crate::inference::eval::toolcall::tasks::Call;
+
+        let mut violations: Vec<String> = Vec::new();
+        for (id, json) in V2_SCENARIOS {
+            let v: Value = serde_json::from_str(json).unwrap();
+            if v["tier"].as_str().map(str::to_lowercase).as_deref() != Some("easy") {
+                continue; // Medium+ reachability is a tracked follow-up (see doc comment)
+            }
+            for task in v["tasks"].as_array().into_iter().flatten() {
+                let tid = task["id"].as_str().unwrap_or("?");
+                let ws = &task["world_state"];
+                if ws.is_null() {
+                    continue;
+                }
+                let prompt = task["prompt"].as_str().unwrap_or("").to_lowercase();
+                // Getter set: real tools whose `returns_entity` isn't false.
+                let getters: HashSet<&str> = task["tools"]
+                    .as_array()
+                    .into_iter()
+                    .flatten()
+                    .filter(|t| t["returns_entity"].as_bool() != Some(false))
+                    .filter_map(|t| t["name"].as_str())
+                    .collect();
+                let calls: Vec<&Value> =
+                    task["expected_calls"].as_array().into_iter().flatten().filter(|e| e["type"] == "call").collect();
+                // What the model can SURFACE: derive_response over every getter call.
+                let mut surfaced = String::new();
+                for ec in &calls {
+                    let name = ec["name"].as_str().unwrap_or("");
+                    if !getters.contains(name) {
+                        continue;
+                    }
+                    let call = Call { name: name.into(), args: concretize_args(&ec["args"]) };
+                    surfaced.push_str(&derive_response(ws, &call));
+                    surfaced.push('\n');
+                }
+                // Discovered-only facts: ws string values not already in the prompt.
+                let mut ws_vals = Vec::new();
+                string_values(ws, &mut ws_vals);
+                // Each checkpoint arg literal that DEMANDS a discovered fact must be reachable.
+                for ec in &calls {
+                    let mut arg_strs = Vec::new();
+                    string_values(&ec["args"], &mut arg_strs);
+                    for s in &arg_strs {
+                        for seg in s.split('*').filter(|p| !p.is_empty()) {
+                            for wv in &ws_vals {
+                                if wv.len() >= 4
+                                    && !prompt.contains(&wv.to_lowercase())
+                                    && seg.contains(wv.as_str())
+                                    && !surfaced.contains(wv.as_str())
+                                {
+                                    violations.push(format!("{id}/{tid}: fact '{wv}' is required by a checkpoint but unreachable by any getter"));
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+        }
+        assert!(violations.is_empty(), "unreachable answer-key facts:\n{}", violations.join("\n"));
+    }
+
+    /// Tag guard (all tiers): a retrieval-shaped tool must never be tagged as an action.
+    /// A getter mistagged `returns_entity:false` would ack instead of surfacing data, so
+    /// a real model could never retrieve the fact (the exact harness-fails-correct-model
+    /// bug class). This catches such a mistag structurally — without the false positives
+    /// a reasoned-vs-retrieved heuristic carries — so action-tagging stays safe to extend.
+    #[test]
+    fn no_retrieval_shaped_tool_is_tagged_as_an_action() {
+        const GETTER_PREFIX: [&str; 16] = [
+            "get_", "check_", "compute_", "run_", "read_", "search_", "classify_", "verify_",
+            "validate_", "screen_", "scan_", "assess_", "identify_", "test_", "fit_", "convert_",
+        ];
+        const GETTER_EXACT: [&str; 6] =
+            ["calc", "chem_lookup", "blast_radius", "mark_to_market", "impute_missing", "format_value"];
+        let mut violations: Vec<String> = Vec::new();
+        for (id, json) in V2_SCENARIOS {
+            let v: Value = serde_json::from_str(json).unwrap();
+            for task in v["tasks"].as_array().into_iter().flatten() {
+                let tid = task["id"].as_str().unwrap_or("?");
+                for tool in task["tools"].as_array().into_iter().flatten() {
+                    let name = tool["name"].as_str().unwrap_or("");
+                    let getter_shaped =
+                        GETTER_PREFIX.iter().any(|p| name.starts_with(p)) || GETTER_EXACT.contains(&name);
+                    if getter_shaped && tool["returns_entity"].as_bool() == Some(false) {
+                        violations.push(format!("{id}/{tid}: getter-shaped tool '{name}' tagged returns_entity:false"));
+                    }
+                }
+            }
+        }
+        assert!(violations.is_empty(), "retrieval getters mistagged as actions:\n{}", violations.join("\n"));
+    }
+
     #[test]
     fn every_bundled_v2_collection_loads_and_validates() {
         assert_eq!(V2_SCENARIOS.len(), 19);

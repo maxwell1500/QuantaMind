@@ -109,6 +109,7 @@ fn agentic_valid() -> ToolTask {
             world_state: None,
             name_faults: vec![],
             generated: false,
+            entity_tools: vec![],
         }),
     }
 }

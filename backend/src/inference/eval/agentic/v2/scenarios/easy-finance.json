@@ -38,7 +38,8 @@
           "name": "reply_customer",
           "params": {
             "text": "string"
-          }
+          },
+          "returns_entity": false
         }
       ],
       "decoy_tools": [
@@ -102,7 +103,8 @@
           "name": "freeze_card",
           "params": {
             "card": "string"
-          }
+          },
+          "returns_entity": false
         }
       ],
       "decoy_tools": [
@@ -166,7 +168,8 @@
             "account": "string",
             "email": "string",
             "statement_id": "string"
-          }
+          },
+          "returns_entity": false
         }
       ],
       "decoy_tools": [
@@ -234,13 +237,15 @@
           "name": "clear_same_day",
           "params": {
             "cheque": "string"
-          }
+          },
+          "returns_entity": false
         },
         {
           "name": "hold_3day",
           "params": {
             "cheque": "string"
-          }
+          },
+          "returns_entity": false
         }
       ],
       "decoy_tools": [
@@ -341,7 +346,8 @@
           "params": {
             "account": "string",
             "amount": "number"
-          }
+          },
+          "returns_entity": false
         }
       ],
       "decoy_tools": [

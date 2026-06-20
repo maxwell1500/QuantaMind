@@ -282,8 +282,13 @@ and the loop runs `k` times for Pass^k reliability.
   causes a miss; one environment shared (immutable) across all `k` runs.
 - **What:** `MockResponse{call,response}`, `TaskCheckpoint{tool,args}`,
   `EndStateRule::{RequireSequence(Vec<TaskCheckpoint>), ExpectAbstainingText}`,
-  `DeterministicSandbox` (`new`, `with_faults`, `respond(&Call) -> Option<&str>`),
+  `DeterministicSandbox` (`new`, `with_faults`, `with_entity_tools`, `respond(&Call) -> Option<&str>`),
   `SandboxState{attempts}` (`fault_for`), `pub fn canonical(&Call) -> String`.
+- **Getter vs action (v2 WorldState):** `respond` consults `entity_tools` (the
+  authored `returns_entity` getter set). A GETTER surfaces the world_state entity blob
+  (`derive_response`); an ACTION not in the set gets a generic `{"ok":true}` ack — so an
+  action can't echo the field the model was supposed to reason to (answer-leniency). An
+  EMPTY set means "every tool is a getter" (v1 / legacy back-compat).
 
 ```rust
 FaultInjection::TransientError { status_code, clears_after } => {

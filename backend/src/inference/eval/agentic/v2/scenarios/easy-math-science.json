@@ -36,7 +36,8 @@
           "name": "reply",
           "params": {
             "text": "string"
-          }
+          },
+          "returns_entity": false
         }
       ],
       "decoy_tools": [
@@ -99,7 +100,8 @@
           "name": "reply",
           "params": {
             "text": "string"
-          }
+          },
+          "returns_entity": false
         }
       ],
       "decoy_tools": [
@@ -165,7 +167,8 @@
           "name": "reply",
           "params": {
             "text": "string"
-          }
+          },
+          "returns_entity": false
         }
       ],
       "decoy_tools": [
@@ -241,7 +244,8 @@
           "name": "reply",
           "params": {
             "text": "string"
-          }
+          },
+          "returns_entity": false
         }
       ],
       "decoy_tools": [
@@ -339,7 +343,8 @@
           "name": "reply",
           "params": {
             "text": "string"
-          }
+          },
+          "returns_entity": false
         }
       ],
       "decoy_tools": [

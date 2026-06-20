@@ -21,7 +21,7 @@
       "max_recovery": 2,
       "prompt": "Run the test suite for module 'cart'. If it fails, read the failing test file and report which test failed. Do not edit any source.",
       "world_state": {
-        "cart_tests": {
+        "cart": {
           "result": "fail",
           "failing": "test_total_with_tax"
         }
@@ -43,7 +43,8 @@
           "name": "reply",
           "params": {
             "text": "string"
-          }
+          },
+          "returns_entity": false
         }
       ],
       "decoy_tools": [
@@ -112,7 +113,8 @@
           "name": "reply",
           "params": {
             "text": "string"
-          }
+          },
+          "returns_entity": false
         }
       ],
       "decoy_tools": [
@@ -158,9 +160,7 @@
       "max_recovery": 2,
       "prompt": "Find which file defines the function 'calculate_gst' and report the path.",
       "world_state": {
-        "symbol": {
-          "calculate_gst": "billing/tax.py"
-        }
+        "calculate_gst": "billing/tax.py"
       },
       "tools": [
         {
@@ -173,7 +173,8 @@
           "name": "reply",
           "params": {
             "text": "string"
-          }
+          },
+          "returns_entity": false
         }
       ],
       "decoy_tools": [
@@ -238,7 +239,8 @@
           "params": {
             "change": "string",
             "base": "string"
-          }
+          },
+          "returns_entity": false
         }
       ],
       "decoy_tools": [
@@ -336,13 +338,15 @@
           "name": "apply_update",
           "params": {
             "dep": "string"
-          }
+          },
+          "returns_entity": false
         },
         {
           "name": "pin_and_flag",
           "params": {
             "dep": "string"
-          }
+          },
+          "returns_entity": false
         }
       ],
       "decoy_tools": [

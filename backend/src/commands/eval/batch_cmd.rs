@@ -359,6 +359,7 @@ mod override_tests {
                 world_state: None,
                 name_faults: vec![],
                 generated: false,
+                entity_tools: vec![],
             }),
         }
     }
