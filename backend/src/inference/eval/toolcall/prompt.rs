@@ -21,22 +21,46 @@ pub fn build_system(task: &ToolTask) -> String {
     build_system_for(&task.tools, TerminalGuidance::PlainTextOk)
 }
 
+/// The task's reporter tool — the first tool whose JSON-schema parameters declare a `text`
+/// field (the reporter contract: `reply`/`reply_customer` both take `{text}`). `None` for an
+/// action-only toolset, whose deliverable IS its actions. Public so the scenarios integrity
+/// test can assert exactly one reporter per reporter task and none on action-only tasks —
+/// guarding "first" against a future text-bearing action tool that would mis-resolve here.
+pub fn reply_tool_name(tools: &[ToolSchema]) -> Option<&str> {
+    tools
+        .iter()
+        .find(|t| t.parameters.get("properties").and_then(|p| p.get("text")).is_some())
+        .map(|t| t.name.as_str())
+}
+
 /// The tool-schema-injection core, given the tools + how the final answer must be
 /// delivered. Shared so the agentic runner (which has a sandbox, not a `ToolTask`)
 /// builds the identical prompt, gating the closing line on its task's end_state.
 pub fn build_system_for(tools: &[ToolSchema], terminal: TerminalGuidance) -> String {
-    let tools: Vec<_> = tools
-        .iter()
-        .map(|t| json!({ "name": t.name, "description": t.description, "parameters": t.parameters }))
-        .collect();
-    let tools_json = serde_json::to_string_pretty(&tools).unwrap_or_default();
-    let closing = match terminal {
-        TerminalGuidance::PlainTextOk => "If no tool is needed, just answer the user in plain text.",
-        TerminalGuidance::MustUseTools => {
-            "Deliver every result — including your final answer to the user — by calling a tool \
-             (use the `reply` tool if one is provided). Do not answer in plain text."
-        }
+    // Computed from the real toolset BEFORE the schemas are flattened to JSON below: an
+    // act-task that HAS a reporter tool is told to use it BY NAME (fixing the reply vs
+    // reply_customer misnomer); an action-only act-task is told its actions ARE the answer
+    // (so the mandate never points at a `reply` tool that doesn't exist → no phantom call).
+    let closing: String = match terminal {
+        TerminalGuidance::PlainTextOk => "If no tool is needed, just answer the user in plain text.".into(),
+        TerminalGuidance::MustUseTools => match reply_tool_name(tools) {
+            Some(name) => format!(
+                "Deliver every result by calling a tool. To report your final answer to the user, \
+                 call the `{name}` tool. Do not answer in plain text."
+            ),
+            None => "Deliver every result by calling a tool from the list above — your tool actions \
+                     are your final answer. Do not answer in plain text, and do not call a tool that \
+                     is not listed."
+                .into(),
+        },
     };
+    let tools_json = serde_json::to_string_pretty(
+        &tools
+            .iter()
+            .map(|t| json!({ "name": t.name, "description": t.description, "parameters": t.parameters }))
+            .collect::<Vec<_>>(),
+    )
+    .unwrap_or_default();
     format!(
         "You can call tools. Available tools:\n{tools_json}\n\n\
          When a tool is needed, respond with ONLY a JSON object of the form \
@@ -105,14 +129,40 @@ mod tests {
     }
 
     #[test]
-    fn must_use_tools_forbids_plain_text_and_names_the_reply_tool() {
-        // The G1 fix: an act-task prompt must NOT invite a plain-text final answer —
-        // that contradiction is what failed a correct model that reported in prose.
+    fn must_use_tools_on_an_action_only_toolset_forbids_plain_text_and_names_no_reply_tool() {
+        // multi_tool_task has NO reporter tool (no `text` param) → action-only wording.
+        // The follow-up fix: the mandate must NOT mention a `reply` tool that doesn't exist
+        // (that's what induced the phantom reply call on branch_target).
         let tools = multi_tool_task().tools;
         let p = build_system_for(&tools, TerminalGuidance::MustUseTools);
         assert!(p.contains("by calling a tool"));
         assert!(p.contains("Do not answer in plain text"));
-        assert!(p.contains("`reply` tool"));
+        assert!(p.contains("your tool actions are your final answer"));
+        assert!(!p.contains("`reply` tool"), "action-only mandate must not point at a nonexistent reply tool: {p}");
         assert!(!p.contains("just answer the user in plain text"));
+    }
+
+    #[test]
+    fn must_use_tools_names_the_actual_reporter_tool_per_family() {
+        // Precision fix: name the REAL reporter — `reply` for coding/math, `reply_customer`
+        // for support/ecommerce/finance — never a hard-coded `reply`.
+        let reply_tools = vec![tool("get_x", json!({ "id": { "type": "string" } })), tool("reply", json!({ "text": { "type": "string" } }))];
+        let p = build_system_for(&reply_tools, TerminalGuidance::MustUseTools);
+        assert!(p.contains("call the `reply` tool"), "{p}");
+        assert!(p.contains("Do not answer in plain text"));
+        assert!(!p.contains("just answer the user in plain text"));
+
+        let rc_tools = vec![tool("get_order", json!({ "id": { "type": "string" } })), tool("reply_customer", json!({ "text": { "type": "string" } }))];
+        let p2 = build_system_for(&rc_tools, TerminalGuidance::MustUseTools);
+        assert!(p2.contains("call the `reply_customer` tool"), "must name reply_customer, not reply: {p2}");
+        assert!(!p2.contains("call the `reply` tool"));
+    }
+
+    #[test]
+    fn reply_tool_name_detects_the_text_bearing_tool_or_none() {
+        let action_only = vec![tool("open_pr", json!({ "change": { "type": "string" }, "base": { "type": "string" } }))];
+        assert_eq!(reply_tool_name(&action_only), None);
+        let with_reply = vec![tool("act", json!({ "id": { "type": "string" } })), tool("reply_customer", json!({ "text": { "type": "string" } }))];
+        assert_eq!(reply_tool_name(&with_reply), Some("reply_customer"));
     }
 }

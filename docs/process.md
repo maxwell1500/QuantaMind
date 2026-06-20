@@ -780,6 +780,17 @@ The Qwen run (clean JSON, no format noise) surfaced grader bugs failing capable 
 - **G3 (honest label):** `reported_in_prose` failure mode — a no-call yield where every other
   checkpoint is satisfied and the prose matches the lone reporter checkpoint's text glob (the
   "exactly one unsatisfied" guard stops a weak glob like `*3*` relabeling a real hallucination).
+- **G1 follow-up (reply-tool-aware mandate):** G1's first wording told every act-task to "use the
+  `reply` tool" — but ~55 action-only tasks have none, so a model that couldn't complete tried a
+  phantom `reply` call → schema-error→timeout. Fixed: `build_system_for` now names the REAL reporter
+  via `reply_tool_name` (or, action-only, "your tool actions are your answer"). The all-collections
+  invariant guard surfaced 2 tasks (`es_ms_sigfig_domain`, `es_ms_temp_scale`) carrying a **vestigial
+  `reply` tool** the grader never required (terminal is `format_value`/`convert_temp`) — removed it so
+  they're cleanly action-only.
+- **`es_co_branch_target` get_change over-enforcement — RESOLVED (lean (a)).** Dropped the two
+  `get_change` checkpoints (the prompt states the kinds; the skill is routing, not the lookup); now
+  passes for a model that routes hotfix→release/feature→develop. `must_not_call` traps unchanged
+  (guarded by `runner_tests.rs::branch_target_wrong_base_trap_stays_terminal_after_get_change_drop`).
 
 **OPEN — abstain-pattern audit (follow-up).** `es_cs_abstain_no_tool` was a true mis-authoring
 (named/intended as abstention but authored `RequireAll([reply_customer])`); fixed by converting it to

@@ -364,6 +364,38 @@ mod tests {
         );
     }
 
+    /// `reply_tool_name` invariant across EVERY bundled task — the backstop for the
+    /// "first tool with a `text` property" heuristic the act-task prompt mandate relies on:
+    /// (1) every task has AT MOST ONE text-bearing tool, so "first" is never order-ambiguous;
+    /// (2) an ACT task with a reporter checkpoint (a `text` arg) resolves `reply_tool_name`
+    /// to exactly that tool (so `MustUseTools` names the REAL reporter — `reply` vs
+    /// `reply_customer`); (3) an action-only ACT task resolves to `None` (so the mandate never
+    /// points at a `reply` tool that doesn't exist — the phantom-call foot-gun). A future
+    /// text-bearing action tool or a second reporter fails THIS test at CI, not a live trace.
+    #[test]
+    fn reply_tool_name_classifies_every_task_and_reporters_are_unique() {
+        use crate::inference::eval::agentic::sandbox::EndStateRule;
+        use crate::inference::eval::toolcall::prompt::reply_tool_name;
+        for (id, json) in V2_SCENARIOS {
+            for t in load_v2_collection(json).unwrap() {
+                let text_tools = t
+                    .tools
+                    .iter()
+                    .filter(|x| x.parameters.get("properties").and_then(|p| p.get("text")).is_some())
+                    .count();
+                assert!(text_tools <= 1, "{id}/{}: {text_tools} text-bearing tools — reply_tool_name 'first' is ambiguous", t.id);
+                // Only ACT tasks consult reply_tool_name (abstain uses PlainTextOk).
+                if let EndStateRule::RequireAll(cps) | EndStateRule::RequireSequence(cps) = &t.agentic.as_ref().unwrap().end_state {
+                    let reporter = cps.iter().find(|c| c.args.get("text").is_some()).map(|c| c.tool.as_str());
+                    match reporter {
+                        Some(tool) => assert_eq!(reply_tool_name(&t.tools), Some(tool), "{id}/{}: reporter checkpoint tool must be the detected reply tool", t.id),
+                        None => assert_eq!(reply_tool_name(&t.tools), None, "{id}/{}: action-only ACT task must resolve to NO reply tool (else MustUseTools names a phantom)", t.id),
+                    }
+                }
+            }
+        }
+    }
+
     /// Generalized per-OCCURRENCE tag-threading guard across EVERY bundled task. Loads each
     /// task through the real transpile and asserts each tool's `returns_entity` tag threads
     /// into `entity_tools` per occurrence: an action (`false`) must NOT be a getter (else it

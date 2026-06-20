@@ -164,11 +164,17 @@ if abstain != matches!(t.expected, Expected::NoCall) { return Err(bad(&t.id, "ex
   `parse_rate` (signal, not noise).
 - **What:** `build_system(task)` → `build_system_for(tools, terminal)` (shared with the
   agentic runner, which has a sandbox not a `ToolTask`). `terminal: TerminalGuidance`
-  gates the CLOSING line (G1): `MustUseTools` for act-tasks (`RequireAll`/`RequireSequence`
-  → "deliver your final answer by calling a tool; do not answer in plain text"),
+  gates the CLOSING line (G1): `MustUseTools` for act-tasks (`RequireAll`/`RequireSequence`),
   `PlainTextOk` for abstain (`ExpectAbstainingText`) + single-turn + cliff (keeps the
   plain-text option). Without this, a reporter task that requires a terminal `reply` call
   contradicted the prompt's plain-text invitation and failed a correct prose answer.
+  `MustUseTools` is **reply-tool-AWARE** via `reply_tool_name(tools)` (first tool with a
+  `text` param): a reporter task names the REAL tool ("call the `reply_customer` tool" —
+  fixing the `reply`/`reply_customer` misnomer); an action-only task is told "your tool
+  actions are your final answer" so the mandate never points at a nonexistent `reply` tool
+  (which had induced a phantom `reply` call → schema-error/timeout on ~55 action-only tasks).
+  Guarded by `scenarios.rs::reply_tool_name_classifies_every_task_and_reporters_are_unique`
+  (≤1 text-bearing tool per task; reporter checkpoint ⇒ that tool; action-only ⇒ `None`).
 
 ```rust
 "You can call tools. Available tools:\n{tools_json}\n\n\

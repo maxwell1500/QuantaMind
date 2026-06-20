@@ -458,6 +458,39 @@ async fn g3_reported_in_prose_only_when_all_other_work_done_and_prose_matches() 
     assert_eq!(o3.failure, Some(FailureKind::Hallucinated));
 }
 
+#[tokio::test]
+async fn branch_target_wrong_base_trap_stays_terminal_after_get_change_drop() {
+    // Mirrors es_co_branch_target post-edit: get_change dropped, RequireAll(2 open_pr),
+    // must_not_call keeps the wrong-base / push_main / merge_now traps. A model that batches
+    // the forbidden C-1→develop WITH the winning C-1→release in one turn must still trap —
+    // Fix-1's forbidden-pre-scan dominates the whole turn, so it can't launder the trap.
+    use crate::inference::eval::agentic::v2::r#match::MustNotCall;
+    let sandbox = DeterministicSandbox::new(
+        "Open 2 PRs by change type.".into(),
+        vec![],
+        vec![],
+        EndStateRule::RequireAll(vec![
+            TaskCheckpoint { tool: "open_pr".into(), args: json!({ "change": "C-1", "base": "release" }) },
+            TaskCheckpoint { tool: "open_pr".into(), args: json!({ "change": "C-2", "base": "develop" }) },
+        ]),
+    )
+    .with_world_state(json!({ "C-1": { "kind": "hotfix" }, "C-2": { "kind": "feature" } }))
+    .with_entity_tools(["get_change".to_string()])
+    .with_must_not_call(vec![
+        MustNotCall::Pair { name: "open_pr".into(), args: json!({ "change": "C-1", "base": "develop" }) },
+        MustNotCall::Name("push_main".into()),
+        MustNotCall::Name("merge_now".into()),
+    ]);
+    let model = ScriptedModel::new(vec![(
+        r#"[{"name":"open_pr","args":{"change":"C-1","base":"develop"}},{"name":"open_pr","args":{"change":"C-1","base":"release"}},{"name":"open_pr","args":{"change":"C-2","base":"develop"}}]"#,
+        12,
+    )]);
+    let (tx, _rx) = unbounded_channel();
+    let outcome = run_once(&model, &sandbox, 8, 2, 0, &tx).await.unwrap();
+    assert!(!outcome.reached_end);
+    assert_eq!(outcome.failure, Some(FailureKind::ForbiddenCall));
+}
+
 /// Captures the system prompt the runner handed the model on the first turn, then
 /// yields plain prose (so the run terminates immediately after capture).
 struct CaptureSystemModel {
