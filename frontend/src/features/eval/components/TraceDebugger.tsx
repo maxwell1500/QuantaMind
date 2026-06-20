@@ -65,14 +65,27 @@ const FlagIcon = () => (
 
 const getStepIcon = (kind: string, isError: boolean): React.ReactNode => {
   if (kind === "tool_call") return <GearIcon />;
-  if (kind === "tool_error" || kind === "schema_error" || kind === "malformed_json") return <ErrorIcon />;
+  if (kind === "tool_error" || kind === "schema_error" || kind === "malformed_json" || kind === "turn_timeout") return <ErrorIcon />;
   if (kind === "infinite_loop") return <LoopIcon />;
-  if (kind === "hallucinated_completion") return <StopIcon />;
+  if (kind === "hallucinated_completion" || kind === "forbidden_call") return <StopIcon />;
   if (kind === "end_state_reached") return <FlagIcon />;
   return isError ? <ErrorIcon /> : <CheckIcon />;
 };
 
-const getStepTitle = (kind: string, isError: boolean) => {
+/// Step kinds that are FAILURES — they render red, never the green "success" card.
+/// `turn_timeout` and `forbidden_call` are terminal failures; omitting them painted a
+/// stalled/trapped turn as a green "Model Output Success".
+export const isErrorKind = (kind: string): boolean =>
+  kind === "tool_error" ||
+  kind === "unknown_tool" ||
+  kind === "schema_error" ||
+  kind === "malformed_json" ||
+  kind === "hallucinated_completion" ||
+  kind === "infinite_loop" ||
+  kind === "forbidden_call" ||
+  kind === "turn_timeout";
+
+export const getStepTitle = (kind: string, isError: boolean) => {
   if (kind === "tool_call") return "Model Outputs Tool Call";
   if (kind === "tool_error") return "Injected Tool Fault (Driver B)";
   if (kind === "unknown_tool") return "Unknown Tool Triggered";
@@ -80,8 +93,33 @@ const getStepTitle = (kind: string, isError: boolean) => {
   if (kind === "malformed_json") return "Malformed JSON Generation";
   if (kind === "infinite_loop") return "Execution Loop Capped";
   if (kind === "hallucinated_completion") return "Hallucinated Stop Word";
+  if (kind === "forbidden_call") return "Forbidden Action (Trap Sprung)";
+  if (kind === "turn_timeout") return "Turn Timeout (Stalled Model)";
   if (kind === "end_state_reached") return "End State Verification";
   return isError ? "Execution Failure" : "Model Output Success";
+};
+
+/// The failing-run verdict header, derived from the report's actual `top_error` —
+/// NOT a hardcoded "sequence violation" (which mislabels malformed/hallucinated/
+/// timeout/forbidden runs). The `(Reason: …)` is folded into the title so the header
+/// itself names the real cause.
+export const verdictLabel = (topError: string): { title: string; detail: string } => {
+  switch (topError) {
+    case "malformed_json":
+      return { title: "MALFORMED JSON", detail: "The model emitted broken JSON where a tool call was expected." };
+    case "malformed_schema":
+      return { title: "SCHEMA ERRORS UNRECOVERED", detail: "The model's calls failed schema validation and the recovery budget ran out." };
+    case "hallucinated":
+      return { title: "HALLUCINATED COMPLETION", detail: "The model claimed completion without satisfying the required checkpoints." };
+    case "infinite_loop":
+      return { title: "STEP BUDGET EXCEEDED", detail: "The model never reached the end state within the step cap (looping)." };
+    case "forbidden_call":
+      return { title: "FORBIDDEN ACTION", detail: "The model invoked a must_not_call trap — terminal the moment it fired." };
+    case "turn_timeout":
+      return { title: "TURN TIMEOUT", detail: "A model turn exceeded the per-step wall-clock budget (a stalled model)." };
+    default:
+      return { title: "EVALUATION FAILED", detail: "The run did not reach the expected end state on every iteration." };
+  }
 };
 
 const getStepDescription = (kind: string, raw_output: string) => {
@@ -364,13 +402,7 @@ export function TraceDebugger({
                 ) : (
                   <div style={timelineContainer}>
                     {steps.map((s, index) => {
-                      const isError =
-                        s.kind === "tool_error" ||
-                        s.kind === "unknown_tool" ||
-                        s.kind === "schema_error" ||
-                        s.kind === "malformed_json" ||
-                        s.kind === "hallucinated_completion" ||
-                        s.kind === "infinite_loop";
+                      const isError = isErrorKind(s.kind);
                       
                       const icon = getStepIcon(s.kind, isError);
                       const title = getStepTitle(s.kind, isError);
@@ -451,14 +483,9 @@ export function TraceDebugger({
                           <ErrorIcon />
                         </span>
                         <div>
-                          <div style={{ fontWeight: 700, fontSize: 14, color: "#991b1b" }}>VERDICT: SEQUENCE VIOLATION</div>
+                          <div style={{ fontWeight: 700, fontSize: 14, color: "#991b1b" }}>VERDICT: {verdictLabel(outcome.report.top_error).title}</div>
                           <div style={{ fontSize: 12, opacity: 0.9, marginTop: 2, color: "#991b1b" }}>
-                            Sandbox sequence rejected or budget exhausted.
-                            {outcome.report.top_error !== "none" && (
-                              <span style={{ fontWeight: 700, color: "#991b1b", marginLeft: 4 }}>
-                                (Reason: {outcome.report.top_error})
-                              </span>
-                            )}
+                            {verdictLabel(outcome.report.top_error).detail}
                           </div>
                         </div>
                       </div>

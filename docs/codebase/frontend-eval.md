@@ -123,6 +123,11 @@ Reads `outcomeByKey[cellKey(model,taskId)]` and `stepsByKey[...]` from
 (system pkg + user prompt) → Stream → `VerifyPhase` (pass/fail diagnosis), plus
 an **inline agentic step timeline** for multi-step outcomes. Uses `traceDiag`
 (from `verdict.ts`) for the failure explanation. Tabs + collapse toggle.
+Exposes pure helpers `isErrorKind` / `getStepTitle` / `verdictLabel`: a step's
+`kind` decides red-vs-green (`turn_timeout` + `forbidden_call` are failures, never
+a green "success" card), and the failing-run header reads the report's actual
+`top_error` (Malformed JSON / Hallucinated / Turn Timeout / Forbidden / Step Budget)
+instead of a hardcoded "sequence violation".
 
 ### ToolCallPanel / ContextCliffPanel / CpuFallbackBanner / RunRecoveryDialog
 
