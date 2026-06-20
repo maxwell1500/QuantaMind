@@ -21,6 +21,14 @@ describe("BackendSetupGuide", () => {
     expect(screen.getByTestId("setup-engine-whisper")).toBeInTheDocument();
   });
 
+  it("shows the venv setup commands for MLX on Apple Silicon", () => {
+    setAppleSilicon(true);
+    render(<BackendSetupGuide />);
+    expect(screen.getByText("python3 -m venv ~/mlx-env")).toBeInTheDocument();
+    expect(screen.getByText("source ~/mlx-env/bin/activate")).toBeInTheDocument();
+    expect(screen.getByText("pip install -U mlx-lm")).toBeInTheDocument();
+  });
+
   it("excludes the Apple-only MLX LLM card off Apple Silicon, keeps whisper.cpp", () => {
     setAppleSilicon(false);
     render(<BackendSetupGuide />);

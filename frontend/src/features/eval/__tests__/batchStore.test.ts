@@ -58,6 +58,29 @@ describe("batchStore (rAF-buffered)", () => {
     expect(get().outcomeByKey[cellKey("m1", "a1")]?.kind).toBe("agentic");
   });
 
+  it("tracks the live task/run/step so the UI can show motion during a run", () => {
+    get().startRun();
+    expect(get().live.startedAt).not.toBeNull(); // elapsed clock has a baseline
+
+    const started: BatchProgress = { phase: "started", model: "m1", task_id: "a1", index: 0, total: 3, category: "agentic" };
+    get().ingestProgress(started);
+    get().ingestStep({ model: "m1", task_id: "a1", run_index: 2, step_index: 4, raw_output: "x", injection: null, kind: "tool_call" });
+    flushBatchBufferForTests();
+
+    expect(get().live.taskId).toBe("a1");
+    expect(get().live.category).toBe("agentic");
+    expect(get().live.runIndex).toBe(2); // Pass^k run 3/k
+    expect(get().live.stepIndex).toBe(4); // turn 5
+    expect(get().live.stepKind).toBe("tool_call");
+
+    // A new task resets the per-task turn counters (no bleed from the previous task).
+    get().ingestProgress({ phase: "started", model: "m1", task_id: "a2", index: 1, total: 3, category: "single" });
+    flushBatchBufferForTests();
+    expect(get().live.taskId).toBe("a2");
+    expect(get().live.runIndex).toBeNull();
+    expect(get().live.stepIndex).toBeNull();
+  });
+
   it("stores the final report verbatim on complete, preserving null metrics", () => {
     get().startRun();
     const report: BatchReport = {
