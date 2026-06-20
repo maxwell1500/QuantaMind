@@ -402,6 +402,10 @@ where
             }
         }
         let turn = make_turn(target);
+        // Warm the model resident before its first SCORED task, so cold-load latency
+        // (weights into VRAM) isn't charged to that task as a TurnTimeout. Best-effort:
+        // a warm-up error isn't fatal — the first real task will surface a genuine fault.
+        let _ = turn.warm_up().await;
         let mut single_tasks: Vec<ToolTask> = Vec::new();
         let mut single_results: Vec<TaskResult> = Vec::new();
         let mut agentic_reports: Vec<AgenticReport> = Vec::new();

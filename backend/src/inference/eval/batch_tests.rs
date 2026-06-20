@@ -379,3 +379,43 @@ fn pass_k_is_the_fraction_of_fully_passing_tasks() {
     // Both tasks clean → 1.0.
     assert_eq!(agg_agentic(&[task_report(5, 5), task_report(5, 5)]).pass_k(), Some(1.0));
 }
+
+/// A model that records each `warm_up` and `run` event with its model name, proving
+/// the batch warms a model resident BEFORE running any of its scored tasks.
+struct WarmTrackModel {
+    log: Arc<Mutex<Vec<String>>>,
+    model: String,
+}
+
+impl ModelTurn for WarmTrackModel {
+    async fn run(&self, _s: &GenerateSpec) -> AppResult<(String, GenerateStats)> {
+        self.log.lock().unwrap().push(format!("run:{}", self.model));
+        Ok((r#"{"name":"ping","args":{}}"#.into(), GenerateStats { eval_count: Some(5), ..Default::default() }))
+    }
+    async fn warm_up(&self) -> AppResult<()> {
+        self.log.lock().unwrap().push(format!("warm:{}", self.model));
+        Ok(())
+    }
+}
+
+#[tokio::test]
+async fn warms_up_each_model_once_before_its_first_scored_task() {
+    let log = Arc::new(Mutex::new(Vec::<String>::new()));
+    let l2 = log.clone();
+    let make = move |t: &ModelTarget| WarmTrackModel { log: l2.clone(), model: t.model.clone() };
+    let targets = vec![target("m1"), target("m2")];
+    let tasks: Vec<ToolTask> = (0..3).map(|i| single_task(&format!("t{i}"))).collect();
+    let sink = Arc::new(CountingSink::default());
+    run_batch("c", &targets, &tasks, CancellationToken::new(), sink, make).await.unwrap();
+
+    let ev = log.lock().unwrap().clone();
+    // Warmed exactly once per model.
+    assert_eq!(ev.iter().filter(|e| e.as_str() == "warm:m1").count(), 1);
+    assert_eq!(ev.iter().filter(|e| e.as_str() == "warm:m2").count(), 1);
+    // Each model's warm precedes every one of its runs (cold-load isn't charged to t0).
+    for m in ["m1", "m2"] {
+        let warm = ev.iter().position(|e| *e == format!("warm:{m}")).unwrap();
+        let first_run = ev.iter().position(|e| *e == format!("run:{m}")).unwrap();
+        assert!(warm < first_run, "{m}: warm_up must precede the first scored run");
+    }
+}

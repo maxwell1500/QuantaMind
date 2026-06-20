@@ -319,10 +319,17 @@ FaultInjection::TransientError { status_code, clears_after } => {
 - **Why:** The runner depends on the trait, not a backend, so it's unit-testable
   with a scripted model; the native Ollama path translates structured `tool_calls`
   back into canonical `{name,args}` JSON so sandbox/scoring stay byte-identical.
-- **What:** `trait ModelTurn { async fn run(&self, &GenerateSpec) -> AppResult<(String, GenerateStats)> }`;
+- **What:** `trait ModelTurn { async fn run(&self, &GenerateSpec) -> …; async fn warm_up(&self) -> AppResult<()> { Ok(()) } }`;
   `BackendTurn{backend,endpoint,model,cancel,options,keep_alive}` (dispatch by
   `BackendKind`); `NativeOllamaTurn{endpoint,model,tools,options}` (`/api/chat` +
   `synthesize_calls`).
+- **Warm-up:** `run_batch_resumable` calls `turn.warm_up()` once per model before its
+  first scored task. `BackendTurn` issues a 1-token generate (honoring `keep_alive`) to
+  load the weights resident, so cold-load latency isn't charged to the first task as a
+  `TurnTimeout` (which would penalize every model's first task). Default is a no-op
+  (scripted models / backends that can't warm just run cold, as before). Note: warm-up
+  loads *weights* — a runtime that allocates more on first *large* context (cliff probe)
+  could still pay that on the first rung; out of scope here.
 
 ### File: `endstate.rs`
 - **Responsibility:** Checkpoint matching + Driver-D semantic schema validation.
