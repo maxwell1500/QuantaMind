@@ -22,6 +22,7 @@ export const StepKindSchema = z.enum([
   "infinite_loop",
   "forbidden_call",
   "turn_timeout",
+  "reported_in_prose",
 ]);
 export type StepKind = z.infer<typeof StepKindSchema>;
 
@@ -42,6 +43,7 @@ export const TopErrorSchema = z.enum([
   "malformed_schema",
   "forbidden_call",
   "turn_timeout",
+  "reported_in_prose",
 ]);
 export type TopError = z.infer<typeof TopErrorSchema>;
 
@@ -56,6 +58,8 @@ export const FailureTrackerSchema = z.object({
   unknown_tool_calls: z.number().int().optional(),
   forbidden_calls: z.number().int().optional(),
   turn_timeouts: z.number().int().optional(),
+  // G3: content-correct, wrong-channel (answered in prose instead of the reporter tool).
+  reported_in_prose_calls: z.number().int().optional(),
 });
 export type FailureTracker = z.infer<typeof FailureTrackerSchema>;
 

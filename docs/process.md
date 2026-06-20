@@ -766,6 +766,31 @@ per-task judgment, same as the Medium/Hard worklist above. **Action:** audit EVE
 same shape (prompt discloses a fact a checkpoint then forces a getter to re-fetch) and fold the hits
 into the retrieval-vs-derivation worklist — Easy is no longer exempt.
 
+### Grader-bug fixes landed (G1/G2/G3) + the abstain-pattern audit
+
+The Qwen run (clean JSON, no format noise) surfaced grader bugs failing capable models. Fixed:
+- **G1 (prompt↔grader contradiction):** the system prompt's closing line is now end_state-gated
+  (`build_system_for(tools, TerminalGuidance)`) — act-tasks mandate a tool, abstain-tasks keep plain
+  text. The 9 reporter tasks (terminal `reply`/`reply_customer`) no longer fail a correct prose answer.
+- **G2 (ceremony getter):** dropped the redundant `read_file` checkpoint from `es_co_run_failing_test`
+  (the failing-test name comes from `run_tests`; `read_file` could only ack a wildcard path) and
+  softened its prompt. NO broad getter-resolvability guard — verified it false-fires on Easy derivation
+  getters (`chem_lookup`/`convert_units`/`convert_temp`/`format_value` ack by design; the answer is
+  *derived*, not retrieved).
+- **G3 (honest label):** `reported_in_prose` failure mode — a no-call yield where every other
+  checkpoint is satisfied and the prose matches the lone reporter checkpoint's text glob (the
+  "exactly one unsatisfied" guard stops a weak glob like `*3*` relabeling a real hallucination).
+
+**OPEN — abstain-pattern audit (follow-up).** `es_cs_abstain_no_tool` was a true mis-authoring
+(named/intended as abstention but authored `RequireAll([reply_customer])`); fixed by converting it to
+`ExpectAbstainingText`. A scan for the general shape (name/prompt implies abstention/no-action but
+end_state is `RequireAll`) found other candidates that are **legitimate decline-VIA-action** — they
+have a dedicated decline tool: `es_ec_price_match`→`decline_match`, `md_lg_data_request_by_law`→
+`refuse`, `hd_se_flash_sale_oversell`→`offer_backorder`, `hd_fi_margin_call_cascade`→`log_decision`.
+**Do NOT "fix" these** — a decline routed through a real action tool is correct RequireAll. Only a
+name-implies-abstain task with NO decline tool (so the only way to "pass" is an unrelated reply) is a
+mis-authoring like `abstain_no_tool` was.
+
 ### Additional STT engines (faster-whisper)
 
 **Removed:** `mlx-audio` was trialed as a second STT engine but removed — its

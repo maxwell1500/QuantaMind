@@ -162,8 +162,13 @@ if abstain != matches!(t.expected, Expected::NoCall) { return Err(bad(&t.id, "ex
   "respond with ONLY a JSON object/array").
 - **Why:** Explicit instruction so a weak model's format failures surface as a low
   `parse_rate` (signal, not noise).
-- **What:** `build_system(task)` → `build_system_for(tools)` (shared with the
-  agentic runner, which has a sandbox not a `ToolTask`).
+- **What:** `build_system(task)` → `build_system_for(tools, terminal)` (shared with the
+  agentic runner, which has a sandbox not a `ToolTask`). `terminal: TerminalGuidance`
+  gates the CLOSING line (G1): `MustUseTools` for act-tasks (`RequireAll`/`RequireSequence`
+  → "deliver your final answer by calling a tool; do not answer in plain text"),
+  `PlainTextOk` for abstain (`ExpectAbstainingText`) + single-turn + cliff (keeps the
+  plain-text option). Without this, a reporter task that requires a terminal `reply` call
+  contradicted the prompt's plain-text invitation and failed a correct prose answer.
 
 ```rust
 "You can call tools. Available tools:\n{tools_json}\n\n\
@@ -343,8 +348,12 @@ FaultInjection::TransientError { status_code, clears_after } => {
 ### File: `step.rs`
 - **Responsibility:** The streamed per-turn event type.
 - **What:** `StepKind::{ToolCall, ToolError, UnknownTool, SchemaError, MalformedJson,
-  HallucinatedCompletion, EndStateReached, InfiniteLoop}`;
+  HallucinatedCompletion, EndStateReached, InfiniteLoop, ForbiddenCall, TurnTimeout,
+  ReportedInProse}`;
   `TrajectoryStep{run_index, step_index, raw_output, injection: Option<String>, kind}`.
+  `ReportedInProse` (G3) = did all the work but answered in plain text instead of the
+  required reporter tool (content-correct, wrong-channel); the UI renders it TEAL — the
+  mildest failure, distinct from a hard red fail.
 
 ### File: `report.rs`
 - **Responsibility:** Fold per-run outcomes into the Pass^k `AgenticReport`;
@@ -354,8 +363,11 @@ FaultInjection::TransientError { status_code, clears_after } => {
   are `None`, never 0.
 - **What:** `FailureKind`, `RunOutcome` (`success`/`failure`/`with_schema`),
   `FailureTracker{infinite_loop_hits, hallucinated_completions, malformed_json_calls,
-  schema_unrecovered_calls, unknown_tool_calls, forbidden_calls, turn_timeouts}`
-  (`top() -> TopError`, `merge(&Self)` — the centralized fold that never drops a field), `TopError`,
+  schema_unrecovered_calls, unknown_tool_calls, forbidden_calls, turn_timeouts,
+  reported_in_prose_calls}`
+  (`top() -> TopError`, `merge(&Self)` — the centralized fold that never drops a field;
+  `reported_in_prose` ranks LEAST-severe in `top()`, so count-first surfaces it as a
+  capable model's headline while a genuine failure dominates on a tie), `TopError`,
   `AgenticReport{passes, total_runs, failures, avg_output_tokens_success, avg_steps,
   top_error, schema_resilience}` (`from_outcomes`).
 

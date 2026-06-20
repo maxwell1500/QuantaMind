@@ -420,6 +420,79 @@ async fn every_run_erroring_surfaces_the_error_for_resume() {
 
 // --- Phase 9-v2: RequireAll set-matching + forbidden traps -----------------
 
+#[tokio::test]
+async fn g3_reported_in_prose_only_when_all_other_work_done_and_prose_matches() {
+    // A reporter task: do run_lint, then reply{text:*3*}. The reporter is the terminal step.
+    let sandbox = || {
+        DeterministicSandbox::new(
+            "Lint api/routes.py and report the count.".into(),
+            vec![],
+            vec![MockResponse {
+                call: Call { name: "run_lint".into(), args: json!({ "path": "x" }) },
+                response: r#"{"errors":3}"#.into(),
+            }],
+            EndStateRule::RequireAll(vec![
+                TaskCheckpoint { tool: "run_lint".into(), args: json!({ "path": "x" }) },
+                TaskCheckpoint { tool: "reply".into(), args: json!({ "text": "*3*" }) },
+            ]),
+        )
+    };
+    let lint = r#"{"name":"run_lint","args":{"path":"x"}}"#;
+    let (tx, _rx) = unbounded_channel();
+
+    // (1) Did the work, only the reporter is left, prose matches → ReportedInProse.
+    let m1 = ScriptedModel::new(vec![(lint, 5), ("The linter found 3 errors.", 5)]);
+    let o1 = run_once(&m1, &sandbox(), 5, 2, 0, &tx).await.unwrap();
+    assert!(!o1.reached_end);
+    assert_eq!(o1.failure, Some(FailureKind::ReportedInProse));
+
+    // (2) Did the work but prose lacks the answer → genuine Hallucinated.
+    let m2 = ScriptedModel::new(vec![(lint, 5), ("The linter ran without issues.", 5)]);
+    let o2 = run_once(&m2, &sandbox(), 5, 2, 0, &tx).await.unwrap();
+    assert_eq!(o2.failure, Some(FailureKind::Hallucinated));
+
+    // (3) Adversarial weak glob: SKIPPED run_lint, prose has the token "3" → still
+    // Hallucinated (two checkpoints unsatisfied, so the "exactly one" guard bites).
+    let m3 = ScriptedModel::new(vec![("I completed 3 steps and finished.", 5)]);
+    let o3 = run_once(&m3, &sandbox(), 5, 2, 0, &tx).await.unwrap();
+    assert_eq!(o3.failure, Some(FailureKind::Hallucinated));
+}
+
+/// Captures the system prompt the runner handed the model on the first turn, then
+/// yields plain prose (so the run terminates immediately after capture).
+struct CaptureSystemModel {
+    system: std::sync::Mutex<Option<String>>,
+}
+impl ModelTurn for CaptureSystemModel {
+    async fn run(&self, spec: &GenerateSpec) -> AppResult<(String, GenerateStats)> {
+        *self.system.lock().unwrap() = spec.system.clone();
+        Ok(("answered in plain prose".into(), GenerateStats { eval_count: Some(1), ..Default::default() }))
+    }
+}
+
+#[tokio::test]
+async fn g1_system_prompt_mandates_tools_for_act_tasks_and_allows_prose_for_abstain() {
+    // Act-task (RequireAll) → the prompt must FORBID a plain-text final answer (the G1 fix
+    // for the prompt↔grader contradiction).
+    let act = require_all_sandbox();
+    let m = CaptureSystemModel { system: std::sync::Mutex::new(None) };
+    let (tx, _rx) = unbounded_channel();
+    let _ = run_once(&m, &act, 2, 2, 0, &tx).await.unwrap();
+    let sys = m.system.lock().unwrap().clone().unwrap();
+    assert!(sys.contains("Do not answer in plain text"), "act-task must mandate tools: {sys}");
+    assert!(!sys.contains("just answer the user in plain text"));
+
+    // Abstain-task (ExpectAbstainingText) → the prompt KEEPS the plain-text option (prose is
+    // the correct output; a decline must not be told to call a tool).
+    let abstain = DeterministicSandbox::new("p".into(), vec![], vec![], EndStateRule::ExpectAbstainingText);
+    let m2 = CaptureSystemModel { system: std::sync::Mutex::new(None) };
+    let (tx2, _rx2) = unbounded_channel();
+    let _ = run_once(&m2, &abstain, 2, 2, 0, &tx2).await.unwrap();
+    let sys2 = m2.system.lock().unwrap().clone().unwrap();
+    assert!(sys2.contains("just answer the user in plain text"), "abstain-task keeps plain text: {sys2}");
+    assert!(!sys2.contains("Do not answer in plain text"));
+}
+
 fn require_all_sandbox() -> DeterministicSandbox {
     DeterministicSandbox::new(
         "Handle entity A and entity B in any order.".into(),

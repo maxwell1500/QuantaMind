@@ -5,7 +5,7 @@ use crate::inference::eval::agentic::model_turn::ModelTurn;
 use crate::inference::eval::readiness::types::CliffStatus;
 use crate::inference::eval::toolcall::eval::{aggregate, TaskResult};
 use crate::inference::eval::toolcall::parse::extract_calls;
-use crate::inference::eval::toolcall::prompt::build_system_for;
+use crate::inference::eval::toolcall::prompt::{build_system_for, TerminalGuidance};
 use crate::inference::eval::toolcall::score::{score, verdict_passed, Verdict};
 use crate::inference::eval::toolcall::tasks::ToolTask;
 use crate::inference::generate::generate_options::GenerateOptions;
@@ -244,7 +244,7 @@ async fn run_position<M: ModelTurn>(
         } else {
             inject_at_depth(padding, &task.prompt, depth)
         };
-        let system = build_system_for(&task.tools);
+        let system = build_system_for(&task.tools, TerminalGuidance::PlainTextOk);
         let spec = GenerateSpec {
             model: model.to_string(),
             prompt,

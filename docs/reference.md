@@ -380,6 +380,16 @@ an agent — entirely offline and deterministic. Read the scores with these cave
   is a true capability signal, not a harness artifact. (A tolerant pre-parser that
   repairs non-standard envelopes and reports format-compliance separately is a
   possible future feature — intentionally not done, so scores aren't inflated.)
+- **Act-vs-abstain closing instruction (G1).** The closing line of the system prompt
+  is gated on the task's end_state, NOT fixed. An ACT task (`RequireAll` /
+  `RequireSequence`) gets *"Deliver every result — including your final answer — by
+  calling a tool … Do not answer in plain text"*; an ABSTAIN task
+  (`ExpectAbstainingText`) keeps *"If no tool is needed, just answer in plain text."*
+  This resolves a prior contradiction: tasks that require a terminal `reply` tool
+  used to invite plain text, so a correct model that reported its answer in prose
+  failed as a hallucination. A prose answer to an act-task is now scored
+  `reported_in_prose` (content-correct, wrong-channel), distinct from a true
+  hallucination — see the failure taxonomy.
 - **Single-turn, greedy (temp 0), ~13-task fixture.** No multi-turn / agent
   loops; greedy decoding makes scores reproducible and comparable across quants
   (and sidesteps MLX's missing seed). The fixture is small and curated —

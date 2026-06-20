@@ -3,10 +3,11 @@ use crate::inference::eval::agentic::context::{tool_result_line, Conversation};
 use crate::inference::eval::agentic::scoring::endstate;
 use crate::inference::eval::agentic::model_turn::ModelTurn;
 use crate::inference::eval::agentic::scoring::report::{AgenticReport, FailureKind, RunOutcome};
-use crate::inference::eval::agentic::sandbox::{DeterministicSandbox, EndStateRule, SandboxState};
+use crate::inference::eval::agentic::sandbox::{DeterministicSandbox, EndStateRule, SandboxState, TaskCheckpoint};
+use crate::inference::eval::agentic::v2::r#match::text_matches;
 use crate::inference::eval::agentic::step::{StepKind, TrajectoryStep};
 use crate::inference::eval::toolcall::parse::{extract_calls, looks_like_broken_json};
-use crate::inference::eval::toolcall::prompt::build_system_for;
+use crate::inference::eval::toolcall::prompt::{build_system_for, TerminalGuidance};
 use crate::inference::generate::generate_options::GenerateOptions;
 use crate::inference::generate::generate_spec::GenerateSpec;
 use tokio::sync::mpsc::UnboundedSender;
@@ -45,6 +46,26 @@ fn summarize_turn(lines: &[(StepKind, String)]) -> (StepKind, Option<String>) {
         [(kind, _), ..] if lines.iter().all(|(k, _)| k == kind) => (kind.clone(), join_injection(lines)),
         _ => (StepKind::ToolCall, join_injection(lines)),
     }
+}
+
+/// A checkpoint's reporter text glob, if it is a reporter (carries a `text` string arg).
+fn reporter_text(cp: &TaskCheckpoint) -> Option<&str> {
+    cp.args.get("text").and_then(|v| v.as_str())
+}
+
+/// G3: is a no-call yield a content-correct, wrong-channel answer rather than a true
+/// hallucination? True ONLY when EXACTLY ONE checkpoint is unsatisfied, that checkpoint is
+/// a reporter (a `text` glob), and the model's prose matches it. The "exactly one" guard is
+/// load-bearing: a weak glob like `*3*` must not relabel a model that SKIPPED the work and
+/// happened to emit the answer token — requiring every other checkpoint satisfied makes the
+/// prose match evidence the model did the task, not a coincidence.
+fn reported_in_prose(end_state: &EndStateRule, satisfied: &[bool], next_cp: usize, raw: &str) -> bool {
+    let unsatisfied: Vec<&TaskCheckpoint> = match end_state {
+        EndStateRule::RequireAll(cps) => cps.iter().zip(satisfied).filter(|(_, &s)| !s).map(|(c, _)| c).collect(),
+        EndStateRule::RequireSequence(cps) => cps.get(next_cp..).unwrap_or(&[]).iter().collect(),
+        EndStateRule::ExpectAbstainingText => return false,
+    };
+    matches!(unsatisfied.as_slice(), [cp] if reporter_text(cp).is_some_and(|p| text_matches(p, raw)))
 }
 
 /// Pass^k inputs: how many independent runs (default 5), the per-run step cap, and
@@ -165,7 +186,15 @@ async fn run_once_inner<M: ModelTurn>(
     run_index: u32,
     tx: &UnboundedSender<TrajectoryStep>,
 ) -> AppResult<RunOutcome> {
-    let system = build_system_for(&sandbox.tools);
+    // Act-tasks must route every result — including the final report — through a tool;
+    // abstain-tasks keep the plain-text option (prose IS the correct output there). Gating
+    // here is the G1 fix for the prompt↔grader contradiction (a correct prose answer to a
+    // RequireAll task otherwise yields → HallucinatedCompletion).
+    let terminal = match &sandbox.end_state {
+        EndStateRule::ExpectAbstainingText => TerminalGuidance::PlainTextOk,
+        EndStateRule::RequireAll(_) | EndStateRule::RequireSequence(_) => TerminalGuidance::MustUseTools,
+    };
+    let system = build_system_for(&sandbox.tools, terminal);
     let mut convo = Conversation::new(sandbox.initial_prompt.clone());
     let mut output_tokens = 0u32;
     let mut next_cp = 0usize; // progress through a RequireSequence end-state
@@ -230,6 +259,10 @@ async fn run_once_inner<M: ModelTurn>(
                 EndStateRule::RequireSequence(_) | EndStateRule::RequireAll(_) => {
                     let (kind, failure) = if looks_like_broken_json(&raw) {
                         (StepKind::MalformedJson, FailureKind::Malformed)
+                    } else if reported_in_prose(&sandbox.end_state, &satisfied, next_cp, &raw) {
+                        // G3: did ALL the work, only failed to route the final answer through
+                        // the reporter tool — content-correct, wrong-channel. NOT a hallucination.
+                        (StepKind::ReportedInProse, FailureKind::ReportedInProse)
                     } else {
                         (StepKind::HallucinatedCompletion, FailureKind::Hallucinated)
                     };

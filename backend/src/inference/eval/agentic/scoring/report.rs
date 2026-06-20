@@ -19,6 +19,11 @@ pub enum FailureKind {
     /// Phase 9-v2: a model turn exceeded the per-step wall-clock budget (a wedged /
     /// stalled model). Terminal — an agent that hangs isn't production-ready.
     TurnTimeout,
+    /// G3: the model did ALL the required work but reported the answer in plain text
+    /// instead of calling the required reporter tool — content correct, channel wrong.
+    /// A failure (the task didn't pass), but the MILDEST: it's distinct from a true
+    /// `Hallucinated` so a capable-but-wrong-channel model isn't mislabeled.
+    ReportedInProse,
 }
 
 /// The result of ONE agentic attempt — the unit the Pass^k loop folds into an
@@ -104,6 +109,11 @@ pub struct FailureTracker {
     /// failure mode. `#[serde(default)]` for back-compat.
     #[serde(default)]
     pub turn_timeouts: u32,
+    /// G3: runs that did all the work but reported in plain text instead of the required
+    /// tool (content-correct, wrong-channel). The mildest failure mode. `#[serde(default)]`
+    /// so reports persisted before G3 load as 0.
+    #[serde(default)]
+    pub reported_in_prose_calls: u32,
 }
 
 impl FailureTracker {
@@ -115,6 +125,7 @@ impl FailureTracker {
             FailureKind::MalformedSchema => self.schema_unrecovered_calls += 1,
             FailureKind::ForbiddenCall => self.forbidden_calls += 1,
             FailureKind::TurnTimeout => self.turn_timeouts += 1,
+            FailureKind::ReportedInProse => self.reported_in_prose_calls += 1,
         }
     }
 
@@ -128,11 +139,15 @@ impl FailureTracker {
         self.unknown_tool_calls += o.unknown_tool_calls;
         self.forbidden_calls += o.forbidden_calls;
         self.turn_timeouts += o.turn_timeouts;
+        self.reported_in_prose_calls += o.reported_in_prose_calls;
     }
 
     /// The most common failure mode (argmax). Ties resolve by severity order:
     /// forbidden-call > turn-timeout > infinite-loop > hallucinated >
-    /// malformed-schema > malformed-json. `None` when there were no failures at all.
+    /// malformed-schema > malformed-json > reported-in-prose. Count wins first (a model
+    /// that MOSTLY reports-in-prose still headlines it — the G3 honesty payload), but on a
+    /// tie `ReportedInProse` is LAST so any genuinely worse failure dominates the verdict.
+    /// `None` when there were no failures at all.
     pub(crate) fn top(&self) -> TopError {
         [
             (self.forbidden_calls, TopError::ForbiddenCall),
@@ -141,6 +156,7 @@ impl FailureTracker {
             (self.hallucinated_completions, TopError::Hallucinated),
             (self.schema_unrecovered_calls, TopError::MalformedSchema),
             (self.malformed_json_calls, TopError::MalformedJson),
+            (self.reported_in_prose_calls, TopError::ReportedInProse),
         ]
         .into_iter()
         .fold((0u32, TopError::None), |best, (n, e)| if n > best.0 { (n, e) } else { best })
@@ -159,6 +175,7 @@ pub enum TopError {
     MalformedSchema,
     ForbiddenCall,
     TurnTimeout,
+    ReportedInProse,
 }
 
 /// The Pass^k payload: how many of `total_runs` reached the end state, the
@@ -250,6 +267,20 @@ mod tests {
     #[test]
     fn top_error_is_none_with_no_failures() {
         assert_eq!(FailureTracker::default().top(), TopError::None);
+    }
+
+    #[test]
+    fn reported_in_prose_is_least_severe_but_count_first_still_headlines_it() {
+        // Count wins: a model that MOSTLY reports-in-prose headlines it (the G3 payload).
+        let mut f = FailureTracker::default();
+        f.reported_in_prose_calls = 3;
+        f.hallucinated_completions = 1;
+        assert_eq!(f.top(), TopError::ReportedInProse);
+        // On a TIE, the genuinely worse failure dominates (ReportedInProse ranks last).
+        let mut g = FailureTracker::default();
+        g.reported_in_prose_calls = 2;
+        g.hallucinated_completions = 2;
+        assert_eq!(g.top(), TopError::Hallucinated);
     }
 
     #[test]
