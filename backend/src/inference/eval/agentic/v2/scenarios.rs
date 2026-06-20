@@ -223,7 +223,9 @@ mod tests {
     /// facts. Medium+ retrieval-chain reachability is a tracked follow-up — those tasks
     /// mix retrieved facts with REASONED conclusions (e.g. the chosen statistical method
     /// in the extreme clinical tasks is derived, not fetched), which this string-needle
-    /// heuristic can't distinguish without per-task authoring judgment.
+    /// heuristic can't distinguish without per-task authoring judgment. The follow-up,
+    /// its worklist, and the retrieval-vs-derivation principle are recorded in
+    /// `docs/process.md#future-considerations` ("Medium/Hard answer-key reachability").
     #[test]
     fn every_required_easy_world_state_fact_is_tool_reachable() {
         use crate::inference::eval::agentic::v2::world_state::derive_response;
