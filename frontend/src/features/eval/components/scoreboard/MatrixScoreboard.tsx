@@ -5,6 +5,7 @@ import { useBatchStore, cellKey } from "../../state/batchStore";
 import { modelLabel } from "../../../../shared/models/modelLabel";
 import { InfoButton } from "../../../../shared/ui/InfoButton";
 import { Spinner } from "../../../../shared/ui/Spinner";
+import { RunProgress } from "./RunProgress";
 import { TOOL_HELP, metricTitle } from "../../help";
 
 interface MatrixScoreboardProps {
@@ -23,6 +24,7 @@ interface MatrixScoreboardProps {
 export function MatrixScoreboard({
   model,
   k,
+  maxSteps,
   tierLabel,
   decoys,
   focusedTaskId,
@@ -33,6 +35,7 @@ export function MatrixScoreboard({
   const list = useInstalledModelsStore((s) => s.list);
   const running = useBatchStore((s) => s.running);
   const progress = useBatchStore((s) => s.progress);
+  const live = useBatchStore((s) => s.live);
   const outcomeByKey = useBatchStore((s) => s.outcomeByKey);
   const error = useBatchStore((s) => s.error);
 
@@ -79,8 +82,6 @@ export function MatrixScoreboard({
   const passRate = totalRuns > 0 ? Math.round((totalPasses / totalRuns) * 100) : 0;
   const avgStepsVal = stepsCount > 0 ? (totalSteps / stepsCount).toFixed(1) : "—";
   const effortVal = tokensCount > 0 ? Math.round(totalTokens / tokensCount).toLocaleString() : "—";
-
-  const pct = progress.total > 0 ? Math.round((progress.done / progress.total) * 100) : 0;
 
   return (
     <div
@@ -133,17 +134,10 @@ export function MatrixScoreboard({
         </div>
       )}
 
-      {/* Progress Bar (Visible during batch evaluation) */}
-      {running && (
-        <div style={{ padding: "10px 16px", borderBottom: "1px solid #e2e8f0" }} data-testid="scoreboard-progress">
-          <div style={{ fontSize: 11, color: "#64748b", fontFamily: "Inter,sans-serif", marginBottom: 6 }}>
-            Running batch evaluation… {progress.done}/{progress.total || "?"}
-          </div>
-          <div style={{ height: 4, background: "#f1f5f9", borderRadius: 2 }}>
-            <div style={{ height: 4, width: `${pct}%`, background: "#2563eb", borderRadius: 2, transition: "width 120ms" }} />
-          </div>
-        </div>
-      )}
+      {/* Live progress (visible during a run): task position, current Pass^k run +
+          turn, the model's last action, and an elapsed clock — so even a stalled
+          looping run visibly advances instead of looking hung. */}
+      {running && <RunProgress done={progress.done} total={progress.total} live={live} k={k} maxSteps={maxSteps} />}
 
       {/* Inner Box Content */}
       <div style={{ padding: 16 }}>
