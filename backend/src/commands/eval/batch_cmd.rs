@@ -118,6 +118,19 @@ fn apply_overrides(
     tasks
 }
 
+/// Floor (seconds) the eval batch pins the model resident for. An agentic task fires
+/// ~k × max_steps sequential generate calls; with `keep_alive` unset Ollama's default
+/// 5-min idle unload can fire across an inter-task/inter-turn gap, evicting the model
+/// AND its prefix-KV cache mid-run (a cold reload then charges as a stall). This floor
+/// keeps `warm_up()` (which honors the same field) pinned across the whole batch.
+const AGENTIC_KEEP_ALIVE_SECS: i32 = 600;
+
+/// The batch `keep_alive`: an explicit UI value (incl. `-1` = forever, or a smaller
+/// override) always wins; otherwise apply the resident floor so the cache survives.
+fn agentic_keep_alive(configured: Option<i32>) -> Option<i32> {
+    configured.or(Some(AGENTIC_KEEP_ALIVE_SECS))
+}
+
 /// The single streaming eval command: validate, write the resumable job-queue
 /// header, then run the prompt (+ optional native) passes as a crash-resumable
 /// queue with the VRAM-isolation gate. Crosses the IPC boundary once.
@@ -188,7 +201,7 @@ pub(crate) async fn run_passes(
     let turn_cancel = cancel.clone();
     let native_cancel = cancel.clone();
     let native_options = options.clone();
-    let keep_alive = config.keep_alive;
+    let keep_alive = agentic_keep_alive(config.keep_alive);
 
     let mut report = run_batch_resumable(
         &config.collection_id,
@@ -360,6 +373,7 @@ mod override_tests {
                 name_faults: vec![],
                 generated: false,
                 entity_tools: vec![],
+                recognized_tools: vec![],
             }),
         }
     }
@@ -416,5 +430,14 @@ mod override_tests {
     fn non_agentic_tasks_are_untouched() {
         let tasks = apply_overrides(vec![single("s")], Some(5), Some(8), Some(Tier::Hard), Some(3));
         assert!(tasks[0].agentic.is_none());
+    }
+
+    #[test]
+    fn keep_alive_floors_when_unset_and_honors_an_explicit_override() {
+        // Unset → the resident floor pins the model across the batch.
+        assert_eq!(agentic_keep_alive(None), Some(AGENTIC_KEEP_ALIVE_SECS));
+        // Explicit values win — forever, or a deliberately shorter window.
+        assert_eq!(agentic_keep_alive(Some(-1)), Some(-1));
+        assert_eq!(agentic_keep_alive(Some(30)), Some(30));
     }
 }

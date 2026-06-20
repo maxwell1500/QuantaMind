@@ -293,13 +293,20 @@ and the loop runs `k` times for Pass^k reliability.
   causes a miss; one environment shared (immutable) across all `k` runs.
 - **What:** `MockResponse{call,response}`, `TaskCheckpoint{tool,args}`,
   `EndStateRule::{RequireSequence(Vec<TaskCheckpoint>), ExpectAbstainingText}`,
-  `DeterministicSandbox` (`new`, `with_faults`, `with_entity_tools`, `respond(&Call) -> Option<&str>`),
+  `DeterministicSandbox` (`new`, `with_faults`, `with_entity_tools`, `with_recognized_tools`, `respond(&Call) -> Option<&str>`),
   `SandboxState{attempts}` (`fault_for`), `pub fn canonical(&Call) -> String`.
-- **Getter vs action (v2 WorldState):** `respond` consults `entity_tools` (the
-  authored `returns_entity` getter set). A GETTER surfaces the world_state entity blob
-  (`derive_response`); an ACTION not in the set gets a generic `{"ok":true}` ack — so an
-  action can't echo the field the model was supposed to reason to (answer-leniency). An
-  EMPTY set means "every tool is a getter" (v1 / legacy back-compat).
+- **Getter vs action vs decoy (v2 WorldState):** `respond` is three-way. A GETTER (in
+  `entity_tools`, the authored `returns_entity` set) surfaces the world_state entity blob
+  (`derive_response`); a recognized ACTION (in `recognized_tools`, the authored real-tool
+  whitelist, but not a getter) gets a generic `{"ok":true}` ack — so an action can't echo
+  the field the model was supposed to reason to (answer-leniency); an UNRECOGNIZED tool (a
+  decoy or hallucination, in neither set) returns `None` → the runner injects the
+  `UNKNOWN_TOOL` nudge. The nudge (not a misleading `{"ok":true}` "success") lets a capable
+  model recover from taking a decoy in one turn instead of stalling on a contentless ack
+  until the per-step timeout. Both sets EMPTY means "every tool matches" (v1 / legacy
+  back-compat); the order keeps v1 behavior byte-identical. The whitelist is built in
+  `build::sandbox_for` — from `task.tools` for v1 (decoy-free there) or
+  `spec.recognized_tools` for v2 (whose `task.tools` already carries the merged decoys).
 
 ```rust
 FaultInjection::TransientError { status_code, clears_after } => {
@@ -341,6 +348,18 @@ FaultInjection::TransientError { status_code, clears_after } => {
   (scripted models / backends that can't warm just run cold, as before). Note: warm-up
   loads *weights* — a runtime that allocates more on first *large* context (cliff probe)
   could still pay that on the first rung; out of scope here.
+- **Keep-alive floor:** `batch_cmd::agentic_keep_alive` floors the batch `keep_alive`
+  at `AGENTIC_KEEP_ALIVE_SECS=600` when the UI leaves it unset (an explicit value, incl.
+  `-1`=forever, still wins). Without it Ollama's default 5-min idle unload can evict the
+  model — and its prefix-KV cache — across an inter-task/inter-turn gap mid-batch, so the
+  warm-up's load wouldn't survive the ~k×max_steps sequential calls.
+- **Context window (`num_ctx`):** the agentic loop re-sends the whole growing transcript
+  every step; `runner::agentic_num_ctx(max_steps)` sizes `num_ctx` to
+  `clamp(2048 + max_steps·384, 4096, 16384)`. Left at the model default (~4096) a
+  multi-step transcript overflows → Ollama context-shift, which busts the automatic
+  prefix-KV cache (full re-prefill every turn — the stall) AND silently drops the
+  earliest turns. The 16384 ceiling is memory-safe on a 16GB host; the deepest Extreme
+  (85-step ≈ 30k-token) runs still shift there — a hardware limit, not a regression.
 
 ### File: `endstate.rs`
 - **Responsibility:** Checkpoint matching + Driver-D semantic schema validation.

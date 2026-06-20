@@ -17,6 +17,28 @@ const MAX_TOKENS: u32 = 256;
 const UNKNOWN_TOOL: &str =
     "Tool not found or arguments unrecognized. Choose a tool from the provided schema.";
 
+/// `num_ctx` sizing for the agentic loop. The transcript re-sent every step grows by
+/// ~one assistant turn + tool result per step; left at the model default (~4096) a
+/// multi-step transcript overflows, triggering Ollama context-shift that BOTH busts
+/// the automatic prefix-KV cache (full re-prefill every turn — the stall) AND silently
+/// drops the earliest turns (the model loses the start of its own run). Size from the
+/// step cap so the window covers the worst-case transcript, clamped to a memory-safe
+/// ceiling: a 16GB host can't hold the deepest Extreme (85-step ≈ 30k-token) context,
+/// so those still shift — a hardware limit, not a regression. Per-host scaling above
+/// the ceiling is deferred (would need the hardware class threaded in here).
+const NUM_CTX_BASE: u32 = 2048; // system prompt (with decoys) + initial prompt headroom
+const NUM_CTX_PER_STEP: u32 = 384; // ≈ assistant turn (≤256) + tool result + formatting
+const NUM_CTX_FLOOR: u32 = 4096;
+const NUM_CTX_CEILING: u32 = 16384; // memory-safe on a 16GB host; covers Easy→Hard fully
+
+/// Context window for a run of `max_steps` steps: cover the worst-case transcript, but
+/// never exceed the memory-safe ceiling. See [`NUM_CTX_CEILING`].
+fn agentic_num_ctx(max_steps: u32) -> u32 {
+    NUM_CTX_BASE
+        .saturating_add(max_steps.saturating_mul(NUM_CTX_PER_STEP))
+        .clamp(NUM_CTX_FLOOR, NUM_CTX_CEILING)
+}
+
 /// Push the raw model turn to the transcript exactly once per turn, lazily — the
 /// first injected result triggers it, so a turn that terminates before any injection
 /// (end-state on the first call, a budget-spent schema error) pushes nothing, matching
@@ -209,6 +231,10 @@ async fn run_once_inner<M: ModelTurn>(
     let mut schema_recovered = false; // ...and later produced a valid one
     let mut unknown_tools = 0u32; // decoy / unknown-tool calls this run (Phase 9 distraction signal)
 
+    // Sized once per run from the step cap: the transcript only grows within this run,
+    // so a single window covers every step. Keeps the prefix-KV cache from being busted
+    // by an overflow-driven context-shift (see `agentic_num_ctx`).
+    let num_ctx = agentic_num_ctx(max_steps);
     for step_index in 0..max_steps {
         let spec = GenerateSpec {
             model: String::new(),
@@ -217,6 +243,7 @@ async fn run_once_inner<M: ModelTurn>(
             options: Some(GenerateOptions {
                 temperature: Some(0.0),
                 num_predict: Some(MAX_TOKENS),
+                num_ctx: Some(num_ctx),
                 ..Default::default()
             }),
             keep_alive: None,
