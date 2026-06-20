@@ -162,8 +162,19 @@ if abstain != matches!(t.expected, Expected::NoCall) { return Err(bad(&t.id, "ex
   "respond with ONLY a JSON object/array").
 - **Why:** Explicit instruction so a weak model's format failures surface as a low
   `parse_rate` (signal, not noise).
-- **What:** `build_system(task)` → `build_system_for(tools)` (shared with the
-  agentic runner, which has a sandbox not a `ToolTask`).
+- **What:** `build_system(task)` → `build_system_for(tools, terminal)` (shared with the
+  agentic runner, which has a sandbox not a `ToolTask`). `terminal: TerminalGuidance`
+  gates the CLOSING line (G1): `MustUseTools` for act-tasks (`RequireAll`/`RequireSequence`),
+  `PlainTextOk` for abstain (`ExpectAbstainingText`) + single-turn + cliff (keeps the
+  plain-text option). Without this, a reporter task that requires a terminal `reply` call
+  contradicted the prompt's plain-text invitation and failed a correct prose answer.
+  `MustUseTools` is **reply-tool-AWARE** via `reply_tool_name(tools)` (first tool with a
+  `text` param): a reporter task names the REAL tool ("call the `reply_customer` tool" —
+  fixing the `reply`/`reply_customer` misnomer); an action-only task is told "your tool
+  actions are your final answer" so the mandate never points at a nonexistent `reply` tool
+  (which had induced a phantom `reply` call → schema-error/timeout on ~55 action-only tasks).
+  Guarded by `scenarios.rs::reply_tool_name_classifies_every_task_and_reporters_are_unique`
+  (≤1 text-bearing tool per task; reporter checkpoint ⇒ that tool; action-only ⇒ `None`).
 
 ```rust
 "You can call tools. Available tools:\n{tools_json}\n\n\
@@ -343,8 +354,12 @@ FaultInjection::TransientError { status_code, clears_after } => {
 ### File: `step.rs`
 - **Responsibility:** The streamed per-turn event type.
 - **What:** `StepKind::{ToolCall, ToolError, UnknownTool, SchemaError, MalformedJson,
-  HallucinatedCompletion, EndStateReached, InfiniteLoop}`;
+  HallucinatedCompletion, EndStateReached, InfiniteLoop, ForbiddenCall, TurnTimeout,
+  ReportedInProse}`;
   `TrajectoryStep{run_index, step_index, raw_output, injection: Option<String>, kind}`.
+  `ReportedInProse` (G3) = did all the work but answered in plain text instead of the
+  required reporter tool (content-correct, wrong-channel); the UI renders it TEAL — the
+  mildest failure, distinct from a hard red fail.
 
 ### File: `report.rs`
 - **Responsibility:** Fold per-run outcomes into the Pass^k `AgenticReport`;
@@ -354,8 +369,11 @@ FaultInjection::TransientError { status_code, clears_after } => {
   are `None`, never 0.
 - **What:** `FailureKind`, `RunOutcome` (`success`/`failure`/`with_schema`),
   `FailureTracker{infinite_loop_hits, hallucinated_completions, malformed_json_calls,
-  schema_unrecovered_calls, unknown_tool_calls, forbidden_calls, turn_timeouts}`
-  (`top() -> TopError`, `merge(&Self)` — the centralized fold that never drops a field), `TopError`,
+  schema_unrecovered_calls, unknown_tool_calls, forbidden_calls, turn_timeouts,
+  reported_in_prose_calls}`
+  (`top() -> TopError`, `merge(&Self)` — the centralized fold that never drops a field;
+  `reported_in_prose` ranks LEAST-severe in `top()`, so count-first surfaces it as a
+  capable model's headline while a genuine failure dominates on a tie), `TopError`,
   `AgenticReport{passes, total_runs, failures, avg_output_tokens_success, avg_steps,
   top_error, schema_resilience}` (`from_outcomes`).
 
@@ -663,7 +681,12 @@ crash-resume.
   model + assert VRAM cleared, `Err` halts); `BatchSink` (`task_started` /
   `agentic_turn` / `task_done`); `AggAgentic` (strict Pass^k: `tasks_passed` =
   tasks where every run passed; `pass_k() = tasks_passed/tasks_total`; `by_tier:
-  Vec<TierStat>`); `TierStat{tier, tasks_passed, tasks_total, avg_steps, failures}`
+  Vec<TierStat>`; native-FC only: `tasks_errored` = tasks whose every run hit a
+  backend `Err` — carried SEPARATELY from `tasks_total` so `pass_k` is never diluted
+  by infra, making the native denominator's shrink visible not silent; `native_error_class:
+  NativeErrorClass{None, InfraHost, SchemaRejected, Mixed}` distinguishes a host/infra
+  crash from a native-path schema rejection so an OOM never reads as model incapability);
+  `TierStat{tier, tasks_passed, tasks_total, avg_steps, failures}`
   (Phase 9B: `agg_agentic` buckets reports by tier and computes per-tier `avg_steps`
   + merged `failures` alongside the strict Pass^k — feeding the Agent Report deep-dive);
   `BatchColumn{model, backend, toolcall, agentic, agentic_native_fc, error}`;
@@ -671,8 +694,10 @@ crash-resume.
 - **Functions:** `run_batch` (test wrapper, no gate), `run_batch_resumable`
   (the VRAM-safe resumable loop — folds `prior` units silently, runs the rest,
   streams + records), `fold_report` (repaint Matrix from completed units only,
-  no execution), `run_native_fc_pass` (parallel native-FC aggregate),
-  `batch_summaries`, `agg_agentic`.
+  no execution), `run_native_fc_pass` (parallel native-FC aggregate — a task whose
+  every run errors is COUNTED into `tasks_errored` + classified, never silently dropped;
+  an all-errored pass still emits a column, which `inputs.rs` filters on `total_runs>0`
+  so it never pollutes the verdict), `batch_summaries`, `agg_agentic`.
 
 **Pass^k is strict** — a task is credited only when *all k runs* succeed:
 

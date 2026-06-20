@@ -10,6 +10,7 @@ const TOP_ERROR_LABEL: Record<TopError, string> = {
   malformed_schema: "Bad Schema",
   forbidden_call: "Forbidden",
   turn_timeout: "Timeout",
+  reported_in_prose: "Wrong Channel",
 };
 
 /// One per-model row of the Matrix Scoreboard. Every metric is a display string;

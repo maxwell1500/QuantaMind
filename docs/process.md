@@ -745,6 +745,63 @@ restructure world_state so retrieval facts resolve through a called getter, then
 test to those tiers (drop the Easy-only `continue`) and re-run BOTH the oracle test and the
 generated-instance satisfiability checks to confirm gradeability + preserved challenge.
 
+### Retrieval-vs-derivation over-enforcement is already live on Easy (`branch_target`)
+
+The over-enforcement the section above frames as a Medium/Hard *future* risk is **already biting on
+Easy**. `easy-coding/es_co_branch_target` lists `get_change{id:C-1}` and `get_change{id:C-2}` as
+required `RequireAll` checkpoints — but the prompt itself **states** "C-1 is a hotfix, C-2 a feature."
+The change kind is *given*, so a model that correctly derives the base branch (hotfix→`release`,
+feature→`develop`) and opens both PRs **without** calling `get_change` is doing the task's actual
+skill, yet fails as `HallucinatedCompletion` (it satisfied 2/4 — only the `open_pr` calls). Confirmed
+**not** an echo/ack bug: the action-ack composes correctly (`runner_tests.rs::worldstate_multi_call_actions_each_ack_not_echo_entity`),
+so the failure reason is purely "skipped the discovery calls." The consequence is the founding
+inversion — the benchmark **understates** a capable model.
+
+**The decision is mutually exclusive — you cannot have both:** (a) drop `get_change` from
+`branch_target`'s required checkpoints (the task's skill is *routing by kind*, not *calling a getter*;
+the kind is disclosed, so the lookup is ceremony), OR (b) remove the kind from the prompt so the
+`get_change` lookup is genuinely required (the model must discover it). Leaking the answer in the
+prompt **and** mandating the lookup is the contradiction. Lean **(a)** for `branch_target` — but it's a
+per-task judgment, same as the Medium/Hard worklist above. **Action:** audit EVERY Easy task for the
+same shape (prompt discloses a fact a checkpoint then forces a getter to re-fetch) and fold the hits
+into the retrieval-vs-derivation worklist — Easy is no longer exempt.
+
+### Grader-bug fixes landed (G1/G2/G3) + the abstain-pattern audit
+
+The Qwen run (clean JSON, no format noise) surfaced grader bugs failing capable models. Fixed:
+- **G1 (prompt↔grader contradiction):** the system prompt's closing line is now end_state-gated
+  (`build_system_for(tools, TerminalGuidance)`) — act-tasks mandate a tool, abstain-tasks keep plain
+  text. The 9 reporter tasks (terminal `reply`/`reply_customer`) no longer fail a correct prose answer.
+- **G2 (ceremony getter):** dropped the redundant `read_file` checkpoint from `es_co_run_failing_test`
+  (the failing-test name comes from `run_tests`; `read_file` could only ack a wildcard path) and
+  softened its prompt. NO broad getter-resolvability guard — verified it false-fires on Easy derivation
+  getters (`chem_lookup`/`convert_units`/`convert_temp`/`format_value` ack by design; the answer is
+  *derived*, not retrieved).
+- **G3 (honest label):** `reported_in_prose` failure mode — a no-call yield where every other
+  checkpoint is satisfied and the prose matches the lone reporter checkpoint's text glob (the
+  "exactly one unsatisfied" guard stops a weak glob like `*3*` relabeling a real hallucination).
+- **G1 follow-up (reply-tool-aware mandate):** G1's first wording told every act-task to "use the
+  `reply` tool" — but ~55 action-only tasks have none, so a model that couldn't complete tried a
+  phantom `reply` call → schema-error→timeout. Fixed: `build_system_for` now names the REAL reporter
+  via `reply_tool_name` (or, action-only, "your tool actions are your answer"). The all-collections
+  invariant guard surfaced 2 tasks (`es_ms_sigfig_domain`, `es_ms_temp_scale`) carrying a **vestigial
+  `reply` tool** the grader never required (terminal is `format_value`/`convert_temp`) — removed it so
+  they're cleanly action-only.
+- **`es_co_branch_target` get_change over-enforcement — RESOLVED (lean (a)).** Dropped the two
+  `get_change` checkpoints (the prompt states the kinds; the skill is routing, not the lookup); now
+  passes for a model that routes hotfix→release/feature→develop. `must_not_call` traps unchanged
+  (guarded by `runner_tests.rs::branch_target_wrong_base_trap_stays_terminal_after_get_change_drop`).
+
+**OPEN — abstain-pattern audit (follow-up).** `es_cs_abstain_no_tool` was a true mis-authoring
+(named/intended as abstention but authored `RequireAll([reply_customer])`); fixed by converting it to
+`ExpectAbstainingText`. A scan for the general shape (name/prompt implies abstention/no-action but
+end_state is `RequireAll`) found other candidates that are **legitimate decline-VIA-action** — they
+have a dedicated decline tool: `es_ec_price_match`→`decline_match`, `md_lg_data_request_by_law`→
+`refuse`, `hd_se_flash_sale_oversell`→`offer_backorder`, `hd_fi_margin_call_cascade`→`log_decision`.
+**Do NOT "fix" these** — a decline routed through a real action tool is correct RequireAll. Only a
+name-implies-abstain task with NO decline tool (so the only way to "pass" is an unrelated reply) is a
+mis-authoring like `abstain_no_tool` was.
+
 ### Additional STT engines (faster-whisper)
 
 **Removed:** `mlx-audio` was trialed as a second STT engine but removed — its

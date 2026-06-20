@@ -18,6 +18,14 @@ pub fn args_match_v2(expected: &Value, got: &Value) -> bool {
     }
 }
 
+/// G3: does free-text `candidate` satisfy a checkpoint's text glob `pattern`? Reuses the
+/// exact v2 string semantics (ordered case-insensitive multi-segment glob for `*…*`
+/// patterns, trimmed exact otherwise). Used to detect a model that reported the answer in
+/// prose instead of routing it through the required reporter tool.
+pub fn text_matches(pattern: &str, candidate: &str) -> bool {
+    value_match(&Value::String(pattern.to_string()), &Value::String(candidate.to_string()))
+}
+
 fn value_match(expected: &Value, got: &Value) -> bool {
     match expected {
         // Glob applies ONLY to string patterns; a string pattern vs a non-string

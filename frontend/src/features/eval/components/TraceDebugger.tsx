@@ -67,7 +67,7 @@ const getStepIcon = (kind: string, isError: boolean): React.ReactNode => {
   if (kind === "tool_call") return <GearIcon />;
   if (kind === "tool_error" || kind === "schema_error" || kind === "malformed_json" || kind === "turn_timeout") return <ErrorIcon />;
   if (kind === "infinite_loop") return <LoopIcon />;
-  if (kind === "hallucinated_completion" || kind === "forbidden_call") return <StopIcon />;
+  if (kind === "hallucinated_completion" || kind === "forbidden_call" || kind === "reported_in_prose") return <StopIcon />;
   if (kind === "end_state_reached") return <FlagIcon />;
   return isError ? <ErrorIcon /> : <CheckIcon />;
 };
@@ -83,7 +83,8 @@ export const isErrorKind = (kind: string): boolean =>
   kind === "hallucinated_completion" ||
   kind === "infinite_loop" ||
   kind === "forbidden_call" ||
-  kind === "turn_timeout";
+  kind === "turn_timeout" ||
+  kind === "reported_in_prose";
 
 export const getStepTitle = (kind: string, isError: boolean) => {
   if (kind === "tool_call") return "Model Outputs Tool Call";
@@ -95,6 +96,7 @@ export const getStepTitle = (kind: string, isError: boolean) => {
   if (kind === "hallucinated_completion") return "Hallucinated Stop Word";
   if (kind === "forbidden_call") return "Forbidden Action (Trap Sprung)";
   if (kind === "turn_timeout") return "Turn Timeout (Stalled Model)";
+  if (kind === "reported_in_prose") return "Reported In Prose (Wrong Channel)";
   if (kind === "end_state_reached") return "End State Verification";
   return isError ? "Execution Failure" : "Model Output Success";
 };
@@ -117,10 +119,21 @@ export const verdictLabel = (topError: string): { title: string; detail: string 
       return { title: "FORBIDDEN ACTION", detail: "The model invoked a must_not_call trap — terminal the moment it fired." };
     case "turn_timeout":
       return { title: "TURN TIMEOUT", detail: "A model turn exceeded the per-step wall-clock budget (a stalled model)." };
+    case "reported_in_prose":
+      return {
+        title: "REPORTED IN PROSE",
+        detail: "Correct content, but the model answered in plain text instead of calling the required tool — a wrong-channel failure, not a hallucination.",
+      };
     default:
       return { title: "EVALUATION FAILED", detail: "The run did not reach the expected end state on every iteration." };
   }
 };
+
+/// Verdict-header color. `reported_in_prose` is the mildest failure (content correct,
+/// wrong channel) so it renders TEAL — distinct from the red of a genuine failure — to
+/// carry that a wrong-channel model is meaningfully more capable than one that fails hard.
+export const verdictColor = (topError: string): string =>
+  topError === "reported_in_prose" ? "#0f766e" : "#991b1b";
 
 const getStepDescription = (kind: string, raw_output: string) => {
   if (kind === "schema_error") {
@@ -134,7 +147,11 @@ const getStepNodeStyle = (kind: string, isError: boolean): React.CSSProperties =
   let border = "1px solid #bbf7d0";
   let color = "#166534";
   
-  if (kind === "schema_error" || kind === "hallucinated_completion" || kind === "malformed_json") {
+  if (kind === "reported_in_prose") {
+    bg = "#f0fdfa";
+    border = "1px solid #ccfbf1";
+    color = "#0f766e"; // teal — mildest failure, distinct from amber/red
+  } else if (kind === "schema_error" || kind === "hallucinated_completion" || kind === "malformed_json") {
     bg = "#fffbeb";
     border = "1px solid #fef3c7";
     color = "#b45309";
@@ -174,7 +191,11 @@ const getCardStyle = (kind: string, isError: boolean): React.CSSProperties => {
   let border = "1px solid #e2e8f0";
   let borderLeft = "3px solid #10b981";
   
-  if (kind === "schema_error" || kind === "hallucinated_completion" || kind === "malformed_json") {
+  if (kind === "reported_in_prose") {
+    bg = "#f0fdfa";
+    border = "1px solid #ccfbf1";
+    borderLeft = "3px solid #14b8a6"; // teal — mildest failure, distinct from amber/red
+  } else if (kind === "schema_error" || kind === "hallucinated_completion" || kind === "malformed_json") {
     bg = "#fffbeb";
     border = "1px solid #fef3c7";
     borderLeft = "3px solid #f59e0b";
@@ -479,12 +500,12 @@ export function TraceDebugger({
                       </div>
                     ) : (
                       <div style={{ display: "flex", alignItems: "center", gap: 12 }}>
-                        <span style={{ color: "#991b1b", display: "inline-flex", alignItems: "center" }}>
+                        <span style={{ color: verdictColor(outcome.report.top_error), display: "inline-flex", alignItems: "center" }}>
                           <ErrorIcon />
                         </span>
                         <div>
-                          <div style={{ fontWeight: 700, fontSize: 14, color: "#991b1b" }}>VERDICT: {verdictLabel(outcome.report.top_error).title}</div>
-                          <div style={{ fontSize: 12, opacity: 0.9, marginTop: 2, color: "#991b1b" }}>
+                          <div style={{ fontWeight: 700, fontSize: 14, color: verdictColor(outcome.report.top_error) }}>VERDICT: {verdictLabel(outcome.report.top_error).title}</div>
+                          <div style={{ fontSize: 12, opacity: 0.9, marginTop: 2, color: verdictColor(outcome.report.top_error) }}>
                             {verdictLabel(outcome.report.top_error).detail}
                           </div>
                         </div>

@@ -168,6 +168,73 @@ async fn native_fc_pass_aggregates_into_the_column_for_supported_models_only() {
     assert!(m2.agentic_native_fc.is_none()); // unsupported → never a fabricated native score
 }
 
+/// A native turn that ALWAYS errors with a fixed message (so every run errors → the task
+/// produces no scored report), or pings to success when `err` is `None`.
+struct NativeErrModel {
+    err: Option<String>,
+}
+impl ModelTurn for NativeErrModel {
+    async fn run(&self, _s: &GenerateSpec) -> AppResult<(String, GenerateStats)> {
+        match &self.err {
+            Some(m) => Err(crate::errors::AppError::Inference(m.clone())),
+            None => Ok((r#"{"name":"ping","args":{}}"#.into(), GenerateStats { eval_count: Some(5), ..Default::default() })),
+        }
+    }
+}
+
+#[tokio::test]
+async fn native_errored_tasks_are_counted_and_labeled_not_silently_dropped() {
+    // Three native tasks: one scores, two error (every run) — one host/infra (5xx), one
+    // schema-rejection (4xx). Before the fix the two errored tasks vanished from the
+    // aggregate and the denominator silently shrank 3→1. Guard VISIBILITY, not arithmetic:
+    // the scored denominator is honest AND the errored count + class are carried.
+    let targets = vec![target("m1")];
+    let tasks = vec![agentic_task("a_ok", 2), agentic_task("a_infra", 2), agentic_task("a_schema", 2)];
+    let sink = Arc::new(CountingSink::default());
+    let mut report = run_batch("c", &targets, &tasks, CancellationToken::new(), sink, make_turn).await.unwrap();
+
+    let supported: std::collections::HashSet<String> = ["m1".to_string()].into_iter().collect();
+    run_native_fc_pass(
+        &mut report,
+        &tasks,
+        &supported,
+        CancellationToken::new(),
+        |_model, task| {
+            let err = match task.id.as_str() {
+                "a_infra" => Some("chat HTTP 500: ollama out of memory".to_string()),
+                "a_schema" => Some("chat HTTP 400: tools not supported".to_string()),
+                _ => None,
+            };
+            NativeErrModel { err }
+        },
+        &[],
+        &|_| {},
+        &NoVramGate,
+    )
+    .await
+    .unwrap();
+
+    let agg = report.columns[0].agentic_native_fc.as_ref().expect("native column emitted despite errors");
+    assert_eq!(agg.tasks_passed, 1); // only a_ok scored a pass
+    assert_eq!(agg.tasks_total, 1); // scored denominator is NOT inflated by infra (pass_k stays honest)
+    assert_eq!(agg.tasks_errored, 2); // ...but the 2 dropped tasks are now VISIBLE, not silent
+    // Both an infra and a schema error occurred → Mixed (proves the labels did NOT collapse).
+    assert_eq!(agg.native_error_class, NativeErrorClass::Mixed);
+}
+
+#[test]
+fn native_error_classification_keeps_host_and_schema_labels_distinct() {
+    // A 4xx is the native path rejecting the tool schema (a real "can't run native");
+    // everything else is infra/host and must NEVER read as model incapability.
+    assert_eq!(classify_native_error("chat HTTP 400: tools not supported"), NativeErrorClass::SchemaRejected);
+    assert_eq!(classify_native_error("chat HTTP 500: ollama out of memory"), NativeErrorClass::InfraHost);
+    assert_eq!(classify_native_error("connect to Ollama: connection refused"), NativeErrorClass::InfraHost);
+    // The two never silently collapse — mixing distinct classes yields Mixed, not a merge.
+    assert_eq!(merge_error_class(NativeErrorClass::InfraHost, NativeErrorClass::SchemaRejected), NativeErrorClass::Mixed);
+    assert_eq!(merge_error_class(NativeErrorClass::None, NativeErrorClass::SchemaRejected), NativeErrorClass::SchemaRejected);
+    assert_eq!(merge_error_class(NativeErrorClass::InfraHost, NativeErrorClass::InfraHost), NativeErrorClass::InfraHost);
+}
+
 #[test]
 fn agg_agentic_sums_failure_breakdown_not_just_top_error() {
     use crate::inference::eval::agentic::scoring::report::{AgenticReport, FailureKind, RunOutcome};

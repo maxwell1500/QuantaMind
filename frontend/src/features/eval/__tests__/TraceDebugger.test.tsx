@@ -1,5 +1,5 @@
 import { describe, it, expect } from "vitest";
-import { isErrorKind, getStepTitle, verdictLabel } from "../components/TraceDebugger";
+import { isErrorKind, getStepTitle, verdictLabel, verdictColor } from "../components/TraceDebugger";
 
 describe("isErrorKind", () => {
   it("treats turn_timeout and forbidden_call as failures (not green success)", () => {
@@ -37,5 +37,16 @@ describe("verdictLabel", () => {
     for (const k of ["malformed_json", "hallucinated", "turn_timeout", "forbidden_call", "infinite_loop"]) {
       expect(verdictLabel(k).title).not.toMatch(/sequence violation/i);
     }
+  });
+
+  it("labels reported_in_prose as a distinct wrong-channel failure, not a hallucination", () => {
+    // G3: content-correct, wrong-channel — must read as its own thing, not "hallucinated".
+    expect(verdictLabel("reported_in_prose").title).toMatch(/prose/i);
+    expect(verdictLabel("reported_in_prose").title).not.toMatch(/hallucinat/i);
+    expect(verdictLabel("reported_in_prose").detail).toMatch(/not a hallucination/i);
+    // It IS a failure (renders in the trace) but TEAL, distinct from the red of a hard fail.
+    expect(isErrorKind("reported_in_prose")).toBe(true);
+    expect(getStepTitle("reported_in_prose", true)).toMatch(/wrong channel/i);
+    expect(verdictColor("reported_in_prose")).not.toBe(verdictColor("hallucinated"));
   });
 });

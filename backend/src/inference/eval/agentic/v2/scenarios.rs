@@ -335,4 +335,93 @@ mod tests {
             assert!(!h.domain.is_empty() && !h.tier.is_empty(), "collection '{id}' missing domain/tier");
         }
     }
+
+    /// LOADED (not mirrored) action-ack guard. Builds the REAL `es_co_branch_target` sandbox
+    /// from the bundled JSON through the actual transpile path, and proves `open_pr` (an
+    /// action) acks `{"ok":true}` — it never echoes the `{"kind":...}` entity. A unit test
+    /// that hand-mirrors the task can't catch a per-occurrence mistag in the bundled file;
+    /// this loads the file. (The trace showing `open_pr` echo was a pre-`851f5cd` binary —
+    /// multi-call had landed, action-ack hadn't; this pins that current source+transpile ack.)
+    #[test]
+    fn loaded_branch_target_acks_open_pr_and_echoes_get_change() {
+        use crate::inference::eval::agentic::build::sandbox_for;
+        use crate::inference::eval::toolcall::tasks::Call;
+        use serde_json::json;
+        let json = v2_json("easy-coding").unwrap();
+        let task = load_v2_collection(json).unwrap().into_iter().find(|t| t.id == "es_co_branch_target").unwrap();
+        let (sandbox, _) = sandbox_for(&task).unwrap();
+        // open_pr is an ACTION: excluded from the getter set, and a real entity-keyed call acks.
+        assert!(!sandbox.entity_tools.contains("open_pr"), "open_pr leaked into the getter set");
+        assert_eq!(
+            sandbox.respond(&Call { name: "open_pr".into(), args: json!({ "change": "C-1", "base": "release" }) }).as_deref(),
+            Some(r#"{"ok":true}"#),
+        );
+        // get_change is a GETTER: surfaces the entity, so the kind stays reachable (split is real).
+        assert!(sandbox.entity_tools.contains("get_change"));
+        assert_eq!(
+            sandbox.respond(&Call { name: "get_change".into(), args: json!({ "id": "C-1" }) }).as_deref(),
+            Some(r#"{"kind":"hotfix"}"#),
+        );
+    }
+
+    /// `reply_tool_name` invariant across EVERY bundled task — the backstop for the
+    /// "first tool with a `text` property" heuristic the act-task prompt mandate relies on:
+    /// (1) every task has AT MOST ONE text-bearing tool, so "first" is never order-ambiguous;
+    /// (2) an ACT task with a reporter checkpoint (a `text` arg) resolves `reply_tool_name`
+    /// to exactly that tool (so `MustUseTools` names the REAL reporter — `reply` vs
+    /// `reply_customer`); (3) an action-only ACT task resolves to `None` (so the mandate never
+    /// points at a `reply` tool that doesn't exist — the phantom-call foot-gun). A future
+    /// text-bearing action tool or a second reporter fails THIS test at CI, not a live trace.
+    #[test]
+    fn reply_tool_name_classifies_every_task_and_reporters_are_unique() {
+        use crate::inference::eval::agentic::sandbox::EndStateRule;
+        use crate::inference::eval::toolcall::prompt::reply_tool_name;
+        for (id, json) in V2_SCENARIOS {
+            for t in load_v2_collection(json).unwrap() {
+                let text_tools = t
+                    .tools
+                    .iter()
+                    .filter(|x| x.parameters.get("properties").and_then(|p| p.get("text")).is_some())
+                    .count();
+                assert!(text_tools <= 1, "{id}/{}: {text_tools} text-bearing tools — reply_tool_name 'first' is ambiguous", t.id);
+                // Only ACT tasks consult reply_tool_name (abstain uses PlainTextOk).
+                if let EndStateRule::RequireAll(cps) | EndStateRule::RequireSequence(cps) = &t.agentic.as_ref().unwrap().end_state {
+                    let reporter = cps.iter().find(|c| c.args.get("text").is_some()).map(|c| c.tool.as_str());
+                    match reporter {
+                        Some(tool) => assert_eq!(reply_tool_name(&t.tools), Some(tool), "{id}/{}: reporter checkpoint tool must be the detected reply tool", t.id),
+                        None => assert_eq!(reply_tool_name(&t.tools), None, "{id}/{}: action-only ACT task must resolve to NO reply tool (else MustUseTools names a phantom)", t.id),
+                    }
+                }
+            }
+        }
+    }
+
+    /// Generalized per-OCCURRENCE tag-threading guard across EVERY bundled task. Loads each
+    /// task through the real transpile and asserts each tool's `returns_entity` tag threads
+    /// into `entity_tools` per occurrence: an action (`false`) must NOT be a getter (else it
+    /// echoes entity data — leaking a discovery target like `es_cs_lang_routing`'s `pref`);
+    /// a getter must BE one (else it acks and hides its required fact). Catches a mistag on
+    /// any single task's tool that a correct tag elsewhere would otherwise mask — the
+    /// per-occurrence hole a task-mirroring test cannot see.
+    #[test]
+    fn every_action_tool_threads_to_ack_in_the_real_sandbox() {
+        use crate::inference::eval::agentic::build::sandbox_for;
+        for (id, json) in V2_SCENARIOS {
+            let raw: Value = serde_json::from_str(json).unwrap();
+            let tasks = load_v2_collection(json).unwrap();
+            for rawtask in raw["tasks"].as_array().into_iter().flatten() {
+                let tid = rawtask["id"].as_str().unwrap_or("?");
+                let task = tasks.iter().find(|t| t.id == tid).unwrap();
+                let (sandbox, _) = sandbox_for(task).unwrap();
+                for tool in rawtask["tools"].as_array().into_iter().flatten() {
+                    let name = tool["name"].as_str().unwrap_or("");
+                    if tool["returns_entity"].as_bool() == Some(false) {
+                        assert!(!sandbox.entity_tools.contains(name), "{id}/{tid}: action '{name}' is in the getter set — would echo entity data (leak)");
+                    } else {
+                        assert!(sandbox.entity_tools.contains(name), "{id}/{tid}: getter '{name}' missing from the getter set — would ack and hide its fact");
+                    }
+                }
+            }
+        }
+    }
 }

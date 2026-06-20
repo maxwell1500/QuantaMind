@@ -237,22 +237,14 @@
           }
         }
       ],
-      "expected_calls": [
-        {
-          "type": "call",
-          "name": "reply_customer",
-          "args": {
-            "text": "*"
-          }
-        }
-      ],
+      "expected_calls": [],
       "must_not_call": [
         "get_account",
         "issue_refund"
       ],
       "faults": [],
       "trap": {
-        "note": "No account action is warranted. Calling get_account on a customer that was never identified, or any transactional tool, is a false-action failure."
+        "note": "No account action is warranted. The correct behavior is to abstain (ExpectAbstainingText) and answer in plain text — calling ANY tool, including reply_customer, is a false-action failure."
       },
       "rubric": {
         "success_definition": "Replies informationally without invoking account/transaction tools.",

@@ -23,6 +23,8 @@ fn report(collection_id: &str, passes: u32) -> BatchReport {
                 top_error: TopError::None,
                 failures: FailureTracker::default(),
                 by_tier: vec![],
+                tasks_errored: 0,
+                native_error_class: Default::default(),
             }),
             agentic_native_fc: None,
             error: None,

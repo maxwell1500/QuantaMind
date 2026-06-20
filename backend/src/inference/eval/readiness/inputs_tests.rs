@@ -28,8 +28,11 @@ fn col(passes: u32, total: u32, loops: u32, hall: u32, steps: Option<f64>) -> Ba
                 unknown_tool_calls: 0,
                 forbidden_calls: 0,
                 turn_timeouts: 0,
+                reported_in_prose_calls: 0,
             },
             by_tier: vec![],
+            tasks_errored: 0,
+            native_error_class: Default::default(),
         }),
         agentic_native_fc: None,
         error: None,
@@ -130,8 +133,11 @@ fn agg(passes: u32, total: u32, loops: u32) -> AggAgentic {
             unknown_tool_calls: 0,
             forbidden_calls: 0,
             turn_timeouts: 0,
+            reported_in_prose_calls: 0,
         },
         by_tier: vec![],
+        tasks_errored: 0,
+        native_error_class: Default::default(),
     }
 }
 
@@ -205,6 +211,8 @@ fn pass_k_of_is_native_first_then_prompt_then_none() {
         top_error: TopError::None,
         failures: FailureTracker::default(),
         by_tier: vec![],
+        tasks_errored: 0,
+        native_error_class: Default::default(),
     });
     assert_eq!(pass_k_of(&c), Some(0.6)); // native, not the prompt 1.0
 
@@ -231,6 +239,8 @@ fn agentic_metrics_prefers_native_then_falls_back_to_prompt() {
         top_error: TopError::None,
         failures: FailureTracker::default(),
         by_tier: vec![],
+        tasks_errored: 0,
+        native_error_class: Default::default(),
     });
     let (steps, effort) = agentic_metrics(&c);
     assert_eq!(steps, Some(4.0)); // native, NOT the prompt 2.0 — same telemetry the verdict gated on

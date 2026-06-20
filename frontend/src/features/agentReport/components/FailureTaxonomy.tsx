@@ -13,6 +13,7 @@ const FAILURE_MODES: { key: keyof FailureTracker; label: string; vuln: string }[
   { key: "malformed_json_calls", label: "MalformedJson", vuln: "Emitted broken JSON in a tool call." },
   { key: "schema_unrecovered_calls", label: "SchemaError", vuln: "Exhausted the schema-recovery budget on invalid calls." },
   { key: "turn_timeouts", label: "TurnTimeout", vuln: "Exceeded the per-step wall-clock budget (wedged)." },
+  { key: "reported_in_prose_calls", label: "ReportedInProse", vuln: "Did the work but answered in plain text instead of the required tool (content correct, wrong channel)." },
 ];
 
 const ZERO: FailureTracker = {
@@ -23,6 +24,7 @@ const ZERO: FailureTracker = {
   unknown_tool_calls: 0,
   forbidden_calls: 0,
   turn_timeouts: 0,
+  reported_in_prose_calls: 0,
 };
 
 function sumFailures(list: FailureTracker[]): FailureTracker {
