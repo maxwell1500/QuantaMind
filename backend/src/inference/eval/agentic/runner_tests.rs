@@ -690,6 +690,85 @@ async fn duplicate_calls_in_a_turn_consume_at_most_one_checkpoint_each() {
 }
 
 #[tokio::test]
+async fn worldstate_multi_call_actions_each_ack_not_echo_entity() {
+    // Mirrors es_co_branch_target. open_pr is an ACTION (returns_entity:false → excluded
+    // from entity_tools); the model batches TWO open_pr calls in ONE turn. The reported
+    // trace showed each echoing {"kind":...} (the pre-fix entity leak). Current code MUST
+    // ack {"ok":true} per call — proving Fix 2's ack gate composes with Fix 1's multi-call
+    // loop, the seam the existing tests never exercised together (parallel_calls only
+    // checks the kind; dep_pin_style uses StaticMocks, not the WorldState ack gate).
+    let sandbox = DeterministicSandbox::new(
+        "Open 2 PRs by change type.".into(),
+        vec![],
+        vec![],
+        EndStateRule::RequireAll(vec![
+            TaskCheckpoint { tool: "get_change".into(), args: json!({ "id": "C-1" }) },
+            TaskCheckpoint { tool: "open_pr".into(), args: json!({ "change": "C-1", "base": "release" }) },
+            TaskCheckpoint { tool: "get_change".into(), args: json!({ "id": "C-2" }) },
+            TaskCheckpoint { tool: "open_pr".into(), args: json!({ "change": "C-2", "base": "develop" }) },
+        ]),
+    )
+    .with_world_state(json!({ "C-1": { "kind": "hotfix" }, "C-2": { "kind": "feature" } }))
+    .with_entity_tools(["get_change".to_string()]); // open_pr is NOT a getter → must ack
+
+    let model = ScriptedModel::new(vec![
+        (r#"[{"name":"open_pr","args":{"change":"C-1","base":"release"}},{"name":"open_pr","args":{"change":"C-2","base":"develop"}}]"#, 20),
+        ("I have successfully opened the Pull Requests.", 10),
+    ]);
+    let (tx, mut rx) = unbounded_channel();
+    let outcome = run_once(&model, &sandbox, 8, 2, 0, &tx).await.unwrap();
+    drop(tx);
+    let steps = drain(&mut rx);
+
+    // (1) BOTH actions ack — no entity blob leaked. This is the composition the trace doubted.
+    let inj = steps[0].injection.as_deref().unwrap();
+    assert_eq!(inj, "Tool result: {\"ok\":true}\nTool result: {\"ok\":true}");
+    assert!(!inj.contains("kind"), "action tool leaked entity data: {inj}");
+
+    // (2) The run still FAILS honestly: the model skipped both get_change discovery
+    // checkpoints (2/4 satisfied), so it's Hallucinated — NOT a pass laundered by a leak.
+    assert!(!outcome.reached_end);
+    assert_eq!(outcome.failure, Some(FailureKind::Hallucinated));
+}
+
+#[tokio::test]
+async fn worldstate_run_tests_surfaces_the_failing_test_name_through_the_getter() {
+    // Mirrors es_co_run_failing_test's reachability repair: the failing-test name lives in
+    // world_state under `cart.failing`, and run_tests{module:"cart"} must SURFACE it through
+    // the getter path (derive_response over the WorldState responder) — NOT via a static mock
+    // or the oracle's concretized replay. This guards live-gate Item 2, which gemma couldn't
+    // confirm because it malformed out before ever calling run_tests. Converts "unverifiable
+    // until a plain-JSON model happens to run it" into a build-time guarantee.
+    let sandbox = DeterministicSandbox::new(
+        "Run the test suite for 'cart' and report which test failed.".into(),
+        vec![],
+        vec![],
+        EndStateRule::RequireAll(vec![
+            TaskCheckpoint { tool: "run_tests".into(), args: json!({ "module": "cart" }) },
+            TaskCheckpoint { tool: "reply".into(), args: json!({ "text": "*test_total_with_tax*" }) },
+        ]),
+    )
+    .with_world_state(json!({ "cart": { "result": "fail", "failing": "test_total_with_tax" } }))
+    .with_entity_tools(["run_tests".to_string()]); // run_tests is a getter; reply acks
+
+    let model = ScriptedModel::new(vec![
+        (r#"[{"name":"run_tests","args":{"module":"cart"}}]"#, 15),
+        (r#"[{"name":"reply","args":{"text":"The failing test is test_total_with_tax."}}]"#, 15),
+    ]);
+    let (tx, mut rx) = unbounded_channel();
+    let outcome = run_once(&model, &sandbox, 8, 2, 0, &tx).await.unwrap();
+    drop(tx);
+    let steps = drain(&mut rx);
+
+    // Reachability: the run_tests injection surfaced the discovered-only fact, so a real
+    // plain-JSON model could echo it instead of hallucinating it.
+    let surfaced = steps[0].injection.as_deref().unwrap();
+    assert!(surfaced.contains("test_total_with_tax"), "getter did not surface the fact: {surfaced}");
+    // End to end: echoing the surfaced name reaches the end state honestly (no oracle replay).
+    assert!(outcome.reached_end);
+}
+
+#[tokio::test]
 async fn single_element_array_matches_a_bare_object() {
     // N=1 parity (issue 6): `[{call}]` must stream byte-identically to a bare `{call}` —
     // same kinds, same injection bytes, same step count as `reaches_end_state_after_a_tool_call`.
