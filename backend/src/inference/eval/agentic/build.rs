@@ -74,6 +74,18 @@ pub fn sandbox_for(task: &ToolTask) -> AppResult<(DeterministicSandbox, AgenticC
     if let Some(ws) = &spec.world_state {
         sandbox = sandbox.with_world_state(ws.clone()).with_entity_tools(spec.entity_tools.clone());
     }
+    // Recognized real-tool whitelist (getters + actions) so a decoy/hallucinated call in
+    // WorldState mode gets the corrective nudge, not a misleading `{"ok":true}`. v1
+    // ("agentic"): `task.tools` is still decoy-free here (pool decoys went into
+    // `presented` above), so derive from it. v2 ("agent_loop"): `task.tools` already
+    // carries the authored decoys (merged in `transpile`), so use the pre-merge names the
+    // transpiler stashed in `spec.recognized_tools`.
+    let recognized: Vec<String> = if task.category == "agentic" {
+        task.tools.iter().map(|t| t.name.clone()).collect()
+    } else {
+        spec.recognized_tools.clone()
+    };
+    sandbox = sandbox.with_recognized_tools(recognized);
     // v2: name-keyed faults (on_call trips on any call to that tool).
     if !spec.name_faults.is_empty() {
         let nf: std::collections::HashMap<String, crate::inference::eval::agentic::spec::FaultInjection> =
@@ -134,6 +146,7 @@ mod tests {
                 name_faults: vec![],
                 generated: false,
                 entity_tools: vec![],
+                recognized_tools: vec![],
             }),
         }
     }
@@ -202,5 +215,38 @@ mod tests {
         let mut t = agentic_task();
         t.agentic = None;
         assert!(sandbox_for(&t).is_err());
+    }
+
+    #[test]
+    fn v2_decoy_yields_unknown_tool_not_a_misleading_ack() {
+        // A v2 ("agent_loop") task carries its decoys already merged into `task.tools`,
+        // and the pre-merge real names in `spec.recognized_tools`. sandbox_for must build
+        // the whitelist from the latter so a decoy call returns None (→ runner nudge),
+        // while the recognized getter/action still resolve. This is the regression for the
+        // misleading `{"ok":true}` decoy bug.
+        let mut t = agentic_task();
+        t.id = "v2-decoy".into();
+        t.category = "agent_loop".into(); // v2: skips the decoy pool; uses recognized_tools
+        t.tools = vec![tool("get_dep"), tool("pin_and_flag"), tool("read_file")]; // read_file is the decoy
+        let spec = t.agentic.as_mut().unwrap();
+        spec.world_state = Some(json!({ "D-1": { "kind": "major" } }));
+        spec.entity_tools = vec!["get_dep".into()];
+        spec.recognized_tools = vec!["get_dep".into(), "pin_and_flag".into()]; // decoy excluded
+        spec.end_state = EndStateRule::RequireAll(vec![TaskCheckpoint { tool: "pin_and_flag".into(), args: json!({}) }]);
+        spec.mocks = vec![]; // v2 uses the world_state responder, not static mocks
+
+        let (sandbox, _) = sandbox_for(&t).unwrap();
+        // The decoy is present in the presented tool list (the model can see/call it)...
+        assert!(sandbox.tools.iter().any(|x| x.name == "read_file"));
+        // ...but calling it now nudges instead of acking, while real tools resolve.
+        assert!(sandbox.respond(&Call { name: "read_file".into(), args: json!({ "path": "x" }) }).is_none());
+        assert_eq!(
+            sandbox.respond(&Call { name: "get_dep".into(), args: json!({ "id": "D-1" }) }).as_deref(),
+            Some(r#"{"kind":"major"}"#)
+        );
+        assert_eq!(
+            sandbox.respond(&Call { name: "pin_and_flag".into(), args: json!({ "dep": "D-1" }) }).as_deref(),
+            Some(r#"{"ok":true}"#)
+        );
     }
 }

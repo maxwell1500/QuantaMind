@@ -906,3 +906,39 @@ fn num_ctx_scales_with_max_steps_and_clamps_to_the_memory_safe_window() {
     assert_eq!(agentic_num_ctx(85), 16384);
     assert_eq!(agentic_num_ctx(u32::MAX), 16384); // saturating, never overflows
 }
+
+#[tokio::test]
+async fn worldstate_decoy_call_injects_the_unknown_tool_nudge_and_continues() {
+    // A model takes a decoy (read_file) in WorldState mode. With the recognized-tool
+    // whitelist set, the sandbox returns None for the decoy → the runner injects the
+    // "unknown tool" nudge (StepKind::UnknownTool) instead of a misleading {"ok":true},
+    // and the loop continues so a capable model can recover. Guards the v2 decoy-stall fix.
+    let sandbox = DeterministicSandbox::new(
+        "Inspect the change, then open a PR.".into(),
+        vec![],
+        vec![],
+        EndStateRule::RequireAll(vec![
+            TaskCheckpoint { tool: "open_pr".into(), args: json!({ "change": "C-1" }) },
+        ]),
+    )
+    .with_world_state(json!({ "C-1": { "kind": "hotfix" } }))
+    .with_entity_tools(["get_change".to_string()])
+    .with_recognized_tools(["get_change".to_string(), "open_pr".to_string()]); // read_file excluded
+
+    let model = ScriptedModel::new(vec![
+        (r#"[{"name":"read_file","args":{"path":"billing/rounding_helper.py"}}]"#, 20), // takes the decoy
+        (r#"[{"name":"open_pr","args":{"change":"C-1"}}]"#, 15), // recovers
+    ]);
+    let (tx, mut rx) = unbounded_channel();
+    let outcome = run_once(&model, &sandbox, 8, 2, 0, &tx).await.unwrap();
+    drop(tx);
+    let steps = drain(&mut rx);
+
+    // Step 0: the decoy is nudged, not acked — no false "{"ok":true}" success signal.
+    assert_eq!(steps[0].kind, StepKind::UnknownTool);
+    let inj = steps[0].injection.as_deref().unwrap();
+    assert!(inj.contains("Tool not found"), "decoy should nudge, got: {inj}");
+    assert!(!inj.contains(r#"{"ok":true}"#), "decoy must not get a misleading ack: {inj}");
+    // The loop continued and the model recovered to the real end-state.
+    assert!(outcome.reached_end);
+}

@@ -373,6 +373,7 @@ mod override_tests {
                 name_faults: vec![],
                 generated: false,
                 entity_tools: vec![],
+                recognized_tools: vec![],
             }),
         }
     }

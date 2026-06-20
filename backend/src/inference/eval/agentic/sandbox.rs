@@ -77,6 +77,13 @@ pub struct DeterministicSandbox {
     /// "every tool is a getter" (v1 / legacy / pre-field tasks) — back-compat. Unused in
     /// `StaticMocks` mode (those use explicit authored mocks).
     pub entity_tools: std::collections::HashSet<String>,
+    /// Phase 9-v2 recognized-tool whitelist: authored real tool names (getters + actions).
+    /// In `WorldState` mode a call to a tool NOT in this set is a decoy or hallucination,
+    /// so `respond()` returns `None` (→ the runner's "unknown tool" nudge) instead of a
+    /// misleading `{"ok":true}` ack that tells a model its decoy call "succeeded". EMPTY
+    /// means "every tool is recognized" (v1 / legacy / pre-field tasks) — back-compat.
+    /// Unused in `StaticMocks` mode (an unmocked call already returns `None`).
+    pub recognized_tools: std::collections::HashSet<String>,
 }
 
 impl DeterministicSandbox {
@@ -96,6 +103,7 @@ impl DeterministicSandbox {
             responder: ResponderKind::StaticMocks,
             must_not_call: Vec::new(),
             entity_tools: std::collections::HashSet::new(),
+            recognized_tools: std::collections::HashSet::new(),
         }
     }
 
@@ -103,6 +111,14 @@ impl DeterministicSandbox {
     /// listed acks instead of echoing the world_state entity. Empty → all are getters.
     pub fn with_entity_tools(mut self, getters: impl IntoIterator<Item = String>) -> Self {
         self.entity_tools = getters.into_iter().collect();
+        self
+    }
+
+    /// Attach the Phase 9-v2 recognized-tool whitelist (real getters + actions). A call
+    /// to a tool not listed is treated as a decoy/hallucination in `WorldState` mode and
+    /// gets the "unknown tool" nudge. Empty → every tool is recognized (back-compat).
+    pub fn with_recognized_tools(mut self, names: impl IntoIterator<Item = String>) -> Self {
+        self.recognized_tools = names.into_iter().collect();
         self
     }
 
@@ -136,17 +152,21 @@ impl DeterministicSandbox {
 
     /// The deterministic result for a parsed call. `StaticMocks`: `Some(mock)` or
     /// `None` for an unknown/hallucinated tool or wrong args (matched via `canonical`).
-    /// `WorldState`: always `Some` — the derived entity sub-object, or a generic ack.
+    /// `WorldState`: three-way — a GETTER surfaces the entity blob, a recognized ACTION
+    /// acks `{"ok":true}`, and an unrecognized/decoy tool returns `None` so the runner
+    /// injects the "unknown tool" nudge (a misleading ack would tell a model its decoy
+    /// call succeeded, stalling it). An empty getter/recognized set means "all match"
+    /// (legacy/back-compat), so the order below keeps v1 behavior intact.
     pub fn respond(&self, call: &Call) -> Option<String> {
         match &self.responder {
             ResponderKind::StaticMocks => self.mock_responses.get(&canonical(call)).cloned(),
             ResponderKind::WorldState(ws) => {
-                // ACTION tools ack; only GETTERS surface the entity blob. An empty getter
-                // set means every tool is a getter (legacy/back-compat).
                 if self.entity_tools.is_empty() || self.entity_tools.contains(&call.name) {
                     Some(crate::inference::eval::agentic::v2::world_state::derive_response(ws, call))
-                } else {
+                } else if self.recognized_tools.is_empty() || self.recognized_tools.contains(&call.name) {
                     Some(r#"{"ok":true}"#.to_string())
+                } else {
+                    None
                 }
             }
         }
@@ -306,6 +326,41 @@ mod tests {
         )
         .with_world_state(json!({ "D-1": { "kind": "major" } }));
         assert_eq!(sb.respond(&call("any_tool", json!({ "dep": "D-1" }))).as_deref(), Some(r#"{"kind":"major"}"#));
+    }
+
+    #[test]
+    fn decoy_in_world_state_mode_returns_none_for_the_nudge() {
+        // Three-way: get_dep (getter) → blob, pin_and_flag (recognized action) → ack,
+        // read_file (decoy, not in the recognized whitelist) → None so the runner nudges
+        // instead of falsely acking the decoy "success".
+        let sb = DeterministicSandbox::new(
+            "p".into(),
+            vec![],
+            vec![],
+            EndStateRule::RequireAll(vec![TaskCheckpoint { tool: "pin_and_flag".into(), args: json!({}) }]),
+        )
+        .with_world_state(json!({ "D-1": { "kind": "major" } }))
+        .with_entity_tools(["get_dep".to_string()])
+        .with_recognized_tools(["get_dep".to_string(), "pin_and_flag".to_string()]);
+        assert_eq!(sb.respond(&call("get_dep", json!({ "id": "D-1" }))).as_deref(), Some(r#"{"kind":"major"}"#));
+        assert_eq!(sb.respond(&call("pin_and_flag", json!({ "dep": "D-1" }))).as_deref(), Some(r#"{"ok":true}"#));
+        assert!(sb.respond(&call("read_file", json!({ "path": "x.py" }))).is_none());
+    }
+
+    #[test]
+    fn empty_recognized_set_keeps_legacy_ack_behavior() {
+        // Back-compat guard: a task that sets getters but NOT a recognized whitelist must
+        // keep acking unknown actions (old behavior), never nudging — so the new field
+        // can't break existing passing tasks.
+        let sb = DeterministicSandbox::new(
+            "p".into(),
+            vec![],
+            vec![],
+            EndStateRule::RequireAll(vec![TaskCheckpoint { tool: "pin_and_flag".into(), args: json!({}) }]),
+        )
+        .with_world_state(json!({ "D-1": { "kind": "major" } }))
+        .with_entity_tools(["get_dep".to_string()]); // non-empty getters, empty recognized set
+        assert_eq!(sb.respond(&call("anything", json!({ "dep": "D-1" }))).as_deref(), Some(r#"{"ok":true}"#));
     }
 
     #[test]

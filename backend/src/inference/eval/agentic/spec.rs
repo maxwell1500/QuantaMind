@@ -122,6 +122,14 @@ pub struct AgenticSpec {
     /// instead of echoing the entity blob. Empty → every tool is a getter (back-compat).
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub entity_tools: Vec<String>,
+    /// Phase 9-v2: the authored REAL tool names (getters + actions) — the whitelist of
+    /// tools the WorldState responder recognizes. A call to a tool NOT in this set is a
+    /// decoy or hallucination, so the sandbox returns `None` (→ the runner's "unknown
+    /// tool" nudge) instead of a misleading `{"ok":true}` ack. Excludes decoys (which
+    /// are merged into the presented tool list, not here). Empty → every tool is
+    /// recognized (v1 / legacy / pre-field tasks) — back-compat.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub recognized_tools: Vec<String>,
 }
 
 fn is_false(b: &bool) -> bool {
@@ -170,6 +178,7 @@ mod tests {
             name_faults: vec![],
             generated: false,
             entity_tools: vec![],
+            recognized_tools: vec![],
         };
         let v = serde_json::to_value(&spec).unwrap();
         assert!(v.get("tier").is_none()); // Easy is the default → omitted

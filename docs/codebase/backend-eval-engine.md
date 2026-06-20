@@ -293,13 +293,20 @@ and the loop runs `k` times for Pass^k reliability.
   causes a miss; one environment shared (immutable) across all `k` runs.
 - **What:** `MockResponse{call,response}`, `TaskCheckpoint{tool,args}`,
   `EndStateRule::{RequireSequence(Vec<TaskCheckpoint>), ExpectAbstainingText}`,
-  `DeterministicSandbox` (`new`, `with_faults`, `with_entity_tools`, `respond(&Call) -> Option<&str>`),
+  `DeterministicSandbox` (`new`, `with_faults`, `with_entity_tools`, `with_recognized_tools`, `respond(&Call) -> Option<&str>`),
   `SandboxState{attempts}` (`fault_for`), `pub fn canonical(&Call) -> String`.
-- **Getter vs action (v2 WorldState):** `respond` consults `entity_tools` (the
-  authored `returns_entity` getter set). A GETTER surfaces the world_state entity blob
-  (`derive_response`); an ACTION not in the set gets a generic `{"ok":true}` ack — so an
-  action can't echo the field the model was supposed to reason to (answer-leniency). An
-  EMPTY set means "every tool is a getter" (v1 / legacy back-compat).
+- **Getter vs action vs decoy (v2 WorldState):** `respond` is three-way. A GETTER (in
+  `entity_tools`, the authored `returns_entity` set) surfaces the world_state entity blob
+  (`derive_response`); a recognized ACTION (in `recognized_tools`, the authored real-tool
+  whitelist, but not a getter) gets a generic `{"ok":true}` ack — so an action can't echo
+  the field the model was supposed to reason to (answer-leniency); an UNRECOGNIZED tool (a
+  decoy or hallucination, in neither set) returns `None` → the runner injects the
+  `UNKNOWN_TOOL` nudge. The nudge (not a misleading `{"ok":true}` "success") lets a capable
+  model recover from taking a decoy in one turn instead of stalling on a contentless ack
+  until the per-step timeout. Both sets EMPTY means "every tool matches" (v1 / legacy
+  back-compat); the order keeps v1 behavior byte-identical. The whitelist is built in
+  `build::sandbox_for` — from `task.tools` for v1 (decoy-free there) or
+  `spec.recognized_tools` for v2 (whose `task.tools` already carries the merged decoys).
 
 ```rust
 FaultInjection::TransientError { status_code, clears_after } => {

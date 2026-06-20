@@ -86,6 +86,7 @@ fn agentic_task(id: &str, k: u32) -> ToolTask {
             name_faults: vec![],
             generated: false,
             entity_tools: vec![],
+            recognized_tools: vec![],
         }),
     }
 }
