@@ -9,6 +9,9 @@ import { isAllowedWriteupLink } from "./writeupLink";
 
 interface Props {
   verdicts: ModelVerdict[];
+  /// The active collection id — the backend stamps its identity/hash on each row and
+  /// excludes rows from custom (non-built-in) collections.
+  collectionId: string;
   onClose: () => void;
   /// Invoked with the agreed preview, the (optional, allow-listed) write-up link, and
   /// the exact params snapshot the preview was built from — so what's published is
@@ -19,7 +22,7 @@ interface Props {
 /// The privacy gate: build the exact payload preview in Rust, show the user what
 /// will (and won't) leave their machine plus the raw JSON, and require an explicit
 /// default-OFF opt-in before Publish enables. Aggregate-only, community-reported.
-export function PublishDialog({ verdicts, onClose, onPublish }: Props) {
+export function PublishDialog({ verdicts, collectionId, onClose, onPublish }: Props) {
   const [preview, setPreview] = useState<PublishPreview | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [agreed, setAgreed] = useState(false);
@@ -32,13 +35,13 @@ export function PublishDialog({ verdicts, onClose, onPublish }: Props) {
 
   useEffect(() => {
     let live = true;
-    previewPublishPayload(verdicts, params)
+    previewPublishPayload(verdicts, params, collectionId)
       .then((p) => live && setPreview(p))
       .catch((e) => live && setError(formatIpcError(e)));
     return () => {
       live = false;
     };
-  }, [verdicts, params]);
+  }, [verdicts, params, collectionId]);
 
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => e.key === "Escape" && onClose();
@@ -76,11 +79,12 @@ export function PublishDialog({ verdicts, onClose, onPublish }: Props) {
           <div data-testid="publish-empty" className="text-xs text-amber-700 bg-amber-50 border border-amber-200 rounded p-3 space-y-1">
             <div className="font-semibold">Nothing to publish yet</div>
             <p>
-              A result is only publishable once it has a <b>measured Pass^k</b> (run an evaluation) and a{" "}
-              <b>known quantization</b>.
+              A result is only publishable once it has a <b>measured Pass^k</b> (run an evaluation), a{" "}
+              <b>known quantization</b>, and a <b>built-in collection</b> — results on your own custom
+              collections stay local and are never published.
               {preview.excluded_count > 0 && <> All {preview.excluded_count} model{preview.excluded_count === 1 ? " was" : "s were"} excluded for missing one of these.</>}
             </p>
-            <p>Run an eval on at least one quantized model, then reopen this dialog.</p>
+            <p>Run an eval on at least one quantized model with a built-in collection, then reopen this dialog.</p>
           </div>
         )}
 

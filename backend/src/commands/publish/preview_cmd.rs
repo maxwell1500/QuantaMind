@@ -1,12 +1,18 @@
 use crate::commands::publish::cohort::cohort_key;
+use crate::commands::publish::publish_cmd::{BUILD_HASH, ENGINE_VERSION};
 use crate::commands::system::hardware::snapshot;
 use crate::errors::AppError;
+use crate::inference::eval::agentic::spec::Tier;
+use crate::inference::eval::agentic::v2::scenarios::collection_hash;
+use crate::inference::eval::readiness::hardware::hwclass::{classify_bytes, default_required_tier};
 use crate::inference::eval::readiness::types::ModelVerdict;
+use crate::inference::eval::toolcall::tasks::builtin_collection;
 use crate::persistence::prompts::schema::InferenceParams;
 use crate::persistence::publish::canonical::{canonical_hash, canonical_json};
-use crate::persistence::publish::row::PublishRow;
+use crate::persistence::publish::row::{PublishContext, PublishRow};
 use crate::persistence::publish::validate::pre_validate;
 use serde::Serialize;
+use std::collections::BTreeMap;
 
 #[derive(Serialize)]
 pub struct InvalidRow {
@@ -28,31 +34,68 @@ pub struct PublishPreview {
     pub invalid: Option<InvalidRow>,
 }
 
-/// Build the publish payload preview from the current verdicts. The cohort is
-/// derived from the authoritative LOCAL hardware snapshot (never a frontend-
-/// supplied one), each measured verdict is projected to a metrics-only row
-/// (unmeasured/unquantized rows dropped → `excluded_count`), and the same
-/// pre-validation the server runs is applied. Read-only and offline.
+/// Build the publish payload preview from the current verdicts. The run-wide
+/// context (cohort + hardware class derived from the authoritative LOCAL hardware
+/// snapshot, never a frontend value; the active collection's identity + content
+/// hash; build provenance) is assembled here, then each measured built-in-collection
+/// verdict is projected by allowlist (unmeasured/unquantized/custom-collection rows
+/// dropped → `excluded_count`), and the same pre-validation the server runs is
+/// applied. Read-only and offline.
 ///
 /// NOTE: this command (with auth/send) compiles OUT of enterprise builds once the
 /// `enterprise` feature gate lands in B1; export stays in.
 #[tauri::command]
-pub fn preview_publish_payload(verdicts: Vec<ModelVerdict>, params: InferenceParams) -> Result<PublishPreview, AppError> {
-    build_preview(&verdicts, &params, cohort_key(&snapshot()), env!("CARGO_PKG_VERSION"))
+pub fn preview_publish_payload(verdicts: Vec<ModelVerdict>, params: InferenceParams, collection_id: String) -> Result<PublishPreview, AppError> {
+    build_preview(&verdicts, &publish_context(&collection_id, params))
+}
+
+/// Assemble the batch's run-wide [`PublishContext`] from the local hardware snapshot
+/// and the active collection id. `collection_hash` is `None` for a non-built-in
+/// collection — the signal `project` uses to exclude custom/user-authored results.
+pub(crate) fn publish_context(collection_id: &str, params: InferenceParams) -> PublishContext {
+    let hw = snapshot();
+    let hardware_class = classify_bytes(hw.total_memory_bytes);
+    PublishContext {
+        params,
+        cohort_key: cohort_key(&hw),
+        engine_version: ENGINE_VERSION.to_string(),
+        build_hash: BUILD_HASH.to_string(),
+        collection_name: collection_id.to_string(),
+        collection_hash: collection_hash(collection_id),
+        decoys_by_tier: decoys_by_tier(collection_id),
+        hardware_class,
+        recommended_tier: default_required_tier(hardware_class),
+    }
+}
+
+/// The decoy-tool count each tier presented, from the built-in collection's task
+/// axes (mirrors the Agent Report's `axesByTier`): the max `decoy_tools` among a
+/// tier's tasks. Empty for a non-built-in collection or one declaring no axes — a
+/// tier then publishes `decoy_count: None`, never a fabricated number.
+fn decoys_by_tier(collection_id: &str) -> BTreeMap<Tier, u32> {
+    let mut out: BTreeMap<Tier, u32> = BTreeMap::new();
+    for task in builtin_collection(collection_id).into_iter().flatten() {
+        if let Some(spec) = &task.agentic {
+            if let Some(axes) = &spec.axes {
+                let e = out.entry(spec.tier).or_insert(0);
+                *e = (*e).max(axes.decoy_tools);
+            }
+        }
+    }
+    out
 }
 
 /// The pure core (no `snapshot()`/Tauri) so the projection + canonicalization are
-/// testable with a fixed cohort and version. Shared with `publish_cmd` so the
-/// previewed payload is byte-identical to the one sent.
-pub(crate) fn build_preview(verdicts: &[ModelVerdict], params: &InferenceParams, cohort: String, tool_version: &str) -> Result<PublishPreview, AppError> {
-    let rows: Vec<PublishRow> =
-        verdicts.iter().filter_map(|v| PublishRow::project(v, params, cohort.clone(), tool_version)).collect();
+/// testable with a fixed context. Shared with `publish_cmd` so the previewed payload
+/// is byte-identical to the one sent.
+pub(crate) fn build_preview(verdicts: &[ModelVerdict], ctx: &PublishContext) -> Result<PublishPreview, AppError> {
+    let rows: Vec<PublishRow> = verdicts.iter().filter_map(|v| PublishRow::project(v, ctx)).collect();
     let excluded_count = verdicts.len() - rows.len();
     let invalid = pre_validate(&rows).err().map(|(index, reason)| InvalidRow { index, reason });
     Ok(PublishPreview {
         canonical_json: canonical_json(&rows)?,
         hash: canonical_hash(&rows)?,
-        cohort_key: cohort,
+        cohort_key: ctx.cohort_key.clone(),
         excluded_count,
         invalid,
         rows,

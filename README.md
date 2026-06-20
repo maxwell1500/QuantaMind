@@ -163,6 +163,7 @@ Three design commitments shape every decision:
 - Configurable readiness profiles (min Pass^k, forbid loops/false-done, require full VRAM, min context, require native FC)
 - **Per-model deep-dive (Phase 9B):** an **Executive Verdict** judged against the tier you actually ran (hardware class shown as advice, never a forced fail), a **Tier Progression Matrix** (per-tier Pass^k + avg-steps with CLEAR / SATURATED / FAIL / NOT-TESTED badges — saturation at a glance), and a **Failure Taxonomy** (decoy / forbidden-call / loop / hallucination distribution across the tested tiers)
 - Export the verdict table as a standalone HTML report, or the deep-dive as versioned JSON
+- **Publish to the community leaderboard (opt-in, default-OFF):** an allowlisted, **verdicts-and-metrics-only** payload — model, quant, hardware `cohort_key`, the tier verdict (status / tier-tested / cleared / recommended), the per-tier Pass^k curve, the failure-mode distribution (counts), the collection identity + content hash, and build provenance (`schema_version` / `engine_version` / a `build.rs` git hash). Never prompts, traces, machine identifiers, or results on your own custom collections; the dialog shows the exact JSON before anything leaves the machine
 
 ---
 

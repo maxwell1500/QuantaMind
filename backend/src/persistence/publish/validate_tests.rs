@@ -1,16 +1,8 @@
 use super::*;
-use crate::persistence::prompts::schema::InferenceParams;
-use crate::persistence::publish::row::{PublishMetrics, PublishRow};
+use crate::persistence::publish::row::PublishRow;
 
 fn row(model: &str, pass_k: f64) -> PublishRow {
-    PublishRow {
-        model: model.to_string(),
-        quant: "Q4_K_M".to_string(),
-        cohort_key: "apple-silicon/m-series/32-64gb".to_string(),
-        tool_version: "0.2.0".to_string(),
-        metrics: PublishMetrics { pass_k, effort: Some(1.2), avg_steps: Some(3.0) },
-        params: InferenceParams::default(),
-    }
+    PublishRow::sample(model, pass_k)
 }
 
 #[test]
@@ -45,4 +37,23 @@ fn rejects_nonpositive_effort_and_negative_steps() {
     let mut r = row("m", 0.9);
     r.metrics.avg_steps = Some(-1.0);
     assert!(pre_validate(&[r]).unwrap_err().1.contains("avg_steps"));
+}
+
+#[test]
+fn rejects_empty_collection_identity() {
+    let mut r = row("m", 0.9);
+    r.collection_name = "  ".into();
+    assert_eq!(pre_validate(&[r]).unwrap_err().1, "collection_name is empty");
+    let mut r = row("m", 0.9);
+    r.collection_hash = "".into();
+    assert_eq!(pre_validate(&[r]).unwrap_err().1, "collection_hash is empty");
+}
+
+#[test]
+fn rejects_out_of_range_per_tier_rate() {
+    use crate::inference::eval::agentic::spec::Tier;
+    use crate::persistence::publish::row::TierMetric;
+    let mut r = row("m", 0.9);
+    r.by_tier = vec![TierMetric { tier: Tier::Hard, pass_k_rate: 1.5, k: 16, avg_steps: None, decoy_count: None }];
+    assert!(pre_validate(&[r]).unwrap_err().1.contains("by_tier pass_k_rate"));
 }

@@ -1,9 +1,13 @@
 use crate::inference::eval::agentic::spec::Tier;
+use serde::{Deserialize, Serialize};
 
 /// Hardware class from total system memory — the bar that calibrates the required
 /// difficulty tier. A 16 GB laptop is judged on Easy/Medium; a 128 GB Studio on
-/// Hard/Extreme. Same engine, the bar rises with the machine.
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+/// Hard/Extreme. Same engine, the bar rises with the machine. Serializes as a
+/// stable snake_case string (`mainstream`, …) — it rides on the publish payload as
+/// the hardware-class advisory, so the canonical hash needs a fixed wire form.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
 pub enum HardwareClass {
     Constrained,
     Mainstream,
