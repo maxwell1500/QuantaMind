@@ -1,4 +1,5 @@
 use crate::inference::eval::agentic::spec::Tier;
+use crate::inference::eval::toolcall::parse::ToolCallDialect;
 use serde::{Deserialize, Serialize};
 
 /// How a single agentic run failed. Each maps to exactly one `FailureTracker`
@@ -45,6 +46,10 @@ pub struct RunOutcome {
     /// still ends via end-state / yield / step-cap. Captures *how* a model coped
     /// with decoys, not just whether it passed.
     pub unknown_tool_calls: u32,
+    /// Which tool-call surface syntax this run's calls were parsed from. `Standard` for
+    /// the instructed JSON; a non-standard dialect (e.g. `Harmony`) means the model spoke
+    /// its own grammar and we normalized it — surfaced so the score isn't laundered.
+    pub dialect: ToolCallDialect,
 }
 
 impl RunOutcome {
@@ -57,6 +62,7 @@ impl RunOutcome {
             hit_schema_error: false,
             schema_recovered: false,
             unknown_tool_calls: 0,
+            dialect: ToolCallDialect::Standard,
         }
     }
 
@@ -69,6 +75,7 @@ impl RunOutcome {
             hit_schema_error: false,
             schema_recovered: false,
             unknown_tool_calls: 0,
+            dialect: ToolCallDialect::Standard,
         }
     }
 
@@ -83,6 +90,14 @@ impl RunOutcome {
     /// Stamp the Phase-9 unknown-tool (decoy distraction) count for this run.
     pub fn with_unknown_tools(mut self, n: u32) -> Self {
         self.unknown_tool_calls = n;
+        self
+    }
+
+    /// Stamp the tool-call dialect this run was parsed from (builder form, so the many
+    /// terminal `RunOutcome::{success,failure}` sites stay untouched — the runner stamps
+    /// once on the way out).
+    pub fn with_dialect(mut self, dialect: ToolCallDialect) -> Self {
+        self.dialect = dialect;
         self
     }
 }
@@ -199,6 +214,19 @@ pub struct AgenticReport {
     /// `with_tier`. `#[serde(default)]` → reports persisted before Phase 9 load as Easy.
     #[serde(default)]
     pub tier: Tier,
+    /// Phase 9: `Some(requested_k)` ONLY when the Pass^k batch was cut short by the
+    /// per-task wall-clock budget (see `runner::TASK_BUDGET`). `total_runs` then holds the
+    /// COMPLETED runs and the pass rate is an honest estimate over them — this field exists
+    /// so the UI never renders a truncated 1/16 as if k were 1. `None` ⇒ every requested run
+    /// finished. `#[serde(default)]` → pre-Phase-9 reports load as not-truncated.
+    #[serde(default)]
+    pub requested_runs: Option<u32>,
+    /// Phase 9: the non-standard tool-call dialect this task's runs were normalized from,
+    /// or `Standard` when the model emitted the instructed JSON. Surfaced as a UI badge so a
+    /// model that only passed via its native grammar is visibly flagged, not silently
+    /// credited. `#[serde(default)]` → pre-fix reports load as `Standard`.
+    #[serde(default)]
+    pub dialect: ToolCallDialect,
 }
 
 impl AgenticReport {
@@ -226,6 +254,13 @@ impl AgenticReport {
             }
         }
         let steps: Vec<u32> = outcomes.iter().map(|o| o.steps).collect();
+        // Surface the first non-standard dialect any run needed; `Standard` if all runs
+        // spoke the instructed JSON. (A model is consistent in practice, so one flag is enough.)
+        let dialect = outcomes
+            .iter()
+            .map(|o| o.dialect)
+            .find(|&d| d != ToolCallDialect::Standard)
+            .unwrap_or_default();
         AgenticReport {
             passes,
             total_runs: outcomes.len() as u32,
@@ -235,6 +270,8 @@ impl AgenticReport {
             avg_steps: mean(&steps),
             schema_resilience: (schema_hits > 0).then(|| schema_recovered as f64 / schema_hits as f64),
             tier: Tier::default(), // stamped by the runner via with_tier (the task carries the tier)
+            requested_runs: None,  // stamped via with_truncation only when the budget cut the batch short
+            dialect,
         }
     }
 
@@ -243,6 +280,22 @@ impl AgenticReport {
     pub fn with_tier(mut self, tier: Tier) -> Self {
         self.tier = tier;
         self
+    }
+
+    /// Mark this report truncated by the wall-clock budget: it ran `total_runs` of
+    /// `requested_k` requested repetitions. Builder form (like `with_tier`) so
+    /// `from_outcomes` and its tests stay unchanged.
+    pub fn with_truncation(mut self, requested_k: u32) -> Self {
+        self.requested_runs = Some(requested_k);
+        self
+    }
+
+    /// Strict Pass^k credit for ONE task: every run that ran must have passed AND the batch
+    /// must have run to completion. A budget-truncated batch (`requested_runs.is_some()`)
+    /// never qualifies — we didn't observe all k runs, so we can't claim the all-k guarantee
+    /// (the honest, conservative call; the run-level pass@k rate still reflects what we saw).
+    pub fn is_strict_pass(&self) -> bool {
+        self.requested_runs.is_none() && self.total_runs > 0 && self.passes == self.total_runs
     }
 }
 

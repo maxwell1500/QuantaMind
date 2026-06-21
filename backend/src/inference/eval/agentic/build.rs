@@ -1,6 +1,6 @@
 use crate::errors::{AppError, AppResult};
 use crate::inference::eval::agentic::difficulty::decoys;
-use crate::inference::eval::agentic::difficulty::passk::pass_k_for;
+use crate::inference::eval::agentic::difficulty::passk::{max_steps_for, pass_k_for};
 use crate::inference::eval::agentic::runner::AgenticConfig;
 use crate::inference::eval::agentic::sandbox::{DeterministicSandbox, EndStateRule};
 use crate::inference::eval::toolcall::tasks::ToolTask;
@@ -21,7 +21,8 @@ fn seed_from_id(id: &str) -> u64 {
 /// Project an agentic `ToolTask` into a ready-to-run sandbox + config. Defense in
 /// depth beyond `validate_tasks`: confirms the task is agentic and that every
 /// checkpoint / mock names a declared tool. The task's `prompt` becomes the
-/// initial prompt; `k`/`max_steps` fall back to `AgenticConfig::default()` (5/10).
+/// initial prompt; an absent `k`/`max_steps` falls back to the tier policy
+/// (`pass_k_for` / `max_steps_for`), so a harder spec gets a larger budget by default.
 pub fn sandbox_for(task: &ToolTask) -> AppResult<(DeterministicSandbox, AgenticConfig)> {
     let spec = task
         .agentic
@@ -97,7 +98,10 @@ pub fn sandbox_for(task: &ToolTask) -> AppResult<(DeterministicSandbox, AgenticC
         // Precedence (Gap 4): an explicit `k` (authored, or the UI K override that
         // `apply_overrides` writes into `spec.k`) wins; otherwise scale by tier.
         k: spec.k.unwrap_or_else(|| pass_k_for(spec.tier)),
-        max_steps: spec.max_steps.unwrap_or(d.max_steps),
+        // Same precedence for the step budget: an explicit `max_steps` (authored or the
+        // UI Max-Steps field) wins; otherwise scale the horizon by tier (`d.max_steps` is
+        // no longer a flat floor — an untiered/Easy spec resolves to `max_steps_for(Easy)`).
+        max_steps: spec.max_steps.unwrap_or_else(|| max_steps_for(spec.tier)),
         max_recovery: spec.max_recovery.unwrap_or(d.max_recovery),
     };
     Ok((sandbox, cfg))
@@ -196,6 +200,24 @@ mod tests {
         t.agentic.as_mut().unwrap().tier = Tier::Extreme; // would be 24
         let (_, cfg) = sandbox_for(&t).unwrap();
         assert_eq!(cfg.k, 3); // explicit k beats pass_k_for(Extreme)
+    }
+
+    #[test]
+    fn tier_scales_max_steps_when_no_explicit_value_is_authored() {
+        let mut t = agentic_task();
+        t.agentic.as_mut().unwrap().max_steps = None; // no explicit cap → tier policy decides
+        t.agentic.as_mut().unwrap().tier = Tier::Hard;
+        let (_, cfg) = sandbox_for(&t).unwrap();
+        assert_eq!(cfg.max_steps, 32); // max_steps_for(Hard), not the old flat default
+    }
+
+    #[test]
+    fn an_explicit_max_steps_wins_over_the_tier_policy() {
+        let mut t = agentic_task();
+        t.agentic.as_mut().unwrap().max_steps = Some(5); // authored / UI override
+        t.agentic.as_mut().unwrap().tier = Tier::Extreme; // would be 48
+        let (_, cfg) = sandbox_for(&t).unwrap();
+        assert_eq!(cfg.max_steps, 5); // explicit cap beats max_steps_for(Extreme)
     }
 
     #[test]

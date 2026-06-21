@@ -45,6 +45,34 @@ pub struct BackendTurn {
     pub keep_alive: Option<i32>,
 }
 
+/// Merge the header's global eval params (`global`) with the harness's per-turn spec
+/// (`spec`). Structural caps the eval loop sets — `num_predict` (the anti-runaway token
+/// cap) and `num_ctx` (sized to keep the prefix-KV cache alive) — take precedence so a
+/// header that leaves `max_tokens`/`num_ctx` unset can't strip them. Every other field is
+/// a user sampling preference and comes from the header, falling back to the spec. `None`
+/// only when neither side set any options.
+fn merge_eval_options(
+    global: Option<&GenerateOptions>,
+    spec: Option<&GenerateOptions>,
+) -> Option<GenerateOptions> {
+    match (global, spec) {
+        (None, s) => s.cloned(),
+        (Some(g), None) => Some(g.clone()),
+        (Some(g), Some(s)) => Some(GenerateOptions {
+            // Harness-owned: the spec's value wins (it's a correctness/safety bound), but
+            // honor a header-supplied value when the spec didn't pin one.
+            num_predict: s.num_predict.or(g.num_predict),
+            num_ctx: s.num_ctx.or(g.num_ctx),
+            // User sampling prefs: header wins, spec is the fallback default.
+            temperature: g.temperature.or(s.temperature),
+            top_p: g.top_p.or(s.top_p),
+            top_k: g.top_k.or(s.top_k),
+            repeat_penalty: g.repeat_penalty.or(s.repeat_penalty),
+            seed: g.seed.or(s.seed),
+        }),
+    }
+}
+
 impl ModelTurn for BackendTurn {
     async fn run(&self, spec: &GenerateSpec) -> AppResult<(String, GenerateStats)> {
         let mut out = String::new();
@@ -52,11 +80,15 @@ impl ModelTurn for BackendTurn {
         let cancel = self.cancel.clone();
         // The agentic loop builds its spec without a model name (it only knows the
         // `ModelTurn` seam). Inject our own so Ollama — which sends `spec.model` in
-        // the request — targets the right model instead of an empty name. Apply the
-        // global eval params too (prefer them; fall back to whatever the spec set).
+        // the request — targets the right model instead of an empty name. Merge the
+        // global eval params with the harness spec FIELD-WISE (see `merge_eval_options`):
+        // the loop's structural caps (`num_predict`, `num_ctx`) must win, or a header that
+        // omits `max_tokens` strips the per-turn cap → runaway generation (minutes/turn,
+        // KV-cache busting). User sampling prefs (top_p/top_k/penalty/seed/temperature)
+        // still come from the header.
         let spec = GenerateSpec {
             model: self.model.clone(),
-            options: self.options.clone().or_else(|| spec.options.clone()),
+            options: merge_eval_options(self.options.as_ref(), spec.options.as_ref()),
             keep_alive: self.keep_alive.or(spec.keep_alive),
             ..spec.clone()
         };
@@ -143,9 +175,55 @@ impl ModelTurn for NativeOllamaTurn {
 
 #[cfg(test)]
 mod tests {
-    use super::{synthesize_calls, NativeToolCall};
+    use super::{merge_eval_options, synthesize_calls, NativeToolCall};
     use crate::inference::eval::toolcall::parse::{extract_calls, looks_like_broken_json};
+    use crate::inference::generate::generate_options::GenerateOptions;
     use serde_json::json;
+
+    #[test]
+    fn a_header_without_max_tokens_cannot_strip_the_harness_token_cap() {
+        // The regression: a header that sets only temperature (num_predict/num_ctx unset)
+        // used to REPLACE the spec wholesale → no token cap → runaway generation. The merge
+        // must keep the spec's `num_predict`/`num_ctx` while taking the header's temperature.
+        let global = GenerateOptions { temperature: Some(0.7), ..Default::default() };
+        let spec = GenerateOptions { temperature: Some(0.0), num_predict: Some(256), num_ctx: Some(4096), ..Default::default() };
+        let merged = merge_eval_options(Some(&global), Some(&spec)).unwrap();
+        assert_eq!(merged.num_predict, Some(256), "the per-turn cap survives");
+        assert_eq!(merged.num_ctx, Some(4096), "the sized context window survives");
+        assert_eq!(merged.temperature, Some(0.7), "the header's sampling pref still applies");
+    }
+
+    #[test]
+    fn header_sampling_prefs_pass_through_and_spec_only_fields_are_kept() {
+        let global = GenerateOptions { top_p: Some(0.9), top_k: Some(40), seed: Some(7), ..Default::default() };
+        let spec = GenerateOptions { temperature: Some(0.0), num_predict: Some(256), ..Default::default() };
+        let merged = merge_eval_options(Some(&global), Some(&spec)).unwrap();
+        assert_eq!(merged.top_p, Some(0.9));
+        assert_eq!(merged.top_k, Some(40));
+        assert_eq!(merged.seed, Some(7));
+        assert_eq!(merged.num_predict, Some(256)); // spec-only field retained
+        assert_eq!(merged.temperature, Some(0.0)); // header didn't set it → spec default
+    }
+
+    #[test]
+    fn a_header_max_tokens_is_honored_only_when_the_spec_did_not_pin_one() {
+        let global = GenerateOptions { num_predict: Some(1000), ..Default::default() };
+        // spec pins the cap → spec wins (anti-runaway).
+        let pinned = merge_eval_options(Some(&global), Some(&GenerateOptions { num_predict: Some(256), ..Default::default() })).unwrap();
+        assert_eq!(pinned.num_predict, Some(256));
+        // spec leaves it open → header value flows through.
+        let open = merge_eval_options(Some(&global), Some(&GenerateOptions::default())).unwrap();
+        assert_eq!(open.num_predict, Some(1000));
+    }
+
+    #[test]
+    fn missing_sides_degrade_gracefully() {
+        let spec = GenerateOptions { num_predict: Some(256), ..Default::default() };
+        assert_eq!(merge_eval_options(None, Some(&spec)).unwrap().num_predict, Some(256));
+        let global = GenerateOptions { temperature: Some(0.5), ..Default::default() };
+        assert_eq!(merge_eval_options(Some(&global), None).unwrap().temperature, Some(0.5));
+        assert!(merge_eval_options(None, None).is_none());
+    }
 
     #[test]
     fn single_call_round_trips_through_extract_calls_with_embedded_quotes() {

@@ -183,15 +183,28 @@ if abstain != matches!(t.expected, Expected::NoCall) { return Err(bad(&t.id, "ex
 ```
 
 ### File: `parse.rs`
-- **Responsibility:** Extract tool calls from a raw completion.
+- **Responsibility:** Extract tool calls from a raw completion, across model dialects.
 - **Why:** Small quants emit calls as a single object, a JSON array, bare
   `{..}\n{..}` sequences, or echo the call inside a fence — all must parse, and
-  duplicates must collapse so the cardinality guard doesn't false-fail.
-- **What:** `extract_calls(completion) -> Option<Vec<Call>>`; privates
-  `objects()` (every top-level balanced `{…}`, string/escape aware), `to_call()`
-  (`{name, args|arguments}`); `pub(crate) has_json_object`, `looks_like_broken_json`
-  (used by the agentic runner to tell broken JSON from a hallucinated completion).
-- **How/Where used:** `eval::trace_one_with`, `runner::run_once`.
+  duplicates must collapse so the cardinality guard doesn't false-fail. Some models
+  (gemma) ignore the JSON instruction entirely and emit their NATIVE channel grammar;
+  without normalization those score as `MalformedJson` forever, for the full slow
+  Pass^k grind.
+- **What:** `extract_calls(completion) -> Option<Vec<Call>>` (delegates to
+  `extract_calls_dialect`); `extract_calls_dialect(completion) -> Option<(Vec<Call>, ToolCallDialect)>`
+  tries the instructed JSON first (`extract_standard`), then falls back to
+  `harmony_calls` (the `call:NAME{ bare: "args" }` channel format). Privates `objects()`
+  (every top-level balanced `{…}`, string/escape aware), `to_call()`
+  (`{name, args|arguments}`), `balanced_brace`, `relax_object`/`relax_to_json` (quote bare
+  keys + escape raw control chars in code strings so a JS-object body parses);
+  `pub(crate) has_json_object`, `looks_like_broken_json` (used by the agentic runner to
+  tell broken JSON from a hallucinated completion).
+- **Dialect (`ToolCallDialect`):** `Standard` (instructed JSON) or `Harmony` (native
+  channel grammar). The runner threads the recovered dialect onto `RunOutcome`→`AgenticReport`
+  so the scoreboard flags a model that only scored via normalization (transparency — the
+  score isn't silently laundered). Standard is tried first, so a clean-JSON model is never
+  mislabeled; a bareword VALUE still fails to relax → dropped, not guessed.
+- **How/Where used:** `eval::trace_one_with`, `runner::run_steps`.
 
 ```rust
 for call in objects(&cleaned).into_iter()
@@ -321,8 +334,12 @@ FaultInjection::TransientError { status_code, clears_after } => {
 - **Why:** Defense-in-depth — re-checks every checkpoint/mock/fault names a declared
   tool before running.
 - **What:** `sandbox_for(task) -> AppResult<(DeterministicSandbox, AgenticConfig)>`;
-  fills config from spec overrides, defaulting to `AgenticConfig::default()`
-  (`k=5, max_steps=10, max_recovery=2`).
+  fills config from spec overrides. An absent `k`/`max_steps` falls back to the **tier
+  policy** (`passk::pass_k_for` / `passk::max_steps_for`), NOT a flat default: a harder
+  tier gets both more Pass^k runs and a longer step horizon —
+  `k` = 5/8/16/24 and `max_steps` = 8/16/32/48 for Easy/Medium/Hard/Extreme. An explicit
+  authored value (or the UI K / Max-Steps field) always wins. `max_recovery` still
+  defaults from `AgenticConfig::default()` (2).
 
 ### File: `context.rs`
 - **Responsibility:** The running transcript (initial prompt + alternating model
@@ -341,6 +358,16 @@ FaultInjection::TransientError { status_code, clears_after } => {
   `BackendTurn{backend,endpoint,model,cancel,options,keep_alive}` (dispatch by
   `BackendKind`); `NativeOllamaTurn{endpoint,model,tools,options}` (`/api/chat` +
   `synthesize_calls`).
+- **Options merge (`merge_eval_options`):** `BackendTurn::run` merges the header's global
+  eval params with the harness per-turn spec **field-wise** — it does NOT let one replace the
+  other. The loop's structural caps win: `num_predict` (the `MAX_TOKENS=256` anti-runaway
+  cap) and `num_ctx` (sized by `agentic_num_ctx`) take the spec's value, with the header as
+  fallback; sampling prefs (temperature/top_p/top_k/repeat_penalty/seed) take the header's
+  value, with the spec as fallback. **Why it matters:** the prior `global.or(spec)` replaced
+  the whole options object, so a header that omitted `max_tokens` (`num_predict: None`)
+  stripped the per-turn cap → unbounded generation (minutes/turn, a giant multi-call blob)
+  AND dropped the sized `num_ctx` → context-shift that busts the prefix-KV cache. Both the
+  256 cap and the cache fix (`b97d79c`) were silently dead whenever the header sent params.
 - **Warm-up:** `run_batch_resumable` calls `turn.warm_up()` once per model before its
   first scored task. `BackendTurn` issues a 1-token generate (honoring `keep_alive`) to
   load the weights resident, so cold-load latency isn't charged to the first task as a
@@ -386,7 +413,7 @@ FaultInjection::TransientError { status_code, clears_after } => {
 - **Why:** Distinct non-overlapping tallies so loop failures don't hide fake-done /
   bad-schema failures; effort averages only successful runs; inapplicable metrics
   are `None`, never 0.
-- **What:** `FailureKind`, `RunOutcome` (`success`/`failure`/`with_schema`),
+- **What:** `FailureKind`, `RunOutcome` (`success`/`failure`/`with_schema`/`with_unknown_tools`/`with_dialect`),
   `FailureTracker{infinite_loop_hits, hallucinated_completions, malformed_json_calls,
   schema_unrecovered_calls, unknown_tool_calls, forbidden_calls, turn_timeouts,
   reported_in_prose_calls}`
@@ -394,7 +421,9 @@ FaultInjection::TransientError { status_code, clears_after } => {
   `reported_in_prose` ranks LEAST-severe in `top()`, so count-first surfaces it as a
   capable model's headline while a genuine failure dominates on a tie), `TopError`,
   `AgenticReport{passes, total_runs, failures, avg_output_tokens_success, avg_steps,
-  top_error, schema_resilience}` (`from_outcomes`).
+  top_error, schema_resilience, tier, requested_runs, dialect}` (`from_outcomes`;
+  builders `with_tier`/`with_truncation`; `is_strict_pass()` = all-ran-passed AND not
+  budget-truncated).
 
 ```rust
 schema_resilience: (schema_hits > 0).then(|| schema_recovered as f64 / schema_hits as f64),
@@ -416,18 +445,35 @@ schema_resilience: (schema_hits > 0).then(|| schema_recovered as f64 / schema_hi
   siblings; two calls can satisfy two checkpoints in one turn. The raw turn is pushed once,
   then one tool-result line per call; the turn streams a single `TrajectoryStep` carrying
   every injection. A single-call turn is byte-identical to the pre-multi-call path.
+- **Wall-clock budget (`TASK_BUDGET=480s`):** a Pass^k batch over a slow model (a 12B on a
+  16GB host generates minutes per step) can otherwise grind for hours — `k × max_steps`
+  real multi-minute turns. `run_agentic_within` stops launching NEW runs once the batch
+  passes the budget, but only BETWEEN whole runs and after sampling at least one, so every
+  counted run is complete. The report is stamped `requested_runs = Some(k)` (truncated);
+  `total_runs` holds the completed runs and the pass rate stays an honest, unbiased estimate
+  over them. **Strict Pass^k veto:** `AgenticReport::is_strict_pass()` requires
+  `requested_runs.is_none()` — a truncated batch can never be credited as a full pass^k (the
+  un-run reps were never observed), so `passes == total_runs` on a 1-of-16 truncation isn't
+  mistaken for a clean pass. `agg_agentic` (batch.rs) and the UI badge both route through it.
+- **Dialect threading:** `run_steps` takes a `&mut ToolCallDialect` out-param updated at the
+  `extract_calls_dialect` site; `run_once_inner` stamps it once onto the outcome via
+  `with_dialect` (keeping the many terminal returns untouched). `from_outcomes` rolls up the
+  first non-standard dialect onto the report → UI flag.
 - **What:** `AgenticConfig{k,max_steps,max_recovery}` (Default `{5,10,2}`);
   `run_agentic(turn,sandbox,config,tx) -> AppResult<AgenticReport>`;
   `run_once(turn,sandbox,max_steps,max_recovery,run_index,tx) -> AppResult<RunOutcome>`;
-  `MAX_TOKENS=256`.
+  `MAX_TOKENS=256`, `STEP_TIMEOUT=180s` (per-turn wall-clock → `TurnTimeout`).
 
 ```rust
 pub async fn run_agentic<M: ModelTurn>(turn, sandbox, config, tx) -> AppResult<AgenticReport> {
+    let start = Instant::now();
     let mut outcomes = Vec::with_capacity(config.k as usize);
     for run_index in 0..config.k {
+        if run_index > 0 && start.elapsed() >= TASK_BUDGET { truncated = true; break; } // whole runs only
         outcomes.push(run_once(turn, sandbox, config.max_steps, config.max_recovery, run_index, tx).await?);
     }
-    Ok(AgenticReport::from_outcomes(&outcomes))
+    let report = AgenticReport::from_outcomes(&outcomes);
+    Ok(if truncated { report.with_truncation(config.k) } else { report })  // honest partial, flagged
 }
 ```
 
@@ -438,9 +484,9 @@ per call validate / fault-trap / advance / inject; or classify a terminal failur
 for step_index in 0..max_steps {
     let (raw, stats) = turn.run(&spec).await?;            // greedy temp 0, prompt = convo.render()
     output_tokens += stats.eval_count.unwrap_or(0);
-    let calls = match extract_calls(&raw) {               // ALL parsed calls, not just the first
+    let calls = match extract_calls_dialect(&raw) {       // standard JSON, else normalize a native dialect
         None => return /* abstain success | malformed (broken JSON) | hallucinated yield */,
-        Some(calls) => calls,
+        Some((calls, d)) => { if d != Standard { *dialect = d; } calls }   // flag a normalized run
     };
     if matches!(sandbox.end_state, ExpectAbstainingText) {  // acted when it should decline
         return Ok(RunOutcome::failure(step_index+1, output_tokens, FailureKind::Hallucinated));
