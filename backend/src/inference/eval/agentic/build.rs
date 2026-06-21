@@ -1,6 +1,6 @@
 use crate::errors::{AppError, AppResult};
 use crate::inference::eval::agentic::difficulty::decoys;
-use crate::inference::eval::agentic::difficulty::passk::pass_k_for;
+use crate::inference::eval::agentic::difficulty::passk::{max_steps_for, pass_k_for};
 use crate::inference::eval::agentic::runner::AgenticConfig;
 use crate::inference::eval::agentic::sandbox::{DeterministicSandbox, EndStateRule};
 use crate::inference::eval::toolcall::tasks::ToolTask;
@@ -21,7 +21,8 @@ fn seed_from_id(id: &str) -> u64 {
 /// Project an agentic `ToolTask` into a ready-to-run sandbox + config. Defense in
 /// depth beyond `validate_tasks`: confirms the task is agentic and that every
 /// checkpoint / mock names a declared tool. The task's `prompt` becomes the
-/// initial prompt; `k`/`max_steps` fall back to `AgenticConfig::default()` (5/10).
+/// initial prompt; an absent `k`/`max_steps` falls back to the tier policy
+/// (`pass_k_for` / `max_steps_for`), so a harder spec gets a larger budget by default.
 pub fn sandbox_for(task: &ToolTask) -> AppResult<(DeterministicSandbox, AgenticConfig)> {
     let spec = task
         .agentic
@@ -74,6 +75,18 @@ pub fn sandbox_for(task: &ToolTask) -> AppResult<(DeterministicSandbox, AgenticC
     if let Some(ws) = &spec.world_state {
         sandbox = sandbox.with_world_state(ws.clone()).with_entity_tools(spec.entity_tools.clone());
     }
+    // Recognized real-tool whitelist (getters + actions) so a decoy/hallucinated call in
+    // WorldState mode gets the corrective nudge, not a misleading `{"ok":true}`. v1
+    // ("agentic"): `task.tools` is still decoy-free here (pool decoys went into
+    // `presented` above), so derive from it. v2 ("agent_loop"): `task.tools` already
+    // carries the authored decoys (merged in `transpile`), so use the pre-merge names the
+    // transpiler stashed in `spec.recognized_tools`.
+    let recognized: Vec<String> = if task.category == "agentic" {
+        task.tools.iter().map(|t| t.name.clone()).collect()
+    } else {
+        spec.recognized_tools.clone()
+    };
+    sandbox = sandbox.with_recognized_tools(recognized);
     // v2: name-keyed faults (on_call trips on any call to that tool).
     if !spec.name_faults.is_empty() {
         let nf: std::collections::HashMap<String, crate::inference::eval::agentic::spec::FaultInjection> =
@@ -85,7 +98,10 @@ pub fn sandbox_for(task: &ToolTask) -> AppResult<(DeterministicSandbox, AgenticC
         // Precedence (Gap 4): an explicit `k` (authored, or the UI K override that
         // `apply_overrides` writes into `spec.k`) wins; otherwise scale by tier.
         k: spec.k.unwrap_or_else(|| pass_k_for(spec.tier)),
-        max_steps: spec.max_steps.unwrap_or(d.max_steps),
+        // Same precedence for the step budget: an explicit `max_steps` (authored or the
+        // UI Max-Steps field) wins; otherwise scale the horizon by tier (`d.max_steps` is
+        // no longer a flat floor — an untiered/Easy spec resolves to `max_steps_for(Easy)`).
+        max_steps: spec.max_steps.unwrap_or_else(|| max_steps_for(spec.tier)),
         max_recovery: spec.max_recovery.unwrap_or(d.max_recovery),
     };
     Ok((sandbox, cfg))
@@ -134,6 +150,7 @@ mod tests {
                 name_faults: vec![],
                 generated: false,
                 entity_tools: vec![],
+                recognized_tools: vec![],
             }),
         }
     }
@@ -186,6 +203,24 @@ mod tests {
     }
 
     #[test]
+    fn tier_scales_max_steps_when_no_explicit_value_is_authored() {
+        let mut t = agentic_task();
+        t.agentic.as_mut().unwrap().max_steps = None; // no explicit cap → tier policy decides
+        t.agentic.as_mut().unwrap().tier = Tier::Hard;
+        let (_, cfg) = sandbox_for(&t).unwrap();
+        assert_eq!(cfg.max_steps, 32); // max_steps_for(Hard), not the old flat default
+    }
+
+    #[test]
+    fn an_explicit_max_steps_wins_over_the_tier_policy() {
+        let mut t = agentic_task();
+        t.agentic.as_mut().unwrap().max_steps = Some(5); // authored / UI override
+        t.agentic.as_mut().unwrap().tier = Tier::Extreme; // would be 48
+        let (_, cfg) = sandbox_for(&t).unwrap();
+        assert_eq!(cfg.max_steps, 5); // explicit cap beats max_steps_for(Extreme)
+    }
+
+    #[test]
     fn the_decoy_set_is_deterministic_for_a_given_task() {
         let mut t = agentic_task();
         t.id = "stable-id".into();
@@ -202,5 +237,38 @@ mod tests {
         let mut t = agentic_task();
         t.agentic = None;
         assert!(sandbox_for(&t).is_err());
+    }
+
+    #[test]
+    fn v2_decoy_yields_unknown_tool_not_a_misleading_ack() {
+        // A v2 ("agent_loop") task carries its decoys already merged into `task.tools`,
+        // and the pre-merge real names in `spec.recognized_tools`. sandbox_for must build
+        // the whitelist from the latter so a decoy call returns None (→ runner nudge),
+        // while the recognized getter/action still resolve. This is the regression for the
+        // misleading `{"ok":true}` decoy bug.
+        let mut t = agentic_task();
+        t.id = "v2-decoy".into();
+        t.category = "agent_loop".into(); // v2: skips the decoy pool; uses recognized_tools
+        t.tools = vec![tool("get_dep"), tool("pin_and_flag"), tool("read_file")]; // read_file is the decoy
+        let spec = t.agentic.as_mut().unwrap();
+        spec.world_state = Some(json!({ "D-1": { "kind": "major" } }));
+        spec.entity_tools = vec!["get_dep".into()];
+        spec.recognized_tools = vec!["get_dep".into(), "pin_and_flag".into()]; // decoy excluded
+        spec.end_state = EndStateRule::RequireAll(vec![TaskCheckpoint { tool: "pin_and_flag".into(), args: json!({}) }]);
+        spec.mocks = vec![]; // v2 uses the world_state responder, not static mocks
+
+        let (sandbox, _) = sandbox_for(&t).unwrap();
+        // The decoy is present in the presented tool list (the model can see/call it)...
+        assert!(sandbox.tools.iter().any(|x| x.name == "read_file"));
+        // ...but calling it now nudges instead of acking, while real tools resolve.
+        assert!(sandbox.respond(&Call { name: "read_file".into(), args: json!({ "path": "x" }) }).is_none());
+        assert_eq!(
+            sandbox.respond(&Call { name: "get_dep".into(), args: json!({ "id": "D-1" }) }).as_deref(),
+            Some(r#"{"kind":"major"}"#)
+        );
+        assert_eq!(
+            sandbox.respond(&Call { name: "pin_and_flag".into(), args: json!({ "dep": "D-1" }) }).as_deref(),
+            Some(r#"{"ok":true}"#)
+        );
     }
 }

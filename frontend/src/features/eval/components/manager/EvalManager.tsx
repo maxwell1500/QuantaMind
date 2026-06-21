@@ -30,6 +30,7 @@ interface EvalManagerProps {
   onTierChange: (t: "auto" | Tier) => void;
   effectiveTier?: Tier;
   recommendedK?: number;
+  recommendedSteps?: number;
   hwTier: HardwareTier | null;
   decoyEnabled: boolean;
   setDecoyEnabled: (b: boolean) => void;
@@ -52,6 +53,7 @@ export function EvalManager({
   onTierChange = () => {},
   effectiveTier = undefined,
   recommendedK = undefined,
+  recommendedSteps = undefined,
   hwTier = null,
   decoyEnabled = false,
   setDecoyEnabled = () => {},
@@ -450,19 +452,27 @@ export function EvalManager({
             </div>
           </div>
 
-          {/* Max Steps — agentic loop cap; only affects Multi-Step tasks */}
+          {/* Max Steps — agentic loop cap; only affects Multi-Step tasks. Always editable;
+              pre-filled with the tier's recommended budget (mirrors Iterations). */}
           <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between" }}>
             <span style={controlLabelStyle} title="Max turns an agentic task may take before it's marked a loop-cap failure. No effect on single-turn tasks.">
               Max Steps:
             </span>
-            <input
-              type="number"
-              min={1}
-              value={maxSteps}
-              onChange={(e) => setMaxSteps(Math.max(1, +e.target.value))}
-              style={numberInputStyle}
-              data-testid="eval-manager-max-steps"
-            />
+            <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
+              {recommendedSteps != null && (
+                <span style={{ fontSize: 11, color: "#94a3b8", fontFamily: "Inter, sans-serif" }} data-testid="eval-steps-recommended">
+                  recommended: {recommendedSteps}
+                </span>
+              )}
+              <input
+                type="number"
+                min={1}
+                value={maxSteps}
+                onChange={(e) => setMaxSteps(Math.max(1, +e.target.value))}
+                style={numberInputStyle}
+                data-testid="eval-manager-max-steps"
+              />
+            </div>
           </div>
 
           {/* ANTI-SATURATION (Phase 9) — decoy tools, with an ⓘ explaining the lever. */}

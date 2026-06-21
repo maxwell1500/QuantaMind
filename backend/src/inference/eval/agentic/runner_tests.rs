@@ -1,10 +1,12 @@
 use crate::errors::AppResult;
 use crate::inference::eval::agentic::model_turn::ModelTurn;
 use crate::inference::eval::agentic::scoring::report::{FailureKind, TopError};
-use crate::inference::eval::agentic::runner::{run_agentic, run_once, run_once_inner, AgenticConfig};
+use crate::inference::eval::agentic::runner::{run_agentic, run_agentic_within, run_once, run_once_inner, AgenticConfig};
+use tokio_util::sync::CancellationToken;
 use crate::inference::eval::agentic::sandbox::{DeterministicSandbox, EndStateRule, MockResponse, TaskCheckpoint};
 use crate::inference::eval::agentic::spec::{FaultInjection, FaultRule};
 use crate::inference::eval::agentic::step::{StepKind, TrajectoryStep};
+use crate::inference::eval::toolcall::parse::ToolCallDialect;
 use crate::inference::eval::toolcall::tasks::Call;
 use crate::inference::generate::generate_spec::GenerateSpec;
 use crate::inference::generate::generate_stats::GenerateStats;
@@ -180,6 +182,82 @@ async fn pass_k_counts_successes_and_failures_with_isolation() {
 
     // One TrajectoryStep per run (each is single-turn).
     assert_eq!(drain(&mut rx).len(), 5);
+}
+
+#[tokio::test]
+async fn wall_clock_budget_truncates_after_a_whole_run_and_flags_requested_k() {
+    // A ZERO budget trips on every check, but the guard always samples ONE whole run
+    // first and only checks BETWEEN runs — so exactly one run executes. The report
+    // carries the honest 1-run pass rate AND the requested k, so a 1-of-16 result can
+    // never be mistaken for k=1.
+    let model = ScriptedModel::new(vec![(END_CALL, 10)]); // every run succeeds in one turn
+    let (tx, _rx) = unbounded_channel();
+    let report = run_agentic_within(
+        &model,
+        16,
+        |_| Ok((sandbox(), 4u32, 2u8)),
+        &CancellationToken::new(),
+        std::time::Duration::ZERO,
+        &tx,
+    )
+    .await
+    .unwrap();
+    drop(tx);
+
+    assert_eq!(report.total_runs, 1, "ZERO budget stops after one whole run");
+    assert_eq!(report.passes, 1);
+    assert_eq!(report.requested_runs, Some(16), "truncation records the requested k");
+}
+
+#[tokio::test]
+async fn generous_budget_runs_every_requested_run_and_is_not_flagged() {
+    let model = ScriptedModel::new(vec![(END_CALL, 10)]);
+    let (tx, _rx) = unbounded_channel();
+    let report = run_agentic_within(
+        &model,
+        5,
+        |_| Ok((sandbox(), 4u32, 2u8)),
+        &CancellationToken::new(),
+        std::time::Duration::from_secs(3600),
+        &tx,
+    )
+    .await
+    .unwrap();
+    drop(tx);
+
+    assert_eq!(report.total_runs, 5);
+    assert_eq!(report.passes, 5);
+    assert_eq!(report.requested_runs, None, "a full batch is never flagged truncated");
+}
+
+#[tokio::test]
+async fn a_harmony_dialect_run_is_normalized_scored_and_flagged_on_the_report() {
+    // The model ignores the JSON instruction and emits its native channel grammar. The
+    // parser normalizes `call:NAME{ bare: args }` to a real call (so it can PASS), and the
+    // report flags the dialect so the UI shows the model needed normalization.
+    let model = ScriptedModel::new(vec![(
+        "<channel|><|tool_response>call:execute_transfer{amount: 450.0}<tool_call|>",
+        20,
+    )]);
+    let (tx, _rx) = unbounded_channel();
+    let report = run_agentic(&model, &sandbox(), AgenticConfig { k: 1, max_steps: 4, ..Default::default() }, &tx)
+        .await
+        .unwrap();
+    drop(tx);
+
+    assert_eq!(report.passes, 1, "the normalized harmony call satisfies the checkpoint");
+    assert_eq!(report.dialect, ToolCallDialect::Harmony, "the report flags the non-standard dialect");
+}
+
+#[tokio::test]
+async fn a_standard_json_run_keeps_the_standard_dialect_on_the_report() {
+    let model = ScriptedModel::new(vec![(END_CALL, 10)]);
+    let (tx, _rx) = unbounded_channel();
+    let report = run_agentic(&model, &sandbox(), AgenticConfig { k: 1, max_steps: 4, ..Default::default() }, &tx)
+        .await
+        .unwrap();
+    drop(tx);
+    assert_eq!(report.dialect, ToolCallDialect::Standard);
 }
 
 #[tokio::test]
@@ -893,4 +971,108 @@ async fn single_element_array_matches_a_bare_object() {
     assert_eq!(steps[0].injection.as_deref(), Some(r#"Tool result: {"balance":450.0}"#));
     assert_eq!(steps[1].kind, StepKind::EndStateReached);
     assert_eq!(steps[1].injection, None);
+}
+
+#[test]
+fn num_ctx_scales_with_max_steps_and_clamps_to_the_memory_safe_window() {
+    use crate::inference::eval::agentic::runner::agentic_num_ctx;
+    // Floor: a tiny run never drops below the minimum window.
+    assert_eq!(agentic_num_ctx(1), 4096);
+    // Hard (~20 steps): covered in full, no overflow, well under the ceiling.
+    assert_eq!(agentic_num_ctx(20), 2048 + 20 * 384); // 9728
+    // Extreme (85 steps): would need ~35k but clamps to the 16GB-safe ceiling.
+    assert_eq!(agentic_num_ctx(85), 16384);
+    assert_eq!(agentic_num_ctx(u32::MAX), 16384); // saturating, never overflows
+}
+
+#[tokio::test]
+async fn worldstate_decoy_call_injects_the_unknown_tool_nudge_and_continues() {
+    // A model takes a decoy (read_file) in WorldState mode. With the recognized-tool
+    // whitelist set, the sandbox returns None for the decoy → the runner injects the
+    // "unknown tool" nudge (StepKind::UnknownTool) instead of a misleading {"ok":true},
+    // and the loop continues so a capable model can recover. Guards the v2 decoy-stall fix.
+    let sandbox = DeterministicSandbox::new(
+        "Inspect the change, then open a PR.".into(),
+        vec![],
+        vec![],
+        EndStateRule::RequireAll(vec![
+            TaskCheckpoint { tool: "open_pr".into(), args: json!({ "change": "C-1" }) },
+        ]),
+    )
+    .with_world_state(json!({ "C-1": { "kind": "hotfix" } }))
+    .with_entity_tools(["get_change".to_string()])
+    .with_recognized_tools(["get_change".to_string(), "open_pr".to_string()]); // read_file excluded
+
+    let model = ScriptedModel::new(vec![
+        (r#"[{"name":"read_file","args":{"path":"billing/rounding_helper.py"}}]"#, 20), // takes the decoy
+        (r#"[{"name":"open_pr","args":{"change":"C-1"}}]"#, 15), // recovers
+    ]);
+    let (tx, mut rx) = unbounded_channel();
+    let outcome = run_once(&model, &sandbox, 8, 2, 0, &tx).await.unwrap();
+    drop(tx);
+    let steps = drain(&mut rx);
+
+    // Step 0: the decoy is nudged, not acked — no false "{"ok":true}" success signal.
+    assert_eq!(steps[0].kind, StepKind::UnknownTool);
+    let inj = steps[0].injection.as_deref().unwrap();
+    assert!(inj.contains("Tool not found"), "decoy should nudge, got: {inj}");
+    assert!(!inj.contains(r#"{"ok":true}"#), "decoy must not get a misleading ack: {inj}");
+    // The loop continued and the model recovered to the real end-state.
+    assert!(outcome.reached_end);
+}
+
+#[tokio::test]
+async fn a_model_repeating_the_same_no_progress_turn_fails_fast_as_infinite_loop() {
+    // The model re-emits the identical [spin] turn every step. spin is a recognized action
+    // (acks {"ok":true}), so it gets a "success" signal but never satisfies the `finish`
+    // checkpoint. The loop detector must end the run as InfiniteLoop after STALL_REPEAT_LIMIT
+    // identical no-progress turns (step 3) instead of grinding the full max_steps (8 here).
+    let sandbox = DeterministicSandbox::new(
+        "Finish the task.".into(),
+        vec![],
+        vec![],
+        EndStateRule::RequireAll(vec![TaskCheckpoint { tool: "finish".into(), args: json!({}) }]),
+    )
+    .with_world_state(json!({ "E-1": { "kind": "x" } }))
+    .with_entity_tools(["peek".to_string()]) // non-empty → spin (an action) acks
+    .with_recognized_tools(["spin".to_string(), "finish".to_string()]); // spin is recognized
+
+    let model = ScriptedModel::new(vec![(r#"[{"name":"spin","args":{}}]"#, 10)]); // same turn forever
+    let (tx, mut rx) = unbounded_channel();
+    let outcome = run_once(&model, &sandbox, 8, 2, 0, &tx).await.unwrap();
+    drop(tx);
+
+    assert_eq!(outcome.failure, Some(FailureKind::InfiniteLoop));
+    assert_eq!(outcome.steps, 3, "should break at the 3rd identical turn, not run all 8");
+    assert!(!outcome.reached_end);
+    let steps = drain(&mut rx);
+    assert_eq!(steps.last().unwrap().kind, StepKind::InfiniteLoop);
+}
+
+#[tokio::test]
+async fn a_model_making_progress_each_turn_is_not_cut_by_the_loop_detector() {
+    // Two DISTINCT getter calls that each advance a checkpoint: the loop detector must NOT
+    // fire (turns differ AND progress is made), so the run completes normally.
+    let sandbox = DeterministicSandbox::new(
+        "Inspect both.".into(),
+        vec![],
+        vec![],
+        EndStateRule::RequireAll(vec![
+            TaskCheckpoint { tool: "get".into(), args: json!({ "id": "A" }) },
+            TaskCheckpoint { tool: "get".into(), args: json!({ "id": "B" }) },
+        ]),
+    )
+    .with_world_state(json!({ "A": { "v": 1 }, "B": { "v": 2 } }))
+    .with_entity_tools(["get".to_string()]);
+
+    let model = ScriptedModel::new(vec![
+        (r#"[{"name":"get","args":{"id":"A"}}]"#, 10),
+        (r#"[{"name":"get","args":{"id":"B"}}]"#, 10),
+    ]);
+    let (tx, rx) = unbounded_channel();
+    let outcome = run_once(&model, &sandbox, 8, 2, 0, &tx).await.unwrap();
+    drop(tx);
+    assert!(outcome.reached_end);
+    assert_eq!(outcome.steps, 2);
+    drop(rx);
 }

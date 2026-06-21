@@ -191,7 +191,7 @@
           "name": "add_marker",
           "args": {
             "test": "test_webhook_latency",
-            "marker": "flaky"
+            "marker": "*flaky*"
           }
         },
         {

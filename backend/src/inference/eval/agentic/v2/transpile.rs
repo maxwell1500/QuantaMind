@@ -126,6 +126,10 @@ pub fn transpile_task(t: V2Task, tier: Tier, pass_k: u32, axes: DifficultyAxes, 
     // data. Decoys are never getters (they ack), so they're excluded.
     let entity_tools: Vec<String> =
         t.tools.iter().filter(|tool| tool.is_getter()).map(|tool| tool.name.clone()).collect();
+    // The whitelist of recognized real tools (getters + actions), taken BEFORE the decoy
+    // extend above — so a call to a decoy/unknown tool gets the corrective nudge, not a
+    // misleading `{"ok":true}` ack.
+    let recognized_tools: Vec<String> = t.tools.iter().map(|tool| tool.name.clone()).collect();
 
     let mut checkpoints = Vec::with_capacity(t.expected_calls.len());
     for ec in t.expected_calls {
@@ -164,6 +168,7 @@ pub fn transpile_task(t: V2Task, tier: Tier, pass_k: u32, axes: DifficultyAxes, 
         name_faults,
         generated,
         entity_tools,
+        recognized_tools,
     };
     // All v2 tasks run on the agentic engine; the end-state (RequireAll vs
     // ExpectAbstainingText) — not the authored label — encodes act-vs-abstain.

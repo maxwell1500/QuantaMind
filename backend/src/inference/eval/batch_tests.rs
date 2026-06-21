@@ -86,6 +86,7 @@ fn agentic_task(id: &str, k: u32) -> ToolTask {
             name_faults: vec![],
             generated: false,
             entity_tools: vec![],
+            recognized_tools: vec![],
         }),
     }
 }
@@ -356,6 +357,19 @@ fn task_report(p: u32, k: u32) -> AgenticReport {
         .map(|i| if i < p { RunOutcome::success(2, 10) } else { RunOutcome::failure(2, 10, FailureKind::Hallucinated) })
         .collect();
     AgenticReport::from_outcomes(&outcomes)
+}
+
+#[test]
+fn a_budget_truncated_task_is_not_credited_as_a_strict_pass_k() {
+    // Truncated at 1 of 16, and that single run passed: `passes == total_runs` (1 == 1)
+    // would otherwise credit it as a full pass^16. The truncation flag must veto that —
+    // we never observed the other 15 runs, so the all-k guarantee is unproven.
+    let agg = agg_agentic(&[task_report(1, 1).with_truncation(16)]);
+    assert_eq!(agg.tasks_passed, 0, "a truncated batch can't claim the all-k guarantee");
+    assert_eq!(agg.tasks_total, 1);
+    // The observed run still feeds the secondary per-run rate honestly.
+    assert_eq!(agg.passes, 1);
+    assert_eq!(agg.total_runs, 1);
 }
 
 #[test]

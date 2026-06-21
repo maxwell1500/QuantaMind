@@ -3,6 +3,7 @@ import { useEvalRegistryStore } from "../../state/evalRegistryStore";
 import { useInstalledModelsStore } from "../../../models/state/installedModelsStore";
 import { useBatchStore, cellKey } from "../../state/batchStore";
 import { modelLabel } from "../../../../shared/models/modelLabel";
+import { isStrictPass, dialectLabel } from "../../../../shared/ipc/eval/batch";
 import { InfoButton } from "../../../../shared/ui/InfoButton";
 import { Spinner } from "../../../../shared/ui/Spinner";
 import { RunProgress } from "./RunProgress";
@@ -205,6 +206,23 @@ export function MatrixScoreboard({
 
                   // Determine result badge/styling
                   let resultEl = <span style={{ color: "#64748b" }}>—</span>;
+                  // A non-standard tool-call dialect (e.g. Harmony) the calls were
+                  // normalized from — flagged so a model that only scored via its native
+                  // grammar is visible, not silently credited.
+                  let dialectEl: React.ReactNode = null;
+                  if (outcome && outcome.kind === "agentic") {
+                    const dl = dialectLabel(outcome.report.dialect);
+                    if (dl) {
+                      dialectEl = (
+                        <span
+                          style={dialectChipStyle}
+                          title={`Model emitted the ${dl} tool-call dialect instead of the instructed JSON — its calls were normalized so the run could be scored.`}
+                        >
+                          {dl}
+                        </span>
+                      );
+                    }
+                  }
                   if (outcome) {
                     if (outcome.kind === "single") {
                       resultEl = outcome.passed ? (
@@ -215,16 +233,27 @@ export function MatrixScoreboard({
                     } else if (outcome.kind === "agentic") {
                       // Pass^k over k runs: all-pass = Pass, none = Fail, but a
                       // PARTIAL pass (e.g. 3/5) is "Unreliable", not a flat Fail —
-                      // shown as an amber badge that matches the Matrix fraction.
-                      const { passes, total_runs } = outcome.report;
+                      // shown as an amber badge that matches the Matrix fraction. A
+                      // budget-truncated batch is NEVER a clean Pass (isStrictPass) — the
+                      // un-run reps were never observed; the badge says "of {requested}".
+                      const { passes, total_runs, requested_runs } = outcome.report;
+                      const truncated = requested_runs != null;
                       resultEl =
-                        passes === total_runs ? (
+                        isStrictPass(outcome.report) ? (
                           <span style={passBadgeStyle} data-testid={`result-${t.id}`}>Pass</span>
                         ) : passes === 0 ? (
                           <span style={failBadgeStyle} data-testid={`result-${t.id}`}>Fail</span>
                         ) : (
-                          <span style={partialBadgeStyle} data-testid={`result-${t.id}`} title={`${passes}/${total_runs} runs passed — unreliable, not a clean pass`}>
-                            Partial {passes}/{total_runs}
+                          <span
+                            style={partialBadgeStyle}
+                            data-testid={`result-${t.id}`}
+                            title={
+                              truncated
+                                ? `${passes}/${total_runs} of ${requested_runs} runs passed — stopped at the time budget, incomplete, not a clean pass`
+                                : `${passes}/${total_runs} runs passed — unreliable, not a clean pass`
+                            }
+                          >
+                            Partial {passes}/{total_runs}{truncated ? ` of ${requested_runs}` : ""}
                           </span>
                         );
                     } else if (outcome.kind === "error") {
@@ -254,7 +283,12 @@ export function MatrixScoreboard({
                         {targetTool}
                       </td>
                       <td style={tdStyle}>{stepsStr}</td>
-                      <td style={tdStyle}>{resultEl}</td>
+                      <td style={tdStyle}>
+                        <div style={{ display: "inline-flex", alignItems: "center", gap: 6 }}>
+                          {resultEl}
+                          {dialectEl}
+                        </div>
+                      </td>
                       <td style={{ ...tdStyle, textAlign: "right" }}>
                         <div style={{ display: "inline-flex", alignItems: "center", gap: 6 }}>
                           <button
@@ -394,6 +428,21 @@ const partialBadgeStyle: React.CSSProperties = {
   borderRadius: 6,
   padding: "2px 8px",
   fontSize: 12,
+  fontWeight: 600,
+  fontFamily: "Inter, sans-serif",
+};
+
+// Non-standard tool-call dialect chip (e.g. "Harmony") — violet, distinct from the
+// pass/fail/partial verdict colors so it reads as metadata, not a result.
+const dialectChipStyle: React.CSSProperties = {
+  display: "inline-flex",
+  alignItems: "center",
+  background: "#f5f3ff",
+  border: "1px solid #ddd6fe",
+  color: "#6d28d9",
+  borderRadius: 6,
+  padding: "1px 6px",
+  fontSize: 11,
   fontWeight: 600,
   fontFamily: "Inter, sans-serif",
 };

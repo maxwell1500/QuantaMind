@@ -19,6 +19,17 @@ export const PASS_K_BY_TIER: Record<Tier, number> = {
   extreme: 24,
 };
 
+/// Tier → recommended agentic step budget (mirror of Rust `max_steps_for` in
+/// `passk.rs` — that is the source of truth; keep these in sync). Pre-fills the eval
+/// page's EDITABLE Max-Steps field when a tier is selected, so a harder tier gets a
+/// longer horizon by default while the user can still override it per run.
+export const MAX_STEPS_BY_TIER: Record<Tier, number> = {
+  easy: 8,
+  medium: 16,
+  hard: 32,
+  extreme: 48,
+};
+
 /// A use-case preset the verdict is measured against (mirror of the Rust
 /// `ReadinessProfile`). Hard gates (`require_*`, `min_*`) block; soft targets
 /// (`max_*`) downgrade to Conditional. Nullable fields mean "metric ignored".

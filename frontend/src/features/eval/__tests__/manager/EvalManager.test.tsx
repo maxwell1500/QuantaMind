@@ -282,6 +282,15 @@ describe("EvalManager Sidebar Controls", () => {
     fireEvent.change(screen.getByTestId("eval-manager-k"), { target: { value: "9" } });
   });
 
+  it("the Max Steps field is always editable and shows the tier's recommended budget as a hint", () => {
+    render(<EvalManager {...props({ tierSel: "hard", effectiveTier: "hard", recommendedSteps: 32, maxSteps: 32 })} />);
+    // Editable input, pre-filled to the recommended budget.
+    expect(screen.getByTestId("eval-manager-max-steps")).toHaveValue(32);
+    expect(screen.getByTestId("eval-steps-recommended")).toHaveTextContent("recommended: 32");
+    // The user can override it per run.
+    fireEvent.change(screen.getByTestId("eval-manager-max-steps"), { target: { value: "20" } });
+  });
+
   it("shows the HW hint from the backend tier read", () => {
     render(
       <EvalManager
