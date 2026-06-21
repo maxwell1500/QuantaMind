@@ -89,6 +89,17 @@ impl BatchSink for TauriBatchSink {
 /// no longer silently wins). An explicit `k` (the `Custom` escape hatch) always wins.
 /// `decoy_tools` set rewrites each spec's `axes.decoy_tools`; `None` leaves the
 /// task-authored decoys intact.
+/// The hardest tier among the agentic tasks — the source of truth for the tier-scaled
+/// thinking token budget. Reads each task's own `agentic.tier` (set by authoring or by
+/// `apply_overrides`), the SAME source `sandbox_for` uses for `max_steps`, so the budget can
+/// never disagree with the step budget. Robust to the UI tier being `Auto`/unset (which would
+/// otherwise default Hard/Medium/Extreme tasks to Easy's cap). The hardest tier present is a
+/// safe choice for a mixed collection: `num_predict` is only a cap, so an easier task is
+/// never harmed by a larger ceiling. `Easy` when no task carries an agentic tier.
+fn effective_tier(tasks: &[ToolTask]) -> Tier {
+    tasks.iter().filter_map(|t| t.agentic.as_ref().map(|a| a.tier)).max().unwrap_or(Tier::Easy)
+}
+
 fn apply_overrides(
     mut tasks: Vec<ToolTask>,
     k: Option<u32>,
@@ -202,10 +213,10 @@ pub(crate) async fn run_passes(
     let native_cancel = cancel.clone();
     let native_options = options.clone();
     let keep_alive = agentic_keep_alive(config.keep_alive);
-    // The per-turn token budget is tier-scaled, so resolve the batch tier once here (the
-    // closure builds one `BackendTurn` per target). Untiered runs fall back to Easy — the
-    // legacy default that leaves `is_thinking=false` targets at the 256 cap unchanged.
-    let tier = config.tier.unwrap_or(Tier::Easy);
+    // The per-turn token budget is tier-scaled, so resolve the effective tier from the
+    // (override-applied) TASKS — see `effective_tier`. NOT the UI `config.tier`, which is
+    // often `Auto` (→ `None`) and would collapse every tier to Easy's cap.
+    let tier = effective_tier(&tasks);
 
     let mut report = run_batch_resumable(
         &config.collection_id,
@@ -436,6 +447,33 @@ mod override_tests {
     fn non_agentic_tasks_are_untouched() {
         let tasks = apply_overrides(vec![single("s")], Some(5), Some(8), Some(Tier::Hard), Some(3));
         assert!(tasks[0].agentic.is_none());
+    }
+
+    #[test]
+    fn effective_tier_reads_the_tasks_real_tier_even_when_the_ui_tier_is_auto() {
+        use crate::inference::eval::agentic::difficulty::passk::max_tokens_for;
+        // The bug: a bundled Hard collection run with the tier dropdown on Auto (→ None) used
+        // to budget every task at Easy's cap. With no UI override, each task keeps its
+        // authored tier, and the effective tier must be that — NOT Easy.
+        let tasks = apply_overrides(vec![agentic("a", None, Tier::Hard, None)], None, None, None, None);
+        assert_eq!(effective_tier(&tasks), Tier::Hard);
+        // And it composes to the right thinking budget (the symptom the user saw).
+        assert_eq!(max_tokens_for(effective_tier(&tasks), true), 3072);
+    }
+
+    #[test]
+    fn effective_tier_takes_the_hardest_tier_in_a_mixed_collection() {
+        let tasks = vec![
+            agentic("a", None, Tier::Easy, None),
+            agentic("b", None, Tier::Extreme, None),
+            single("s"),
+        ];
+        assert_eq!(effective_tier(&tasks), Tier::Extreme);
+    }
+
+    #[test]
+    fn effective_tier_is_easy_when_no_task_is_agentic() {
+        assert_eq!(effective_tier(&[single("s")]), Tier::Easy);
     }
 
     #[test]
