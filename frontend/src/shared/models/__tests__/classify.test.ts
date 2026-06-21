@@ -1,5 +1,5 @@
 import { describe, it, expect } from "vitest";
-import { isEmbeddingModel } from "../classify";
+import { isEmbeddingModel, isLikelyThinkingModel } from "../classify";
 
 describe("isEmbeddingModel", () => {
   it.each([
@@ -35,5 +35,32 @@ describe("isEmbeddingModel", () => {
   it("treats absent family as empty", () => {
     expect(isEmbeddingModel({ name: "llama3.2:1b" })).toBe(false);
     expect(isEmbeddingModel({ name: "nomic-embed-text:latest" })).toBe(true);
+  });
+});
+
+describe("isLikelyThinkingModel", () => {
+  it.each([
+    "qwen3.5:9b",
+    "qwen3:8b",
+    "qwen3.6-35b-a3b",
+    "qwq:32b",
+    "deepseek-r1:7b",
+    "deepseek-r1-distill-qwen-7b",
+    "magistral-small:24b",
+    "gpt-oss:20b",
+    "Phi-4-reasoning:latest", // case-insensitive
+  ])("detects reasoning model %s", (name) => {
+    expect(isLikelyThinkingModel(name)).toBe(true);
+  });
+
+  it.each([
+    "gemma-4-12b-it:q4", // gemma is not a reasoner
+    "qwen2.5-coder-7b-instruct", // qwen2.5, NOT qwen3
+    "qwen2.5:7b",
+    "llama3.2:3b",
+    "mistral:7b",
+    "phi3.5:latest",
+  ])("does not flag non-reasoning model %s", (name) => {
+    expect(isLikelyThinkingModel(name)).toBe(false);
   });
 });

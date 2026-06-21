@@ -20,8 +20,16 @@ beforeEach(() => {
 });
 
 describe("modelSettingsStore thinking flag", () => {
-  it("isThinkingFor defaults to false for an unknown model", () => {
-    expect(useModelSettingsStore.getState().isThinkingFor("ghost")).toBe(false);
+  it("isThinkingFor auto-detects from the name when the model is unset", () => {
+    // A reasoning-family name is pre-detected; a terse model is not.
+    expect(useModelSettingsStore.getState().isThinkingFor("qwen3.5:9b")).toBe(true);
+    expect(useModelSettingsStore.getState().isThinkingFor("llama3.2:3b")).toBe(false);
+  });
+
+  it("an explicit setting overrides the name heuristic", async () => {
+    // Turn OFF a model the heuristic would auto-detect as thinking.
+    await useModelSettingsStore.getState().setThinking("qwen3.5:9b", false);
+    expect(useModelSettingsStore.getState().isThinkingFor("qwen3.5:9b")).toBe(false);
   });
 
   it("setThinking persists via IPC and updates the local map", async () => {

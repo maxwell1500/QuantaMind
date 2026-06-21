@@ -648,6 +648,12 @@ Ok(MlxStartResult::Started { pid, port })
   `stop_owned` kills only the app-spawned pid (used by `stop`, the exit reap, the
   signal reaper, and a `Drop` backstop). A separate `stop_ollama` command uses
   `pkill -f "ollama serve"` for an explicit user stop.
+- **`kill_pid` is graceful-then-hard:** SIGTERM, a short grace (`kill -0` liveness
+  poll, ~600ms), then SIGKILL if still alive — so the app-spawned Ollama can't
+  outlive the app. Reached on **three** exit paths, all idempotent: Cmd+Q
+  (`RunEvent::ExitRequested`), SIGINT/SIGTERM (the signal reaper), and **window
+  close** (`on_window_event` → `reap_managed` + `app.exit(0)` — the macOS path,
+  where closing the window doesn't otherwise quit the app and would orphan Ollama).
 - `start_ollama` guards a re-entrant `in_progress` flag; `start_ollama_inner`
   short-circuits to `AlreadyRunning` if already reachable, else
   `resolve_ollama()` (`which` → Homebrew/usr-local), `spawn_serve`, and **block

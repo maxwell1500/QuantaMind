@@ -94,8 +94,12 @@ data model.
    install trackers, server handles, auth state).
 3. `.setup(...)` reclaims orphaned sidecar servers, installs a signal reaper,
    reconciles half-installed STT artifacts, and clears recording scratch.
-4. `.invoke_handler(generate_handler![...])` exposes ~120 commands.
-5. `.run(reap_on_exit)` guarantees child servers die with the app.
+4. `.on_window_event(...)` reaps sidecars + `app.exit(0)` on `CloseRequested` —
+   on macOS closing the window doesn't quit a Tauri app, so without this the
+   spawned Ollama would linger after "closing" the app.
+5. `.invoke_handler(generate_handler![...])` exposes ~120 commands.
+6. `.run(reap_on_exit)` guarantees child servers die with the app (Cmd+Q path);
+   the signal reaper covers SIGINT/SIGTERM. Three exit paths, one idempotent reap.
 
 Every command in that list is documented on the backend page for its subsystem.
 The managed-state structs and the lifecycle hooks are documented in

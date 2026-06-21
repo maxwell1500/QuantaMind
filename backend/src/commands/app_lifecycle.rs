@@ -20,7 +20,7 @@ fn is_our_server_cmd(cmd: &str) -> bool {
 }
 
 /// Reap the four app-managed servers (our tracked children). Idempotent.
-fn reap_managed(app: &AppHandle) {
+pub(crate) fn reap_managed(app: &AppHandle) {
     if let Err(e) = app.state::<MlxServerState>().kill_all_servers() {
         eprintln!("mlx reap failed: {e}");
     }
