@@ -40,6 +40,10 @@ impl ModelSettingsState {
             .map(|s| s.temperature)
             .unwrap_or(DEFAULT_TEMPERATURE)
     }
+
+    pub fn is_thinking_for(&self, model: &str) -> bool {
+        self.inner.lock_recover().get(model).map(|s| s.is_thinking).unwrap_or(false)
+    }
 }
 
 pub fn validate_temperature(t: f32) -> AppResult<()> {
@@ -75,7 +79,31 @@ pub fn set_model_temperature(
     state.ensure_loaded(&app)?;
     let snapshot = {
         let mut g = state.inner.lock_recover();
-        g.insert(trimmed.to_string(), ModelSettings { temperature });
+        // Preserve the model's thinking flag — this setter only owns temperature.
+        let is_thinking = g.get(trimmed).map(|s| s.is_thinking).unwrap_or(false);
+        g.insert(trimmed.to_string(), ModelSettings { temperature, is_thinking });
+        g.clone()
+    };
+    save_map(&settings_path(&app)?, &snapshot)
+}
+
+#[tauri::command]
+pub fn set_model_thinking(
+    app: tauri::AppHandle,
+    state: tauri::State<'_, ModelSettingsState>,
+    model: String,
+    is_thinking: bool,
+) -> Result<(), AppError> {
+    let trimmed = model.trim();
+    if trimmed.is_empty() {
+        return Err(AppError::Validation("model is empty".into()));
+    }
+    state.ensure_loaded(&app)?;
+    let snapshot = {
+        let mut g = state.inner.lock_recover();
+        // Preserve the model's temperature — this setter only owns the thinking flag.
+        let temperature = g.get(trimmed).map(|s| s.temperature).unwrap_or(DEFAULT_TEMPERATURE);
+        g.insert(trimmed.to_string(), ModelSettings { temperature, is_thinking });
         g.clone()
     };
     save_map(&settings_path(&app)?, &snapshot)

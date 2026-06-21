@@ -6,6 +6,10 @@ use std::path::Path;
 #[derive(Serialize, Deserialize, PartialEq, Debug, Clone)]
 pub struct ModelSettings {
     pub temperature: f32,
+    /// Reasoning model (sidebar "thinking" toggle). `#[serde(default)]` so a settings file
+    /// written before this field loads with `is_thinking = false`.
+    #[serde(default)]
+    pub is_thinking: bool,
 }
 
 pub type ModelSettingsMap = HashMap<String, ModelSettings>;
@@ -54,10 +58,20 @@ mod tests {
         let dir = tempdir().unwrap();
         let p = dir.path().join("s.yaml");
         let mut m = ModelSettingsMap::new();
-        m.insert("llama3".into(), ModelSettings { temperature: 0.3 });
-        m.insert("phi".into(), ModelSettings { temperature: 1.5 });
+        m.insert("llama3".into(), ModelSettings { temperature: 0.3, is_thinking: false });
+        m.insert("phi".into(), ModelSettings { temperature: 1.5, is_thinking: true });
         save(&p, &m).unwrap();
         assert_eq!(load(&p).unwrap(), m);
+    }
+
+    #[test]
+    fn settings_without_is_thinking_field_load_as_false() {
+        // Back-compat: a file written before the thinking toggle has only `temperature`.
+        let dir = tempdir().unwrap();
+        let p = dir.path().join("old.yaml");
+        std::fs::write(&p, "llama3:\n  temperature: 0.3\n").unwrap();
+        let loaded = load(&p).unwrap();
+        assert_eq!(loaded["llama3"], ModelSettings { temperature: 0.3, is_thinking: false });
     }
 
     #[test]

@@ -1,6 +1,7 @@
 use crate::errors::AppResult;
 use crate::inference::backend::backend::InferenceBackend;
 use crate::inference::backend::backend_kind::BackendKind;
+use crate::inference::eval::agentic::difficulty::passk::NON_THINKING_MAX_TOKENS;
 use crate::inference::eval::toolcall::tasks::ToolSchema;
 use crate::inference::generate::generate_options::GenerateOptions;
 use crate::inference::generate::generate_spec::GenerateSpec;
@@ -27,6 +28,23 @@ pub trait ModelTurn {
     async fn warm_up(&self) -> AppResult<()> {
         Ok(())
     }
+
+    /// Is this a reasoning model that emits a `<think>…</think>` scratchpad before its
+    /// tool call? When true the runner (a) raises the per-turn `num_predict` to
+    /// [`Self::max_output_tokens`] so the model isn't truncated mid-thought, and (b) strips
+    /// `<think>` from the output before parsing AND before the transcript append. Default
+    /// `false`: a scripted test model and the native-FC path keep the terse-model behavior.
+    fn is_thinking(&self) -> bool {
+        false
+    }
+
+    /// The per-turn output-token budget (`num_predict`) the runner pins on the spec.
+    /// Default is the legacy 256 cap; a thinking model returns a tier-scaled budget that
+    /// clears the scratchpad range so the call survives. See
+    /// `difficulty::passk::max_tokens_for`.
+    fn max_output_tokens(&self) -> u32 {
+        NON_THINKING_MAX_TOKENS
+    }
 }
 
 /// Real path: dispatch by `BackendKind` (the trait isn't object-safe), accumulate
@@ -43,6 +61,13 @@ pub struct BackendTurn {
     pub options: Option<GenerateOptions>,
     /// Ollama keep_alive (from the header's "keep model loaded" toggle).
     pub keep_alive: Option<i32>,
+    /// This model is a reasoning model (the sidebar "thinking" checkbox). Drives the
+    /// raised token budget + `<think>` stripping in the runner.
+    pub is_thinking: bool,
+    /// The per-turn `num_predict` for this model: tier-scaled when `is_thinking`, else 256.
+    /// Precomputed at construction (`difficulty::passk::max_tokens_for`), where the tier is
+    /// known, so the runner doesn't need the tier threaded in.
+    pub max_tokens: u32,
 }
 
 /// Merge the header's global eval params (`global`) with the harness's per-turn spec
@@ -98,6 +123,14 @@ impl ModelTurn for BackendTurn {
             BackendKind::Mlx => MlxBackend::new(self.endpoint.clone(), self.model.clone()).generate(&spec, cancel, push).await?,
         };
         Ok((out, stats))
+    }
+
+    fn is_thinking(&self) -> bool {
+        self.is_thinking
+    }
+
+    fn max_output_tokens(&self) -> u32 {
+        self.max_tokens
     }
 
     /// Issue a 1-token generation to force the model resident (honoring `keep_alive` so

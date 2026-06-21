@@ -47,7 +47,7 @@ impl BatchSink for CountingSink {
 }
 
 fn target(model: &str) -> ModelTarget {
-    ModelTarget { model: model.into(), backend: BackendKind::Ollama }
+    ModelTarget { model: model.into(), backend: BackendKind::Ollama, is_thinking: false }
 }
 
 fn tool(name: &str) -> ToolSchema {

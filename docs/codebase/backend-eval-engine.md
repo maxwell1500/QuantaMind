@@ -289,6 +289,18 @@ raw-text JSON tool calls, a deterministic sandbox replies in text (no native
 function-calling required, so it runs identically across Ollama/llama.cpp/MLX),
 and the loop runs `k` times for Pass^k reliability.
 
+**Thinking models.** The per-turn output budget is normally `num_predict = 256`
+(`difficulty::passk::NON_THINKING_MAX_TOKENS`), enough for a tool call. A reasoning
+model marked `is_thinking` (per-model, from `ModelTarget` → `BackendTurn`) instead
+gets a tier-scaled budget (`max_tokens_for`: 1536/2048/3072/4096) so its
+`<think>…</think>` scratchpad doesn't truncate the call, and the runner strips
+`<think>` (via `toolcall::parse::strip_think`) **before parsing and before the
+transcript append** — the scratchpad's inner JSON can't be mis-parsed as a call and
+never bloats the prefix-KV context. The streamed `raw_output` keeps the full text so
+the UI still shows the reasoning. The flag is carried onto `BatchColumn`/`RunSummary`
+because a thinking model's `effort` (output tokens) is higher by design and must not
+be ranked against a terse model's.
+
 ### File: `mod.rs`
 - Declares `build, context, endstate, model_turn, report, runner, sandbox, spec, step`.
 

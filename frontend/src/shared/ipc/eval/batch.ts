@@ -135,6 +135,9 @@ export const BatchColumnSchema = z.object({
   // tool_calls), when measured. Nullish so pre-7.2 reports still parse.
   agentic_native_fc: AggAgenticSchema.nullish(),
   error: z.string().nullable(),
+  // Reasoning model: its effort (output tokens) is higher by design and must not be
+  // ranked against terse models. Optional so older reports parse (absent = false).
+  is_thinking: z.boolean().optional(),
 });
 export type BatchColumn = z.infer<typeof BatchColumnSchema>;
 

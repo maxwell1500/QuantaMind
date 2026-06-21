@@ -6,14 +6,13 @@ use crate::inference::eval::agentic::scoring::report::{AgenticReport, FailureKin
 use crate::inference::eval::agentic::sandbox::{canonical, DeterministicSandbox, EndStateRule, SandboxState, TaskCheckpoint};
 use crate::inference::eval::agentic::v2::r#match::text_matches;
 use crate::inference::eval::agentic::step::{StepKind, TrajectoryStep};
-use crate::inference::eval::toolcall::parse::{extract_calls_dialect, looks_like_broken_json, ToolCallDialect};
+use crate::inference::eval::toolcall::parse::{extract_calls_dialect, looks_like_broken_json, strip_think, ToolCallDialect};
 use crate::inference::eval::toolcall::prompt::{build_system_for, TerminalGuidance};
 use crate::inference::generate::generate_options::GenerateOptions;
 use crate::inference::generate::generate_spec::GenerateSpec;
 use tokio::sync::mpsc::UnboundedSender;
 use tokio_util::sync::CancellationToken;
 
-const MAX_TOKENS: u32 = 256;
 const UNKNOWN_TOOL: &str =
     "Tool not found or arguments unrecognized. Choose a tool from the provided schema.";
 
@@ -311,7 +310,9 @@ async fn run_steps<M: ModelTurn>(
             system: Some(system.clone()),
             options: Some(GenerateOptions {
                 temperature: Some(0.0),
-                num_predict: Some(MAX_TOKENS),
+                // Per-turn output cap. A reasoning model gets a tier-scaled budget so its
+                // `<think>` scratchpad doesn't truncate the call; a terse model keeps 256.
+                num_predict: Some(turn.max_output_tokens()),
                 num_ctx: Some(num_ctx),
                 ..Default::default()
             }),
@@ -339,12 +340,19 @@ async fn run_steps<M: ModelTurn>(
             let _ = tx.send(TrajectoryStep { run_index, step_index, raw_output: raw.clone(), injection, kind });
         };
 
+        // For a reasoning model, parse and persist the `<think>`-stripped output: its inner
+        // braces must not be mis-parsed as a tool call, and re-sending the scratchpad every
+        // step would bloat the prefix-KV cache. The streamed `raw_output` above keeps the
+        // FULL text so the UI can still show the reasoning. A terse model is unchanged
+        // (`clean == raw`), so the non-thinking path stays byte-for-byte identical.
+        let clean = if turn.is_thinking() { strip_think(&raw) } else { raw.clone() };
+
         // The model emits ZERO or MORE tool calls per turn (the system prompt invites a
         // JSON array). We process EVERY parsed call in array order — dropping all but the
         // first silently half-executes a correct batched agent. `extract_calls` is lenient:
         // it returns the parseable calls and ignores unparseable slices, so `malformed_json`
         // stays a whole-output property (zero calls parsed → the no-call arm below).
-        let calls = match extract_calls_dialect(&raw) {
+        let calls = match extract_calls_dialect(&clean) {
             None => match &sandbox.end_state {
                 // Declined to call any tool, exactly as the task demanded.
                 EndStateRule::ExpectAbstainingText => {
@@ -353,9 +361,9 @@ async fn run_steps<M: ModelTurn>(
                 }
                 // Yielded (no call) without completing the required checkpoints.
                 EndStateRule::RequireSequence(_) | EndStateRule::RequireAll(_) => {
-                    let (kind, failure) = if looks_like_broken_json(&raw) {
+                    let (kind, failure) = if looks_like_broken_json(&clean) {
                         (StepKind::MalformedJson, FailureKind::Malformed)
-                    } else if reported_in_prose(&sandbox.end_state, &satisfied, next_cp, &raw) {
+                    } else if reported_in_prose(&sandbox.end_state, &satisfied, next_cp, &clean) {
                         // G3: did ALL the work, only failed to route the final answer through
                         // the reporter tool — content-correct, wrong-channel. NOT a hallucination.
                         (StepKind::ReportedInProse, FailureKind::ReportedInProse)
@@ -429,7 +437,7 @@ async fn run_steps<M: ModelTurn>(
                     }
                     recoveries += 1;
                     let err = format!("[Schema error: {msg}]");
-                    ensure_model_pushed(&mut convo, &raw, &mut model_pushed);
+                    ensure_model_pushed(&mut convo, &clean, &mut model_pushed);
                     convo.push_tool_result(&err);
                     turn_lines.push((StepKind::SchemaError, tool_result_line(&err)));
                     continue;
@@ -441,7 +449,7 @@ async fn run_steps<M: ModelTurn>(
             // 3b — Driver B fault trap, BEFORE any checkpoint advance, so a trapped call can
             // never be a fake pass. The counter is per-call; a robust agent retries/reports.
             if let Some(err) = state.fault_for(call, &sandbox.faults) {
-                ensure_model_pushed(&mut convo, &raw, &mut model_pushed);
+                ensure_model_pushed(&mut convo, &clean, &mut model_pushed);
                 convo.push_tool_result(&err);
                 turn_lines.push((StepKind::ToolError, tool_result_line(&err)));
                 continue;
@@ -483,7 +491,7 @@ async fn run_steps<M: ModelTurn>(
                     (StepKind::UnknownTool, UNKNOWN_TOOL.to_string())
                 }
             };
-            ensure_model_pushed(&mut convo, &raw, &mut model_pushed);
+            ensure_model_pushed(&mut convo, &clean, &mut model_pushed);
             convo.push_tool_result(&result);
             turn_lines.push((kind, tool_result_line(&result)));
         }

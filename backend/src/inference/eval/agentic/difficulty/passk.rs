@@ -35,6 +35,32 @@ pub fn max_steps_for(tier: Tier) -> u32 {
     }
 }
 
+/// The per-turn output-token budget (`num_predict`). A non-thinking model gets the legacy
+/// 256 cap — enough for a tool call, nothing wasted. A reasoning model emits a
+/// `<think>…</think>` scratchpad BEFORE the call: at 256 tokens it is truncated mid-thought
+/// and never emits the call (scored Malformed/Hallucinated), which is why a terse small model
+/// can out-score a far larger reasoner for a purely structural reason. So when `is_thinking`,
+/// the budget must clear the 1–2k tokens reasoning models routinely spend PLUS ~256 for the
+/// call itself — anything tighter just re-creates the truncation bug at a higher number. Easy
+/// is 1536 (not 1024) for exactly that reason: 1024 sits at the bottom of the scratchpad range.
+/// Each tier scales up because a harder task reasons longer. Every value fits inside
+/// `agentic_num_ctx` (Hard 14336 / Extreme 16384); because `<think>` is stripped before the
+/// transcript append, the larger budget costs only one turn's generation buffer and never
+/// accumulates across the step horizon.
+pub const NON_THINKING_MAX_TOKENS: u32 = 256;
+
+pub fn max_tokens_for(tier: Tier, is_thinking: bool) -> u32 {
+    if !is_thinking {
+        return NON_THINKING_MAX_TOKENS;
+    }
+    match tier {
+        Tier::Easy => 1536,
+        Tier::Medium => 2048,
+        Tier::Hard => 3072,
+        Tier::Extreme => 4096,
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -55,5 +81,29 @@ mod tests {
         assert_eq!(max_steps_for(Tier::Hard), 32);
         assert_eq!(max_steps_for(Tier::Extreme), 48);
         assert!(max_steps_for(Tier::Easy) < max_steps_for(Tier::Extreme));
+    }
+
+    #[test]
+    fn non_thinking_budget_is_the_legacy_cap_at_every_tier() {
+        for tier in [Tier::Easy, Tier::Medium, Tier::Hard, Tier::Extreme] {
+            assert_eq!(max_tokens_for(tier, false), 256);
+        }
+    }
+
+    #[test]
+    fn thinking_budget_clears_the_scratchpad_range_and_scales_monotonically() {
+        // Load-bearing numbers — every tier must exceed the 1–2k scratchpad reasoning
+        // models spend, or the budget just re-creates the truncation bug it exists to fix.
+        assert_eq!(max_tokens_for(Tier::Easy, true), 1536);
+        assert_eq!(max_tokens_for(Tier::Medium, true), 2048);
+        assert_eq!(max_tokens_for(Tier::Hard, true), 3072);
+        assert_eq!(max_tokens_for(Tier::Extreme, true), 4096);
+        // Even the smallest thinking budget clears the top of the 1–2k range plus the call.
+        assert!(max_tokens_for(Tier::Easy, true) > 1024);
+        assert!(max_tokens_for(Tier::Easy, true) < max_tokens_for(Tier::Extreme, true));
+        // Thinking is strictly more generous than the terse cap at every tier.
+        for tier in [Tier::Easy, Tier::Medium, Tier::Hard, Tier::Extreme] {
+            assert!(max_tokens_for(tier, true) > max_tokens_for(tier, false));
+        }
     }
 }

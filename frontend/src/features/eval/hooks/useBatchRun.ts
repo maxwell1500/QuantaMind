@@ -18,6 +18,7 @@ import type { Tier } from "../../../shared/ipc/eval/readiness";
 import { useInstalledModelsStore } from "../../models/state/installedModelsStore";
 import { useBatchStore } from "../state/batchStore";
 import { useParamsStore } from "../../../shared/state/paramsStore";
+import { useModelSettingsStore } from "../../models/state/modelSettingsStore";
 
 const modelSig = (list: { name: string }[]) =>
   list
@@ -111,10 +112,14 @@ export function useBatchRun() {
       useBatchStore.getState().startRun();
       try {
         const { globalParams, keepLoaded } = useParamsStore.getState();
+        // Stamp each target with its persisted thinking flag, so the backend raises the
+        // token budget + strips <think> for reasoning models. Read fresh at dispatch.
+        const isThinkingFor = useModelSettingsStore.getState().isThinkingFor;
+        const thinkingTargets = targets.map((t) => ({ ...t, is_thinking: isThinkingFor(t.model) }));
         // Keep loaded → resident; off → omit so the backend default applies.
         await runBatchEval(
           collectionId,
-          targets,
+          thinkingTargets,
           tasks,
           k,
           maxSteps,

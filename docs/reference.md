@@ -541,7 +541,12 @@ Error), with a click-through Trace Debugger. See [the workspace](#eval-runner).
   deliberately never summed (re-sent history would inflate it and ignore KV-cache
   reuse). A Q4 model that wanders 1,500 tokens to a result a Q8 finishes in 300 is
   the signal this exposes — the "faster" quant burning more compute for the same
-  outcome.
+  outcome. **Caveat — thinking models:** a reasoning model run with the **thinking**
+  toggle on legitimately spends far more output tokens (its `<think>` scratchpad), so
+  its effort is **not comparable** to a terse model's. The per-model `is_thinking` flag
+  (on `BatchColumn` and the history `RunSummary`) marks this — effort must never be
+  ranked across thinking/non-thinking models, the same rule already applied to
+  prompt-path vs native-FC pass-rates.
 - **The Matrix columns.** Per model: **Pass^k · Avg Steps · Effort · Schema Resil.
   · Cliff Depth · Top Error**. `Schema Resil.` is the Driver-D metric above;
   `Cliff Depth` is the measured context-cliff depth from the Audit probe (real
@@ -875,6 +880,16 @@ the Phase-9 levers inline, so the chosen tier and decoy budget genuinely shape t
 - **HW hint** — "HW: 16GB RAM · Mainstream · Medium recommended" comes from the new `get_hardware_tier`
   command (the single source of truth; the GB thresholds + class→tier policy live in `hwclass.rs`, never
   duplicated in TS).
+- **Thinking model toggle (per model).** Each model row in the header model picker has a 🧠 checkbox
+  marking it a reasoning model. When on, the agentic runner (a) raises that model's per-turn token budget
+  from the default 256 to a tier-scaled value (`max_tokens_for`: Easy 1536 / Medium 2048 / Hard 3072 /
+  Extreme 4096) so the `<think>` scratchpad doesn't truncate the tool call, and (b) strips `<think>…</think>`
+  before parsing AND before the transcript append (the scratchpad's inner JSON can't be mis-parsed as a
+  call, and it never bloats the prefix-KV context). The flag persists per-model (`model_settings.yaml`,
+  alongside temperature) and flows to the backend on each `ModelTarget`. Native-FC and the readiness probe
+  keep the legacy 256 cap. **Why it exists:** at 256 tokens a reasoning model is cut off mid-thought and
+  scored Malformed/Hallucinated, so a terse small model can out-score a far larger reasoner for a purely
+  structural reason — the toggle removes that harness artifact.
 - **Anti-Saturation** — an `Enable Decoy Tools` checkbox + `Decoy Count`. Enabled sends `decoyTools = N`,
   which rewrites each agentic spec's `axes.decoy_tools` (N never-correct distractor tools shuffled into
   the presented tool list); disabled (the default) leaves the task-authored decoys untouched.

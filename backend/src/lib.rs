@@ -81,6 +81,7 @@ pub fn run() {
             commands::mlx::mlx_start::mlx_server_status,
             commands::settings::model_settings::get_model_settings,
             commands::settings::model_settings::set_model_temperature,
+            commands::settings::model_settings::set_model_thinking,
             commands::models::models::list_models,
             commands::models::model_inspect::inspect_model,
             commands::models::model_inspect::estimate_kv_cache_bytes,

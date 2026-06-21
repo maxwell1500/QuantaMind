@@ -8,6 +8,9 @@ import type { ToolTask } from "./registry";
 export interface ModelTarget {
   model: string;
   backend: BackendKind;
+  /// Reasoning model (sidebar "thinking" toggle): the backend raises its per-turn token
+  /// budget and strips <think> before scoring. Optional — omitted/false = a terse model.
+  is_thinking?: boolean;
 }
 
 /// One model's outcome for the whole collection — a report, or the error it hit.

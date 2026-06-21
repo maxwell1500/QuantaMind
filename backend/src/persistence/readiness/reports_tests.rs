@@ -28,6 +28,7 @@ fn report(collection_id: &str, passes: u32) -> BatchReport {
             }),
             agentic_native_fc: None,
             error: None,
+            is_thinking: false,
         }],
     }
 }

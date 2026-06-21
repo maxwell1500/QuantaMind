@@ -250,10 +250,14 @@ Ollama/llama.cpp/MLX badges + the right actions instead of duplicate rows. Track
 ETA, ETA capped at 99,999s) + `applyProgress` (map a `PullProgress` phase to a state). Pure,
 unit-testable. Consumed by `useModelInstall` for the typed `state.progress`.
 
-### `modelSettingsStore.ts` — per-model settings (temperature)
-**Responsibility:** load-once map of `{ [model]: { temperature } }` from the backend (YAML-backed),
-optimistic writes via `setModelTemperature`. `temperatureFor(model)` falls back to
-`DEFAULT_TEMPERATURE`. Loaded at app startup; consumed wherever a model is run.
+### `modelSettingsStore.ts` — per-model settings (temperature + thinking)
+**Responsibility:** load-once map of `{ [model]: { temperature, is_thinking } }` from the backend
+(YAML-backed), optimistic writes via `setModelTemperature` / `setModelThinking`. `temperatureFor(model)`
+falls back to `DEFAULT_TEMPERATURE`; `isThinkingFor(model)` falls back to `false`. Each setter **merges
+onto the existing entry** so writing one field never clobbers the other. The 🧠 checkbox per row in
+`ModelSelector.tsx` calls `setThinking`; `useBatchRun` stamps `is_thinking` onto each `ModelTarget` at
+dispatch so the backend raises the token budget + strips `<think>` for reasoning models. Loaded at app
+startup; consumed wherever a model is run.
 
 ---
 

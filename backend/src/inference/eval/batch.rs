@@ -238,6 +238,13 @@ pub struct BatchColumn {
     #[serde(default)]
     pub agentic_native_fc: Option<AggAgentic>,
     pub error: Option<String>,
+    /// This model ran as a reasoning model (sidebar "thinking" toggle). A thinking model
+    /// legitimately spends far more output tokens (the `<think>` scratchpad), so its
+    /// `effort`/`avg_output_tokens` is NOT comparable to a terse model's — the UI must show
+    /// this flag rather than rank the two on tokens. `#[serde(default)]` so older reports
+    /// (and non-thinking columns) load as `false`.
+    #[serde(default)]
+    pub is_thinking: bool,
 }
 
 /// The full batch result: one column per target model.
@@ -279,6 +286,7 @@ pub fn batch_summaries(report: &BatchReport, ts: &str) -> Vec<RunSummary> {
                 pass_k: ag.and_then(|a| a.pass_k()),
                 agentic_avg_steps: ag.and_then(|a| a.avg_steps),
                 effort: ag.and_then(|a| a.avg_output_tokens_success),
+                is_thinking: c.is_thinking,
             }
         })
         .collect()
@@ -521,6 +529,7 @@ where
             agentic,
             agentic_native_fc: None, // filled by run_native_fc_pass when enabled
             error: col_error,
+            is_thinking: target.is_thinking,
         });
         prev = Some((target.model.clone(), target.backend));
     }
@@ -567,6 +576,7 @@ pub fn fold_report(
                 agentic: (!agentic_reports.is_empty()).then(|| agg_agentic(&agentic_reports)),
                 agentic_native_fc: (!native_reports.is_empty()).then(|| agg_agentic(&native_reports)),
                 error: col_error,
+                is_thinking: target.is_thinking,
             }
         })
         .collect();

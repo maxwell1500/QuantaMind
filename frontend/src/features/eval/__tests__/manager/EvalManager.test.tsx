@@ -259,7 +259,7 @@ describe("EvalManager Sidebar Controls", () => {
     await waitFor(() => {
       expect(runBatchEval).toHaveBeenCalledWith(
         "easy-coding",
-        [{ model: "llama3.2:1b", backend: "ollama" }],
+        [{ model: "llama3.2:1b", backend: "ollama", is_thinking: false }],
         sampleTasks,
         12, // the editable k, always sent
         8,
@@ -308,7 +308,7 @@ describe("EvalManager Sidebar Controls", () => {
     await waitFor(() => {
       expect(runBatchEval).toHaveBeenCalledWith(
         "easy-coding",
-        [{ model: "llama3.2:1b", backend: "ollama" }],
+        [{ model: "llama3.2:1b", backend: "ollama", is_thinking: false }],
         sampleTasks,
         5, // editable k, always sent
         8,

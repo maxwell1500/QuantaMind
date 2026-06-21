@@ -7,7 +7,7 @@ use crate::commands::eval::toolcall_cmd::endpoint_for;
 use crate::commands::prompt::prompt_options::{to_generate_options, validate_params};
 use crate::errors::AppError;
 use crate::inference::backend::backend_kind::BackendKind;
-use crate::inference::eval::agentic::difficulty::passk::pass_k_for;
+use crate::inference::eval::agentic::difficulty::passk::{max_tokens_for, pass_k_for};
 use crate::inference::eval::agentic::model_turn::{BackendTurn, NativeOllamaTurn};
 use crate::inference::eval::agentic::spec::Tier;
 use crate::inference::eval::agentic::step::TrajectoryStep;
@@ -202,6 +202,10 @@ pub(crate) async fn run_passes(
     let native_cancel = cancel.clone();
     let native_options = options.clone();
     let keep_alive = agentic_keep_alive(config.keep_alive);
+    // The per-turn token budget is tier-scaled, so resolve the batch tier once here (the
+    // closure builds one `BackendTurn` per target). Untiered runs fall back to Easy — the
+    // legacy default that leaves `is_thinking=false` targets at the 256 cap unchanged.
+    let tier = config.tier.unwrap_or(Tier::Easy);
 
     let mut report = run_batch_resumable(
         &config.collection_id,
@@ -216,6 +220,8 @@ pub(crate) async fn run_passes(
             cancel: turn_cancel.clone(),
             options: options.clone(),
             keep_alive,
+            is_thinking: t.is_thinking,
+            max_tokens: max_tokens_for(tier, t.is_thinking),
         },
         prior,
         &record,
