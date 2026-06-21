@@ -48,6 +48,18 @@ pub fn run() {
             commands::stt::transcribe::clear_scratch(app.handle());
             Ok(())
         })
+        .on_window_event(|window, event| {
+            // macOS: closing the window does NOT quit a Tauri app — it lingers in the
+            // dock, so `RunEvent::ExitRequested` never fires and the Ollama WE spawned
+            // keeps running. Reap our sidecars and quit so "close the app" actually frees
+            // them. `reap_managed` is idempotent and PID-scoped (a pre-existing user
+            // Ollama daemon is never touched); Cmd+Q and SIGINT/SIGTERM still reap too.
+            if let tauri::WindowEvent::CloseRequested { .. } = event {
+                let app = tauri::Manager::app_handle(window);
+                commands::app_lifecycle::reap_managed(app);
+                app.exit(0);
+            }
+        })
         .invoke_handler(tauri::generate_handler![
             commands::gguf::gguf_cmd::inspect_gguf,
             commands::system::hardware::get_hardware_snapshot,
