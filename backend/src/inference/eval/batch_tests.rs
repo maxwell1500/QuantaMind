@@ -360,6 +360,19 @@ fn task_report(p: u32, k: u32) -> AgenticReport {
 }
 
 #[test]
+fn a_budget_truncated_task_is_not_credited_as_a_strict_pass_k() {
+    // Truncated at 1 of 16, and that single run passed: `passes == total_runs` (1 == 1)
+    // would otherwise credit it as a full pass^16. The truncation flag must veto that —
+    // we never observed the other 15 runs, so the all-k guarantee is unproven.
+    let agg = agg_agentic(&[task_report(1, 1).with_truncation(16)]);
+    assert_eq!(agg.tasks_passed, 0, "a truncated batch can't claim the all-k guarantee");
+    assert_eq!(agg.tasks_total, 1);
+    // The observed run still feeds the secondary per-run rate honestly.
+    assert_eq!(agg.passes, 1);
+    assert_eq!(agg.total_runs, 1);
+}
+
+#[test]
 fn pass_k_credits_a_task_only_when_all_k_runs_pass() {
     // Two flaky tasks (3/5 and 4/5): pass@k would read 7/10 = 0.7, but neither task
     // passed ALL k, so strict Pass^k is 0 — the whole point of the metric.

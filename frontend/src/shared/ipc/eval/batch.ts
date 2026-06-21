@@ -71,8 +71,34 @@ export const AgenticReportSchema = z.object({
   avg_steps: z.number().nullable(),
   top_error: TopErrorSchema,
   schema_resilience: z.number().nullable(),
+  // Phase 9: set ONLY when the Pass^k batch was cut short by the per-task wall-clock
+  // budget — `total_runs` then holds the COMPLETED runs. A strict pass requires the batch
+  // ran to completion, so a truncated report is never a clean Pass (see `isStrictPass`).
+  // `.optional()` mirrors the Rust `#[serde(default)]` so pre-fix reports still parse.
+  requested_runs: z.number().int().nullable().optional(),
+  // Phase 9: the tool-call dialect this task's runs were normalized from — "standard"
+  // (instructed JSON) or a model-native grammar like "harmony". `z.string()` (not an enum)
+  // so a future backend dialect can't fail report parsing; absent on pre-fix reports.
+  dialect: z.string().optional(),
 });
 export type AgenticReport = z.infer<typeof AgenticReportSchema>;
+
+/// Human label for a non-standard tool-call dialect, or `null` when the model used the
+/// instructed JSON (nothing to flag). Keeps the UI copy in one place.
+export function dialectLabel(dialect: string | undefined): string | null {
+  if (!dialect || dialect === "standard") return null;
+  if (dialect === "harmony") return "Harmony";
+  return dialect.charAt(0).toUpperCase() + dialect.slice(1);
+}
+
+/// Strict Pass^k for ONE agentic task, mirroring the Rust `AgenticReport::is_strict_pass`:
+/// every run that ran passed AND the batch was not budget-truncated. A truncated batch
+/// (`requested_runs` set) never qualifies — the other k runs were never observed.
+export function isStrictPass(
+  report: Pick<AgenticReport, "passes" | "total_runs" | "requested_runs">,
+): boolean {
+  return report.requested_runs == null && report.total_runs > 0 && report.passes === report.total_runs;
+}
 
 /// Per-model aggregate across the collection's agentic tasks. Null metrics render
 /// "N/A"/"—" — never a fabricated number.

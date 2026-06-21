@@ -3,10 +3,10 @@ use crate::inference::eval::agentic::context::{tool_result_line, Conversation};
 use crate::inference::eval::agentic::scoring::endstate;
 use crate::inference::eval::agentic::model_turn::ModelTurn;
 use crate::inference::eval::agentic::scoring::report::{AgenticReport, FailureKind, RunOutcome};
-use crate::inference::eval::agentic::sandbox::{DeterministicSandbox, EndStateRule, SandboxState, TaskCheckpoint};
+use crate::inference::eval::agentic::sandbox::{canonical, DeterministicSandbox, EndStateRule, SandboxState, TaskCheckpoint};
 use crate::inference::eval::agentic::v2::r#match::text_matches;
 use crate::inference::eval::agentic::step::{StepKind, TrajectoryStep};
-use crate::inference::eval::toolcall::parse::{extract_calls, looks_like_broken_json};
+use crate::inference::eval::toolcall::parse::{extract_calls_dialect, looks_like_broken_json, ToolCallDialect};
 use crate::inference::eval::toolcall::prompt::{build_system_for, TerminalGuidance};
 use crate::inference::generate::generate_options::GenerateOptions;
 use crate::inference::generate::generate_spec::GenerateSpec;
@@ -16,6 +16,14 @@ use tokio_util::sync::CancellationToken;
 const MAX_TOKENS: u32 = 256;
 const UNKNOWN_TOOL: &str =
     "Tool not found or arguments unrecognized. Choose a tool from the provided schema.";
+
+/// Identical, no-progress turns in a row before the run is declared a loop. A model that
+/// re-emits the exact same (tool + args) turn this many times without advancing the
+/// end-state is stuck (an ack like `{"ok":true}` gives it no signal to change), so fail it
+/// fast as `InfiniteLoop` instead of burning the whole `max_steps` budget — the verdict is
+/// the same, just reached in 3 steps instead of up to 85. A turn that DIFFERS or advances a
+/// checkpoint resets the counter, so legitimate multi-step progress is never cut short.
+const STALL_REPEAT_LIMIT: u32 = 3;
 
 /// `num_ctx` sizing for the agentic loop. The transcript re-sent every step grows by
 /// ~one assistant turn + tool result per step; left at the model default (~4096) a
@@ -145,12 +153,48 @@ where
     M: ModelTurn,
     F: Fn(u32) -> AppResult<(DeterministicSandbox, u32, u8)>,
 {
+    run_agentic_within(turn, k, make, cancel, TASK_BUDGET, tx).await
+}
+
+/// Per-task wall-clock budget for a whole Pass^k batch. A slow model (a 12B on a 16GB host
+/// generates minutes per step) can otherwise grind for hours: k runs × max_steps real
+/// multi-minute turns. Once a batch passes this budget we stop launching NEW runs and
+/// report the honest pass rate over the COMPLETED runs (flagged via
+/// `AgenticReport::with_truncation`) — an unbiased estimate that makes no claim about the
+/// runs we skipped. Generous (8 min) so it only fires on a pathologically slow batch; a
+/// healthy 7B finishes Hard well under it.
+const TASK_BUDGET: std::time::Duration = std::time::Duration::from_secs(480);
+
+/// `run_agentic_with` with an injectable wall-clock budget (so the truncation path is
+/// testable without a multi-minute wait — a ZERO budget truncates after the first run).
+async fn run_agentic_within<M, F>(
+    turn: &M,
+    k: u32,
+    make: F,
+    cancel: &CancellationToken,
+    budget: std::time::Duration,
+    tx: &UnboundedSender<TrajectoryStep>,
+) -> AppResult<AgenticReport>
+where
+    M: ModelTurn,
+    F: Fn(u32) -> AppResult<(DeterministicSandbox, u32, u8)>,
+{
+    let start = std::time::Instant::now();
     let mut outcomes = Vec::with_capacity(k as usize);
     let mut last_err = None;
+    let mut truncated = false;
     for run_index in 0..k {
         // Halt a long Pass^k task promptly on cancel (the batch loop also checks
         // between tasks; this bounds an interrupt to ≤1 run of a big-k task).
         if cancel.is_cancelled() {
+            break;
+        }
+        // Wall-clock backstop: stop launching runs once the batch blows its budget — but
+        // only AFTER one whole run (always sample at least once, even on a slow box) and
+        // only BETWEEN runs (never mid-run, so every counted run is complete). The pass
+        // rate stays honest over the runs that finished; the report is flagged truncated.
+        if run_index > 0 && start.elapsed() >= budget {
+            truncated = true;
             break;
         }
         let (sandbox, max_steps, max_recovery) = match make(run_index) {
@@ -170,7 +214,8 @@ where
             return Err(e);
         }
     }
-    Ok(AgenticReport::from_outcomes(&outcomes))
+    let report = AgenticReport::from_outcomes(&outcomes);
+    Ok(if truncated { report.with_truncation(k) } else { report })
 }
 
 /// Run ONE agentic attempt: the stateful `while step < max_steps` loop (iterative,
@@ -208,6 +253,28 @@ async fn run_once_inner<M: ModelTurn>(
     run_index: u32,
     tx: &UnboundedSender<TrajectoryStep>,
 ) -> AppResult<RunOutcome> {
+    // Track the tool-call dialect across the run and stamp it onto the outcome ONCE here,
+    // so the many terminal returns inside `run_steps` stay untouched (builder seam).
+    let mut dialect = ToolCallDialect::Standard;
+    let outcome =
+        run_steps(turn, sandbox, max_steps, max_recovery, step_timeout, run_index, tx, &mut dialect).await?;
+    Ok(outcome.with_dialect(dialect))
+}
+
+/// The stateful step loop. `dialect` is an out-param the extract site updates the first
+/// time a turn is recovered from a non-standard grammar; `run_once_inner` stamps it on the
+/// returned outcome.
+#[allow(clippy::too_many_arguments)]
+async fn run_steps<M: ModelTurn>(
+    turn: &M,
+    sandbox: &DeterministicSandbox,
+    max_steps: u32,
+    max_recovery: u8,
+    step_timeout: std::time::Duration,
+    run_index: u32,
+    tx: &UnboundedSender<TrajectoryStep>,
+    dialect: &mut ToolCallDialect,
+) -> AppResult<RunOutcome> {
     // Act-tasks must route every result — including the final report — through a tool;
     // abstain-tasks keep the plain-text option (prose IS the correct output there). Gating
     // here is the G1 fix for the prompt↔grader contradiction (a correct prose answer to a
@@ -230,6 +297,8 @@ async fn run_once_inner<M: ModelTurn>(
     let mut hit_schema_error = false; // this run emitted a schema-invalid call
     let mut schema_recovered = false; // ...and later produced a valid one
     let mut unknown_tools = 0u32; // decoy / unknown-tool calls this run (Phase 9 distraction signal)
+    let mut prev_turn_sig: Option<Vec<String>> = None; // canonical calls of the previous turn
+    let mut stalled_repeats = 0u32; // consecutive identical, no-progress turns (loop detector)
 
     // Sized once per run from the step cap: the transcript only grows within this run,
     // so a single window covers every step. Keeps the prefix-KV cache from being busted
@@ -275,7 +344,7 @@ async fn run_once_inner<M: ModelTurn>(
         // first silently half-executes a correct batched agent. `extract_calls` is lenient:
         // it returns the parseable calls and ignores unparseable slices, so `malformed_json`
         // stays a whole-output property (zero calls parsed → the no-call arm below).
-        let calls = match extract_calls(&raw) {
+        let calls = match extract_calls_dialect(&raw) {
             None => match &sandbox.end_state {
                 // Declined to call any tool, exactly as the task demanded.
                 EndStateRule::ExpectAbstainingText => {
@@ -299,7 +368,13 @@ async fn run_once_inner<M: ModelTurn>(
                         .with_unknown_tools(unknown_tools));
                 }
             },
-            Some(calls) => calls,
+            Some((calls, d)) => {
+                // A non-standard grammar (e.g. Harmony) sticks for the run — surfaced later.
+                if d != ToolCallDialect::Standard {
+                    *dialect = d;
+                }
+                calls
+            }
         };
 
         // Acted (called ≥1 tool) when the task wanted a plain-text abstention — declining
@@ -308,6 +383,11 @@ async fn run_once_inner<M: ModelTurn>(
             send(StepKind::HallucinatedCompletion, None);
             return Ok(RunOutcome::failure(step_index + 1, output_tokens, FailureKind::Hallucinated));
         }
+
+        // Snapshot end-state progress before processing this turn's calls, so the loop
+        // detector below can tell a productive turn (advanced a checkpoint) from a stalled
+        // one. Sequence uses `next_cp`; RequireAll counts satisfied checkpoints.
+        let progress_before = next_cp + satisfied.iter().filter(|&&s| s).count();
 
         // Step 1 — FORBIDDEN PRE-SCAN (the trap dominates the whole turn). A forbidden
         // action emitted ANYWHERE in the array springs the trap, even alongside a call that
@@ -411,6 +491,30 @@ async fn run_once_inner<M: ModelTurn>(
         // Turn complete, NON-terminal: stream one step carrying every injected result.
         let (kind, injection) = summarize_turn(&turn_lines);
         send(kind, injection);
+
+        // Loop detector: a turn that re-emits the exact same calls as the previous turn
+        // AND advanced no checkpoint is a stall. After `STALL_REPEAT_LIMIT` such turns in a
+        // row, end the run as `InfiniteLoop` rather than grinding the whole step budget.
+        let progressed = next_cp + satisfied.iter().filter(|&&s| s).count() > progress_before;
+        let sig: Vec<String> = calls.iter().map(canonical).collect();
+        if !progressed && prev_turn_sig.as_ref() == Some(&sig) {
+            stalled_repeats += 1;
+        } else {
+            stalled_repeats = 0;
+        }
+        prev_turn_sig = Some(sig);
+        if stalled_repeats + 1 >= STALL_REPEAT_LIMIT {
+            let _ = tx.send(TrajectoryStep {
+                run_index,
+                step_index: step_index + 1,
+                raw_output: String::new(),
+                injection: None,
+                kind: StepKind::InfiniteLoop,
+            });
+            return Ok(RunOutcome::failure(step_index + 1, output_tokens, FailureKind::InfiniteLoop)
+                .with_schema(hit_schema_error, schema_recovered)
+                .with_unknown_tools(unknown_tools));
+        }
     }
 
     let _ = tx.send(TrajectoryStep {

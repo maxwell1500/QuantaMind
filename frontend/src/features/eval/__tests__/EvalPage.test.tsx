@@ -149,6 +149,34 @@ describe("EvalPage — k pre-fill from tier (no clobber)", () => {
     await waitFor(() => expect(screen.getByTestId("eval-manager-k")).toHaveValue(8)); // re-armed → recommended
   });
 
+  it("pre-fills Max Steps to the tier's recommended budget when a concrete tier is picked", async () => {
+    render(<EvalPage />);
+    await screen.findByTestId("eval-manager-max-steps");
+    fireEvent.change(screen.getByTestId("eval-tier-dropdown"), { target: { value: "hard" } });
+    expect(screen.getByTestId("eval-manager-max-steps")).toHaveValue(32); // max_steps_for(Hard)
+  });
+
+  it("does NOT clobber a manually-typed Max Steps when k changes (independent suppress)", async () => {
+    render(<EvalPage />);
+    // Auto resolves (hwTier → medium) → the one-shot fills Max Steps = 16.
+    await waitFor(() => expect(screen.getByTestId("eval-manager-max-steps")).toHaveValue(16));
+    // User overrides Max Steps.
+    fireEvent.change(screen.getByTestId("eval-manager-max-steps"), { target: { value: "20" } });
+    expect(screen.getByTestId("eval-manager-max-steps")).toHaveValue(20);
+    // Editing k must NOT reset Max Steps — the suppress refs are independent.
+    fireEvent.change(screen.getByTestId("eval-manager-k"), { target: { value: "12" } });
+    expect(screen.getByTestId("eval-manager-max-steps")).toHaveValue(20);
+  });
+
+  it("re-pre-fills Max Steps when the user toggles back to Auto (one-shot re-arms)", async () => {
+    render(<EvalPage />);
+    await waitFor(() => expect(screen.getByTestId("eval-manager-max-steps")).toHaveValue(16)); // auto → medium
+    fireEvent.change(screen.getByTestId("eval-tier-dropdown"), { target: { value: "hard" } });
+    expect(screen.getByTestId("eval-manager-max-steps")).toHaveValue(32);
+    fireEvent.change(screen.getByTestId("eval-tier-dropdown"), { target: { value: "auto" } });
+    await waitFor(() => expect(screen.getByTestId("eval-manager-max-steps")).toHaveValue(16)); // re-armed
+  });
+
   it("per-task Delete from the sidebar opens the confirm dialog (built-in → saves a copy)", async () => {
     useEvalRegistryStore.setState({
       tasks: [{ id: "t1", category: "single", prompt: "p", tools: [{ name: "x", description: "", parameters: { type: "object", properties: {} } }], expected: { type: "call", name: "x", args: {} } }] as never,

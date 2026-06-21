@@ -8,6 +8,7 @@ import { VerifyPhase } from "./pipeline/VerifyPhase";
 import { InfoButton } from "../../../shared/ui/InfoButton";
 import { Spinner } from "../../../shared/ui/Spinner";
 import { TOOL_HELP } from "../help";
+import { isStrictPass } from "../../../shared/ipc/eval/batch";
 
 interface TraceDebuggerProps {
   model: string;
@@ -485,10 +486,10 @@ export function TraceDebugger({
                 {steps.length > 0 && (
                   <div
                      style={verdictStyle(
-                       outcome.report.passes === outcome.report.total_runs
+                       isStrictPass(outcome.report)
                      )}
                   >
-                    {outcome.report.passes === outcome.report.total_runs ? (
+                    {isStrictPass(outcome.report) ? (
                       <div style={{ display: "flex", alignItems: "center", gap: 12 }}>
                         <span style={{ color: "#166534", display: "inline-flex", alignItems: "center" }}>
                           <CheckIcon />
@@ -538,7 +539,7 @@ export function TraceDebugger({
                 verdict={{
                   parsed: outcome.report.failures.malformed_json_calls === 0,
                   tool_match: outcome.report.failures.infinite_loop_hits === 0,
-                  args_match: outcome.report.passes === outcome.report.total_runs,
+                  args_match: isStrictPass(outcome.report),
                   abstain_correct: null,
                 }}
                 category={task.category}

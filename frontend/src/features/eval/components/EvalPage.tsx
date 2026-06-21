@@ -6,7 +6,7 @@ import { useBatchStore } from "../state/batchStore";
 import { useCliffStore } from "../state/cliffStore";
 import { stopBatchEval } from "../../../shared/ipc/eval/batch";
 import { getHardwareTier, type HardwareTier } from "../../../shared/ipc/compare/hardware";
-import { PASS_K_BY_TIER, type Tier } from "../../../shared/ipc/eval/readiness";
+import { PASS_K_BY_TIER, MAX_STEPS_BY_TIER, type Tier } from "../../../shared/ipc/eval/readiness";
 import { EvalManager } from "./manager/EvalManager";
 import { CollectionEditor } from "./manager/CollectionEditor";
 import { ConfirmDialog } from "./manager/ConfirmDialog";
@@ -52,7 +52,10 @@ export function EvalPage() {
   // (see `onTierChange` + the Auto one-shot below), never locked. Start at Medium's 8 so
   // the first paint shows a sensible recommended default before `hwTier` resolves.
   const [iterationsK, setIterationsK] = useState<number>(PASS_K_BY_TIER.medium);
-  const [maxSteps, setMaxSteps] = useState<number>(8);
+  // Max Steps mirrors `k`: always user-editable, PRE-FILLED with the tier's recommended
+  // budget (see `onTierChange` + the Auto one-shot below). Start at Medium's value so the
+  // first paint shows a sensible default before `hwTier` resolves.
+  const [maxSteps, setMaxSteps] = useState<number>(MAX_STEPS_BY_TIER.medium);
   // Phase 9 difficulty levers, owned here so the manager (run) and the scoreboard
   // (header chips) read one resolved value. `Auto` resolves to the machine's
   // recommended tier (`hwTier`); a named tier filters the collection list + recommends k.
@@ -87,26 +90,43 @@ export function EvalPage() {
   // as a tier change (the effect would otherwise run with a stale `tierSel`), the ref
   // already says "don't auto-fill" and the user's value survives.
   const suppressAutoK = useRef(false);
+  // Max Steps follows the SAME pre-fill law as `k`, with an INDEPENDENT suppress ref:
+  // typing a custom k must not freeze the step pre-fill (and vice-versa). Both are driven
+  // by the tier in `onTierChange` and the shared Auto one-shot keyed on `[hwTier]`.
+  const suppressAutoSteps = useRef(false);
   const tierSelRef = useRef(tierSel);
   tierSelRef.current = tierSel;
   const setIterationsKByUser = (v: number) => {
     suppressAutoK.current = true;
     setIterationsK(v);
   };
+  const setMaxStepsByUser = (v: number) => {
+    suppressAutoSteps.current = true;
+    setMaxSteps(v);
+  };
   const onTierChange = (next: "auto" | Tier) => {
     setTierSel(next);
     if (next !== "auto") {
-      suppressAutoK.current = true; // a concrete tier fixes k to its recommendation
+      // A concrete tier fixes both k and the step budget to their recommendations.
+      suppressAutoK.current = true;
+      suppressAutoSteps.current = true;
       setIterationsK(PASS_K_BY_TIER[next]);
+      setMaxSteps(MAX_STEPS_BY_TIER[next]);
     } else {
-      suppressAutoK.current = false; // back to Auto → let the hardware drive k again
-      if (hwTier) setIterationsK(PASS_K_BY_TIER[hwTier.recommended_tier]); // hw already known → now
-      // hw not yet known: the effect below fills it once the probe resolves.
+      // Back to Auto → let the hardware drive both again.
+      suppressAutoK.current = false;
+      suppressAutoSteps.current = false;
+      if (hwTier) {
+        setIterationsK(PASS_K_BY_TIER[hwTier.recommended_tier]);
+        setMaxSteps(MAX_STEPS_BY_TIER[hwTier.recommended_tier]);
+      }
+      // hw not yet known: the effect below fills both once the probe resolves.
     }
   };
   useEffect(() => {
-    if (tierSelRef.current === "auto" && hwTier && !suppressAutoK.current) {
-      setIterationsK(PASS_K_BY_TIER[hwTier.recommended_tier]);
+    if (tierSelRef.current === "auto" && hwTier) {
+      if (!suppressAutoK.current) setIterationsK(PASS_K_BY_TIER[hwTier.recommended_tier]);
+      if (!suppressAutoSteps.current) setMaxSteps(MAX_STEPS_BY_TIER[hwTier.recommended_tier]);
     }
   }, [hwTier]);
 
@@ -157,6 +177,8 @@ export function EvalPage() {
   const effectiveTier: Tier | undefined = tierSel === "auto" ? hwTier?.recommended_tier : tierSel;
   // The recommended Pass^k for the active tier — shown as a hint next to the editable k.
   const recommendedK = effectiveTier ? PASS_K_BY_TIER[effectiveTier] : undefined;
+  // The recommended step budget for the active tier — hint next to the editable Max Steps.
+  const recommendedSteps = effectiveTier ? MAX_STEPS_BY_TIER[effectiveTier] : undefined;
   const decoys = decoyEnabled ? decoyCount : undefined;
   const cap = (s: string) => s.charAt(0).toUpperCase() + s.slice(1);
   const tierLabel = effectiveTier ? `${cap(effectiveTier)}${tierSel === "auto" ? " (Auto)" : ""}` : "Auto";
@@ -224,11 +246,12 @@ export function EvalPage() {
         k={iterationsK}
         setK={setIterationsKByUser}
         maxSteps={maxSteps}
-        setMaxSteps={setMaxSteps}
+        setMaxSteps={setMaxStepsByUser}
         tierSel={tierSel}
         onTierChange={onTierChange}
         effectiveTier={effectiveTier}
         recommendedK={recommendedK}
+        recommendedSteps={recommendedSteps}
         hwTier={hwTier}
         decoyEnabled={decoyEnabled}
         setDecoyEnabled={setDecoyEnabled}

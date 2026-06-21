@@ -312,7 +312,7 @@ fn agg_agentic(reports: &[AgenticReport]) -> AggAgentic {
             }
             TierStat {
                 tier,
-                tasks_passed: rs.iter().filter(|r| r.total_runs > 0 && r.passes == r.total_runs).count() as u32,
+                tasks_passed: rs.iter().filter(|r| r.is_strict_pass()).count() as u32,
                 tasks_total: rs.len() as u32,
                 avg_steps: mean_f64(&tier_steps),
                 failures: tier_failures,
@@ -321,7 +321,7 @@ fn agg_agentic(reports: &[AgenticReport]) -> AggAgentic {
         .collect();
     by_tier.sort_by_key(|s| s.tier);
     AggAgentic {
-        tasks_passed: reports.iter().filter(|r| r.total_runs > 0 && r.passes == r.total_runs).count() as u32,
+        tasks_passed: reports.iter().filter(|r| r.is_strict_pass()).count() as u32,
         tasks_total: reports.len() as u32,
         passes: reports.iter().map(|r| r.passes).sum(),
         total_runs: reports.iter().map(|r| r.total_runs).sum(),
