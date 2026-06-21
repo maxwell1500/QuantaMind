@@ -112,9 +112,9 @@ export function ModelSelector() {
                   data-testid={`header-model-thinking-${m.name}`}
                   onClick={(e) => { e.stopPropagation(); void setThinking(m.name, !(byModel[m.name]?.is_thinking ?? false)); }}
                   onKeyDown={(e) => { if (e.key === "Enter" || e.key === " ") { e.preventDefault(); e.stopPropagation(); void setThinking(m.name, !(byModel[m.name]?.is_thinking ?? false)); } }}
-                  className={`inline-flex h-4 w-4 shrink-0 items-center justify-center rounded border text-[10px] leading-none ${byModel[m.name]?.is_thinking ? "bg-purple-600 border-purple-600 text-white" : "border-gray-300 text-gray-400"}`}
+                  className={`shrink-0 rounded border px-1.5 py-0.5 text-[9px] font-medium uppercase tracking-wide leading-none ${byModel[m.name]?.is_thinking ? "bg-purple-600 border-purple-600 text-white" : "border-gray-300 text-gray-400"}`}
                 >
-                  🧠
+                  think
                 </span>
                 {m.size_bytes > 0 && (
                   <span className="text-[10px] text-gray-400">{formatBytes(m.size_bytes)}</span>

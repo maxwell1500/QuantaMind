@@ -254,7 +254,7 @@ unit-testable. Consumed by `useModelInstall` for the typed `state.progress`.
 **Responsibility:** load-once map of `{ [model]: { temperature, is_thinking } }` from the backend
 (YAML-backed), optimistic writes via `setModelTemperature` / `setModelThinking`. `temperatureFor(model)`
 falls back to `DEFAULT_TEMPERATURE`; `isThinkingFor(model)` falls back to `false`. Each setter **merges
-onto the existing entry** so writing one field never clobbers the other. The 🧠 checkbox per row in
+onto the existing entry** so writing one field never clobbers the other. The "think" toggle per row in
 `ModelSelector.tsx` calls `setThinking`; `useBatchRun` stamps `is_thinking` onto each `ModelTarget` at
 dispatch so the backend raises the token budget + strips `<think>` for reasoning models. Loaded at app
 startup; consumed wherever a model is run.
