@@ -36,7 +36,7 @@ export function MetricsChart() {
     val: r.metrics?.tokens_per_sec ?? null,
   }));
   const maxThroughput = throughputVals.reduce((max, v) => (v.val != null ? Math.max(max, v.val) : max), 0);
-  const throughputLimit = maxThroughput > 0 ? Math.ceil(maxThroughput / 10) * 10 : 10;
+  const throughputLimit = maxThroughput > 0 ? maxThroughput : 10;
 
   const ttftVals: Val[] = doneRows.map((r) => ({
     model: r.model,
@@ -44,7 +44,7 @@ export function MetricsChart() {
     val: r.metrics?.ttft_ms ?? null,
   }));
   const maxTtft = ttftVals.reduce((max, v) => (v.val != null ? Math.max(max, v.val) : max), 0);
-  const ttftLimit = maxTtft > 0 ? Math.ceil(maxTtft / 500) * 500 : 500;
+  const ttftLimit = maxTtft > 0 ? maxTtft : 500;
 
   const totalChars = 50; // length of the progress bar in monospace characters
   const throughputTicks = niceTicks(throughputLimit, 8, 10);
