@@ -6,6 +6,7 @@ import {
   setModelThinking,
   type ModelSettingsMap,
 } from "../../../shared/ipc/models/model_settings";
+import { isLikelyThinkingModel } from "../../../shared/models/classify";
 
 export interface ModelSettingsStoreState {
   byModel: ModelSettingsMap;
@@ -58,6 +59,10 @@ export const useModelSettingsStore = create<ModelSettingsStoreState>(
         },
       }));
     },
-    isThinkingFor: (model) => get().byModel[model]?.is_thinking ?? false,
+    // Default to the name heuristic when the user hasn't set this model explicitly, so a
+    // reasoning model (e.g. qwen3.x) is auto-checked and the user doesn't have to guess. An
+    // explicit toggle (persisted) always wins.
+    isThinkingFor: (model) =>
+      get().byModel[model]?.is_thinking ?? isLikelyThinkingModel(model),
   }),
 );

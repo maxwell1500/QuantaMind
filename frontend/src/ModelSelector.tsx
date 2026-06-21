@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState } from "react";
 import { useInstalledModelsStore } from "./features/models/state/installedModelsStore";
-import { isEmbeddingModel } from "./shared/models/classify";
+import { isEmbeddingModel, isLikelyThinkingModel } from "./shared/models/classify";
 import { dedupeByDigest } from "./shared/models/dedupeDigest";
 import { modelLabel } from "./shared/models/modelLabel";
 import { formatBytes } from "./shared/format/bytes";
@@ -85,6 +85,9 @@ export function ModelSelector() {
           )}
           {generative.map((m) => {
             const active = has(m.name);
+            // Explicit per-model setting wins; otherwise auto-detect from the name so a
+            // reasoning model is pre-checked and the user doesn't have to guess.
+            const thinking = byModel[m.name]?.is_thinking ?? isLikelyThinkingModel(m.name);
             return (
               <button
                 key={m.name}
@@ -105,16 +108,19 @@ export function ModelSelector() {
                 <span className="flex-1 truncate">{modelLabel(m)}</span>
                 <span
                   role="checkbox"
-                  aria-checked={byModel[m.name]?.is_thinking ?? false}
+                  aria-checked={thinking}
                   aria-label="Thinking model"
-                  title="Reasoning model: allow a larger token budget for its <think> step and strip the scratchpad before scoring. Turn off for terse, non-reasoning models."
+                  title="Reasoning model: allow a larger token budget for its <think> step and strip the scratchpad before scoring. Auto-detected from the model name; click to override."
                   tabIndex={0}
                   data-testid={`header-model-thinking-${m.name}`}
-                  onClick={(e) => { e.stopPropagation(); void setThinking(m.name, !(byModel[m.name]?.is_thinking ?? false)); }}
-                  onKeyDown={(e) => { if (e.key === "Enter" || e.key === " ") { e.preventDefault(); e.stopPropagation(); void setThinking(m.name, !(byModel[m.name]?.is_thinking ?? false)); } }}
-                  className={`shrink-0 rounded border px-1.5 py-0.5 text-[9px] font-medium uppercase tracking-wide leading-none ${byModel[m.name]?.is_thinking ? "bg-purple-600 border-purple-600 text-white" : "border-gray-300 text-gray-400"}`}
+                  onClick={(e) => { e.stopPropagation(); void setThinking(m.name, !thinking); }}
+                  onKeyDown={(e) => { if (e.key === "Enter" || e.key === " ") { e.preventDefault(); e.stopPropagation(); void setThinking(m.name, !thinking); } }}
+                  className={`flex shrink-0 cursor-pointer items-center gap-1 text-[10px] leading-none ${thinking ? "text-purple-700" : "text-gray-500"}`}
                 >
-                  think
+                  <span className={`inline-flex h-3.5 w-3.5 items-center justify-center rounded border text-[9px] leading-none ${thinking ? "bg-purple-600 border-purple-600 text-white" : "border-gray-400"}`}>
+                    {thinking ? "✓" : ""}
+                  </span>
+                  Thinking
                 </span>
                 {m.size_bytes > 0 && (
                   <span className="text-[10px] text-gray-400">{formatBytes(m.size_bytes)}</span>

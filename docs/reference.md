@@ -880,8 +880,11 @@ the Phase-9 levers inline, so the chosen tier and decoy budget genuinely shape t
 - **HW hint** — "HW: 16GB RAM · Mainstream · Medium recommended" comes from the new `get_hardware_tier`
   command (the single source of truth; the GB thresholds + class→tier policy live in `hwclass.rs`, never
   duplicated in TS).
-- **Thinking model toggle (per model).** Each model row in the header model picker has a small "think"
-  toggle marking it a reasoning model. When on, the agentic runner (a) raises that model's per-turn token budget
+- **Thinking model checkbox (per model).** Each model row in the header model picker has a "Thinking"
+  checkbox marking it a reasoning model. It is **auto-detected** from the model name
+  (`isLikelyThinkingModel`: qwen3.x, QwQ, DeepSeek-R1, Magistral, gpt-oss, …) so a reasoner is
+  pre-checked and the user doesn't have to guess; an explicit click persists and overrides the
+  heuristic. When on, the agentic runner (a) raises that model's per-turn token budget
   from the default 256 to a tier-scaled value (`max_tokens_for`: Easy 1536 / Medium 2048 / Hard 3072 /
   Extreme 4096) so the `<think>` scratchpad doesn't truncate the tool call, and (b) strips `<think>…</think>`
   before parsing AND before the transcript append (the scratchpad's inner JSON can't be mis-parsed as a
