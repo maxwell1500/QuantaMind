@@ -1049,6 +1049,129 @@ async fn a_model_repeating_the_same_no_progress_turn_fails_fast_as_infinite_loop
     assert_eq!(steps.last().unwrap().kind, StepKind::InfiniteLoop);
 }
 
+// --- Thinking-model toggle: raised token budget + <think> stripping ----------------
+
+/// A scripted model that ALSO declares itself a reasoning model (or not) and records the
+/// per-turn `num_predict` and prompt the runner handed it. Lets a test prove the runner
+/// pins the raised budget AND that the `<think>`-stripped transcript is re-sent each turn.
+struct ThinkingModel {
+    replies: Vec<(String, u32)>,
+    next: AtomicUsize,
+    thinking: bool,
+    max_tokens: u32,
+    seen_num_predict: std::sync::Mutex<Vec<Option<u32>>>,
+    seen_prompts: std::sync::Mutex<Vec<String>>,
+}
+
+impl ThinkingModel {
+    fn new(replies: Vec<&str>, thinking: bool, max_tokens: u32) -> Self {
+        Self {
+            replies: replies.into_iter().map(|t| (t.to_string(), 10u32)).collect(),
+            next: AtomicUsize::new(0),
+            thinking,
+            max_tokens,
+            seen_num_predict: std::sync::Mutex::new(Vec::new()),
+            seen_prompts: std::sync::Mutex::new(Vec::new()),
+        }
+    }
+}
+
+impl ModelTurn for ThinkingModel {
+    async fn run(&self, spec: &GenerateSpec) -> AppResult<(String, GenerateStats)> {
+        self.seen_num_predict.lock().unwrap().push(spec.options.as_ref().and_then(|o| o.num_predict));
+        self.seen_prompts.lock().unwrap().push(spec.prompt.clone());
+        let i = self.next.fetch_add(1, Ordering::SeqCst).min(self.replies.len() - 1);
+        let (text, n) = &self.replies[i];
+        Ok((text.clone(), GenerateStats { eval_count: Some(*n), ..Default::default() }))
+    }
+    fn is_thinking(&self) -> bool {
+        self.thinking
+    }
+    fn max_output_tokens(&self) -> u32 {
+        self.max_tokens
+    }
+}
+
+/// A finish-task that FORBIDS calling `danger` — the lever for proving stripping matters.
+fn finish_sandbox_forbidding_danger() -> DeterministicSandbox {
+    use crate::inference::eval::agentic::v2::r#match::MustNotCall;
+    DeterministicSandbox::new(
+        "Finish the task; never call danger.".into(),
+        vec![],
+        vec![],
+        EndStateRule::RequireAll(vec![TaskCheckpoint { tool: "finish".into(), args: json!({ "ok": true }) }]),
+    )
+    .with_must_not_call(vec![MustNotCall::Name("danger".into())])
+}
+
+// The model reasons (in <think>) about a FORBIDDEN call, writing its JSON inline, then
+// emits only the winning `finish` call. This is the real shape of the bug: the scratchpad's
+// braces are valid JSON the parser would otherwise see.
+const THINK_WITH_FORBIDDEN_BRACES: &str =
+    "<think>maybe I should {\"name\":\"danger\",\"args\":{}}</think>{\"name\":\"finish\",\"args\":{\"ok\":true}}";
+
+#[tokio::test]
+async fn thinking_model_strips_scratchpad_so_a_braced_forbidden_call_inside_think_does_not_trap() {
+    // is_thinking=true → the runner strips <think> before parsing, so the `danger` braces in
+    // the scratchpad are gone and only the real `finish` call is seen → clean success.
+    let model = ThinkingModel::new(vec![THINK_WITH_FORBIDDEN_BRACES], true, 3072);
+    let (tx, _rx) = unbounded_channel();
+    let outcome = run_once(&model, &finish_sandbox_forbidding_danger(), 8, 2, 0, &tx).await.unwrap();
+    assert!(outcome.reached_end);
+    assert_eq!(outcome.failure, None);
+}
+
+#[tokio::test]
+async fn without_thinking_the_same_braced_scratchpad_is_misparsed_and_springs_the_trap() {
+    // The inversion the fix exists to prevent: with is_thinking=false the runner does NOT
+    // strip, so `objects()` finds the forbidden `danger` JSON INSIDE the <think> block and
+    // the pre-scan traps it — a correct model wrongly failed for a purely structural reason.
+    let model = ThinkingModel::new(vec![THINK_WITH_FORBIDDEN_BRACES], false, 256);
+    let (tx, _rx) = unbounded_channel();
+    let outcome = run_once(&model, &finish_sandbox_forbidding_danger(), 8, 2, 0, &tx).await.unwrap();
+    assert!(!outcome.reached_end);
+    assert_eq!(outcome.failure, Some(FailureKind::ForbiddenCall));
+}
+
+#[tokio::test]
+async fn thinking_model_pins_the_raised_budget_and_keeps_the_transcript_think_free() {
+    // Two turns of `<think>…</think>{call}`. Reaching the end proves the call survives the
+    // strip; the captured spec proves (a) num_predict is the raised 3072 every turn, and
+    // (b) the re-sent transcript on turn 2 carries the turn-1 call WITHOUT its scratchpad —
+    // so the <think> bytes never accumulate into the prefix-KV context.
+    let model = ThinkingModel::new(
+        vec![
+            "<think>let me check the balance first</think>{\"name\":\"get_balance\",\"args\":{\"account_id\":\"ACC-123\"}}",
+            "<think>now move the funds</think>{\"name\":\"execute_transfer\",\"args\":{\"amount\":450.0}}",
+        ],
+        true,
+        3072,
+    );
+    let (tx, _rx) = unbounded_channel();
+    let outcome = run_once(&model, &sandbox(), 8, 2, 0, &tx).await.unwrap();
+
+    assert!(outcome.reached_end);
+    let budgets = model.seen_num_predict.lock().unwrap().clone();
+    assert!(budgets.iter().all(|b| *b == Some(3072)), "every turn pins the raised budget: {budgets:?}");
+    let prompts = model.seen_prompts.lock().unwrap().clone();
+    assert_eq!(prompts.len(), 2, "two turns were generated");
+    assert!(!prompts[1].contains("<think>"), "turn-2 transcript must be think-free: {}", prompts[1]);
+    assert!(prompts[1].contains("get_balance"), "but it keeps the turn-1 tool call: {}", prompts[1]);
+}
+
+#[tokio::test]
+async fn a_non_thinking_run_pins_the_legacy_256_budget() {
+    // The non-thinking path is unchanged: the runner pins num_predict=256 (the legacy cap).
+    let model = ThinkingModel::new(vec![END_CALL], false, NON_THINKING_MAX_TOKENS_TEST);
+    let (tx, _rx) = unbounded_channel();
+    let outcome = run_once(&model, &sandbox(), 8, 2, 0, &tx).await.unwrap();
+    assert!(outcome.reached_end);
+    let budgets = model.seen_num_predict.lock().unwrap().clone();
+    assert!(budgets.iter().all(|b| *b == Some(256)), "non-thinking keeps the 256 cap: {budgets:?}");
+}
+
+const NON_THINKING_MAX_TOKENS_TEST: u32 = 256;
+
 #[tokio::test]
 async fn a_model_making_progress_each_turn_is_not_cut_by_the_loop_detector() {
     // Two DISTINCT getter calls that each advance a checkpoint: the loop detector must NOT

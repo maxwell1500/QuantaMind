@@ -34,6 +34,11 @@ pub struct RunSummary {
     pub agentic_avg_steps: Option<f64>,
     #[serde(default)]
     pub effort: Option<f64>,
+    /// The run used a reasoning model (thinking toggle). `effort` above is then a
+    /// thinking model's token count and must not be compared against a terse model's on
+    /// the regression timeline. `#[serde(default)]` so pre-existing history loads as `false`.
+    #[serde(default)]
+    pub is_thinking: bool,
 }
 
 fn history_path(dir: &Path, collection_id: &str) -> AppResult<PathBuf> {

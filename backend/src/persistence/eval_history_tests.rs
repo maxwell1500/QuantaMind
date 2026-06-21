@@ -16,6 +16,7 @@ fn summary(ts: &str, composite: f64) -> RunSummary {
         pass_k: None,
         agentic_avg_steps: None,
         effort: None,
+        is_thinking: false,
     }
 }
 

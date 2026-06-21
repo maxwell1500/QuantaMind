@@ -10,6 +10,11 @@ use serde::{Deserialize, Serialize};
 pub struct ModelTarget {
     pub model: String,
     pub backend: BackendKind,
+    /// Reasoning model (the sidebar "thinking" checkbox). Drives the raised per-turn token
+    /// budget + `<think>` stripping in the agentic runner. `#[serde(default)]` so a job log
+    /// written before this field (or a non-thinking target) deserializes as `false`.
+    #[serde(default)]
+    pub is_thinking: bool,
 }
 
 /// One model's result for the whole collection: either a full report or the
@@ -75,6 +80,7 @@ pub fn summaries(report: &MatrixReport, ts: &str) -> Vec<RunSummary> {
                 pass_k: None,
                 agentic_avg_steps: None,
                 effort: None,
+                is_thinking: false, // single-turn matrix: no agentic effort, thinking N/A
             })
         })
         .collect()

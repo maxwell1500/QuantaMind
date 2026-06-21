@@ -42,6 +42,7 @@ fn column(model: &str, agentic: Option<AggAgentic>, native: Option<AggAgentic>) 
         agentic,
         agentic_native_fc: native,
         error: None,
+        is_thinking: false,
     }
 }
 

@@ -36,6 +36,7 @@ fn col(passes: u32, total: u32, loops: u32, hall: u32, steps: Option<f64>) -> Ba
         }),
         agentic_native_fc: None,
         error: None,
+        is_thinking: false,
     }
 }
 
@@ -66,6 +67,7 @@ fn no_agentic_column_yields_unmeasured_pass_k_core_gate() {
         agentic: None,
         agentic_native_fc: None,
         error: None,
+        is_thinking: false,
     };
     let i = from_column(&c, None, false, CliffStatus::NotProbed);
     assert_eq!(i.pass_k, None);
@@ -185,6 +187,7 @@ fn ranking_puts_a_ready_model_first_regardless_of_column_order() {
                 agentic: None,
                 agentic_native_fc: None,
                 error: None,
+                is_thinking: false,
             },
             col(5, 5, 0, 0, Some(2.0)), // …a clean Ready model ("m") second.
         ],
@@ -220,7 +223,7 @@ fn pass_k_of_is_native_first_then_prompt_then_none() {
     assert_eq!(pass_k_of(&col(4, 10, 0, 0, Some(2.0))), Some(0.4));
 
     // No agentic data → None (renders N/A, never fabricated).
-    let bare = BatchColumn { model: "m".into(), backend: BackendKind::Ollama, toolcall: None, agentic: None, agentic_native_fc: None, error: None };
+    let bare = BatchColumn { model: "m".into(), backend: BackendKind::Ollama, toolcall: None, agentic: None, agentic_native_fc: None, error: None, is_thinking: false };
     assert_eq!(pass_k_of(&bare), None);
 }
 
@@ -266,6 +269,7 @@ fn assess_report_grades_clean_models_and_short_circuits_errors() {
                 agentic: None,
                 agentic_native_fc: None,
                 error: Some("backend offline".into()),
+                is_thinking: false,
             },
         ],
     };

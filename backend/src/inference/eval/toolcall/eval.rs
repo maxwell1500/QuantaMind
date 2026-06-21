@@ -1,5 +1,6 @@
 use crate::errors::AppResult;
 use crate::inference::backend::backend_kind::BackendKind;
+use crate::inference::eval::agentic::difficulty::passk::NON_THINKING_MAX_TOKENS;
 use crate::inference::eval::agentic::model_turn::{BackendTurn, ModelTurn};
 use crate::inference::eval::toolcall::parse::extract_calls;
 use crate::inference::eval::toolcall::prompt::build_system;
@@ -119,7 +120,7 @@ pub(crate) async fn trace_one_with<M: ModelTurn>(turn: &M, model: &str, task: &T
 /// execution: `run_eval` loops over it and the pipeline visualizer calls it
 /// directly. Dispatches by `BackendKind` via `BackendTurn`.
 pub async fn trace_one(backend: BackendKind, endpoint: &str, model: &str, task: &ToolTask, options: Option<GenerateOptions>) -> AppResult<TraceResult> {
-    let turn = BackendTurn { backend, endpoint: endpoint.to_string(), model: model.to_string(), cancel: CancellationToken::new(), options, keep_alive: None };
+    let turn = BackendTurn { backend, endpoint: endpoint.to_string(), model: model.to_string(), cancel: CancellationToken::new(), options, keep_alive: None, is_thinking: false, max_tokens: NON_THINKING_MAX_TOKENS };
     trace_one_with(&turn, model, task).await
 }
 

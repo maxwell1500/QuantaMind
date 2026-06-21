@@ -7,6 +7,7 @@ use crate::commands::system::hardware::snapshot;
 use crate::errors::AppError;
 use crate::inference::backend::backend_kind::BackendKind;
 use crate::inference::backend::endpoint;
+use crate::inference::eval::agentic::difficulty::passk::NON_THINKING_MAX_TOKENS;
 use crate::inference::eval::agentic::model_turn::BackendTurn;
 use crate::inference::eval::agentic::spec::Tier;
 use crate::inference::eval::readiness::hardware::hwclass::{classify_bytes, default_required_tier, HardwareClass};
@@ -197,6 +198,10 @@ pub async fn run_context_cliff(
         cancel: cancel.clone(),
         options: Some(options),
         keep_alive: None,
+        // Readiness is a minimal liveness probe, not a scored agentic run — keep the legacy
+        // terse-model budget regardless of the model's thinking flag.
+        is_thinking: false,
+        max_tokens: NON_THINKING_MAX_TOKENS,
     };
 
     let ladder = build_ladder(max_tokens, steps);

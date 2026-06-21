@@ -7,6 +7,7 @@ import { formatBytes } from "./shared/format/bytes";
 import { useBackendStore } from "./shared/state/backendStore";
 import { useSelectedModelStore } from "./shared/state/selectedModelStore";
 import { useParamsStore } from "./shared/state/paramsStore";
+import { useModelSettingsStore } from "./features/models/state/modelSettingsStore";
 import { usePopoverDismiss } from "./shared/ui/usePopoverDismiss";
 
 /// The global model picker in the header, filtered to the selected backend. Ollama
@@ -22,6 +23,8 @@ export function ModelSelector() {
   const refresh = useInstalledModelsStore((s) => s.refresh);
   const keepLoaded = useParamsStore((s) => s.keepLoaded);
   const setKeepLoaded = useParamsStore((s) => s.setKeepLoaded);
+  const byModel = useModelSettingsStore((s) => s.byModel);
+  const setThinking = useModelSettingsStore((s) => s.setThinking);
   const [open, setOpen] = useState(false);
   const ref = useRef<HTMLDivElement>(null);
 
@@ -100,6 +103,19 @@ export function ModelSelector() {
                   </span>
                 )}
                 <span className="flex-1 truncate">{modelLabel(m)}</span>
+                <span
+                  role="checkbox"
+                  aria-checked={byModel[m.name]?.is_thinking ?? false}
+                  aria-label="Thinking model"
+                  title="Reasoning model: allow a larger token budget for its <think> step and strip the scratchpad before scoring. Turn off for terse, non-reasoning models."
+                  tabIndex={0}
+                  data-testid={`header-model-thinking-${m.name}`}
+                  onClick={(e) => { e.stopPropagation(); void setThinking(m.name, !(byModel[m.name]?.is_thinking ?? false)); }}
+                  onKeyDown={(e) => { if (e.key === "Enter" || e.key === " ") { e.preventDefault(); e.stopPropagation(); void setThinking(m.name, !(byModel[m.name]?.is_thinking ?? false)); } }}
+                  className={`inline-flex h-4 w-4 shrink-0 items-center justify-center rounded border text-[10px] leading-none ${byModel[m.name]?.is_thinking ? "bg-purple-600 border-purple-600 text-white" : "border-gray-300 text-gray-400"}`}
+                >
+                  🧠
+                </span>
                 {m.size_bytes > 0 && (
                   <span className="text-[10px] text-gray-400">{formatBytes(m.size_bytes)}</span>
                 )}

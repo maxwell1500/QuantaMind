@@ -289,6 +289,34 @@ pub(crate) fn looks_like_broken_json(text: &str) -> bool {
     text.contains('{') && !has_json_object(text)
 }
 
+/// Remove every `<think>…</think>` reasoning span from a model turn so the tool-call
+/// parser and the transcript see the model's ACTUAL output, not its scratchpad. A
+/// reasoning model emits its chain-of-thought before the call; left in place its inner
+/// `{…}` would be mis-parsed as a tool call (the `objects()` scanner has no notion of
+/// think tags), and re-sending it every step would bloat the KV-cache prefix. Properties:
+/// removes ALL spans (models interleave think → text → think → call, not just one); a
+/// truncated, never-closed trailing `<think>` (cut mid-thought by the token cap) drops
+/// from that tag to the end — if nothing remains, the run is an honest no-call yield, not
+/// a malformed one; and a span whose body contains JSON-like braces is removed whole, so
+/// the answer that follows parses cleanly. Only applied for thinking-tagged models.
+pub fn strip_think(text: &str) -> String {
+    const OPEN: &str = "<think>";
+    const CLOSE: &str = "</think>";
+    let mut out = String::with_capacity(text.len());
+    let mut rest = text;
+    while let Some(open) = rest.find(OPEN) {
+        out.push_str(&rest[..open]);
+        let after_open = &rest[open + OPEN.len()..];
+        match after_open.find(CLOSE) {
+            Some(close) => rest = &after_open[close + CLOSE.len()..],
+            // Unclosed: truncated mid-thought. Drop from `<think>` to the end.
+            None => return out,
+        }
+    }
+    out.push_str(rest);
+    out
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -406,5 +434,43 @@ mod tests {
             extract_calls_dialect("{\"name\":\"transfer\",\"args\":{\"amount\":1}} (i.e. call:transfer{amount:1})").unwrap();
         assert_eq!(dialect, ToolCallDialect::Standard);
         assert_eq!(calls[0].name, "transfer");
+    }
+
+    #[test]
+    fn strip_think_removes_a_closed_block_leaving_the_call_untouched() {
+        let cleaned = strip_think("<think>let me reason</think>{\"name\":\"go\",\"args\":{}}");
+        let calls = extract_calls(&cleaned).unwrap();
+        assert_eq!(calls.len(), 1);
+        assert_eq!(calls[0].name, "go");
+    }
+
+    #[test]
+    fn strip_think_removes_all_interleaved_blocks() {
+        // Reasoning models interleave think → text → think → call, not just one block.
+        let cleaned = strip_think("<think>a</think>thinking out loud<think>b</think>{\"name\":\"go\",\"args\":{}}");
+        assert!(!cleaned.contains("<think>") && !cleaned.contains("</think>"));
+        let calls = extract_calls(&cleaned).unwrap();
+        assert_eq!(calls.iter().map(|c| c.name.as_str()).collect::<Vec<_>>(), ["go"]);
+    }
+
+    #[test]
+    fn strip_think_drops_an_unclosed_truncated_block_to_an_honest_no_call() {
+        // Token cap cut the model off mid-thought: no closing tag, no call ever emitted.
+        let cleaned = strip_think("<think>reasoning that never finished because we ran out of budd");
+        assert!(cleaned.is_empty());
+        // No call parsed → an honest no-call yield (Hallucinated), NOT broken JSON.
+        assert!(extract_calls(&cleaned).is_none());
+        assert!(!looks_like_broken_json(&cleaned));
+    }
+
+    #[test]
+    fn strip_think_discards_json_like_braces_inside_a_think_block() {
+        // Adversarial: the model reasons ABOUT the call it is about to make. The `foo`
+        // braces live inside <think> and must never be parsed — only the real `bar` call.
+        let cleaned =
+            strip_think("<think>I'll call {\"name\":\"foo\",\"args\":{}}</think>{\"name\":\"bar\",\"args\":{}}");
+        let calls = extract_calls(&cleaned).unwrap();
+        assert_eq!(calls.len(), 1);
+        assert_eq!(calls[0].name, "bar");
     }
 }
