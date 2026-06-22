@@ -129,6 +129,17 @@ a green "success" card), and the failing-run header reads the report's actual
 `top_error` (Malformed JSON / Hallucinated / Turn Timeout / Forbidden / Step Budget)
 instead of a hardcoded "sequence violation".
 
+**Pass^k run grouping.** `stepsByKey` holds every run's `TrajectoryStep`s in one
+flat array (each agentic task runs k times; `step_index` restarts at 0 per run).
+The timeline splits them with the pure helper `groupStepsByRun(steps)` and renders
+each run as a **collapsible "Run N of K" section** with a PASS/FAIL/RUNNING chip
+(`runPassed` — terminal step is `end_state_reached`; the last group reads RUNNING
+while `running` since runs execute sequentially) and its own per-run turn numbering.
+Default-expanded run = the first completed-and-failed run, else the first; user
+toggles are tracked per `run_index` and reset on task/model change. Without this,
+k single-step runs rendered as ambiguous duplicate "TURN 1 / Sandbox Response
+Injection" cards.
+
 ### ToolCallPanel / ContextCliffPanel / CpuFallbackBanner / RunRecoveryDialog
 
 | File | One-line |

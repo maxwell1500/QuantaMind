@@ -1,5 +1,14 @@
 import { describe, it, expect } from "vitest";
-import { isErrorKind, getStepTitle, verdictLabel, verdictColor } from "../components/TraceDebugger";
+import { isErrorKind, getStepTitle, verdictLabel, verdictColor, groupStepsByRun, runPassed } from "../components/TraceDebugger";
+import type { TrajectoryStep } from "../../../shared/ipc/eval/batch";
+
+const step = (run_index: number, step_index: number, kind: TrajectoryStep["kind"]): TrajectoryStep => ({
+  run_index,
+  step_index,
+  raw_output: "",
+  injection: null,
+  kind,
+});
 
 describe("isErrorKind", () => {
   it("treats turn_timeout and forbidden_call as failures (not green success)", () => {
@@ -48,5 +57,47 @@ describe("verdictLabel", () => {
     expect(isErrorKind("reported_in_prose")).toBe(true);
     expect(getStepTitle("reported_in_prose", true)).toMatch(/wrong channel/i);
     expect(verdictColor("reported_in_prose")).not.toBe(verdictColor("hallucinated"));
+  });
+});
+
+describe("groupStepsByRun", () => {
+  it("buckets a flat multi-run trajectory into per-run groups in order", () => {
+    // Two Pass^k runs concatenated into one stream — exactly what stepsByKey holds.
+    const flat = [
+      step(0, 0, "tool_call"),
+      step(0, 1, "end_state_reached"),
+      step(1, 0, "tool_call"),
+      step(1, 1, "infinite_loop"),
+    ];
+    const groups = groupStepsByRun(flat);
+    expect(groups.map((g) => g.runIndex)).toEqual([0, 1]);
+    expect(groups[0].steps.map((s) => s.step_index)).toEqual([0, 1]);
+    expect(groups[1].steps.map((s) => s.step_index)).toEqual([0, 1]);
+  });
+
+  it("preserves within-run order and group arrival order", () => {
+    const groups = groupStepsByRun([step(2, 0, "tool_call"), step(0, 0, "tool_call"), step(2, 1, "tool_call")]);
+    // Group order follows first appearance, not numeric run_index.
+    expect(groups.map((g) => g.runIndex)).toEqual([2, 0]);
+    expect(groups[0].steps.map((s) => s.step_index)).toEqual([0, 1]);
+  });
+
+  it("handles a single-run trajectory", () => {
+    const groups = groupStepsByRun([step(0, 0, "tool_call"), step(0, 1, "end_state_reached")]);
+    expect(groups).toHaveLength(1);
+    expect(groups[0].runIndex).toBe(0);
+  });
+
+  it("returns no groups for an empty trajectory", () => {
+    expect(groupStepsByRun([])).toEqual([]);
+  });
+});
+
+describe("runPassed", () => {
+  it("passes only when the run's terminal step reached the end state", () => {
+    expect(runPassed({ runIndex: 0, steps: [step(0, 0, "tool_call"), step(0, 1, "end_state_reached")] })).toBe(true);
+    expect(runPassed({ runIndex: 0, steps: [step(0, 0, "tool_call"), step(0, 1, "infinite_loop")] })).toBe(false);
+    // An empty (still-streaming) group is not a pass.
+    expect(runPassed({ runIndex: 0, steps: [] })).toBe(false);
   });
 });

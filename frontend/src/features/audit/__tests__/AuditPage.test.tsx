@@ -14,6 +14,7 @@ vi.mock("../../eval/components/matrix/HistoryTimeline", () => ({
 import { invoke } from "@tauri-apps/api/core";
 import { AuditPage } from "../components/AuditPage";
 import { useEvalRegistryStore } from "../../eval/state/evalRegistryStore";
+import { useBatchStore } from "../../eval/state/batchStore";
 import { useBackendStore } from "../../../shared/state/backendStore";
 
 const summary = (model: string, backend: "ollama" | "llama_cpp") => ({
@@ -25,6 +26,7 @@ const summary = (model: string, backend: "ollama" | "llama_cpp") => ({
 beforeEach(() => {
   vi.clearAllMocks();
   useBackendStore.setState({ selectedBackend: "ollama" });
+  useBatchStore.setState({ report: null });
   useEvalRegistryStore.setState({ presets: [{ id: "easy-coding", label: "Coding", domain: "coding", tier: "easy" }], collections: [], init: vi.fn().mockResolvedValue(undefined) });
 });
 
@@ -48,5 +50,25 @@ describe("AuditPage", () => {
     render(<AuditPage />);
     await waitFor(() => expect(screen.getByTestId("history-timeline")).toHaveTextContent("qwen.gguf"));
     expect(screen.getByTestId("history-timeline")).not.toHaveTextContent("llama3");
+  });
+
+  it("re-fetches history live only when a batch completes for the shown collection", async () => {
+    let n = 0; // count of load_collection_history calls
+    vi.mocked(invoke).mockImplementation((cmd: string) => {
+      if (cmd === "load_collection_history") {
+        n += 1;
+        return Promise.resolve(n === 1 ? [] : [summary("llama3", "ollama")]);
+      }
+      return Promise.resolve([]);
+    });
+    render(<AuditPage />);
+    await waitFor(() => expect(n).toBe(1)); // initial load on mount
+
+    // A run for a DIFFERENT collection must be ignored; the matching one re-fetches.
+    // If the non-match had triggered, n would reach 3 — asserting n===2 proves it didn't.
+    useBatchStore.setState({ report: { collection_id: "other" } as never });
+    useBatchStore.setState({ report: { collection_id: "easy-coding" } as never });
+    await waitFor(() => expect(screen.getByTestId("history-timeline")).toHaveTextContent("llama3"));
+    expect(n).toBe(2);
   });
 });

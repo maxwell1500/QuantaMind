@@ -57,6 +57,21 @@ export function AuditPage() {
     };
   }, [collection]);
 
+  // Re-read the on-disk history whenever a batch finishes FOR THE SHOWN collection.
+  // The backend appends to the history file before emitting `batch-complete`, so a
+  // re-fetch here picks up the new run without an app restart. Guarding on the
+  // collection id keeps a run for a different collection from clobbering the graph.
+  useEffect(() => {
+    if (!report || report.collection_id !== collection) return;
+    let cancelled = false;
+    loadCollectionHistory(collection)
+      .then((h) => !cancelled && setHistory(h))
+      .catch(() => !cancelled && setHistory([]));
+    return () => {
+      cancelled = true;
+    };
+  }, [report, collection]);
+
   return (
     <section data-testid="tab-audit" className="space-y-4">
       {/* The Context-Cliff probe sits on top; the Audit & Compliance history follows below it. */}
