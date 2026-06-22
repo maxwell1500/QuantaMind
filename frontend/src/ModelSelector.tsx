@@ -110,7 +110,7 @@ export function ModelSelector() {
                   role="checkbox"
                   aria-checked={thinking}
                   aria-label="Thinking model"
-                  title="Reasoning model: allow a larger token budget for its <think> step and strip the scratchpad before scoring. Auto-detected from the model name; click to override."
+                  title="Reasoning model: allow a larger token budget for its <think> step"
                   tabIndex={0}
                   data-testid={`header-model-thinking-${m.name}`}
                   onClick={(e) => { e.stopPropagation(); void setThinking(m.name, !thinking); }}

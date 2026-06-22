@@ -18,7 +18,7 @@ export const TOOL_HELP = {
     body: "A live grid of every model × task as the batch runs: each cell turns pass/fail the moment that task finishes. Use it to watch progress and spot which tasks a model struggles with. Click a cell to open that task in the Evaluator below.",
   },
   evaluator: {
-    title: "The Evaluator (Single-Task Pipeline Debugger)",
+    title: "The Evaluator ",
     body: "Drill into ONE task end-to-end: the exact system prompt sent, the model's raw output, the tool call parsed from it, and the verdict (parsed? right tool? right args?). Use it when a cell failed and you need to see why — the eval is never a black box.",
   },
   performanceMatrix: {
