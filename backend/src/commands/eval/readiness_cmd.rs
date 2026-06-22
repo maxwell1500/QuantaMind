@@ -1,5 +1,5 @@
 use crate::commands::emit::log_emit;
-use crate::commands::eval::toolcall_cmd::endpoint_for;
+use crate::commands::eval::toolcall_cmd::{endpoint_for, list_builtin_collections};
 use crate::commands::models::model_inspect::fetch_dims;
 use crate::commands::prompt::prompt_options::{to_generate_options, validate_params};
 use crate::commands::storage::storage::fetch_installed_with_stats;
@@ -12,7 +12,9 @@ use crate::inference::eval::agentic::model_turn::BackendTurn;
 use crate::inference::eval::agentic::spec::Tier;
 use crate::inference::eval::readiness::hardware::hwclass::{classify_bytes, default_required_tier, HardwareClass};
 use crate::inference::eval::cliff::{build_ladder, run_cliff_with, CliffPoint, CliffReport, CliffSource, StepProgress, DEFAULT_DEPTHS};
-use crate::inference::eval::readiness::inputs::{agentic_metrics, native_first_source, pass_k_of, verdict_for};
+use crate::inference::eval::agentic::v2::scenarios::{v2_header, v2_json};
+use crate::inference::eval::batch::BatchReport;
+use crate::inference::eval::readiness::inputs::{agentic_metrics, merged_by_tier_for, native_first_source, pass_k_of, resolve_quant, verdict_for};
 use crate::inference::eval::readiness::recommend;
 use crate::inference::eval::readiness::profile::ReadinessProfile;
 use crate::inference::eval::readiness::types::{CliffStatus, ModelVerdict};
@@ -307,6 +309,18 @@ pub fn delete_readiness_profile(app: AppHandle, id: String) -> Result<(), AppErr
     profiles::delete(&profiles_dir(&app)?, &id)
 }
 
+/// The built-in collection ids sharing a collection's domain — its tier siblings
+/// (e.g. `easy-coding`/`medium-coding`/`hard-coding` for the "coding" domain). Empty
+/// for a custom collection (absent from the built-in registry) or one with no declared
+/// domain, so the per-domain tier merge is then a no-op (single-collection behaviour).
+fn sibling_collection_ids(collection_id: &str) -> Vec<String> {
+    let domain = match v2_json(collection_id).and_then(v2_header).map(|h| h.domain) {
+        Some(d) if !d.is_empty() => d,
+        _ => return Vec::new(),
+    };
+    list_builtin_collections().into_iter().filter(|c| c.domain == domain).map(|c| c.id).collect()
+}
+
 /// Assess the collection's last persisted batch report against a profile. Scoring
 /// is `readiness::assess` — the one source of truth shared with the future CLI;
 /// this command adds no scoring logic of its own. When `cap_bytes` is set it also
@@ -340,6 +354,19 @@ pub async fn assess_readiness(
     // verdict only blocks on these when a profile opts in via `min_context_tokens`.
     let cliffs = cliff::load(&cliff_dir(&app)?, &collection_id).unwrap_or_default();
 
+    // Per-domain tier accumulation: built-in tiers are SEPARATE single-tier
+    // collections (easy-coding, medium-coding, …), so a single report's `by_tier`
+    // only ever holds one tier. Load the persisted reports of the same domain's other
+    // tier collections so the Tier Progression Matrix shows the full ladder. A custom
+    // collection (`v2_json` = None) has no domain siblings → the merge is a no-op.
+    let rdir = reports_dir(&app)?;
+    let sibling_reports: Vec<BatchReport> = sibling_collection_ids(&collection_id)
+        .into_iter()
+        .filter(|id| id != &collection_id)
+        .filter_map(|id| reports::load(&rdir, &id).ok().flatten())
+        .collect();
+    let sibling_refs: Vec<&BatchReport> = sibling_reports.iter().collect();
+
     let mut out = Vec::with_capacity(report.columns.len());
     for col in &report.columns {
         let memory = if cap_bytes.is_some() && col.backend == BackendKind::Ollama {
@@ -368,6 +395,9 @@ pub async fn assess_readiness(
         // on, so the Agent Report's deep-dive can't drift from the gate (issue 5).
         let (by_tier, failures) =
             native_first_source(col).map(|a| (a.by_tier.clone(), a.failures.clone())).unwrap_or_default();
+        // Accumulate the ladder across this domain's tier siblings for THIS model
+        // (matched on (model, backend)); the selected collection's own entries win.
+        let by_tier = merged_by_tier_for(&col.model, col.backend, &by_tier, &sibling_refs);
         out.push(ModelVerdict {
             model: col.model.clone(),
             backend: col.backend,
@@ -376,7 +406,9 @@ pub async fn assess_readiness(
             avg_steps,
             effort,
             pass_k: pass_k_of(col),
-            quantization: registry_get(&quants, &col.model).cloned(),
+            // Real quant: the Ollama registry first, else parsed from the model name
+            // (a GGUF/llama.cpp/MLX or offline-Ollama model) so the row can publish.
+            quantization: resolve_quant(registry_get(&quants, &col.model).cloned(), &col.model),
             cliff,
             by_tier,
             failures,

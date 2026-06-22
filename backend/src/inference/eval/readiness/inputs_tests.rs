@@ -1,6 +1,6 @@
 use super::super::profile::{builtins, ReadinessProfile};
 use super::super::types::{AgentPath, CliffStatus, NativeFcStatus, Readiness};
-use super::{agentic_metrics, assess_report, from_column, pass_k_of, verdict_for};
+use super::{agentic_metrics, assess_report, from_column, merge_by_tier, merged_by_tier_for, pass_k_of, resolve_quant, verdict_for};
 use crate::inference::eval::batch::BatchReport;
 use crate::inference::backend::backend_kind::BackendKind;
 use crate::inference::eval::agentic::scoring::report::{FailureTracker, TopError};
@@ -309,6 +309,79 @@ fn model_verdict_carries_by_tier_and_failures_from_the_native_first_source() {
     assert_eq!(v.by_tier[0].tier, Tier::Hard); // native, NOT the prompt's Easy
     assert_eq!(v.by_tier[0].avg_steps, Some(7.0));
     assert_eq!(v.failures.forbidden_calls, 3);
+}
+
+fn ts(tier: crate::inference::eval::agentic::spec::Tier, passed: u32, total: u32) -> crate::inference::eval::batch::TierStat {
+    crate::inference::eval::batch::TierStat { tier, tasks_passed: passed, tasks_total: total, avg_steps: None, failures: FailureTracker::default() }
+}
+
+/// A persisted report holding one model column whose native-first source carries `tiers`.
+fn report_with(model: &str, backend: BackendKind, tiers: Vec<crate::inference::eval::batch::TierStat>) -> BatchReport {
+    let mut a = agg(1, 1, 0);
+    a.by_tier = tiers;
+    BatchReport {
+        collection_id: "x".into(),
+        num_ctx: None,
+        columns: vec![BatchColumn {
+            model: model.into(),
+            backend,
+            toolcall: None,
+            agentic: Some(a),
+            agentic_native_fc: None,
+            error: None,
+            is_thinking: false,
+        }],
+    }
+}
+
+#[test]
+fn resolve_quant_prefers_registry_then_falls_back_to_the_model_name() {
+    // Registry knows it → use that verbatim.
+    assert_eq!(resolve_quant(Some("Q5_K_M".into()), "qwen2.5:7b"), Some("Q5_K_M".to_string()));
+    // Registry blank (llama.cpp / MLX / Ollama offline) but the name encodes the quant →
+    // parsed, so the publish row isn't dropped.
+    assert_eq!(resolve_quant(None, "qwen2.5-7b-instruct-Q4_K_M.gguf"), Some("Q4_K_M".to_string()));
+    // Neither source knows it → None (never fabricated).
+    assert_eq!(resolve_quant(None, "some-model-no-quant"), None);
+}
+
+#[test]
+fn merge_by_tier_unions_distinct_tiers_first_wins_and_sorts() {
+    use crate::inference::eval::agentic::spec::Tier;
+    // Selected (easy) first; a medium sibling adds its tier. Out-of-order input sorts.
+    let hard = vec![ts(Tier::Hard, 1, 4)];
+    let easy = vec![ts(Tier::Easy, 4, 5)];
+    let medium = vec![ts(Tier::Medium, 3, 5)];
+    let merged = merge_by_tier(&[&easy, &medium, &hard]);
+    assert_eq!(merged.iter().map(|t| t.tier).collect::<Vec<_>>(), vec![Tier::Easy, Tier::Medium, Tier::Hard]);
+
+    // Collision: the FIRST list wins (the selected collection is authoritative).
+    let easy_a = vec![ts(Tier::Easy, 4, 5)];
+    let easy_b = vec![ts(Tier::Easy, 0, 5)];
+    let merged = merge_by_tier(&[&easy_a, &easy_b]);
+    assert_eq!(merged.len(), 1);
+    assert_eq!(merged[0].tasks_passed, 4); // from the first list, not the second
+}
+
+#[test]
+fn merged_by_tier_for_accumulates_the_same_model_across_siblings() {
+    use crate::inference::eval::agentic::spec::Tier;
+    let primary = vec![ts(Tier::Easy, 4, 5)]; // selected collection: easy
+    let medium = report_with("qwen", BackendKind::Ollama, vec![ts(Tier::Medium, 3, 5)]);
+    let out = merged_by_tier_for("qwen", BackendKind::Ollama, &primary, &[&medium]);
+    assert_eq!(out.iter().map(|t| t.tier).collect::<Vec<_>>(), vec![Tier::Easy, Tier::Medium]);
+}
+
+#[test]
+fn merged_by_tier_for_never_pulls_a_different_models_or_backends_tiers() {
+    use crate::inference::eval::agentic::spec::Tier;
+    // The (model, backend) match key prevents a cross-model/backend "Frankenstein ladder":
+    // a sibling for a DIFFERENT model — or the same name on a DIFFERENT backend — is ignored.
+    let primary = vec![ts(Tier::Easy, 4, 5)];
+    let other_model = report_with("llama", BackendKind::Ollama, vec![ts(Tier::Medium, 3, 5)]);
+    let other_backend = report_with("qwen", BackendKind::LlamaCpp, vec![ts(Tier::Hard, 1, 4)]);
+    let out = merged_by_tier_for("qwen", BackendKind::Ollama, &primary, &[&other_model, &other_backend]);
+    assert_eq!(out.iter().map(|t| t.tier).collect::<Vec<_>>(), vec![Tier::Easy]); // easy only
 }
 
 #[test]

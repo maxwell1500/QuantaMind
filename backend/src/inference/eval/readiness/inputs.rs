@@ -1,7 +1,9 @@
 use super::profile::ReadinessProfile;
 use super::types::{AgentPath, CliffStatus, ModelVerdict, NativeFcStatus, Readiness, ReadinessInputs, ReadinessVerdict};
 use super::verdict::assess;
-use crate::inference::eval::batch::{AggAgentic, BatchColumn, BatchReport};
+use crate::inference::backend::backend_kind::BackendKind;
+use crate::inference::eval::batch::{AggAgentic, BatchColumn, BatchReport, TierStat};
+use crate::inference::gguf::gguf_quant::quant_from_filename;
 
 /// The native-first agentic aggregate — the NATIVE pass when it actually ran (`total_runs
 /// > 0`), else the prompt-based proxy. The single selector every readiness read shares, so
@@ -92,6 +94,60 @@ pub fn agentic_metrics(col: &BatchColumn) -> (Option<f64>, Option<f64>) {
 /// `None` when no agentic run produced data (the row then renders "N/A").
 pub fn pass_k_of(col: &BatchColumn) -> Option<f64> {
     native_first_source(col).and_then(|a| a.pass_k())
+}
+
+/// Resolve a column's real quantization: the Ollama installed-models registry first,
+/// else parse it from the model name (a GGUF / llama.cpp / MLX model, or Ollama
+/// offline). NEVER fabricated — it's the quant the name actually encodes, the same one
+/// the VerdictTable shows — so a publish row (which requires a quant) isn't dropped just
+/// because the registry was unavailable. `None` only when neither source knows it.
+pub fn resolve_quant(registry_hit: Option<String>, model: &str) -> Option<String> {
+    registry_hit.or_else(|| quant_from_filename(model))
+}
+
+/// Union several per-tier ladders into one, keyed by `tier` (FIRST occurrence wins —
+/// pass the authoritative list first), sorted ascending. Each built-in tier lives in
+/// exactly one collection, so this is a pure union with NO per-tier re-averaging:
+/// `avg_steps` and per-tier `failures` carry through verbatim. Powers the Agent
+/// Report's per-domain Tier Progression Matrix, which accumulates across a domain's
+/// tier-sibling collections.
+pub fn merge_by_tier(lists: &[&[TierStat]]) -> Vec<TierStat> {
+    let mut out: Vec<TierStat> = Vec::new();
+    for list in lists {
+        for ts in *list {
+            if !out.iter().any(|e| e.tier == ts.tier) {
+                out.push(ts.clone());
+            }
+        }
+    }
+    out.sort_by_key(|ts| ts.tier);
+    out
+}
+
+/// A model's per-tier ladder merged across the same domain's tier-sibling reports.
+/// `primary` (the selected collection's own native-first `by_tier`) wins on tier
+/// collision; each sibling contributes ONLY its matching `(model, backend)` column —
+/// so a different model's tiers are never pulled into this model's ladder (no
+/// cross-model "Frankenstein ladder"). `(model, backend)` is the load-bearing key.
+pub fn merged_by_tier_for(
+    model: &str,
+    backend: BackendKind,
+    primary: &[TierStat],
+    siblings: &[&BatchReport],
+) -> Vec<TierStat> {
+    let mut lists: Vec<&[TierStat]> = Vec::with_capacity(siblings.len() + 1);
+    lists.push(primary);
+    for r in siblings {
+        if let Some(a) = r
+            .columns
+            .iter()
+            .find(|c| c.model == model && c.backend == backend)
+            .and_then(native_first_source)
+        {
+            lists.push(a.by_tier.as_slice());
+        }
+    }
+    merge_by_tier(&lists)
 }
 
 /// Assess every model in a persisted batch report against a profile, with no
