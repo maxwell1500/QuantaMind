@@ -349,7 +349,12 @@ export const useHistoryStore = create<HistoryStoreState>((set) => ({
 2. **Audit & Compliance — Saved Matrix History:** a collection picker (presets +
    custom collections from `evalRegistryStore`) feeding `loadCollectionHistory`,
    rendered as a `HistoryTimeline`. **Filtered to the selected backend** so a
-   backend switch never shows the previous backend's runs.
+   backend switch never shows the previous backend's runs. History is re-fetched
+   on collection change **and** when a batch finishes for the shown collection — an
+   effect keyed on `batchStore.report` re-reads the on-disk history once
+   `report.collection_id === collection`, so the graph updates live instead of
+   needing an app restart (the collection-id guard stops another collection's run
+   from clobbering the chart).
 3. **Export Audit Trail:** CSV (`batchToCsv`) and JSON (`JSON.stringify`) export
    of the latest batch `report` from `batchStore` (both disabled until a report
    exists). An `InfoButton` links the in-context help.

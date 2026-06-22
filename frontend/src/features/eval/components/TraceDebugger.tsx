@@ -8,7 +8,7 @@ import { VerifyPhase } from "./pipeline/VerifyPhase";
 import { InfoButton } from "../../../shared/ui/InfoButton";
 import { Spinner } from "../../../shared/ui/Spinner";
 import { TOOL_HELP } from "../help";
-import { isStrictPass } from "../../../shared/ipc/eval/batch";
+import { isStrictPass, type TrajectoryStep } from "../../../shared/ipc/eval/batch";
 
 interface TraceDebuggerProps {
   model: string;
@@ -228,6 +228,38 @@ const getCardStyle = (kind: string, isError: boolean): React.CSSProperties => {
   };
 };
 
+/// One Pass^k repetition's slice of the trajectory. Every agentic task runs k times;
+/// the steps stream into a single flat array, so the trace view must re-split them by
+/// `run_index` to render "Run N of K" sections with correct per-run turn numbering.
+export interface RunGroup {
+  runIndex: number;
+  steps: TrajectoryStep[];
+}
+
+/// Bucket a flat trajectory (all k runs concatenated) into per-run groups, preserving
+/// arrival order both across runs and within each run. A run absent from the stream
+/// simply doesn't appear; no run_index is assumed contiguous.
+export function groupStepsByRun(steps: TrajectoryStep[]): RunGroup[] {
+  const groups: RunGroup[] = [];
+  const byIndex = new Map<number, RunGroup>();
+  for (const s of steps) {
+    let g = byIndex.get(s.run_index);
+    if (!g) {
+      g = { runIndex: s.run_index, steps: [] };
+      byIndex.set(s.run_index, g);
+      groups.push(g);
+    }
+    g.steps.push(s);
+  }
+  return groups;
+}
+
+/// A run passed iff its terminal (last) step reached the end-state. Any other terminal
+/// kind — or a run still streaming — is not a pass.
+export function runPassed(group: RunGroup): boolean {
+  return group.steps[group.steps.length - 1]?.kind === "end_state_reached";
+}
+
 export function TraceDebugger({
   model,
   taskId,
@@ -240,6 +272,13 @@ export function TraceDebugger({
 
   const [activeTab, setActiveTab] = useState<TabType>("trace");
   const [collapsed, setCollapsed] = useState(false);
+  // User-toggled expansion overrides per run_index. Empty = follow the default
+  // (expand the first failing run, else the first). Reset when the task/model
+  // changes so a freshly selected task starts from its own default.
+  const [runOverrides, setRunOverrides] = useState<Record<number, boolean>>({});
+  useEffect(() => {
+    setRunOverrides({});
+  }, [model, taskId]);
 
   // Find the selected task definition
   const task = tasks.find((t) => t.id === taskId) ?? null;
@@ -268,6 +307,21 @@ export function TraceDebugger({
   const key = cellKey(model, taskId);
   const outcome = outcomeByKey[key];
   const steps = stepsByKey[key] || [];
+
+  // Split the flat trajectory into per-run sections. Runs execute sequentially, so
+  // every group but the last is complete; while `running`, the last group may still
+  // be streaming (shown as RUNNING rather than a premature FAIL).
+  const groups = groupStepsByRun(steps);
+  const isRunComplete = (gi: number) => !running || gi < groups.length - 1;
+  // Default-expanded run: the first completed-and-failed run, else the first run.
+  const defaultRunIndex =
+    groups.find((g, gi) => isRunComplete(gi) && !runPassed(g))?.runIndex ??
+    groups[0]?.runIndex ??
+    -1;
+  const isRunExpanded = (runIndex: number) =>
+    runOverrides[runIndex] ?? runIndex === defaultRunIndex;
+  const toggleRun = (runIndex: number) =>
+    setRunOverrides((o) => ({ ...o, [runIndex]: !isRunExpanded(runIndex) }));
 
   // Tab labels helper
   const renderTabHeader = (id: TabType, label: string) => {
@@ -312,7 +366,7 @@ export function TraceDebugger({
           <span style={chevronStyle} aria-hidden>{collapsed ? "▸" : "▾"}</span>
           <span className="flex h-2.5 w-2.5 rounded-full bg-blue-500" />
           <span style={{ fontSize: 14, fontWeight: 700, color: "#0f172a", fontFamily: "Inter, sans-serif", letterSpacing: "0.03em" }}>
-            3. THE EVALUATOR (Single-Task Pipeline Debugger)
+            3. THE EVALUATOR
           </span>
         </button>
         <span style={{ fontSize: 12, color: "#475569", background: "#f1f5f9", padding: "2px 8px", borderRadius: 6, fontFamily: "'JetBrains Mono', monospace", fontWeight: 600, marginLeft: 8 }}>
@@ -422,60 +476,93 @@ export function TraceDebugger({
                     No steps recorded for this multi-turn run yet.
                   </div>
                 ) : (
-                  <div style={timelineContainer}>
-                    {steps.map((s, index) => {
-                      const isError = isErrorKind(s.kind);
-                      
-                      const icon = getStepIcon(s.kind, isError);
-                      const title = getStepTitle(s.kind, isError);
-                      const desc = getStepDescription(s.kind, s.raw_output);
-                      
+                  <div style={{ display: "flex", flexDirection: "column", gap: 14 }}>
+                    {groups.map((group, gi) => {
+                      const expanded = isRunExpanded(group.runIndex);
+                      const complete = isRunComplete(gi);
+                      const status: "pass" | "fail" | "running" = !complete
+                        ? "running"
+                        : runPassed(group)
+                        ? "pass"
+                        : "fail";
                       return (
-                        <div key={index} style={{ position: "relative", marginBottom: index === steps.length - 1 ? 0 : 20 }}>
-                          {/* Timeline node dot */}
-                          <div style={getStepNodeStyle(s.kind, isError)}>
-                            {icon}
-                          </div>
+                        <div key={group.runIndex} style={runSectionStyle}>
+                          <button
+                            type="button"
+                            onClick={() => toggleRun(group.runIndex)}
+                            style={runHeaderStyle}
+                            aria-expanded={expanded}
+                          >
+                            <span style={runCaretStyle}>{expanded ? "▼" : "▶"}</span>
+                            <span style={runTitleStyle}>
+                              RUN {gi + 1} OF {groups.length}
+                            </span>
+                            <span style={runChipStyle(status)}>{status.toUpperCase()}</span>
+                            <span style={runStepCountStyle}>
+                              {group.steps.length} {group.steps.length === 1 ? "turn" : "turns"}
+                            </span>
+                          </button>
 
-                          {/* Card Content */}
-                          <div style={getCardStyle(s.kind, isError)} className="hover:border-slate-300 transition-all duration-200">
-                            <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", borderBottom: "1px solid #e2e8f0", paddingBottom: 6, marginBottom: 8 }}>
-                              <span style={turnHeaderTitleStyle}>
-                                TURN {s.step_index + 1}: {title}
-                              </span>
-                              {s.kind === "tool_call" && (
-                                <span style={{ fontSize: 10, fontWeight: 700, padding: "2px 6px", borderRadius: 4, background: "#eff6ff", color: "#1d4ed8", border: "1px solid #dbeafe" }}>
-                                  TOOL EXECUTION
-                                </span>
-                              )}
-                              {s.kind === "schema_error" && (
-                                <span style={{ fontSize: 10, fontWeight: 700, padding: "2px 6px", borderRadius: 4, background: "#fffbeb", color: "#b45309", border: "1px solid #fef3c7" }}>
-                                  SCHEMA FAILURE
-                                </span>
-                              )}
-                              {s.kind === "tool_error" && (
-                                <span style={{ fontSize: 10, fontWeight: 700, padding: "2px 6px", borderRadius: 4, background: "#fef2f2", color: "#991b1b", border: "1px solid #fee2e2" }}>
-                                  FAULT INTERCEPTED
-                                </span>
-                              )}
+                          {expanded && (
+                            <div style={{ ...timelineContainer, marginTop: 12 }}>
+                              {group.steps.map((s, index) => {
+                                const isError = isErrorKind(s.kind);
+
+                                const icon = getStepIcon(s.kind, isError);
+                                const title = getStepTitle(s.kind, isError);
+                                const desc = getStepDescription(s.kind, s.raw_output);
+
+                                return (
+                                  <div key={index} style={{ position: "relative", marginBottom: index === group.steps.length - 1 ? 0 : 20 }}>
+                                    {/* Timeline node dot */}
+                                    <div style={getStepNodeStyle(s.kind, isError)}>
+                                      {icon}
+                                    </div>
+
+                                    {/* Card Content */}
+                                    <div style={getCardStyle(s.kind, isError)} className="hover:border-slate-300 transition-all duration-200">
+                                      <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", borderBottom: "1px solid #e2e8f0", paddingBottom: 6, marginBottom: 8 }}>
+                                        <span style={turnHeaderTitleStyle}>
+                                          TURN {s.step_index + 1}: {title}
+                                        </span>
+                                        {s.kind === "tool_call" && (
+                                          <span style={{ fontSize: 10, fontWeight: 700, padding: "2px 6px", borderRadius: 4, background: "#eff6ff", color: "#1d4ed8", border: "1px solid #dbeafe" }}>
+                                            TOOL EXECUTION
+                                          </span>
+                                        )}
+                                        {s.kind === "schema_error" && (
+                                          <span style={{ fontSize: 10, fontWeight: 700, padding: "2px 6px", borderRadius: 4, background: "#fffbeb", color: "#b45309", border: "1px solid #fef3c7" }}>
+                                            SCHEMA FAILURE
+                                          </span>
+                                        )}
+                                        {s.kind === "tool_error" && (
+                                          <span style={{ fontSize: 10, fontWeight: 700, padding: "2px 6px", borderRadius: 4, background: "#fef2f2", color: "#991b1b", border: "1px solid #fee2e2" }}>
+                                            FAULT INTERCEPTED
+                                          </span>
+                                        )}
+                                      </div>
+
+                                      <pre style={codeBlockStyle}>
+                                        {desc}
+                                      </pre>
+
+                                      {/* Sandbox Intercept (if injection context present) */}
+                                      {s.injection && (
+                                        <div style={sandboxInterceptCard}>
+                                          <div style={sandboxHeader}>
+                                            Sandbox Response Injection
+                                          </div>
+                                          <pre style={sandboxBody}>
+                                            {s.injection}
+                                          </pre>
+                                        </div>
+                                      )}
+                                    </div>
+                                  </div>
+                                );
+                              })}
                             </div>
-
-                            <pre style={codeBlockStyle}>
-                              {desc}
-                            </pre>
-
-                            {/* Sandbox Intercept (if injection context present) */}
-                            {s.injection && (
-                              <div style={sandboxInterceptCard}>
-                                <div style={sandboxHeader}>
-                                  Sandbox Response Injection
-                                </div>
-                                <pre style={sandboxBody}>
-                                  {s.injection}
-                                </pre>
-                              </div>
-                            )}
-                          </div>
+                          )}
                         </div>
                       );
                     })}
@@ -657,6 +744,68 @@ const timelineContainer: React.CSSProperties = {
   flexDirection: "column",
   gap: "18px",
   position: "relative",
+};
+
+const runSectionStyle: React.CSSProperties = {
+  border: "1px solid #e2e8f0",
+  borderRadius: 12,
+  padding: "12px 14px",
+  background: "#ffffff",
+};
+
+const runHeaderStyle: React.CSSProperties = {
+  display: "flex",
+  alignItems: "center",
+  gap: 10,
+  width: "100%",
+  background: "transparent",
+  border: "none",
+  padding: 0,
+  cursor: "pointer",
+  textAlign: "left",
+};
+
+const runCaretStyle: React.CSSProperties = {
+  fontSize: 10,
+  color: "#64748b",
+  width: 12,
+  flexShrink: 0,
+};
+
+const runTitleStyle: React.CSSProperties = {
+  fontSize: 11,
+  fontWeight: 800,
+  color: "#475569",
+  fontFamily: "Inter, sans-serif",
+  textTransform: "uppercase",
+  letterSpacing: "0.05em",
+};
+
+const runStepCountStyle: React.CSSProperties = {
+  marginLeft: "auto",
+  fontSize: 11,
+  color: "#94a3b8",
+  fontFamily: "Inter, sans-serif",
+};
+
+/// PASS (green) / FAIL (red) / RUNNING (blue) chip for a Pass^k run header.
+const runChipStyle = (status: "pass" | "fail" | "running"): React.CSSProperties => {
+  const palette = {
+    pass: { bg: "#f0fdf4", color: "#166534", border: "#bbf7d0" },
+    fail: { bg: "#fef2f2", color: "#991b1b", border: "#fee2e2" },
+    running: { bg: "#eff6ff", color: "#1d4ed8", border: "#dbeafe" },
+  }[status];
+  return {
+    fontSize: 10,
+    fontWeight: 700,
+    padding: "2px 8px",
+    borderRadius: 4,
+    background: palette.bg,
+    color: palette.color,
+    border: `1px solid ${palette.border}`,
+    fontFamily: "Inter, sans-serif",
+    letterSpacing: "0.03em",
+  };
 };
 
 const sandboxInterceptCard: React.CSSProperties = {

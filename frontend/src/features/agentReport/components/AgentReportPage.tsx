@@ -1,5 +1,6 @@
 import { useEffect, useRef, useState } from "react";
 import { useEvalRegistryStore } from "../../eval/state/evalRegistryStore";
+import { useBatchStore } from "../../eval/state/batchStore";
 import { useReadinessStore } from "../state/readinessStore";
 import { VerdictTable } from "./VerdictTable";
 import { RecommendationBanner } from "./RecommendationBanner";
@@ -41,6 +42,7 @@ export function AgentReportPage() {
   } = useReadinessStore();
 
   const goBack = useNavStore((s) => s.goBack);
+  const batchReport = useBatchStore((s) => s.report);
   const toast = useToast();
   const [showNativeFc, setShowNativeFc] = useState(true);
   const [isSection1Collapsed, setIsSection1Collapsed] = useState(false);
@@ -67,6 +69,19 @@ export function AgentReportPage() {
     if (verdicts.length === 0) return;
     if (!verdicts.some((v) => v.model === focusedModel)) setFocusedModel(verdicts[0].model);
   }, [verdicts, focusedModel, setFocusedModel]);
+
+  // Auto-refresh after an eval batch finishes (so a new model / tier shows without a
+  // manual Run Validation). Re-assess when the completed batch is the shown collection
+  // OR a tier-sibling of the same domain (the per-domain merge picks up the new tier).
+  // Gated on `assessed` so it never surprise-runs before the first validation; `assess`
+  // writes `verdicts` (not `batchReport`), so this can't loop.
+  useEffect(() => {
+    if (!batchReport || !assessed) return;
+    const sel = presets.find((p) => p.id === selected);
+    const done = presets.find((p) => p.id === batchReport.collection_id);
+    const sameDomain = !!sel && !!done && sel.domain === done.domain;
+    if (batchReport.collection_id === selected || sameDomain) void assess(selected);
+  }, [batchReport, selected, assessed, presets, assess]);
 
   const options = [
     ...presets.map((p) => ({ id: p.id, label: p.label })),

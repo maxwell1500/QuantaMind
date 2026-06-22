@@ -49,7 +49,7 @@ export function FailureTaxonomy({ byTier }: { byTier: TierStat[] | undefined }) 
   return (
     <section data-testid="failure-taxonomy" className="space-y-3">
       <h3 className="text-xs font-bold uppercase tracking-wider text-slate-700">
-        Failure Taxonomy{tierLabel && <span className="text-slate-400 font-medium normal-case"> — across {tierLabel}</span>}
+        Failure Taxonomy{tierLabel && <span className="text-slate-500 font-medium normal-case"> — across {tierLabel}</span>}
       </h3>
 
       {grand === 0 ? (

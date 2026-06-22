@@ -335,6 +335,19 @@ adds `by_tier` (per-tier strict Pass^k + avg-steps + failures) and `failures`
 (overall tally), both from the **native-first** source the verdict gated on — they
 feed the deep-dive below.
 
+**Per-domain tier accumulation + quant fallback (backend `assess_readiness`).**
+Built-in tiers are *separate single-tier collections* (`easy-coding`,
+`medium-coding`, …), so one report's `by_tier` holds a single tier. `assess_readiness`
+loads the same domain's **tier-sibling** reports (via `list_builtin_collections`
+filtered by the collection's `v2_header` domain) and unions each model's ladder with
+`merged_by_tier_for` (pure `merge_by_tier`, keyed on `(model, backend)` — a different
+model/backend is never pulled in, so no cross-model "Frankenstein ladder"). The
+selected collection's tier entries win on collision; the headline `pass_k`/`status`
+stay per the selected collection. A custom collection (no `v2_header`) skips the merge.
+`quantization` is `resolve_quant`: the Ollama registry first, else
+`quant_from_filename(model)` — so a llama.cpp/MLX/offline model still carries the real
+quant the name encodes (publishable, never fabricated).
+
 ### `components/VerdictTable.tsx` — the verdict rows — **IMPORTANT**
 
 Renders one row per model: Model Info (+ `prompt_based`/`native_fc` path label),
@@ -403,7 +416,7 @@ dropped background never exports white-on-transparent) and `pixelRatio:2`.
 
 | File | Role |
 |---|---|
-| `components/AgentReportPage.tsx` | the page shell: Section 1 (hardware badge, VRAM-cap select, profile select, collection select, Run) + Section 2 (banner + table + the Phase-9B deep-dive: model select → `ExecutiveVerdict`/`TierProgressionMatrix`/`FailureTaxonomy` + Export JSON); footer wires `ExportMenu` + `PublishButton`. Re-assesses when the cap changes or a profile is saved; defaults `focusedModel` to the recommended verdict. Holds `cardRef` for the PNG snapshot. |
+| `components/AgentReportPage.tsx` | the page shell: Section 1 (hardware badge, VRAM-cap select, profile select, collection select, Run) + Section 2 (banner + table + the Phase-9B deep-dive: model select → `ExecutiveVerdict`/`TierProgressionMatrix`/`FailureTaxonomy` + Export JSON); footer wires `ExportMenu` + `PublishButton`. Re-assesses when the cap changes, a profile is saved, **or an eval batch finishes for the shown collection or a same-domain tier sibling** (an effect on `batchStore.report`, gated on `assessed`; `assess` writes only `verdicts`, so no loop) — so a freshly-run model/tier shows without a manual Run Validation. Defaults `focusedModel` to the recommended verdict. Holds `cardRef` for the PNG snapshot. |
 | `components/RecommendationBanner.tsx` | frames `verdicts[0]` (already the best pick): clear when Ready, caveated "best available" when Conditional, "no model is ready — closest" when none qualify (never a fabricated Ready); surfaces a "conservative estimate" note when `memory.estimated`. |
 | `components/EditProfileModal.tsx` | a real editor for the active profile's gates (Min Pass^k, forbid loops/hallucination, require full VRAM / native FC, max steps/latency, min context); `numOrNull` maps blank→`null` ("off"); saves via `save_readiness_profile` then re-assesses. |
 | `components/ExportMenu.tsx` | dropdown → PNG (`snapshotPng`→`save`→`save_readiness_image`), Copy Markdown (`buildReadinessMarkdown`→clipboard, surfaces focus rejections), Export HTML (`buildReadinessHtml`→download). All offline, no auth. |
@@ -429,7 +442,10 @@ explicit tick + an allow-listed write-up link before Publish enables. **Why:** a
 result is only publishable once it has a *measured Pass^k* and a *known
 quantization*; the empty/excluded states explain why a model was dropped, and
 `disabledReason` is surfaced as the button tooltip so a greyed-out Publish is
-never a dead end.
+never a dead end. (The *quantization* requirement is satisfied for non-Ollama
+backends too: `assess_readiness` falls back to parsing the quant from the model
+name, so a measured llama.cpp/MLX/offline-Ollama row is no longer dropped with a
+spurious "0 rows" / "no measured results".)
 
 ```ts
 const canPublish = !!preview && preview.rows.length > 0 && !preview.invalid && agreed && linkOk;
