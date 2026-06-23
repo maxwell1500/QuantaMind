@@ -380,6 +380,17 @@ FaultInjection::TransientError { status_code, clears_after } => {
   stripped the per-turn cap → unbounded generation (minutes/turn, a giant multi-call blob)
   AND dropped the sized `num_ctx` → context-shift that busts the prefix-KV cache. Both the
   256 cap and the cache fix (`b97d79c`) were silently dead whenever the header sent params.
+- **Anti-collapse repeat penalty (`EVAL_REPEAT_PENALTY = 1.1`):** every eval spec
+  (agentic `runner`, single-turn `toolcall`, `cliff` probe) sets
+  `repeat_penalty: Some(EVAL_REPEAT_PENALTY)` from the shared constant in
+  `generate/generate_options.rs`. Greedy eval (`temperature 0.0`) with no penalty let
+  loop-prone quants (gpt-oss/gemma) run to the token cap repeating one phrase — surfacing as a
+  `HallucinatedCompletion` (a misnomer: no tool call parsed, not a fake stop token). The UI's
+  "Repeat penalty" 1.1 was only a *placeholder*; `globalParams` starts `{}` and omits untouched
+  keys, so the backend got no penalty unless the slider was dragged. The harness default fixes
+  that for eval only (the chat playground keeps "unset = backend default"); a header-supplied
+  value still wins via the merge above. One constant, three call sites, so the value can't drift
+  and the metric stays comparable across models.
 - **Warm-up:** `run_batch_resumable` calls `turn.warm_up()` once per model before its
   first scored task. `BackendTurn` issues a 1-token generate (honoring `keep_alive`) to
   load the weights resident, so cold-load latency isn't charged to the first task as a

@@ -8,7 +8,7 @@ use crate::inference::eval::toolcall::parse::extract_calls;
 use crate::inference::eval::toolcall::prompt::{build_system_for, TerminalGuidance};
 use crate::inference::eval::toolcall::score::{score, verdict_passed, Verdict};
 use crate::inference::eval::toolcall::tasks::ToolTask;
-use crate::inference::generate::generate_options::GenerateOptions;
+use crate::inference::generate::generate_options::{GenerateOptions, EVAL_REPEAT_PENALTY};
 use crate::inference::generate::generate_spec::GenerateSpec;
 use serde::{Deserialize, Serialize};
 use tokio_util::sync::CancellationToken;
@@ -251,8 +251,10 @@ async fn run_position<M: ModelTurn>(
             system: Some(system.clone()),
             // Greedy (temp 0) — a probe is a diagnostic and must reproduce. The live
             // command's BackendTurn carries num_ctx (so the padding isn't truncated);
-            // this temp 0 is the seam fallback the scripted test model also sees.
-            options: Some(GenerateOptions { temperature: Some(0.0), num_predict: Some(MAX_OUTPUT), ..Default::default() }),
+            // this temp 0 is the seam fallback the scripted test model also sees. The
+            // anti-collapse repeat_penalty matches the other eval paths so the cliff
+            // metric stays comparable; a header value still overrides it.
+            options: Some(GenerateOptions { temperature: Some(0.0), repeat_penalty: Some(EVAL_REPEAT_PENALTY), num_predict: Some(MAX_OUTPUT), ..Default::default() }),
             keep_alive: None,
         };
         let (raw, stats) = turn.run(&spec).await?;

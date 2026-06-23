@@ -210,7 +210,7 @@ impl ModelTurn for NativeOllamaTurn {
 mod tests {
     use super::{merge_eval_options, synthesize_calls, NativeToolCall};
     use crate::inference::eval::toolcall::parse::{extract_calls, looks_like_broken_json};
-    use crate::inference::generate::generate_options::GenerateOptions;
+    use crate::inference::generate::generate_options::{GenerateOptions, EVAL_REPEAT_PENALTY};
     use serde_json::json;
 
     #[test]
@@ -247,6 +247,19 @@ mod tests {
         // spec leaves it open → header value flows through.
         let open = merge_eval_options(Some(&global), Some(&GenerateOptions::default())).unwrap();
         assert_eq!(open.num_predict, Some(1000));
+    }
+
+    #[test]
+    fn the_harness_repeat_penalty_default_survives_a_silent_header_but_yields_to_one_set() {
+        // The anti-collapse default: the eval spec carries EVAL_REPEAT_PENALTY so a
+        // greedy run can't loop to the token cap. A header that doesn't touch the
+        // slider must NOT erase it; a header that does set it wins (user override).
+        let spec = GenerateOptions { temperature: Some(0.0), repeat_penalty: Some(EVAL_REPEAT_PENALTY), num_predict: Some(256), ..Default::default() };
+        let silent = merge_eval_options(Some(&GenerateOptions::default()), Some(&spec)).unwrap();
+        assert_eq!(silent.repeat_penalty, Some(EVAL_REPEAT_PENALTY), "header silent → harness default applies");
+        let override_global = GenerateOptions { repeat_penalty: Some(1.3), ..Default::default() };
+        let overridden = merge_eval_options(Some(&override_global), Some(&spec)).unwrap();
+        assert_eq!(overridden.repeat_penalty, Some(1.3), "header value wins over the spec default");
     }
 
     #[test]

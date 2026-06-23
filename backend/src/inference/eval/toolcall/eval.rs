@@ -6,7 +6,7 @@ use crate::inference::eval::toolcall::parse::extract_calls;
 use crate::inference::eval::toolcall::prompt::build_system;
 use crate::inference::eval::toolcall::score::{score, Verdict};
 use crate::inference::eval::toolcall::tasks::ToolTask;
-use crate::inference::generate::generate_options::GenerateOptions;
+use crate::inference::generate::generate_options::{GenerateOptions, EVAL_REPEAT_PENALTY};
 use crate::inference::generate::generate_spec::GenerateSpec;
 use serde::{Deserialize, Serialize};
 use tokio_util::sync::CancellationToken;
@@ -108,7 +108,7 @@ pub(crate) async fn trace_one_with<M: ModelTurn>(turn: &M, model: &str, task: &T
         model: model.to_string(),
         prompt: task.prompt.clone(),
         system: Some(system_message.clone()),
-        options: Some(GenerateOptions { temperature: Some(0.0), num_predict: Some(MAX_TOKENS), ..Default::default() }),
+        options: Some(GenerateOptions { temperature: Some(0.0), repeat_penalty: Some(EVAL_REPEAT_PENALTY), num_predict: Some(MAX_TOKENS), ..Default::default() }),
         keep_alive: None,
     };
     let (raw_output, stats) = turn.run(&spec).await?;
