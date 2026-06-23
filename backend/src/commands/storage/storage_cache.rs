@@ -1,5 +1,6 @@
+use crate::commands::storage::storage_disk::absolutize;
 use crate::errors::{AppError, AppResult};
-use std::path::Path;
+use std::path::{Path, PathBuf};
 use tauri::{AppHandle, Manager};
 
 /// Regenerable caches under `app_config_dir`, safe to wipe to reclaim space.
@@ -10,6 +11,13 @@ const CACHE_DIRS: &[&str] = &["jobs", "history", "batch_reports", "traces", "cli
 
 /// Regenerable cache files (the recent-workspace list is navigation history).
 const CACHE_FILES: &[&str] = &["recent_workspaces.yaml"];
+
+/// HuggingFace cache subdirs holding regenerable model/dataset snapshots. The
+/// MLX/STT tooling caches downloads here, separate from the app's canonical
+/// weights in `~/.quantamind`. The auth `token`/`stored_tokens` files sit
+/// alongside these and are deliberately excluded so a clear never signs the
+/// user out — only the re-downloadable snapshots are removed.
+const HF_CACHE_SUBDIRS: &[&str] = &["hub", "xet", "assets", "datasets"];
 
 /// Sum the byte size of every file under `dir` (recursively). Missing dir → 0.
 fn dir_size(dir: &Path) -> u64 {
@@ -48,14 +56,48 @@ pub fn clear_cache_in(base: &Path) -> AppResult<u64> {
     Ok(freed)
 }
 
+/// Resolve the HuggingFace cache root. The HF library (MLX/STT model loads)
+/// caches snapshots here, separate from the app's own `~/.quantamind` weights.
+/// Honors `HF_HOME`, else falls back to `$HOME/.cache/huggingface`.
+fn hf_cache_dir() -> PathBuf {
+    if let Ok(p) = std::env::var("HF_HOME") {
+        if !p.trim().is_empty() {
+            return absolutize(PathBuf::from(p));
+        }
+    }
+    let home = std::env::var("HOME").unwrap_or_else(|_| "/".to_string());
+    PathBuf::from(home).join(".cache/huggingface")
+}
+
+/// Delete the regenerable HuggingFace snapshot caches under `hf_home`, returning
+/// total bytes freed. Auth tokens are preserved; a missing subdir is skipped
+/// cleanly. The snapshots re-download on next use, so this is reclaimable space.
+pub fn clear_hf_cache_in(hf_home: &Path) -> AppResult<u64> {
+    let mut freed = 0u64;
+    for name in HF_CACHE_SUBDIRS {
+        let path = hf_home.join(name);
+        if path.is_dir() {
+            freed += dir_size(&path);
+            std::fs::remove_dir_all(&path).map_err(|e| AppError::Io(e.to_string()))?;
+        }
+    }
+    Ok(freed)
+}
+
 /// Clear regenerable app caches (eval history, batch reports, job logs, traces,
 /// context-cliff measurements, recent-workspace list). Returns bytes freed.
-/// Downloaded models, custom eval collections, readiness profiles, and user
-/// settings are never touched.
+/// When `include_models` is set, also wipes the HuggingFace snapshot cache
+/// (re-downloadable MLX/whisper weights) — the app's canonical `~/.quantamind`
+/// models, custom eval collections, readiness profiles, and user settings are
+/// never touched.
 #[tauri::command]
-pub fn clear_app_cache(app: AppHandle) -> Result<u64, AppError> {
+pub fn clear_app_cache(app: AppHandle, include_models: bool) -> Result<u64, AppError> {
     let base = app.path().app_config_dir().map_err(|e| AppError::Io(e.to_string()))?;
-    clear_cache_in(&base)
+    let mut freed = clear_cache_in(&base)?;
+    if include_models {
+        freed += clear_hf_cache_in(&hf_cache_dir())?;
+    }
+    Ok(freed)
 }
 
 #[cfg(test)]

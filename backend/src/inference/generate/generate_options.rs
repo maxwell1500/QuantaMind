@@ -1,5 +1,12 @@
 use serde::Serialize;
 
+/// Anti-collapse repetition penalty applied as the eval harness's per-turn
+/// default. Greedy eval (`temperature 0.0`) with no penalty lets loop-prone
+/// quantized models (gpt-oss/gemma) run to the token cap repeating one phrase;
+/// the penalty reshapes logits before the argmax so the looped token stops being
+/// the max. A user-set UI value still overrides it (see `merge_eval_options`).
+pub const EVAL_REPEAT_PENALTY: f32 = 1.1;
+
 /// Ollama `/api/generate` `options` block. Field names mirror Ollama's
 /// API (note `num_predict`, not `max_tokens`). Every field is optional so
 /// unset knobs fall back to Ollama's own defaults.

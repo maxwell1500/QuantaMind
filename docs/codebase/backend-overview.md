@@ -197,7 +197,7 @@ The `invoke_handler!` table registers **123** commands. Grouped by
 | `hf` | 6 | HuggingFace search, repo files (+all), model card, install GGUF, cancel install. | [backend-models-hf-gguf.md](backend-models-hf-gguf.md) |
 | `models` | 5 | Ollama list/inspect, KV-cache estimate, pull/cancel-pull. | [backend-models-hf-gguf.md](backend-models-hf-gguf.md) |
 | `llama` | 5 | llama-server start/stop + health, list/delete llama models. | [backend-inference-backends.md](backend-inference-backends.md) |
-| `storage` | 4 | Installed models + stats, remove model, clear cache, disk usage. | `commands/storage` |
+| `storage` | 4 | Installed models + stats, remove model, clear cache (opt-in `include_models` also wipes the HF snapshot cache, keeping the auth token), disk usage. | `commands/storage` |
 | `publish` | 4–5* | Save readiness image (always); preview/publish/login (gated out of enterprise builds). | [backend-publish.md](backend-publish.md) |
 | `compare` | 3 | Run/stop compare, save compare report. | [backend-compare.md](backend-compare.md) |
 | `audio` | 3 | Start/stop recording, recording level (VU). | [backend-stt.md](backend-stt.md) |

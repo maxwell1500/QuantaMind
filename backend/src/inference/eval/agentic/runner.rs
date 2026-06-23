@@ -8,7 +8,7 @@ use crate::inference::eval::agentic::v2::r#match::text_matches;
 use crate::inference::eval::agentic::step::{StepKind, TrajectoryStep};
 use crate::inference::eval::toolcall::parse::{extract_calls_dialect, looks_like_broken_json, strip_think, ToolCallDialect};
 use crate::inference::eval::toolcall::prompt::{build_system_for, TerminalGuidance};
-use crate::inference::generate::generate_options::GenerateOptions;
+use crate::inference::generate::generate_options::{GenerateOptions, EVAL_REPEAT_PENALTY};
 use crate::inference::generate::generate_spec::GenerateSpec;
 use tokio::sync::mpsc::UnboundedSender;
 use tokio_util::sync::CancellationToken;
@@ -310,6 +310,9 @@ async fn run_steps<M: ModelTurn>(
             system: Some(system.clone()),
             options: Some(GenerateOptions {
                 temperature: Some(0.0),
+                // Harness default: stop greedy repetition collapse. Header-supplied
+                // value still wins (see `merge_eval_options`).
+                repeat_penalty: Some(EVAL_REPEAT_PENALTY),
                 // Per-turn output cap. A reasoning model gets a tier-scaled budget so its
                 // `<think>` scratchpad doesn't truncate the call; a terse model keeps 256.
                 num_predict: Some(turn.max_output_tokens()),
