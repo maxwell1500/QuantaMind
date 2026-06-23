@@ -494,7 +494,7 @@ error (message + dismiss).
 |---|---|
 | `ModelsPage.tsx` | Models top-view shell: four sub-tabs (Ollama/HF/Local/STT) with Cmd+1–4 hotkeys, gated on `navStore.topView === "models"`. |
 | `DownloadsPage.tsx` | Downloads top-view shell — just a header over `DownloadsTab`. |
-| `storage/StorageSection.tsx` | Storage controls atop Downloads: storage-path + models-folder sections, disk-usage summary (`get_disk_usage`), and Clear-cache (`clear_app_cache`, which also resets the in-memory eval/batch/cliff stores the deleted caches backed). |
+| `storage/StorageSection.tsx` | Storage controls atop Downloads: storage-path + models-folder sections, disk-usage summary (`get_disk_usage`), and Clear-cache (`clear_app_cache`, which also resets the in-memory eval/batch/cliff stores the deleted caches backed). The confirm dialog has an opt-in "also clear HuggingFace model cache" checkbox → `clear_app_cache(includeModels=true)` wipes the re-downloadable MLX/whisper snapshots under `~/.cache/huggingface` (HF auth token + the app's canonical `~/.quantamind` models are kept). |
 | `StoragePathSection.tsx` | Ollama models path (`get_storage_path`) + validate a candidate dir (`validate_storage_path`: exists/dir/writable/≥50GB) + the `export OLLAMA_MODELS=…` snippet to make it permanent. |
 | `ModelsFolderSection.tsx` | The shared GGUF weights folder (used by llama.cpp directly, imported into Ollama) via `resolve_models_folder` / `get/set_user_settings`; refreshes the installed list after a change. |
 | `storage/ClearCacheConfirm.tsx` | Type-`CLEAR`-to-confirm guard for wiping regenerable caches; copy spells out that models/collections/settings are kept. |

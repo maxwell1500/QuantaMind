@@ -51,3 +51,36 @@ fn clear_on_empty_dir_is_noop() {
     let freed = clear_cache_in(base.path()).unwrap();
     assert_eq!(freed, 0);
 }
+
+/// The opt-in HF clear removes regenerable snapshot subdirs and reports the
+/// exact bytes freed, while the auth token sitting alongside them survives so
+/// the user is never silently signed out.
+#[test]
+fn clear_hf_cache_removes_snapshots_keeps_token() {
+    let home = tempfile::tempdir().unwrap();
+    let hf = home.path();
+
+    // Regenerable snapshots (must be deleted). Sizes chosen so the total is exact.
+    fs::create_dir_all(hf.join("hub/models--x/blobs")).unwrap();
+    fs::write(hf.join("hub/models--x/blobs/w.bin"), vec![0u8; 200]).unwrap();
+    fs::create_dir_all(hf.join("xet")).unwrap();
+    fs::write(hf.join("xet/chunk"), vec![0u8; 40]).unwrap();
+
+    // Auth token (must be preserved — not in the subdir allow-list).
+    fs::write(hf.join("token"), b"hf_secret").unwrap();
+
+    let freed = clear_hf_cache_in(hf).unwrap();
+
+    assert_eq!(freed, 200 + 40, "freed bytes is the measured snapshot sum");
+    assert!(!hf.join("hub").exists(), "hub snapshots should be deleted");
+    assert!(!hf.join("xet").exists(), "xet scratch should be deleted");
+    assert!(hf.join("token").exists(), "auth token preserved");
+}
+
+/// Clearing an HF cache with no snapshot dirs (e.g. fresh machine) is a no-op.
+#[test]
+fn clear_hf_cache_on_empty_dir_is_noop() {
+    let home = tempfile::tempdir().unwrap();
+    let freed = clear_hf_cache_in(home.path()).unwrap();
+    assert_eq!(freed, 0);
+}

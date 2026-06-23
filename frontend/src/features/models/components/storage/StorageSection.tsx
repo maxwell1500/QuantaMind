@@ -31,11 +31,11 @@ export function StorageSection() {
       .catch((e) => setError(formatIpcError(e)));
   }, [list]);
 
-  const onConfirmClear = async () => {
+  const onConfirmClear = async (includeModels: boolean) => {
     setBusy(true);
     setClearError(null);
     try {
-      const bytes = await clearAppCache();
+      const bytes = await clearAppCache(includeModels);
       // The deleted caches back these in-memory views; reset so stale history,
       // reports, and cliff points don't linger after the files are gone.
       useBatchStore.getState().reset();
@@ -63,7 +63,7 @@ export function StorageSection() {
       {error && <div role="alert" className="text-red-600 text-xs">{error}</div>}
       {pending ? (
         <ClearCacheConfirm
-          onConfirm={() => void onConfirmClear()}
+          onConfirm={(includeModels) => void onConfirmClear(includeModels)}
           onCancel={() => setPending(false)}
           busy={busy}
           error={clearError}
