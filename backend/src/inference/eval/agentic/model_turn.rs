@@ -1,6 +1,7 @@
 use crate::errors::AppResult;
 use crate::inference::backend::backend::InferenceBackend;
 use crate::inference::backend::backend_kind::BackendKind;
+use crate::inference::chat::chat_templates::detect_template;
 use crate::inference::eval::agentic::difficulty::passk::NON_THINKING_MAX_TOKENS;
 use crate::inference::eval::toolcall::tasks::ToolSchema;
 use crate::inference::generate::generate_options::GenerateOptions;
@@ -10,8 +11,33 @@ use crate::inference::llama::llama_backend::LlamaCppBackend;
 use crate::inference::mlx::mlx_backend::MlxBackend;
 use crate::inference::ollama::ollama_backend::OllamaBackend;
 use crate::inference::ollama::ollama_chat::{chat_with_tools, NativeToolCall};
+use crate::inference::ollama::ollama_show::show_model;
 use serde_json::{json, Value};
+use tokio::sync::OnceCell;
 use tokio_util::sync::CancellationToken;
+
+/// Resolve the stop tokens for a model so generation actually halts. The end-of-turn
+/// markers of harmony (`<|return|>`/`<|call|>`) and gemma (`<end_of_turn>`) aren't a plain
+/// EOS, so without them the model emits the markers as literal text and runs to the token
+/// cap (the infinite-generation bug). The architecture comes from Ollama `/api/show`
+/// `model_info["general.architecture"]` — a METADATA-only call that does NOT load/offload
+/// weights, so it adds no model-switch latency — then the chat-template table maps it to its
+/// stops. Any failure (non-Ollama backend, Ollama down, unknown family) degrades to `[]`
+/// (the prior no-stop behavior), never an error. Called once per turn and memoized.
+async fn resolve_model_stops(endpoint: &str, backend: BackendKind, model: &str) -> Vec<String> {
+    // Scoped to Ollama (the failing path); llama.cpp/MLX resolve stops on their own wire
+    // structs as a follow-up.
+    if backend != BackendKind::Ollama {
+        return Vec::new();
+    }
+    let arch = show_model(endpoint, model)
+        .await
+        .ok()
+        .and_then(|r| r.model_info.get("general.architecture").and_then(|v| v.as_str()).map(str::to_string));
+    detect_template(model, arch.as_deref())
+        .map(|t| t.stop_tokens.iter().map(|s| (*s).to_string()).collect())
+        .unwrap_or_default()
+}
 
 /// One model turn behind a seam: prompt in → (text, stats) out. The runner
 /// depends on this, not on a concrete backend, so it stays unit-testable with a
@@ -68,6 +94,13 @@ pub struct BackendTurn {
     /// Precomputed at construction (`difficulty::passk::max_tokens_for`), where the tier is
     /// known, so the runner doesn't need the tier threaded in.
     pub max_tokens: u32,
+    /// Per-turn-instance memo of the resolved stop tokens (see `resolve_model_stops`).
+    /// Resolved lazily on the first `run` and reused for every subsequent turn of this
+    /// model, so the agentic loop pays at most one `/api/show` per run. A `BackendTurn` is
+    /// built fresh per eval run, so a mid-session re-import can't leave a stale mapping.
+    /// Defaulted at every construction site — not a user-supplied value.
+    #[doc(hidden)]
+    pub stop_cache: OnceCell<Vec<String>>,
 }
 
 /// Merge the header's global eval params (`global`) with the harness's per-turn spec
@@ -94,6 +127,9 @@ fn merge_eval_options(
             top_k: g.top_k.or(s.top_k),
             repeat_penalty: g.repeat_penalty.or(s.repeat_penalty),
             seed: g.seed.or(s.seed),
+            // Stop tokens are injected per-model in `run` after this merge; carry any
+            // explicitly-set value through (header wins) so the injection only fills a gap.
+            stop: g.stop.clone().or_else(|| s.stop.clone()),
         }),
     }
 }
@@ -111,9 +147,24 @@ impl ModelTurn for BackendTurn {
         // omits `max_tokens` strips the per-turn cap → runaway generation (minutes/turn,
         // KV-cache busting). User sampling prefs (top_p/top_k/penalty/seed/temperature)
         // still come from the header.
+        // Resolve this model's stop tokens once (memoized) and fill them in if nothing
+        // upstream set `stop`. This is what halts harmony/gemma models — without it they
+        // emit their turn markers as text and run to the token cap. Empty for unknown
+        // families ⇒ no `stop` key ⇒ identical to the prior behavior.
+        let stops = self
+            .stop_cache
+            .get_or_init(|| resolve_model_stops(&self.endpoint, self.backend, &self.model))
+            .await;
+        let mut options = merge_eval_options(self.options.as_ref(), spec.options.as_ref());
+        if !stops.is_empty() {
+            let opts = options.get_or_insert_with(GenerateOptions::default);
+            if opts.stop.is_none() {
+                opts.stop = Some(stops.clone());
+            }
+        }
         let spec = GenerateSpec {
             model: self.model.clone(),
-            options: merge_eval_options(self.options.as_ref(), spec.options.as_ref()),
+            options,
             keep_alive: self.keep_alive.or(spec.keep_alive),
             ..spec.clone()
         };
@@ -260,6 +311,38 @@ mod tests {
         let override_global = GenerateOptions { repeat_penalty: Some(1.3), ..Default::default() };
         let overridden = merge_eval_options(Some(&override_global), Some(&spec)).unwrap();
         assert_eq!(overridden.repeat_penalty, Some(1.3), "header value wins over the spec default");
+    }
+
+    #[tokio::test]
+    #[ignore = "hits a live Ollama on :11434 with gpt-oss / gemma4 installed"]
+    async fn live_resolve_stops_maps_installed_models_to_their_real_stop_tokens() {
+        use super::{resolve_model_stops, BackendKind};
+        let ep = "http://localhost:11434";
+        // End-to-end: /api/show arch → chat-template stops, for the models that loop.
+        assert_eq!(
+            resolve_model_stops(ep, BackendKind::Ollama, "gpt-oss-20b_q8_0:latest").await,
+            vec!["<|return|>".to_string(), "<|call|>".to_string()],
+        );
+        assert_eq!(
+            resolve_model_stops(ep, BackendKind::Ollama, "gemma-4-12b-it-qat_q4_0:latest").await,
+            vec!["<end_of_turn>".to_string()],
+        );
+        // Non-Ollama backends short-circuit to no stops without any network call.
+        assert!(resolve_model_stops(ep, BackendKind::Mlx, "anything").await.is_empty());
+    }
+
+    #[test]
+    fn an_explicit_stop_is_carried_through_the_merge_for_run_to_respect() {
+        // run() only fills `stop` when it's still None after the merge, so an explicitly
+        // set value must survive (header wins, then spec).
+        let global = GenerateOptions { stop: Some(vec!["X".into()]), ..Default::default() };
+        let spec = GenerateOptions { stop: Some(vec!["Y".into()]), num_predict: Some(256), ..Default::default() };
+        assert_eq!(merge_eval_options(Some(&global), Some(&spec)).unwrap().stop, Some(vec!["X".into()]));
+        let spec_only = GenerateOptions { stop: Some(vec!["Y".into()]), ..Default::default() };
+        assert_eq!(merge_eval_options(Some(&GenerateOptions::default()), Some(&spec_only)).unwrap().stop, Some(vec!["Y".into()]));
+        // Neither side set it → None, so run() is free to inject the model's resolved stops.
+        let bare = GenerateOptions { num_predict: Some(256), ..Default::default() };
+        assert_eq!(merge_eval_options(Some(&GenerateOptions::default()), Some(&bare)).unwrap().stop, None);
     }
 
     #[test]

@@ -120,7 +120,7 @@ pub(crate) async fn trace_one_with<M: ModelTurn>(turn: &M, model: &str, task: &T
 /// execution: `run_eval` loops over it and the pipeline visualizer calls it
 /// directly. Dispatches by `BackendKind` via `BackendTurn`.
 pub async fn trace_one(backend: BackendKind, endpoint: &str, model: &str, task: &ToolTask, options: Option<GenerateOptions>) -> AppResult<TraceResult> {
-    let turn = BackendTurn { backend, endpoint: endpoint.to_string(), model: model.to_string(), cancel: CancellationToken::new(), options, keep_alive: None, is_thinking: false, max_tokens: NON_THINKING_MAX_TOKENS };
+    let turn = BackendTurn { backend, endpoint: endpoint.to_string(), model: model.to_string(), cancel: CancellationToken::new(), options, keep_alive: None, is_thinking: false, max_tokens: NON_THINKING_MAX_TOKENS, stop_cache: Default::default() };
     trace_one_with(&turn, model, task).await
 }
 
