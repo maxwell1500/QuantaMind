@@ -380,6 +380,16 @@ FaultInjection::TransientError { status_code, clears_after } => {
   stripped the per-turn cap → unbounded generation (minutes/turn, a giant multi-call blob)
   AND dropped the sized `num_ctx` → context-shift that busts the prefix-KV cache. Both the
   256 cap and the cache fix (`b97d79c`) were silently dead whenever the header sent params.
+- **Per-model stop tokens (`resolve_model_stops`):** after the merge, `BackendTurn::run`
+  fills `options.stop` (when unset) with the model's real end-of-turn markers, resolved once
+  per run (memoized in `BackendTurn.stop_cache`) from Ollama `/api/show`
+  `general.architecture` → `detect_template().stop_tokens`. **Why it matters:** harmony
+  models (gpt-oss) end turns on `<|return|>`/`<|call|>` and gemma on `<end_of_turn>` — none a
+  plain EOS — so without stops they emit the markers as literal text and run to the token cap,
+  hallucinating a whole multi-turn transcript (the infinite-generation bug). `/api/show` is
+  metadata-only (no weight load → no model-switch latency); unknown families resolve to `[]`
+  (prior no-stop behavior). Ollama-only for now (llama.cpp/MLX is a follow-up). NOTE: this
+  cures gpt-oss's loop; gemma4's separate pad-token collapse is unrelated and unfixed here.
 - **Anti-collapse repeat penalty (`EVAL_REPEAT_PENALTY = 1.1`):** every eval spec
   (agentic `runner`, single-turn `toolcall`, `cliff` probe) sets
   `repeat_penalty: Some(EVAL_REPEAT_PENALTY)` from the shared constant in

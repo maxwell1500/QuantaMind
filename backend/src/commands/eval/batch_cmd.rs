@@ -233,6 +233,7 @@ pub(crate) async fn run_passes(
             keep_alive,
             is_thinking: t.is_thinking,
             max_tokens: max_tokens_for(tier, t.is_thinking),
+            stop_cache: Default::default(),
         },
         prior,
         &record,

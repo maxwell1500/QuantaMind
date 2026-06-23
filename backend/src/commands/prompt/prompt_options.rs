@@ -34,6 +34,9 @@ pub fn to_generate_options(p: &InferenceParams) -> GenerateOptions {
         repeat_penalty: p.repeat_penalty,
         seed: p.seed,
         num_ctx: p.num_ctx,
+        // The Workspace prompt path uses the model's own Modelfile stops; per-model stop
+        // injection is the eval harness's job (see `BackendTurn::run`).
+        stop: None,
     }
 }
 

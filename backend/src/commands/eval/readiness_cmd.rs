@@ -204,6 +204,7 @@ pub async fn run_context_cliff(
         // terse-model budget regardless of the model's thinking flag.
         is_thinking: false,
         max_tokens: NON_THINKING_MAX_TOKENS,
+        stop_cache: Default::default(),
     };
 
     let ladder = build_ladder(max_tokens, steps);

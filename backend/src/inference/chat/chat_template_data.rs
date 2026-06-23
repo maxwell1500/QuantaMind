@@ -38,6 +38,20 @@ pub const GEMMA: ChatTemplate = ChatTemplate {
     stop_tokens: &["<end_of_turn>"],
 };
 
+/// OpenAI gpt-oss / "harmony" format. The end-of-generation tokens are `<|return|>`
+/// (final answer done) and `<|call|>` (a tool call is ready to execute) — NOT a plain
+/// EOS. WITHOUT these as stops the model emits them as literal text and never halts,
+/// hallucinating its own multi-turn transcript (the infinite-generation bug).
+/// `<|end|>` is DELIBERATELY excluded: it only ends an INTERMEDIATE message within a
+/// turn, so stopping on it truncates the turn before the model can emit its tool call.
+/// `template_string` is the create-path Modelfile body; full harmony channel/reasoning
+/// rendering is a separate follow-up — the loop fix relies on `stop_tokens`, not on this.
+pub const GPT_OSS: ChatTemplate = ChatTemplate {
+    family: "GPT-OSS (harmony)",
+    template_string: "<|start|>system<|message|>{{ .System }}<|end|><|start|>user<|message|>{{ .Prompt }}<|end|><|start|>assistant",
+    stop_tokens: &["<|return|>", "<|call|>"],
+};
+
 pub const COMMAND_R: ChatTemplate = ChatTemplate {
     family: "Command-R",
     template_string: "<|START_OF_TURN_TOKEN|><|SYSTEM_TOKEN|>{{ .System }}<|END_OF_TURN_TOKEN|><|START_OF_TURN_TOKEN|><|USER_TOKEN|>{{ .Prompt }}<|END_OF_TURN_TOKEN|><|START_OF_TURN_TOKEN|><|CHATBOT_TOKEN|>{{ .Response }}<|END_OF_TURN_TOKEN|>",

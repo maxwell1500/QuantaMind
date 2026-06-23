@@ -28,13 +28,20 @@ pub struct GenerateOptions {
     /// prompts, at the cost of more KV-cache memory.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub num_ctx: Option<u32>,
+    /// Stop sequences passed to Ollama (`options.stop`). For models whose end-of-turn
+    /// markers aren't a plain EOS (harmony's `<|return|>`/`<|call|>`, gemma's
+    /// `<end_of_turn>`), these are what actually halt generation — without them the model
+    /// emits the markers as literal text and loops. Resolved per-model from the chat
+    /// template (see `BackendTurn::run`); omitted from the request when empty/unset.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub stop: Option<Vec<String>>,
 }
 
 impl GenerateOptions {
     pub fn is_empty(&self) -> bool {
         self.temperature.is_none() && self.top_p.is_none() && self.top_k.is_none()
             && self.num_predict.is_none() && self.repeat_penalty.is_none() && self.seed.is_none()
-            && self.num_ctx.is_none()
+            && self.num_ctx.is_none() && self.stop.is_none()
     }
 }
 
@@ -51,5 +58,15 @@ mod tests {
         // unset → omitted, and an all-None options is empty
         assert!(GenerateOptions::default().is_empty());
         assert!(!serde_json::to_string(&GenerateOptions::default()).unwrap().contains("num_ctx"));
+    }
+
+    #[test]
+    fn stop_serializes_as_an_array_and_counts_as_non_empty() {
+        let o = GenerateOptions { stop: Some(vec!["<|return|>".into(), "<|call|>".into()]), ..Default::default() };
+        assert!(!o.is_empty());
+        let json = serde_json::to_string(&o).unwrap();
+        assert!(json.contains("\"stop\":[\"<|return|>\",\"<|call|>\"]"), "{json}");
+        // unset → omitted entirely
+        assert!(!serde_json::to_string(&GenerateOptions::default()).unwrap().contains("stop"));
     }
 }

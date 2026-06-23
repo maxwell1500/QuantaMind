@@ -169,8 +169,12 @@ pub fn default_for(kind: BackendKind) -> &'static str { /* match … */ }
 - **Why:** One options struct shared by all three; each wire codec remaps field
   names (`num_predict` → llama `n_predict` → MLX `max_tokens`).
 - **What:** `struct GenerateOptions { temperature, top_p, top_k, num_predict,
-  repeat_penalty, seed, num_ctx }` (all `Option`, `skip_serializing_if`);
-  `fn is_empty()` so an all-`None` options block is dropped before sending.
+  repeat_penalty, seed, num_ctx, stop }` (all `Option`, `skip_serializing_if`);
+  `fn is_empty()` so an all-`None` options block is dropped before sending. `stop` is
+  `Option<Vec<String>>` → Ollama `options.stop`; for models whose end-of-turn markers
+  aren't a plain EOS (harmony `<|return|>`/`<|call|>`, gemma `<end_of_turn>`) these are
+  what actually halt generation — the eval harness fills it per-model (see
+  `backend-eval-engine.md` → `model_turn.rs`).
 - **How/Where used:** Carried in `GenerateSpec.options`; `.filter(|o|
   !o.is_empty())` in each `stream_generate`.
 
@@ -268,9 +272,11 @@ chiefly an Ollama-create concern.)
 
 #### File: `inference/chat/chat_template_data.rs`
 - **What:** `struct ChatTemplate { family, template_string, stop_tokens }` plus
-  eight `const`s — `LLAMA3`, `QWEN_CHATML`, `MISTRAL`, `PHI3`, `GEMMA`,
-  `COMMAND_R`, `DEEPSEEK`, `YI` — each a raw Go-template body (`{{ .System }}` /
-  `{{ .Prompt }}` / `{{ .Response }}`) + its stop tokens.
+  nine `const`s — `LLAMA3`, `QWEN_CHATML`, `MISTRAL`, `PHI3`, `GEMMA`,
+  `COMMAND_R`, `DEEPSEEK`, `YI`, `GPT_OSS` — each a raw Go-template body (`{{ .System }}` /
+  `{{ .Prompt }}` / `{{ .Response }}`) + its stop tokens. `GPT_OSS` (harmony) stops on
+  `<|return|>` and `<|call|>` only — **not** `<|end|>`, which ends an intermediate message
+  (stopping there would truncate the turn before the tool call).
 
 #### File: `inference/chat/chat_templates.rs`
 - **Responsibility:** Map a model to its template.
@@ -278,7 +284,9 @@ chiefly an Ollama-create concern.)
   Option<ChatTemplate>` — prefers the GGUF architecture string
   (`by_architecture`), falls back to a name substring (`by_name`). `None` for
   unknown families so the caller can warn the user the install may produce
-  broken output.
+  broken output. Architectures `gpt-oss` → `GPT_OSS` and `gemma`/`gemma2`/`gemma4`
+  → `GEMMA`. (The `gemma4` entry fixes the stop token only; it does NOT address the
+  separate `gemma-4-12b-it-qat_q4_0` pad-token collapse, which is a broken-build issue.)
 
 ---
 
