@@ -8,12 +8,17 @@ import { VerifyPhase } from "./pipeline/VerifyPhase";
 import { InfoButton } from "../../../shared/ui/InfoButton";
 import { Spinner } from "../../../shared/ui/Spinner";
 import { TOOL_HELP } from "../help";
+import { agenticSystemPreview } from "../agenticPrompt";
+import { RunIoModal, type RunIoMode } from "./RunIoModal";
 import { isStrictPass, type TrajectoryStep } from "../../../shared/ipc/eval/batch";
 
 interface TraceDebuggerProps {
   model: string;
   taskId: string | null;
   setTaskId: (id: string | null) => void;
+  /// The active run's decoy-tool budget — passed through to the per-run Input drill-down
+  /// so a reconstructed agentic prompt admits the decoy tools the model also saw.
+  decoys?: number;
 }
 
 type TabType = "config" | "prompt" | "trace" | "matcher";
@@ -264,6 +269,7 @@ export function TraceDebugger({
   model,
   taskId,
   setTaskId,
+  decoys,
 }: TraceDebuggerProps) {
   const { tasks } = useEvalRegistryStore();
   const outcomeByKey = useBatchStore((s) => s.outcomeByKey);
@@ -272,12 +278,16 @@ export function TraceDebugger({
 
   const [activeTab, setActiveTab] = useState<TabType>("trace");
   const [collapsed, setCollapsed] = useState(false);
+  // The per-run Input/Output drill-down: which run (null = the single-turn run) and
+  // which view. Reset when the task/model changes so it never points at a stale run.
+  const [ioRun, setIoRun] = useState<{ runIndex: number | null; mode: RunIoMode } | null>(null);
   // User-toggled expansion overrides per run_index. Empty = follow the default
   // (expand the first failing run, else the first). Reset when the task/model
   // changes so a freshly selected task starts from its own default.
   const [runOverrides, setRunOverrides] = useState<Record<number, boolean>>({});
   useEffect(() => {
     setRunOverrides({});
+    setIoRun(null);
   }, [model, taskId]);
 
   // Find the selected task definition
@@ -322,6 +332,41 @@ export function TraceDebugger({
     runOverrides[runIndex] ?? runIndex === defaultRunIndex;
   const toggleRun = (runIndex: number) =>
     setRunOverrides((o) => ({ ...o, [runIndex]: !isRunExpanded(runIndex) }));
+
+  // The per-run Input/Output button pair. `runIndex` is the agentic run, or null for the
+  // single-turn run. `stopPropagation` keeps the agentic buttons from toggling the run's
+  // expand when they sit inside the run header row.
+  const ioButtons = (runIndex: number | null) => {
+    const suffix = runIndex === null ? "" : `-${runIndex}`;
+    return (
+      <span style={{ display: "inline-flex", gap: 6 }}>
+        <button
+          type="button"
+          onClick={(e) => {
+            e.stopPropagation();
+            setIoRun({ runIndex, mode: "input" });
+          }}
+          style={ioBtnStyle}
+          data-testid={`trace-io-input${suffix}`}
+          title="Show the prompt this run sent to the model"
+        >
+          Input
+        </button>
+        <button
+          type="button"
+          onClick={(e) => {
+            e.stopPropagation();
+            setIoRun({ runIndex, mode: "output" });
+          }}
+          style={ioBtnStyle}
+          data-testid={`trace-io-output${suffix}`}
+          title="Show the model's raw response for this run"
+        >
+          Output
+        </button>
+      </span>
+    );
+  };
 
   // Tab labels helper
   const renderTabHeader = (id: TabType, label: string) => {
@@ -408,7 +453,7 @@ export function TraceDebugger({
             systemMessage={
               outcome?.kind === "single"
                 ? outcome.trace.system_message
-                : `Constructed agentic prompt package for tools:\n${JSON.stringify(task.tools, null, 2)}`
+                : agenticSystemPreview(task)
             }
             userPrompt={
               outcome?.kind === "single"
@@ -433,6 +478,7 @@ export function TraceDebugger({
                     <span style={turnHeaderTitleStyle}>
                       TURN 1: Model Output (Raw text extracted)
                     </span>
+                    <span style={{ marginLeft: "auto" }}>{ioButtons(null)}</span>
                   </div>
                   <pre style={codeBlockStyle}>
                     {outcome.trace.raw_output || "(empty output)"}
@@ -487,21 +533,24 @@ export function TraceDebugger({
                         : "fail";
                       return (
                         <div key={group.runIndex} style={runSectionStyle}>
-                          <button
-                            type="button"
-                            onClick={() => toggleRun(group.runIndex)}
-                            style={runHeaderStyle}
-                            aria-expanded={expanded}
-                          >
-                            <span style={runCaretStyle}>{expanded ? "▼" : "▶"}</span>
-                            <span style={runTitleStyle}>
-                              RUN {gi + 1} OF {groups.length}
-                            </span>
-                            <span style={runChipStyle(status)}>{status.toUpperCase()}</span>
-                            <span style={runStepCountStyle}>
-                              {group.steps.length} {group.steps.length === 1 ? "turn" : "turns"}
-                            </span>
-                          </button>
+                          <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
+                            <button
+                              type="button"
+                              onClick={() => toggleRun(group.runIndex)}
+                              style={runHeaderStyle}
+                              aria-expanded={expanded}
+                            >
+                              <span style={runCaretStyle}>{expanded ? "▼" : "▶"}</span>
+                              <span style={runTitleStyle}>
+                                RUN {gi + 1} OF {groups.length}
+                              </span>
+                              <span style={runChipStyle(status)}>{status.toUpperCase()}</span>
+                              <span style={runStepCountStyle}>
+                                {group.steps.length} {group.steps.length === 1 ? "turn" : "turns"}
+                              </span>
+                            </button>
+                            {ioButtons(group.runIndex)}
+                          </div>
 
                           {expanded && (
                             <div style={{ ...timelineContainer, marginTop: 12 }}>
@@ -641,11 +690,45 @@ export function TraceDebugger({
       </div>
       </>
       )}
+
+      {ioRun && (() => {
+        const isSingle = ioRun.runIndex === null;
+        const runSteps = isSingle ? [] : steps.filter((s) => s.run_index === ioRun.runIndex);
+        let title = "Single-turn run";
+        if (!isSingle) {
+          const pos = groups.findIndex((g) => g.runIndex === ioRun.runIndex);
+          title = pos >= 0 ? `RUN ${pos + 1} OF ${groups.length}` : `RUN ${ioRun.runIndex}`;
+        }
+        return (
+          <RunIoModal
+            task={task}
+            outcome={outcome}
+            steps={runSteps}
+            title={title}
+            decoys={decoys}
+            mode={ioRun.mode}
+            setMode={(mode) => setIoRun({ runIndex: ioRun.runIndex, mode })}
+            onClose={() => setIoRun(null)}
+          />
+        );
+      })()}
     </div>
   );
 }
 
 // ── Styles ──────────────────────────────────────────────────────────────────
+
+const ioBtnStyle: React.CSSProperties = {
+  fontSize: 11,
+  fontWeight: 600,
+  fontFamily: "Inter, sans-serif",
+  color: "#2563eb",
+  background: "#eff6ff",
+  border: "1px solid #dbeafe",
+  borderRadius: 6,
+  padding: "2px 10px",
+  cursor: "pointer",
+};
 
 const panelStyle: React.CSSProperties = {
   background: "#ffffff",
