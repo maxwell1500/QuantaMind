@@ -62,13 +62,20 @@ jobs:
         working-directory: frontend
         run: pnpm install --frozen-lockfile
 
-      - name: Build .deb
+      - name: Build frontend
         working-directory: frontend
-        run: pnpm tauri build -b deb
+        run: pnpm build
+
+      - name: Install Tauri CLI
+        run: cargo install tauri-cli --version "^2.0" --locked
+
+      - name: Build .deb
+        working-directory: backend
+        run: cargo tauri build -b deb
 
       - name: Build .rpm
-        working-directory: frontend
-        run: pnpm tauri build -b rpm
+        working-directory: backend
+        run: cargo tauri build -b rpm
 
       - name: List built artifacts
         working-directory: backend
