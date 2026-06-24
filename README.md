@@ -21,7 +21,72 @@ Built with Tauri, Rust, React, and Ollama. Local-first. No telemetry. No cloud.
 
 [![Repo](https://img.shields.io/badge/GitHub-QuantaMinds%2FQuantaMind-181717?logo=github)](https://github.com/QuantaMinds/QuantaMind)
 
+> **This fork adds native Linux support.** macOS support is unchanged. See [Linux support](#linux-support) below.
+
 </div>
+
+---
+
+## Linux support
+
+QuantaMind runs natively on Linux (Ubuntu 22.04+, Fedora 39+, or any distro with `glibc ≥ 2.31`).
+
+### Quick install (Ubuntu / Debian)
+
+```bash
+# 1. Install the .deb (apt pulls in all runtime deps automatically):
+sudo apt install ./QuantaMind_0.2.0_amd64.deb
+
+# 2. Install Ollama + whisper.cpp + system libraries:
+./scripts/install-deps.sh
+
+# 3. Launch:
+quantamind
+```
+
+Or install Ollama separately: `curl -fsSL https://ollama.com/install.sh | sh`
+
+### Dependencies
+
+The `.deb` package declares these as `Depends:` (apt installs them automatically):
+
+- `libwebkit2gtk-4.1-0`, `libgtk-3-0` — WebView / GTK runtime
+- `libayatana-appindicator3-1` — system tray
+- `librsvg2-common` — SVG icon rendering
+- `libssl3`, `libasound2t64`, `libpulse0` — TLS + audio (ALSA / PulseAudio)
+- `ffmpeg` — audio/video decoding
+
+For Ollama and whisper.cpp (not in apt repos), run `./scripts/install-deps.sh` or install manually:
+
+```bash
+# Ollama
+curl -fsSL https://ollama.com/install.sh | sh
+
+# whisper.cpp (built from source, installed to ~/.local/bin/whisper-server)
+./scripts/install-deps.sh whisper
+```
+
+### Pointing at a remote Ollama
+
+By default QuantaMind talks to `http://localhost:11434`. To use Ollama on another machine, open **Settings → Ollama endpoint** in the app and enter your remote URL (e.g. `http://192.168.1.50:11434`).
+
+You can also set the `OLLAMA_HOST` environment variable before launching.
+
+### Building from source on Linux
+
+```bash
+# System packages (Ubuntu):
+sudo apt install libwebkit2gtk-4.1-dev libgtk-3-dev libayatana-appindicator3-dev \
+                 librsvg2-dev libssl-dev libasound2-dev libpulse-dev \
+                 ffmpeg pkg-config build-essential cmake
+
+# Rust + Node + pnpm, then:
+cargo install tauri-cli --locked
+cd frontend && pnpm install && cd ..
+cd backend && cargo tauri build -b deb,rpm
+```
+
+Artifacts land in `backend/target/release/bundle/`.
 
 ---
 
