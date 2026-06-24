@@ -1,0 +1,102 @@
+name: Build Linux
+
+# Build .deb and .rpm artifacts on every push to main and on tag pushes.
+# Attaches the artifacts to the workflow run (downloadable from the Actions tab)
+# and, on tag pushes, uploads them to the GitHub Release for that tag.
+#
+# Does NOT require Tauri updater signing secrets — the .deb/.rpm artifacts
+# themselves work without signing. Signing only matters for the auto-updater
+# flow (latest.json + .sig files), which the original release.yml handles
+# separately when secrets are present.
+
+on:
+  push:
+    branches: [main]
+    tags: ["v*"]
+  pull_request:
+    branches: [main]
+
+permissions:
+  contents: write
+
+jobs:
+  build-linux:
+    runs-on: ubuntu-22.04
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install system dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y \
+            libwebkit2gtk-4.1-dev \
+            libgtk-3-dev \
+            libayatana-appindicator3-dev \
+            librsvg2-dev \
+            libssl-dev \
+            libasound2-dev \
+            libpulse-dev \
+            ffmpeg \
+            patchelf \
+            build-essential \
+            cmake
+
+      - uses: pnpm/action-setup@v4
+        with:
+          version: 9
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: pnpm
+          cache-dependency-path: frontend/pnpm-lock.yaml
+
+      - uses: dtolnay/rust-toolchain@stable
+
+      - name: Cache cargo registry & target
+        uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: backend
+
+      - name: Install frontend dependencies
+        working-directory: frontend
+        run: pnpm install --frozen-lockfile
+
+      - name: Build .deb
+        working-directory: backend
+        run: cargo tauri build -b deb
+
+      - name: Build .rpm
+        working-directory: backend
+        run: cargo tauri build -b rpm
+
+      - name: List built artifacts
+        working-directory: backend
+        run: |
+          echo "=== deb ==="
+          ls -lh target/release/bundle/deb/ || true
+          echo "=== rpm ==="
+          ls -lh target/release/bundle/rpm/ || true
+
+      - name: Upload .deb to workflow run
+        uses: actions/upload-artifact@v4
+        with:
+          name: QuantaMind-deb
+          path: backend/target/release/bundle/deb/*.deb
+          if-no-files-found: error
+
+      - name: Upload .rpm to workflow run
+        uses: actions/upload-artifact@v4
+        with:
+          name: QuantaMind-rpm
+          path: backend/target/release/bundle/rpm/*.rpm
+          if-no-files-found: error
+
+      - name: Upload .deb to release (tag pushes only)
+        if: startsWith(github.ref, 'refs/tags/')
+        uses: softprops/action-gh-release@v2
+        with:
+          files: |
+            backend/target/release/bundle/deb/*.deb
+            backend/target/release/bundle/rpm/*.rpm
+          fail_on_unmatched_files: false
