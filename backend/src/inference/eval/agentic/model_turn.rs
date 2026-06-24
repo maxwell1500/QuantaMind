@@ -247,20 +247,42 @@ fn synthesize_calls(calls: &[NativeToolCall]) -> String {
     serde_json::to_string(&Value::Array(arr)).unwrap_or_default()
 }
 
+/// The text the runner sees from a native turn. With real `tool_calls`, the canonical JSON
+/// (so scoring is byte-identical to the prompt path). With NONE, the raw assistant `content`
+/// rather than `""` — see the rationale on `NativeOllamaTurn::run`. Pure, so the selection is
+/// unit-tested without a live server.
+fn native_turn_text(calls: &[NativeToolCall], content: String) -> String {
+    if calls.is_empty() {
+        content
+    } else {
+        synthesize_calls(calls)
+    }
+}
+
 impl ModelTurn for NativeOllamaTurn {
     async fn run(&self, spec: &GenerateSpec) -> AppResult<(String, GenerateStats)> {
         let tools = build_tools_value(&self.tools);
         let result =
             chat_with_tools(&self.endpoint, &self.model, NATIVE_SYSTEM, &spec.prompt, &tools, self.options.clone())
                 .await?;
-        Ok((synthesize_calls(&result.tool_calls), result.stats))
+        // When Ollama's native parser returned tool calls, hand the runner the canonical
+        // JSON. When it returned NONE, surface the raw assistant `content` instead of an
+        // empty string: a mis-built model often emits a foreign dialect (channel-token soup)
+        // that Ollama can't parse into `tool_calls` but leaves in `content`; dropping it made
+        // every such turn a silent empty → `Hallucinated`, hiding the real cause. Returning
+        // `content` lets the runner name the honest verdict (`ForeignDialect` / prose /
+        // hallucination). Parity-safe: Ollama already yielded zero calls, and the forms that
+        // land here (paren / `<|"|>`-wrapped soup, or plain prose) are exactly the ones the
+        // text salvager (`harmony_calls`) also drops — so this never credits a call Ollama
+        // missed, it only makes the FAILURE honest.
+        Ok((native_turn_text(&result.tool_calls, result.content), result.stats))
     }
 }
 
 #[cfg(test)]
 mod tests {
-    use super::{merge_eval_options, synthesize_calls, NativeToolCall};
-    use crate::inference::eval::toolcall::parse::{extract_calls, looks_like_broken_json};
+    use super::{merge_eval_options, native_turn_text, synthesize_calls, NativeToolCall};
+    use crate::inference::eval::toolcall::parse::{extract_calls, extract_calls_dialect, looks_like_broken_json, looks_like_foreign_dialect, ToolCallDialect};
     use crate::inference::generate::generate_options::{GenerateOptions, EVAL_REPEAT_PENALTY};
     use serde_json::json;
 
@@ -369,6 +391,51 @@ mod tests {
         assert_eq!(text, "");
         assert!(extract_calls(&text).is_none());
         assert!(!looks_like_broken_json(&text)); // not a MalformedJson — a true abstain
+    }
+
+    #[test]
+    fn native_turn_with_calls_returns_canonical_json_ignoring_content() {
+        // When Ollama parsed real tool calls, the content is irrelevant — the runner scores
+        // the canonical JSON, byte-identical to the prompt path.
+        let calls = vec![NativeToolCall { name: "run_tests".into(), args: json!({ "module": "cart" }) }];
+        let text = native_turn_text(&calls, "some prose Ollama also returned".into());
+        let parsed = extract_calls(&text).unwrap();
+        assert_eq!(parsed.len(), 1);
+        assert_eq!(parsed[0].name, "run_tests");
+    }
+
+    #[test]
+    fn native_turn_with_no_calls_surfaces_foreign_content_so_the_runner_flags_it() {
+        // The bug: Ollama's parser found NO tool_calls in a mis-built model's channel-token
+        // soup, but the soup is in `content`. Returning "" hid it as a silent empty →
+        // Hallucinated. Surfacing `content` lets the runner name the honest ForeignDialect.
+        let soup =
+            "<channel|><|tool_response|>call:reply(text='cart suite failed: test_apply_discount_negative_total')<tool_call|>";
+        let text = native_turn_text(&[], soup.into());
+        assert_eq!(text, soup);
+        // Parity-safe: the soup is NOT salvaged (no call credited), but it IS flagged foreign.
+        assert!(extract_calls_dialect(&text).is_none());
+        assert!(looks_like_foreign_dialect(&text));
+    }
+
+    #[test]
+    fn native_turn_with_no_calls_and_clean_harmony_brace_matches_what_ollama_recovers() {
+        // The clean `call:NAME{…}` form Ollama's native parser DOES recover would normally
+        // arrive as a real tool_call; if it ever reaches the content branch the salvager
+        // recovers it as Harmony — same call a real deployment gets (production parity).
+        let text = native_turn_text(&[], "<channel|>call:run_tests{module: \"cart\"}<tool_call|>".into());
+        let (calls, dialect) = extract_calls_dialect(&text).unwrap();
+        assert_eq!(dialect, ToolCallDialect::Harmony);
+        assert_eq!(calls[0].name, "run_tests");
+    }
+
+    #[test]
+    fn native_turn_with_no_calls_and_empty_content_is_still_a_clean_abstain() {
+        // A genuine native abstention (no calls, no content) stays an empty no-call yield.
+        let text = native_turn_text(&[], String::new());
+        assert_eq!(text, "");
+        assert!(extract_calls(&text).is_none());
+        assert!(!looks_like_foreign_dialect(&text));
     }
 
     #[test]

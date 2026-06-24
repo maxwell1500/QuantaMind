@@ -149,6 +149,34 @@ describe("PerformanceMatrix", () => {
     expect(screen.queryByTestId("failbreak-qwen")).toBeNull();
   });
 
+  it("shows the Bad Dialect badge AND its breakdown for a foreign-dialect-only model", () => {
+    // Regression: a model whose only failures are foreign_dialect used to show the badge but
+    // a `total === 0` breakdown (the ⓘ vanished), reading as 'not wired'. The terminal mode
+    // must count toward the total and appear in the tooltip.
+    const dialectReport: BatchReport = {
+      collection_id: "c",
+      columns: [
+        {
+          model: "gemmaqat",
+          backend: "ollama",
+          toolcall: null,
+          agentic: {
+            tasks_passed: 0, tasks_total: 3, passes: 0, total_runs: 3, avg_steps: 1, avg_output_tokens_success: null,
+            schema_resilience: null, top_error: "foreign_dialect",
+            failures: { infinite_loop_hits: 0, hallucinated_completions: 0, malformed_json_calls: 0, schema_unrecovered_calls: 0, foreign_dialect_calls: 3 },
+          },
+          error: null,
+        },
+      ],
+    };
+    useBatchStore.setState({ report: dialectReport });
+    render(<PerformanceMatrix focusedModel="gemmaqat" onFocusModel={() => {}} />);
+    expect(screen.getByTestId("matrix-model-row-gemmaqat")).toHaveTextContent("Bad Dialect");
+    const info = screen.getByTestId("failbreak-gemmaqat"); // ⓘ present → total > 0
+    fireEvent.mouseEnter(info);
+    expect(screen.getByTestId("tooltip-failbreak-gemmaqat")).toHaveTextContent(/Bad Dialect 3/);
+  });
+
   const failures = { infinite_loop_hits: 0, hallucinated_completions: 0, malformed_json_calls: 0, schema_unrecovered_calls: 0 };
   const nativeReport: BatchReport = {
     collection_id: "c",
