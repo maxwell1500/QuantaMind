@@ -9,7 +9,9 @@ use crate::errors::AppError;
 use crate::inference::backend::backend_kind::BackendKind;
 use crate::inference::eval::agentic::difficulty::passk::{max_tokens_for, pass_k_for};
 use crate::inference::eval::agentic::model_turn::{BackendTurn, NativeOllamaTurn};
+use crate::inference::eval::agentic::sandbox::EndStateRule;
 use crate::inference::eval::agentic::spec::Tier;
+use crate::inference::eval::toolcall::prompt::TerminalGuidance;
 use crate::inference::eval::agentic::step::TrajectoryStep;
 use crate::inference::eval::batch::{
     batch_summaries, fold_report, run_batch_resumable, run_native_fc_pass, BatchReport, BatchSink, CompletedUnit,
@@ -264,11 +266,23 @@ pub(crate) async fn run_passes(
             &tasks,
             &supported,
             native_cancel,
-            |model, task| NativeOllamaTurn {
-                endpoint: endpoint.clone(),
-                model: model.to_string(),
-                tools: task.tools.clone(),
-                options: native_options.clone(),
+            |model, task| {
+                // Gate the native system's answer-delivery mandate on act-vs-abstain, exactly
+                // like the prompt path (runner.rs) — so a native model on an ACT task is told to
+                // call the reporter tool, not nudged into prose (an unfair ReportedInProse).
+                let terminal = match task.agentic.as_ref().map(|s| &s.end_state) {
+                    Some(EndStateRule::RequireAll(_)) | Some(EndStateRule::RequireSequence(_)) => {
+                        TerminalGuidance::MustUseTools
+                    }
+                    _ => TerminalGuidance::PlainTextOk,
+                };
+                NativeOllamaTurn {
+                    endpoint: endpoint.clone(),
+                    model: model.to_string(),
+                    tools: task.tools.clone(),
+                    options: native_options.clone(),
+                    terminal,
+                }
             },
             prior,
             &record,

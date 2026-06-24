@@ -36,12 +36,14 @@ pub fn reply_tool_name(tools: &[ToolSchema]) -> Option<&str> {
 /// The tool-schema-injection core, given the tools + how the final answer must be
 /// delivered. Shared so the agentic runner (which has a sandbox, not a `ToolTask`)
 /// builds the identical prompt, gating the closing line on its task's end_state.
-pub fn build_system_for(tools: &[ToolSchema], terminal: TerminalGuidance) -> String {
-    // Computed from the real toolset BEFORE the schemas are flattened to JSON below: an
-    // act-task that HAS a reporter tool is told to use it BY NAME (fixing the reply vs
-    // reply_customer misnomer); an action-only act-task is told its actions ARE the answer
-    // (so the mandate never points at a `reply` tool that doesn't exist → no phantom call).
-    let closing: String = match terminal {
+/// The closing answer-delivery mandate, gated on act-vs-abstain and the toolset's reporter
+/// tool. Extracted so BOTH the prompt path (`build_system_for`, which wraps it with JSON-format
+/// instructions) and the NATIVE path (`NativeOllamaTurn`, which uses ONLY this mandate — native
+/// tool calls need no JSON instructions) share one source of truth. An act-task with a reporter
+/// tool is told to use it BY NAME; an action-only act-task is told its actions ARE the answer
+/// (so the mandate never points at a `reply` tool that doesn't exist → no phantom call).
+pub fn terminal_closing(tools: &[ToolSchema], terminal: TerminalGuidance) -> String {
+    match terminal {
         TerminalGuidance::PlainTextOk => "If no tool is needed, just answer the user in plain text.".into(),
         TerminalGuidance::MustUseTools => match reply_tool_name(tools) {
             Some(name) => format!(
@@ -53,7 +55,11 @@ pub fn build_system_for(tools: &[ToolSchema], terminal: TerminalGuidance) -> Str
                      is not listed."
                 .into(),
         },
-    };
+    }
+}
+
+pub fn build_system_for(tools: &[ToolSchema], terminal: TerminalGuidance) -> String {
+    let closing: String = terminal_closing(tools, terminal);
     let tools_json = serde_json::to_string_pretty(
         &tools
             .iter()
