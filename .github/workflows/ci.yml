@@ -1,0 +1,57 @@
+name: CI
+
+# Run the test suites on every branch push and PR so the eval-engine integrity
+# guards (reachability / tag-guard / oracle satisfiability) and the rest of the
+# suite fire AUTOMATICALLY — not only when someone remembers to run them locally.
+# Release builds live in release.yml (tags only); this is the test gate.
+#
+# Runner: macos-14. `cargo test --lib` compiles the lib target, which pulls in
+# `tauri` (a regular [dependencies] entry) — on Linux that needs the
+# libwebkit2gtk-*-dev system libs, whereas macOS ships them, so the test job
+# stays dependency-free. (Verified: `cargo test --lib` compiles + passes on macOS
+# with no extra system packages.)
+
+on:
+  push:
+    branches: ['**']
+  pull_request:
+
+# A newer push to the same branch/PR cancels the older in-flight run.
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  test:
+    runs-on: macos-14
+    steps:
+      - uses: actions/checkout@v4
+
+      # --- Backend: Rust lib tests (the green suite; NOT full `cargo test`, a
+      #     pre-existing broken non-lib target blocks that). ---
+      - uses: dtolnay/rust-toolchain@stable
+      - uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: backend
+      - name: cargo test --lib
+        working-directory: backend
+        run: cargo test --lib
+
+      # --- Frontend: typecheck + vitest. ---
+      - uses: pnpm/action-setup@v4
+        with:
+          version: 9
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: pnpm
+          cache-dependency-path: frontend/pnpm-lock.yaml
+      - name: pnpm install
+        working-directory: frontend
+        run: pnpm install --frozen-lockfile
+      - name: tsc --noEmit
+        working-directory: frontend
+        run: pnpm exec tsc --noEmit
+      - name: vitest run
+        working-directory: frontend
+        run: pnpm test

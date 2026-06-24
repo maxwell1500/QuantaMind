@@ -1,0 +1,20 @@
+// Tauri command handlers, grouped by concern (see docs/architecture.md#folder-taxonomy).
+pub mod app_lifecycle;
+pub mod audio;
+pub mod compare;
+pub mod emit;
+pub mod eval;
+pub mod gguf;
+pub mod hf;
+pub mod llama;
+pub mod mlx;
+pub mod models;
+pub mod ollama;
+pub mod prompt;
+pub mod prompt_templates;
+pub mod publish;
+pub mod settings;
+pub mod storage;
+pub mod stt;
+pub mod system;
+pub mod workspace;

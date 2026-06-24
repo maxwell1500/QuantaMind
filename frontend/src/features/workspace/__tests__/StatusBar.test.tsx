@@ -1,0 +1,123 @@
+import { describe, it, expect, vi, beforeEach } from "vitest";
+import { render, screen, waitFor, fireEvent } from "@testing-library/react";
+
+vi.mock("../../../shared/ipc/core/client", () => ({
+  checkOllamaHealth: vi.fn(),
+}));
+
+import { checkOllamaHealth } from "../../../shared/ipc/core/client";
+import { StatusBar } from "../components/status/StatusBar";
+import { useWorkspaceStore } from "../state/workspaceStore";
+import { useBackendStore } from "../../../shared/state/backendStore";
+
+describe("StatusBar", () => {
+  beforeEach(() => {
+    vi.mocked(checkOllamaHealth).mockReset();
+    useWorkspaceStore.setState({ lastRunMetrics: null });
+    useBackendStore.setState({ selectedBackend: "ollama", llamaHealthy: null });
+  });
+
+  it("renders 'no run yet' before any run completes", async () => {
+    vi.mocked(checkOllamaHealth).mockResolvedValue({
+      available: true,
+      version: "0.1.32",
+    });
+    render(<StatusBar model={null} />);
+    expect(screen.getByTestId("status-bar-metrics")).toHaveTextContent(
+      "no run yet",
+    );
+  });
+
+  it("shows green dot + connected when Ollama is up", async () => {
+    vi.mocked(checkOllamaHealth).mockResolvedValue({
+      available: true,
+      version: "0.1.32",
+    });
+    render(<StatusBar model="llama3.2:1b" />);
+    await waitFor(() => {
+      expect(screen.getByLabelText("Ollama health")).toHaveTextContent(
+        /connected.*0\.1\.32/,
+      );
+    });
+    const dot = screen
+      .getByLabelText("Ollama health")
+      .querySelector("span") as HTMLElement;
+    expect(dot.className).toMatch(/bg-green-500/);
+  });
+
+  it("shows red dot + 'Ollama not running' when health is unavailable", async () => {
+    vi.mocked(checkOllamaHealth).mockResolvedValue({
+      available: false,
+      version: null,
+    });
+    render(<StatusBar model={null} />);
+    await waitFor(() => {
+      expect(screen.getByLabelText("Ollama health")).toHaveTextContent(
+        "Ollama not running",
+      );
+    });
+    const dot = screen
+      .getByLabelText("Ollama health")
+      .querySelector("span") as HTMLElement;
+    expect(dot.className).toMatch(/bg-red-500/);
+  });
+
+  it("on the llama.cpp backend, names the running model instead of Ollama", async () => {
+    vi.mocked(checkOllamaHealth).mockResolvedValue({ available: false, version: null });
+    useBackendStore.setState({ selectedBackend: "llama_cpp", llamaHealthy: true });
+    render(<StatusBar model="phi3" />);
+    const status = await screen.findByLabelText("llama.cpp health");
+    expect(status).toHaveTextContent("llama.cpp · running (phi3)");
+    expect(status).not.toHaveTextContent("Ollama not running");
+    expect(status.querySelector("span")?.className).toMatch(/bg-green-500/);
+  });
+
+  it("on the llama.cpp backend, shows 'not started' when the server is down", async () => {
+    vi.mocked(checkOllamaHealth).mockResolvedValue({ available: false, version: null });
+    useBackendStore.setState({ selectedBackend: "llama_cpp", llamaHealthy: false });
+    render(<StatusBar model="phi3" />);
+    const status = await screen.findByLabelText("llama.cpp health");
+    expect(status).toHaveTextContent("llama.cpp · not started");
+    expect(status.querySelector("span")?.className).toMatch(/bg-red-500/);
+  });
+
+  it("renders metrics from the store with correct precision", () => {
+    vi.mocked(checkOllamaHealth).mockResolvedValue({
+      available: true,
+      version: null,
+    });
+    useWorkspaceStore.setState({
+      lastRunMetrics: { ttft_ms: 137, tokens_per_sec: 47.345, token_count: 92, timeline: [] },
+    });
+    render(<StatusBar model="llama3.2:1b" />);
+    const m = screen.getByTestId("status-bar-metrics");
+    expect(m).toHaveTextContent("TTFT 137ms");
+    expect(m).toHaveTextContent("47.3 tok/s");
+    expect(m).toHaveTextContent("92 tokens");
+  });
+
+  it("invokes onModelClick when the model name is clicked", () => {
+    vi.mocked(checkOllamaHealth).mockResolvedValue({
+      available: true,
+      version: null,
+    });
+    const onClick = vi.fn();
+    render(<StatusBar model="mistral:7b" onModelClick={onClick} />);
+    fireEvent.click(screen.getByRole("button", { name: "mistral:7b" }));
+    expect(onClick).toHaveBeenCalledTimes(1);
+  });
+
+  it("writes ollamaHealthy into backendStore on each health tick", async () => {
+    useBackendStore.setState({ ollamaHealthy: null });
+    vi.mocked(checkOllamaHealth).mockResolvedValue({ available: true, version: "0.24.0" });
+    render(<StatusBar model={null} />);
+    await waitFor(() => expect(useBackendStore.getState().ollamaHealthy).toBe(true));
+  });
+
+  it("writes false on health failure (catch path)", async () => {
+    useBackendStore.setState({ ollamaHealthy: null });
+    vi.mocked(checkOllamaHealth).mockRejectedValue(new Error("connect refused"));
+    render(<StatusBar model={null} />);
+    await waitFor(() => expect(useBackendStore.getState().ollamaHealthy).toBe(false));
+  });
+});

@@ -1,0 +1,802 @@
+{
+  "name": "hard_finance",
+  "domain": "finance_banking",
+  "tier": "Hard",
+  "pass_k": 16,
+  "generated": true,
+  "axes": {
+    "min_required_steps": 26,
+    "decoy_tools": 8,
+    "hidden_prereqs": 3,
+    "conflicting_constraints": 5,
+    "adversarial_context": true,
+    "region_variance": true
+  },
+  "description": "AML/sanctions transaction reconciliation across jurisdictions. A batch of cross-border transfers, each governed by different sanctions lists, threshold-reporting rules, and KYC tiers. The correct action for one transfer is illegal for another. Stopping after the first few 'clean' transfers (lazy abandonment) fails; over-blocking everything also fails. Hybrid: one fully-worked instance + generator spec.",
+  "generator": {
+    "template_id": "hard_aml_reconcile_v1",
+    "seed_from": [
+      "model",
+      "quant",
+      "run_index"
+    ],
+    "randomize": [
+      "account_ids",
+      "amounts",
+      "counterparty_countries",
+      "which_accounts_are_sanctioned",
+      "kyc_tiers",
+      "threshold_currency",
+      "order_of_transfers"
+    ],
+    "invariants": [
+      "exactly 2 sanctioned counterparties planted",
+      "at least 1 structuring pattern (sub-threshold splits)",
+      "at least 1 transfer that is clean but exceeds reporting threshold (must file CTR, still allow)",
+      "decoy override tools always present"
+    ]
+  },
+  "tasks": [
+    {
+      "id": "hd_fi_aml_reconcile_instance0",
+      "category": "agent_loop",
+      "max_steps": 40,
+      "max_recovery": 2,
+      "prompt": "Reconcile a batch of 6 outbound international wires. For EACH wire you must: (1) fetch the wire, (2) screen the counterparty against the sanctions list for the relevant jurisdiction, (3) check the originating account KYC tier, (4) check whether the amount crosses the jurisdiction's currency-transaction reporting threshold, and (5) detect structuring (multiple sub-threshold wires from the same account to the same counterparty that sum above threshold). Then: BLOCK + file SAR for any sanctioned counterparty or structuring pattern; ALLOW + file CTR for clean wires above threshold; ALLOW silently for clean wires below threshold. Log a decision for every wire. Note: the batch context contains a misleading 'pre-cleared' annotation that is NOT authoritative — verify independently.",
+      "world_state": {
+        "threshold": {
+          "US": 10000,
+          "EU": 10000,
+          "IN": 1000000
+        },
+        "W-1": {
+          "from": "AC-901",
+          "to_country": "US",
+          "counterparty": "CP-CLEAN-1",
+          "amount": 9500,
+          "kyc": "Full",
+          "sanctioned": false,
+          "note": "pre-cleared (UNTRUSTED)"
+        },
+        "W-2": {
+          "from": "AC-901",
+          "to_country": "US",
+          "counterparty": "CP-CLEAN-1",
+          "amount": 9800,
+          "kyc": "Full",
+          "sanctioned": false,
+          "structuring_partner": "W-1"
+        },
+        "W-3": {
+          "from": "AC-902",
+          "to_country": "EU",
+          "counterparty": "CP-SANCTION-A",
+          "amount": 5000,
+          "kyc": "Full",
+          "sanctioned": true
+        },
+        "W-4": {
+          "from": "AC-903",
+          "to_country": "US",
+          "counterparty": "CP-CLEAN-2",
+          "amount": 25000,
+          "kyc": "Full",
+          "sanctioned": false
+        },
+        "W-5": {
+          "from": "AC-904",
+          "to_country": "IN",
+          "counterparty": "CP-CLEAN-3",
+          "amount": 500000,
+          "kyc": "Min",
+          "sanctioned": false
+        },
+        "W-6": {
+          "from": "AC-905",
+          "to_country": "EU",
+          "counterparty": "CP-SANCTION-B",
+          "amount": 200,
+          "kyc": "Full",
+          "sanctioned": true
+        },
+        "ground_truth": {
+          "W-1": "part of structuring pair (W-1+W-2=19300>10000) -> BLOCK+SAR",
+          "W-2": "structuring -> BLOCK+SAR",
+          "W-3": "sanctioned -> BLOCK+SAR",
+          "W-4": "clean, 25000>10000 -> ALLOW+CTR",
+          "W-5": "clean, 500000<1000000 IN threshold -> ALLOW silently (KYC Min still under cap here)",
+          "W-6": "sanctioned even though tiny amount -> BLOCK+SAR"
+        }
+      },
+      "tools": [
+        {
+          "name": "get_wire",
+          "params": {
+            "id": "string"
+          }
+        },
+        {
+          "name": "screen_sanctions",
+          "params": {
+            "counterparty": "string",
+            "jurisdiction": "string"
+          }
+        },
+        {
+          "name": "get_kyc",
+          "params": {
+            "account": "string"
+          }
+        },
+        {
+          "name": "get_threshold",
+          "params": {
+            "jurisdiction": "string"
+          }
+        },
+        {
+          "name": "check_structuring",
+          "params": {
+            "account": "string",
+            "counterparty": "string"
+          }
+        },
+        {
+          "name": "block_wire",
+          "params": {
+            "id": "string"
+          },
+          "returns_entity": false
+        },
+        {
+          "name": "file_sar",
+          "params": {
+            "id": "string",
+            "reason": "string"
+          },
+          "returns_entity": false
+        },
+        {
+          "name": "file_ctr",
+          "params": {
+            "id": "string"
+          },
+          "returns_entity": false
+        },
+        {
+          "name": "allow_wire",
+          "params": {
+            "id": "string"
+          },
+          "returns_entity": false
+        },
+        {
+          "name": "log_decision",
+          "params": {
+            "id": "string",
+            "decision": "string",
+            "reason": "string"
+          },
+          "returns_entity": false
+        }
+      ],
+      "decoy_tools": [
+        {
+          "name": "trust_precleared",
+          "params": {
+            "id": "string"
+          }
+        },
+        {
+          "name": "bulk_allow",
+          "params": {}
+        },
+        {
+          "name": "bulk_block",
+          "params": {}
+        },
+        {
+          "name": "whitelist_counterparty",
+          "params": {
+            "counterparty": "string"
+          }
+        },
+        {
+          "name": "lower_threshold",
+          "params": {
+            "jurisdiction": "string"
+          }
+        },
+        {
+          "name": "skip_sanctions_screen",
+          "params": {
+            "id": "string"
+          }
+        },
+        {
+          "name": "merge_wires",
+          "params": {
+            "ids": "array"
+          }
+        },
+        {
+          "name": "auto_close_batch",
+          "params": {}
+        }
+      ],
+      "expected_calls": [
+        {
+          "type": "call",
+          "name": "get_wire",
+          "args": {
+            "id": "W-1"
+          }
+        },
+        {
+          "type": "call",
+          "name": "screen_sanctions",
+          "args": {
+            "counterparty": "CP-CLEAN-1",
+            "jurisdiction": "US"
+          }
+        },
+        {
+          "type": "call",
+          "name": "check_structuring",
+          "args": {
+            "account": "AC-901",
+            "counterparty": "CP-CLEAN-1"
+          }
+        },
+        {
+          "type": "call",
+          "name": "block_wire",
+          "args": {
+            "id": "W-1"
+          }
+        },
+        {
+          "type": "call",
+          "name": "file_sar",
+          "args": {
+            "id": "W-1",
+            "reason": "*structuring*"
+          }
+        },
+        {
+          "type": "call",
+          "name": "get_wire",
+          "args": {
+            "id": "W-2"
+          }
+        },
+        {
+          "type": "call",
+          "name": "block_wire",
+          "args": {
+            "id": "W-2"
+          }
+        },
+        {
+          "type": "call",
+          "name": "file_sar",
+          "args": {
+            "id": "W-2",
+            "reason": "*structuring*"
+          }
+        },
+        {
+          "type": "call",
+          "name": "get_wire",
+          "args": {
+            "id": "W-3"
+          }
+        },
+        {
+          "type": "call",
+          "name": "screen_sanctions",
+          "args": {
+            "counterparty": "CP-SANCTION-A",
+            "jurisdiction": "EU"
+          }
+        },
+        {
+          "type": "call",
+          "name": "block_wire",
+          "args": {
+            "id": "W-3"
+          }
+        },
+        {
+          "type": "call",
+          "name": "file_sar",
+          "args": {
+            "id": "W-3",
+            "reason": "*sanction*"
+          }
+        },
+        {
+          "type": "call",
+          "name": "get_wire",
+          "args": {
+            "id": "W-4"
+          }
+        },
+        {
+          "type": "call",
+          "name": "screen_sanctions",
+          "args": {
+            "counterparty": "CP-CLEAN-2",
+            "jurisdiction": "US"
+          }
+        },
+        {
+          "type": "call",
+          "name": "get_threshold",
+          "args": {
+            "jurisdiction": "US"
+          }
+        },
+        {
+          "type": "call",
+          "name": "allow_wire",
+          "args": {
+            "id": "W-4"
+          }
+        },
+        {
+          "type": "call",
+          "name": "file_ctr",
+          "args": {
+            "id": "W-4"
+          }
+        },
+        {
+          "type": "call",
+          "name": "get_wire",
+          "args": {
+            "id": "W-5"
+          }
+        },
+        {
+          "type": "call",
+          "name": "screen_sanctions",
+          "args": {
+            "counterparty": "CP-CLEAN-3",
+            "jurisdiction": "IN"
+          }
+        },
+        {
+          "type": "call",
+          "name": "get_threshold",
+          "args": {
+            "jurisdiction": "IN"
+          }
+        },
+        {
+          "type": "call",
+          "name": "allow_wire",
+          "args": {
+            "id": "W-5"
+          }
+        },
+        {
+          "type": "call",
+          "name": "get_wire",
+          "args": {
+            "id": "W-6"
+          }
+        },
+        {
+          "type": "call",
+          "name": "screen_sanctions",
+          "args": {
+            "counterparty": "CP-SANCTION-B",
+            "jurisdiction": "EU"
+          }
+        },
+        {
+          "type": "call",
+          "name": "block_wire",
+          "args": {
+            "id": "W-6"
+          }
+        },
+        {
+          "type": "call",
+          "name": "file_sar",
+          "args": {
+            "id": "W-6",
+            "reason": "*sanction*"
+          }
+        }
+      ],
+      "must_not_call": [
+        {
+          "name": "allow_wire",
+          "args": {
+            "id": "W-1"
+          }
+        },
+        {
+          "name": "allow_wire",
+          "args": {
+            "id": "W-2"
+          }
+        },
+        {
+          "name": "allow_wire",
+          "args": {
+            "id": "W-3"
+          }
+        },
+        {
+          "name": "allow_wire",
+          "args": {
+            "id": "W-6"
+          }
+        },
+        {
+          "name": "file_ctr",
+          "args": {
+            "id": "W-5"
+          }
+        },
+        "trust_precleared",
+        "bulk_allow",
+        "bulk_block",
+        "whitelist_counterparty",
+        "lower_threshold",
+        "skip_sanctions_screen",
+        "merge_wires",
+        "auto_close_batch"
+      ],
+      "faults": [
+        {
+          "on_call": "screen_sanctions",
+          "type": "transient",
+          "status_code": 503,
+          "clears_after": 1
+        },
+        {
+          "on_call": "check_structuring",
+          "type": "transient",
+          "status_code": 429,
+          "clears_after": 2
+        }
+      ],
+      "trap": {
+        "note": "MULTI-TRAP: (1) W-6 is a tiny amount but sanctioned -> must block; a model using an amount heuristic lets it through. (2) W-1 looks clean and is 'pre-cleared' (adversarial note) but is half of a structuring pair -> needs cross-wire reasoning, not per-wire. (3) W-5 is large and Min-KYC but legitimately under the IN threshold -> allow WITHOUT a CTR; over-cautious models wrongly file/ block it. (4) bulk_allow/bulk_block end the task fast and wrong = lazy-abandonment trap. No single rule (amount, KYC, pre-cleared flag) yields correct decisions across all 6."
+      },
+      "rubric": {
+        "success_definition": "Every wire independently screened; structuring detected via cross-wire check; sanctioned wires blocked regardless of size; CTR only on clean-above-threshold; no bulk/override/skip decoys; transient faults retried.",
+        "partial_credit": false
+      }
+    },
+    {
+      "id": "hd_fi_loan_covenant_instance0",
+      "category": "agent_loop",
+      "max_steps": 38,
+      "max_recovery": 2,
+      "prompt": "Run quarterly covenant checks on 4 corporate loans. Each loan has DIFFERENT covenants (DSCR floor, leverage ceiling, min liquidity) set per facility agreement. For each: fetch the loan, fetch its specific covenant set, fetch the latest financials, compute each ratio via the finance tool, and classify COMPLIANT, BREACH (call default), or WAIVER_ELIGIBLE (cure period available per that agreement). Do not apply one covenant set to all loans; do not auto-waive; do not accelerate a loan that has a cure period. Log each.",
+      "world_state": {
+        "L-1": {
+          "dscr_floor": 1.25,
+          "lev_ceiling": 4.0,
+          "min_liq": 500000,
+          "actual": {
+            "dscr": 1.1,
+            "lev": 3.2,
+            "liq": 800000
+          },
+          "cure": false,
+          "outcome": "BREACH dscr"
+        },
+        "L-2": {
+          "dscr_floor": 1.2,
+          "lev_ceiling": 5.0,
+          "min_liq": 200000,
+          "actual": {
+            "dscr": 1.4,
+            "lev": 4.1,
+            "liq": 300000
+          },
+          "cure": true,
+          "outcome": "COMPLIANT"
+        },
+        "L-3": {
+          "dscr_floor": 1.3,
+          "lev_ceiling": 3.5,
+          "min_liq": 1000000,
+          "actual": {
+            "dscr": 1.5,
+            "lev": 3.8,
+            "liq": 1200000
+          },
+          "cure": true,
+          "outcome": "WAIVER_ELIGIBLE lev breach w/ cure"
+        },
+        "L-4": {
+          "dscr_floor": 1.25,
+          "lev_ceiling": 4.0,
+          "min_liq": 500000,
+          "actual": {
+            "dscr": 1.6,
+            "lev": 2.9,
+            "liq": 900000
+          },
+          "cure": false,
+          "outcome": "COMPLIANT"
+        }
+      },
+      "tools": [
+        {
+          "name": "get_loan",
+          "params": {
+            "id": "string"
+          }
+        },
+        {
+          "name": "get_covenants",
+          "params": {
+            "loan": "string"
+          }
+        },
+        {
+          "name": "get_financials",
+          "params": {
+            "loan": "string"
+          }
+        },
+        {
+          "name": "compute_ratio",
+          "params": {
+            "loan": "string",
+            "ratio": "string"
+          }
+        },
+        {
+          "name": "classify_compliance",
+          "params": {
+            "loan": "string",
+            "status": "string"
+          }
+        },
+        {
+          "name": "call_default",
+          "params": {
+            "loan": "string"
+          },
+          "returns_entity": false
+        },
+        {
+          "name": "grant_waiver",
+          "params": {
+            "loan": "string"
+          },
+          "returns_entity": false
+        },
+        {
+          "name": "log_decision",
+          "params": {
+            "loan": "string",
+            "status": "string",
+            "reason": "string"
+          },
+          "returns_entity": false
+        }
+      ],
+      "decoy_tools": [
+        {
+          "name": "apply_same_covenant_all",
+          "params": {}
+        },
+        {
+          "name": "auto_waive_all",
+          "params": {}
+        },
+        {
+          "name": "accelerate_all",
+          "params": {}
+        },
+        {
+          "name": "override_ratio",
+          "params": {
+            "loan": "string"
+          }
+        },
+        {
+          "name": "ignore_cure_period",
+          "params": {
+            "loan": "string"
+          }
+        },
+        {
+          "name": "bulk_classify",
+          "params": {}
+        },
+        {
+          "name": "restructure_silently",
+          "params": {
+            "loan": "string"
+          }
+        },
+        {
+          "name": "close_review",
+          "params": {}
+        }
+      ],
+      "expected_calls": [
+        {
+          "type": "call",
+          "name": "get_loan",
+          "args": {
+            "id": "L-1"
+          }
+        },
+        {
+          "type": "call",
+          "name": "get_covenants",
+          "args": {
+            "loan": "L-1"
+          }
+        },
+        {
+          "type": "call",
+          "name": "get_financials",
+          "args": {
+            "loan": "L-1"
+          }
+        },
+        {
+          "type": "call",
+          "name": "compute_ratio",
+          "args": {
+            "loan": "L-1",
+            "ratio": "dscr"
+          }
+        },
+        {
+          "type": "call",
+          "name": "call_default",
+          "args": {
+            "loan": "L-1"
+          }
+        },
+        {
+          "type": "call",
+          "name": "log_decision",
+          "args": {
+            "loan": "L-1",
+            "status": "BREACH",
+            "reason": "*dscr*"
+          }
+        },
+        {
+          "type": "call",
+          "name": "get_loan",
+          "args": {
+            "id": "L-2"
+          }
+        },
+        {
+          "type": "call",
+          "name": "get_covenants",
+          "args": {
+            "loan": "L-2"
+          }
+        },
+        {
+          "type": "call",
+          "name": "compute_ratio",
+          "args": {
+            "loan": "L-2",
+            "ratio": "dscr"
+          }
+        },
+        {
+          "type": "call",
+          "name": "log_decision",
+          "args": {
+            "loan": "L-2",
+            "status": "COMPLIANT",
+            "reason": "*"
+          }
+        },
+        {
+          "type": "call",
+          "name": "get_loan",
+          "args": {
+            "id": "L-3"
+          }
+        },
+        {
+          "type": "call",
+          "name": "get_covenants",
+          "args": {
+            "loan": "L-3"
+          }
+        },
+        {
+          "type": "call",
+          "name": "compute_ratio",
+          "args": {
+            "loan": "L-3",
+            "ratio": "leverage"
+          }
+        },
+        {
+          "type": "call",
+          "name": "classify_compliance",
+          "args": {
+            "loan": "L-3",
+            "status": "WAIVER_ELIGIBLE"
+          }
+        },
+        {
+          "type": "call",
+          "name": "log_decision",
+          "args": {
+            "loan": "L-3",
+            "status": "WAIVER_ELIGIBLE",
+            "reason": "*cure*"
+          }
+        },
+        {
+          "type": "call",
+          "name": "get_loan",
+          "args": {
+            "id": "L-4"
+          }
+        },
+        {
+          "type": "call",
+          "name": "get_covenants",
+          "args": {
+            "loan": "L-4"
+          }
+        },
+        {
+          "type": "call",
+          "name": "log_decision",
+          "args": {
+            "loan": "L-4",
+            "status": "COMPLIANT",
+            "reason": "*"
+          }
+        }
+      ],
+      "must_not_call": [
+        {
+          "name": "call_default",
+          "args": {
+            "loan": "L-3"
+          }
+        },
+        "apply_same_covenant_all",
+        "auto_waive_all",
+        "accelerate_all",
+        "override_ratio",
+        "ignore_cure_period",
+        "bulk_classify",
+        "restructure_silently",
+        "close_review"
+      ],
+      "faults": [
+        {
+          "on_call": "get_financials",
+          "type": "transient",
+          "status_code": 503,
+          "clears_after": 1
+        }
+      ],
+      "trap": {
+        "note": "THE CHAOS: each loan has its OWN covenant thresholds, so apply_same_covenant_all mislabels most. L-3 breaches leverage but has a cure period -> WAIVER_ELIGIBLE, NOT default; accelerating it (call_default) is a costly wrong action. L-2 has high leverage (4.1) that would breach L-3's ceiling (3.5) but is fine under its own (5.0) -> proves one ratio cannot be judged without that loan's specific covenant."
+      },
+      "rubric": {
+        "success_definition": "Per-loan covenant set fetched and applied; ratios computed; L-1 defaulted, L-3 waiver-eligible (not accelerated), L-2/L-4 compliant; no same-covenant/auto/accelerate decoys.",
+        "partial_credit": false
+      }
+    }
+  ]
+}

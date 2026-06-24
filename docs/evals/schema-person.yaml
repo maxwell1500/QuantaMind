@@ -1,0 +1,11 @@
+id: schema-person
+category: schema
+prompt: |
+  Extract the person as JSON with a "name" (string) and "age" (number).
+  Sentence: "Maria is 34 years old." Output JSON only.
+scoring:
+  method: json_schema
+  required: ["name", "age"]
+  types:
+    name: string
+    age: number

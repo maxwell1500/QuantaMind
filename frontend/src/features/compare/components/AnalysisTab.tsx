@@ -1,0 +1,47 @@
+import { useCompareStore } from "../state/compareStore";
+import { CompareColumn } from "./CompareColumn";
+import { MetricsChart } from "./MetricsChart";
+import { CompareDiff } from "./CompareDiff";
+import { ExportButtons } from "./ExportButtons";
+import { SttAnalysisSection } from "../../sttInspector/components/SttAnalysisSection";
+import { SttEvalPanel } from "../../sttEval/components/SttEvalPanel";
+import { useSttResultStore } from "../../sttInspector/state/sttResultStore";
+
+/// Read-only results of the latest run: per-model output columns, throughput /
+/// TTFT charts, a word-level diff (two models), and export. Model selection +
+/// running live in the global header and the Workspace.
+export function AnalysisTab() {
+  const rows = useCompareStore((s) => s.rows);
+  const hasStt = useSttResultStore((s) => s.result != null);
+
+  if (rows.length === 0 && !hasStt) {
+    return (
+      <section data-testid="tab-analysis" className="space-y-2">
+        <h2 className="text-lg font-semibold">Analysis</h2>
+        <p data-testid="analysis-empty" className="text-sm text-gray-500">
+          Run a model in the Workspace (or pick 2+ Ollama models in the header to
+          compare) — or transcribe audio — then come here to compare throughput,
+          time-to-first-token, and outputs.
+        </p>
+      </section>
+    );
+  }
+
+  return (
+    <section data-testid="tab-analysis" className="space-y-3">
+      <h2 className="text-lg font-semibold">Analysis</h2>
+      {rows.length > 0 && (
+        <>
+          <div className="flex gap-2 overflow-x-auto" data-testid="compare-columns">
+            {rows.map((r) => <CompareColumn key={r.model} row={r} />)}
+          </div>
+          <MetricsChart />
+          <CompareDiff />
+          <ExportButtons />
+        </>
+      )}
+      <SttAnalysisSection />
+      <SttEvalPanel />
+    </section>
+  );
+}

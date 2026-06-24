@@ -1,0 +1,10 @@
+id: reason-deduction
+category: reasoning
+prompt: |
+  All maples are trees. No tree is an animal. Is a maple an animal?
+  Answer with the letter only.
+  A) Yes  B) No  C) Cannot tell
+scoring:
+  method: multiple_choice
+  choices: ["A", "B", "C"]
+  expected: "B"

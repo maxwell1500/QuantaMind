@@ -1,0 +1,8 @@
+id: extract-year
+category: extraction
+prompt: |
+  Extract the four-digit year from the text. Reply with just the year.
+  Text: "The library, founded in 1887, was renovated decades later."
+scoring:
+  method: exact
+  expected: "1887"

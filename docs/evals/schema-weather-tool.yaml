@@ -1,0 +1,11 @@
+id: schema-weather-tool
+category: schema
+prompt: |
+  Emit a single JSON object for a tool call to get the weather in Paris.
+  It must have a "name" string and an "args" object. Output JSON only.
+scoring:
+  method: json_schema
+  required: ["name", "args"]
+  types:
+    name: string
+    args: object

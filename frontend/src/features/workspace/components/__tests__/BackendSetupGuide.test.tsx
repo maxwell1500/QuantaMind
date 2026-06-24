@@ -1,0 +1,39 @@
+import { describe, it, expect, vi, beforeEach } from "vitest";
+import { render, screen } from "@testing-library/react";
+
+vi.mock("@tauri-apps/plugin-shell", () => ({ open: vi.fn() }));
+vi.mock("../../hooks/useMlxBackend", () => ({ useMlxBackend: vi.fn() }));
+
+import { useMlxBackend } from "../../hooks/useMlxBackend";
+import { BackendSetupGuide } from "../BackendSetupGuide";
+
+const setAppleSilicon = (appleSilicon: boolean) =>
+  vi.mocked(useMlxBackend).mockReturnValue({ appleSilicon } as ReturnType<typeof useMlxBackend>);
+
+beforeEach(() => vi.mocked(useMlxBackend).mockReset());
+
+describe("BackendSetupGuide", () => {
+  it("shows the MLX (LLM) card on Apple Silicon alongside whisper.cpp", () => {
+    setAppleSilicon(true);
+    render(<BackendSetupGuide />);
+    expect(screen.getByTestId("setup-engine-mlx")).toBeInTheDocument();
+    // whisper.cpp (not Apple-only) is always present.
+    expect(screen.getByTestId("setup-engine-whisper")).toBeInTheDocument();
+  });
+
+  it("shows the venv setup commands for MLX on Apple Silicon", () => {
+    setAppleSilicon(true);
+    render(<BackendSetupGuide />);
+    expect(screen.getByText("python3 -m venv ~/mlx-env")).toBeInTheDocument();
+    expect(screen.getByText("source ~/mlx-env/bin/activate")).toBeInTheDocument();
+    expect(screen.getByText("pip install -U mlx-lm")).toBeInTheDocument();
+  });
+
+  it("excludes the Apple-only MLX LLM card off Apple Silicon, keeps whisper.cpp", () => {
+    setAppleSilicon(false);
+    render(<BackendSetupGuide />);
+    expect(screen.queryByTestId("setup-engine-mlx")).toBeNull();
+    expect(screen.getByTestId("setup-engine-whisper")).toBeInTheDocument();
+    expect(screen.getByTestId("setup-engine-ollama")).toBeInTheDocument();
+  });
+});

@@ -1,0 +1,118 @@
+function isMac(): boolean {
+  return typeof navigator !== "undefined" && /mac/i.test(navigator.platform || navigator.userAgent);
+}
+
+export function sttGuidance(msg: string): { title: string; steps: string[] } | null {
+  const m = msg.toLowerCase();
+  const mac = isMac();
+
+  if (m.includes("library not loaded") || m.includes("dyld") || m.includes("can't run") || m.includes("shared librar") || m.includes("shared object")) {
+    const steps = mac
+      ? [
+          "The engine is present but its libraries are missing or mismatched.",
+          "Run `brew reinstall whisper-cpp`, then click Re-check.",
+        ]
+      : [
+          "The engine is present but its shared libraries are missing.",
+          "Reinstall whisper.cpp from github.com/ggerganov/whisper.cpp, then Re-check.",
+        ];
+    return { title: "whisper.cpp is installed but can't run", steps };
+  }
+  if (m.includes("isn't installed") || m.includes("not installed") || m.includes("not bundled")) {
+    const steps = mac
+      ? [
+          "Speech-to-text needs the whisper.cpp engine.",
+          "Run `brew install whisper-cpp`, then click Re-check.",
+        ]
+      : [
+          "Speech-to-text needs the whisper.cpp engine.",
+          "Install it from github.com/ggerganov/whisper.cpp, then click Re-check.",
+        ];
+    return { title: "whisper.cpp isn't installed", steps };
+  }
+  if (m.includes("vad") && m.includes("missing")) {
+    return {
+      title: "The VAD model is missing",
+      steps: [
+        "The silero VAD ships together with each speech model.",
+        "Re-download the model from the list above — speech-to-text stays off without the VAD.",
+      ],
+    };
+  }
+  if ((m.includes("model") && m.includes("missing")) || m.includes("download it first")) {
+    return {
+      title: "The speech model isn't downloaded",
+      steps: ["Download a model from the list above first, then start the server."],
+    };
+  }
+  if (m.includes("port") && (m.includes("8093") || m.includes("already") || m.includes("in use"))) {
+    return {
+      title: "Port 8093 is already in use",
+      steps: [
+        "Another process holds the speech-to-text port.",
+        "Stop it and retry — QuantaMind won't take over a process it didn't start.",
+      ],
+    };
+  }
+  if (m.includes("can't reach") || m.includes("isn't responding")) {
+    return {
+      title: "The speech-to-text server isn't responding",
+      steps: [
+        "It runs locally only and never reaches the cloud.",
+        "Start it again from the panel above.",
+      ],
+    };
+  }
+  if (m.includes("too small") || m.includes("incomplete") || m.includes("truncated") || m.includes("isn't a") || m.includes("not a ggml")) {
+    return {
+      title: "The model download is incomplete or invalid",
+      steps: [
+        "The download was cut off or isn't a real whisper model.",
+        "Re-download it — a real model is tens of MB to ~3 GB.",
+      ],
+    };
+  }
+  if (m.includes("couldn't start") || m.includes("didn't report a loaded model")) {
+    return {
+      title: "whisper-server couldn't start",
+      steps: [
+        "Check that you have free RAM and disk space.",
+        "If the model may be corrupt, re-download it.",
+        "The technical detail is below — restart and try again.",
+      ],
+    };
+  }
+  return null;
+}
+
+export function lastLines(text: string, n = 8): string {
+  return text.split("\n").filter((l) => l.trim().length > 0).slice(-n).join("\n");
+}
+
+export function SttError({ message, testid = "stt-error" }: { message: string; testid?: string }) {
+  const g = sttGuidance(message);
+  if (!g) {
+    return (
+      <div role="alert" data-testid={testid} className="text-red-600 text-xs">
+        {message}
+      </div>
+    );
+  }
+  return (
+    <div
+      role="alert"
+      data-testid={testid}
+      className="text-xs text-amber-800 bg-amber-50 border border-amber-200 rounded p-3 flex flex-col gap-1"
+    >
+      <div className="font-semibold">{g.title}</div>
+      <ul className="list-disc pl-4 space-y-0.5">
+        {g.steps.map((s) => (
+          <li key={s}>{s}</li>
+        ))}
+      </ul>
+      <div className="text-[10px] text-amber-700 pt-1 break-all whitespace-pre-wrap">
+        Details: {lastLines(message)}
+      </div>
+    </div>
+  );
+}
