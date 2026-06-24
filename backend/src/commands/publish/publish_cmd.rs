@@ -31,13 +31,14 @@ pub const ENGINE_VERSION: &str = env!("CARGO_PKG_VERSION");
 pub const BUILD_HASH: &str = env!("QM_BUILD_HASH");
 
 /// What the UI does next — every server status maps to one of these, so a failed
-/// publish never throws an opaque error that could freeze the dialog.
+/// publish never throws an opaque error that could freeze the dialog. `Invalid`
+/// carries the server's reason string so the user sees what to fix, not just an index.
 #[derive(Debug, Serialize, PartialEq)]
 #[serde(tag = "kind", rename_all = "snake_case")]
 pub enum PublishOutcome {
     Ok { board_url: String },
     NeedsAuth,
-    Invalid { index: usize },
+    Invalid { index: usize, reason: String },
     UpdateRequired,
     RateLimited,
 }
@@ -83,7 +84,14 @@ pub async fn publish_batch(base: &str, token: &str, rows: &[PublishRow], hash: &
     match resp.status() {
         StatusCode::OK => Ok(PublishOutcome::Ok { board_url: resp.json::<BoardResp>().await.map_err(net)?.board_url }),
         StatusCode::UNAUTHORIZED => Ok(PublishOutcome::NeedsAuth),
-        StatusCode::UNPROCESSABLE_ENTITY => Ok(PublishOutcome::Invalid { index: resp.json::<InvalidResp>().await.map_err(net)?.index }),
+        StatusCode::UNPROCESSABLE_ENTITY => {
+            // Log the full server body so the actual validation reason is visible
+            // (the API only returns `{index}` in its parsed shape — the rest is opaque).
+            let raw = body_or_note(resp).await;
+            eprintln!("[publish] server rejected: {raw}");
+            let parsed: InvalidResp = serde_json::from_str(&raw).unwrap_or(InvalidResp { index: 0 });
+            Ok(PublishOutcome::Invalid { index: parsed.index, reason: raw })
+        }
         StatusCode::UPGRADE_REQUIRED => Ok(PublishOutcome::UpdateRequired),
         StatusCode::TOO_MANY_REQUESTS => Ok(PublishOutcome::RateLimited),
         other => Err(AppError::Internal(format!("publish {other}: {}", body_or_note(resp).await))),
@@ -101,7 +109,10 @@ fn net(e: reqwest::Error) -> AppError {
 pub async fn publish_to_board(state: tauri::State<'_, AuthState>, verdicts: Vec<ModelVerdict>, params: InferenceParams, collection_id: String, link: Option<String>) -> Result<PublishOutcome, AppError> {
     let preview = build_preview(&verdicts, &publish_context(&collection_id, params))?;
     if let Some(inv) = preview.invalid {
-        return Ok(PublishOutcome::Invalid { index: inv.index });
+        return Ok(PublishOutcome::Invalid {
+            index: inv.index,
+            reason: inv.reason,
+        });
     }
     let token = match access_token(publish_api(), &state).await {
         Ok(t) => t,

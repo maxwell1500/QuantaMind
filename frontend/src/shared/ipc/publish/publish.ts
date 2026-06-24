@@ -8,7 +8,7 @@ import { type InferenceParams } from "../workspace/prompts";
 export const PublishOutcomeSchema = z.discriminatedUnion("kind", [
   z.object({ kind: z.literal("ok"), board_url: z.string() }),
   z.object({ kind: z.literal("needs_auth") }),
-  z.object({ kind: z.literal("invalid"), index: z.number() }),
+  z.object({ kind: z.literal("invalid"), index: z.number(), reason: z.string() }),
   z.object({ kind: z.literal("update_required") }),
   z.object({ kind: z.literal("rate_limited") }),
 ]);

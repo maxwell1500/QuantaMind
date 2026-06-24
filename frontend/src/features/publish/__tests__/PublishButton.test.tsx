@@ -55,7 +55,7 @@ describe("PublishButton", () => {
   });
 
   it("surfaces the failing row index on invalid, without crashing", async () => {
-    vi.mocked(publishToBoard).mockResolvedValue({ kind: "invalid", index: 2 });
+    vi.mocked(publishToBoard).mockResolvedValue({ kind: "invalid", index: 2, reason: "row 2: unknown schema_version" });
     render(<><PublishButton verdicts={VERDICTS} collectionId="easy-coding" /><ToastHost /></>);
     await openDialogAndAgree();
     await waitFor(() => expect(screen.getByTestId("toast")).toHaveTextContent("Row 2"));

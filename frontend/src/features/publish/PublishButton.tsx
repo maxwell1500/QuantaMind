@@ -47,7 +47,7 @@ export function PublishButton({ verdicts, collectionId }: { verdicts: ModelVerdi
           break;
         }
         case "invalid":
-          toast(`Row ${outcome.index} was rejected — adjust it and retry`);
+          toast(`Row ${outcome.index} rejected by server: ${outcome.reason}`);
           break;
         case "rate_limited":
           toast("Publishing a lot — try again shortly");

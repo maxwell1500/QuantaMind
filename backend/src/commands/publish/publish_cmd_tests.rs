@@ -31,7 +31,7 @@ async fn maps_422_to_the_failing_row_index() {
     s.mock("POST", "/publish").with_status(422).with_body(r#"{"index":2}"#).create_async().await;
 
     let out = publish_batch(&s.url(), "tok", &rows(), "h", None).await.unwrap();
-    assert_eq!(out, PublishOutcome::Invalid { index: 2 });
+    assert_eq!(out, PublishOutcome::Invalid { index: 2, reason: r#"{"index":2}"#.into() });
 }
 
 #[tokio::test]
