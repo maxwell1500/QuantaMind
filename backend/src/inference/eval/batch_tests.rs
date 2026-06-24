@@ -500,3 +500,46 @@ async fn warms_up_each_model_once_before_its_first_scored_task() {
         assert!(warm < first_run, "{m}: warm_up must precede the first scored run");
     }
 }
+
+#[test]
+fn ollama_version_makes_a_native_garble_diagnosable_on_the_report() {
+    // Closes the Gap-C loop: a garbled native run (ForeignDialect) AND the Ollama version
+    // coexist on the report, so a native tool-calling regression on a version bump reads as
+    // "garbled at Ollama vX" — diagnosable, never a silent zero. Survives the serde round-trip
+    // the saved/published report uses.
+    use crate::inference::eval::agentic::scoring::report::{FailureTracker, TopError};
+    let garbled = AggAgentic {
+        tasks_passed: 0,
+        tasks_total: 1,
+        passes: 0,
+        total_runs: 1,
+        avg_steps: None,
+        avg_output_tokens_success: None,
+        schema_resilience: None,
+        top_error: TopError::ForeignDialect,
+        failures: FailureTracker { foreign_dialect_calls: 1, ..Default::default() },
+        by_tier: vec![],
+        tasks_errored: 0,
+        native_error_class: Default::default(),
+    };
+    let report = BatchReport {
+        collection_id: "c".into(),
+        num_ctx: None,
+        ollama_version: Some("0.11.10".into()),
+        columns: vec![BatchColumn {
+            model: "qwen3".into(),
+            backend: BackendKind::Ollama,
+            toolcall: None,
+            agentic: None,
+            agentic_native_fc: Some(garbled),
+            error: None,
+            is_thinking: false,
+        }],
+    };
+    let round: BatchReport = serde_json::from_str(&serde_json::to_string(&report).unwrap()).unwrap();
+    // Both signals present together → the regression is diagnosable.
+    assert_eq!(round.ollama_version.as_deref(), Some("0.11.10"));
+    let native = round.columns[0].agentic_native_fc.as_ref().unwrap();
+    assert_eq!(native.top_error, TopError::ForeignDialect);
+    assert_eq!(native.failures.foreign_dialect_calls, 1);
+}

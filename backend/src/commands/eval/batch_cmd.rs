@@ -19,7 +19,7 @@ use crate::inference::eval::batch::{
 };
 use crate::inference::eval::toolcall::matrix::ModelTarget;
 use crate::inference::eval::toolcall::tasks::{validate_tasks, ToolTask};
-use crate::inference::ollama::ollama_show::probe_supports_tools;
+use crate::inference::ollama::ollama_show::{probe_ollama_version, probe_supports_tools};
 use crate::persistence::eval_history;
 use crate::persistence::jobs::queue::{self, RunConfig};
 use crate::persistence::prompts::schema::InferenceParams;
@@ -243,6 +243,9 @@ pub(crate) async fn run_passes(
     )
     .await?;
     report.num_ctx = config.params.as_ref().and_then(|p| p.num_ctx);
+    // Stamp the running Ollama version so a native tool-calling regression on a version bump is
+    // diagnosable (the honest garbled/foreign verdict reads as "at Ollama vX"). Best-effort.
+    report.ollama_version = probe_ollama_version(&endpoint_for(BackendKind::Ollama)).await;
     log_emit(app, EVENT_BATCH_COMPLETE, BatchCompletePayload { report: report.clone() });
 
     if let Ok(dir) = history_dir(app) {

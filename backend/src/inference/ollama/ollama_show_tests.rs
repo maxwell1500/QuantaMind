@@ -8,6 +8,20 @@ fn supports_tools_reads_the_capability_list() {
     assert!(!supports_tools(&[]));
 }
 
+#[test]
+fn parse_version_reads_the_version_string() {
+    assert_eq!(parse_version(r#"{"version":"0.11.10"}"#).as_deref(), Some("0.11.10"));
+    assert_eq!(parse_version(r#"{}"#), None); // no version key → None, never a fabricated value
+    assert_eq!(parse_version("not json"), None);
+}
+
+#[tokio::test]
+async fn probe_ollama_version_hits_api_version() {
+    let mut s = Server::new_async().await;
+    let _m = s.mock("GET", "/api/version").with_status(200).with_body(r#"{"version":"0.12.3"}"#).create_async().await;
+    assert_eq!(probe_ollama_version(&s.url()).await.as_deref(), Some("0.12.3"));
+}
+
 /// A trimmed but real-shaped `/api/show` body for an instruct model.
 const SHOW_INSTRUCT: &str = r#"{
   "template": "{{- if .System }}<|start_header_id|>system<|end_header_id|>\n{{ .System }}{{- end }}<|start_header_id|>user<|end_header_id|>\n{{ .Prompt }}<|start_header_id|>assistant<|end_header_id|>\n",

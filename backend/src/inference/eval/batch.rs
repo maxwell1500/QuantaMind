@@ -257,6 +257,12 @@ pub struct BatchReport {
     /// before Phase 7.4 (and the engine, which doesn't know the param) still load.
     #[serde(default)]
     pub num_ctx: Option<u32>,
+    /// The running Ollama server version (`/api/version`) when this batch ran. Stamped so a
+    /// NATIVE tool-calling regression on a version bump is diagnosable — the honest
+    /// garbled/foreign verdict reads as "at Ollama vX", not a silent zero. `None` if not probed
+    /// / Ollama down. `#[serde(default)]` so older reports load.
+    #[serde(default)]
+    pub ollama_version: Option<String>,
 }
 
 fn mean_f64(xs: &[f64]) -> Option<f64> {
@@ -533,8 +539,8 @@ where
         });
         prev = Some((target.model.clone(), target.backend));
     }
-    // The engine is param-agnostic; the command layer stamps `num_ctx` afterwards.
-    Ok(BatchReport { collection_id: collection_id.to_string(), columns, num_ctx: None })
+    // The engine is param-agnostic; the command layer stamps `num_ctx`/`ollama_version` after.
+    Ok(BatchReport { collection_id: collection_id.to_string(), columns, num_ctx: None, ollama_version: None })
 }
 
 /// Build a partial `BatchReport` from already-completed units ONLY — no execution.
@@ -580,7 +586,7 @@ pub fn fold_report(
             }
         })
         .collect();
-    BatchReport { collection_id: collection_id.to_string(), columns, num_ctx: None }
+    BatchReport { collection_id: collection_id.to_string(), columns, num_ctx: None, ollama_version: None }
 }
 
 fn unit_of(target: &ModelTarget, task: &ToolTask, outcome: TaskOutcome, is_native: bool) -> CompletedUnit {
