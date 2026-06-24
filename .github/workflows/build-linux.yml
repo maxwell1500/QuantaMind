@@ -64,11 +64,11 @@ jobs:
 
       - name: Build .deb
         working-directory: backend
-        run: cargo tauri build -b deb
+        run: pnpm tauri build -b deb
 
       - name: Build .rpm
         working-directory: backend
-        run: cargo tauri build -b rpm
+        run: pnpm tauri build -b rpm
 
       - name: List built artifacts
         working-directory: backend
