@@ -25,6 +25,13 @@ pub enum FailureKind {
     /// A failure (the task didn't pass), but the MILDEST: it's distinct from a true
     /// `Hallucinated` so a capable-but-wrong-channel model isn't mislabeled.
     ReportedInProse,
+    /// The model emitted a NON-JSON tool-call dialect the parser can't read (a mis-built
+    /// model generating harmony-ish channel tokens — `<|tool_response|>call:NAME(...)`).
+    /// Deliberately NOT salvaged: a real deployment (Ollama's native parser) also drops
+    /// these forms, so crediting them would make the bench more lenient than production.
+    /// Distinct from `Malformed` (broke real JSON) and `Hallucinated` (yielded nothing) so
+    /// a template/dialect artifact isn't mislabeled as a model-capability failure.
+    ForeignDialect,
 }
 
 /// The result of ONE agentic attempt — the unit the Pass^k loop folds into an
@@ -129,6 +136,12 @@ pub struct FailureTracker {
     /// so reports persisted before G3 load as 0.
     #[serde(default)]
     pub reported_in_prose_calls: u32,
+    /// Runs whose only output was an unparseable foreign tool-call dialect (a mis-built
+    /// model emitting channel-token soup). A real failure mode — participates in `top()` —
+    /// but named honestly so it isn't laundered into `malformed_json`/`hallucinated`.
+    /// `#[serde(default)]` so reports persisted before this load as 0.
+    #[serde(default)]
+    pub foreign_dialect_calls: u32,
 }
 
 impl FailureTracker {
@@ -141,6 +154,7 @@ impl FailureTracker {
             FailureKind::ForbiddenCall => self.forbidden_calls += 1,
             FailureKind::TurnTimeout => self.turn_timeouts += 1,
             FailureKind::ReportedInProse => self.reported_in_prose_calls += 1,
+            FailureKind::ForeignDialect => self.foreign_dialect_calls += 1,
         }
     }
 
@@ -155,14 +169,15 @@ impl FailureTracker {
         self.forbidden_calls += o.forbidden_calls;
         self.turn_timeouts += o.turn_timeouts;
         self.reported_in_prose_calls += o.reported_in_prose_calls;
+        self.foreign_dialect_calls += o.foreign_dialect_calls;
     }
 
     /// The most common failure mode (argmax). Ties resolve by severity order:
     /// forbidden-call > turn-timeout > infinite-loop > hallucinated >
-    /// malformed-schema > malformed-json > reported-in-prose. Count wins first (a model
-    /// that MOSTLY reports-in-prose still headlines it — the G3 honesty payload), but on a
-    /// tie `ReportedInProse` is LAST so any genuinely worse failure dominates the verdict.
-    /// `None` when there were no failures at all.
+    /// malformed-schema > malformed-json > foreign-dialect > reported-in-prose. Count wins
+    /// first (a model that MOSTLY reports-in-prose still headlines it — the G3 honesty
+    /// payload), but on a tie `ReportedInProse` is LAST so any genuinely worse failure
+    /// dominates the verdict. `None` when there were no failures at all.
     pub(crate) fn top(&self) -> TopError {
         [
             (self.forbidden_calls, TopError::ForbiddenCall),
@@ -171,6 +186,7 @@ impl FailureTracker {
             (self.hallucinated_completions, TopError::Hallucinated),
             (self.schema_unrecovered_calls, TopError::MalformedSchema),
             (self.malformed_json_calls, TopError::MalformedJson),
+            (self.foreign_dialect_calls, TopError::ForeignDialect),
             (self.reported_in_prose_calls, TopError::ReportedInProse),
         ]
         .into_iter()
@@ -191,6 +207,7 @@ pub enum TopError {
     ForbiddenCall,
     TurnTimeout,
     ReportedInProse,
+    ForeignDialect,
 }
 
 /// The Pass^k payload: how many of `total_runs` reached the end state, the

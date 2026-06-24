@@ -319,6 +319,97 @@ async fn lazy_agent_claiming_done_is_a_failure_not_a_pass() {
 }
 
 #[tokio::test]
+#[ignore = "hits a live Ollama on :11434 with a mis-built gemma-4-12b-it-qat (nondeterministic dialect)"]
+async fn live_gemma_verdict_matches_its_actual_output() {
+    // End-to-end against the REAL model. gemma-qat is a broken artifact whose output VARIES
+    // run-to-run: a clean call (pass), foreign `call:NAME(...)` token soup (→ ForeignDialect),
+    // or a token-leak-then-prose hallucination (→ Hallucinated). We can't hard-assert one
+    // verdict. Instead we assert the INVARIANT that proves the wiring is honest: the runner's
+    // verdict must AGREE with what the shared classifier says about the model's actual output —
+    // foreign-dialect soup is flagged foreign, and a non-soup yield is NOT false-flagged. This
+    // also guards the original bug: the run is always given a definite verdict, never silently
+    // dropped/empty.
+    use crate::inference::backend::backend_kind::BackendKind;
+    use crate::inference::eval::toolcall::parse::looks_like_foreign_dialect;
+
+    let cart = DeterministicSandbox::new(
+        "Run the test suite for module 'cart'. If it fails, report which test failed. Do not edit any source.".into(),
+        vec![],
+        vec![MockResponse {
+            call: Call { name: "run_tests".into(), args: json!({ "module": "cart" }) },
+            response: r#"{"failed":["test_apply_discount_negative_total"]}"#.into(),
+        }],
+        EndStateRule::RequireSequence(vec![TaskCheckpoint {
+            tool: "run_tests".into(),
+            args: json!({ "module": "cart" }),
+        }]),
+    );
+    let model = crate::inference::eval::agentic::model_turn::BackendTurn {
+        backend: BackendKind::Ollama,
+        endpoint: "http://localhost:11434".into(),
+        model: "gemma-4-12b-it-qat:q4_0".into(),
+        cancel: CancellationToken::new(),
+        options: None,
+        keep_alive: None,
+        is_thinking: false,
+        max_tokens: 512,
+        stop_cache: Default::default(),
+    };
+    let (tx, mut rx) = unbounded_channel();
+    let report = run_agentic(&model, &cart, AgenticConfig { k: 1, max_steps: 3, ..Default::default() }, &tx)
+        .await
+        .unwrap();
+    drop(tx);
+
+    let steps = drain(&mut rx);
+    for s in &steps {
+        eprintln!("step {} kind={:?}\n  raw={}", s.step_index, s.kind, s.raw_output);
+    }
+    eprintln!("report = {report:?}");
+
+    // The verdict must be a real classification of the actual output, never a silent drop.
+    assert_eq!(report.passes + report.failures.foreign_dialect_calls + report.failures.hallucinated_completions
+        + report.failures.malformed_json_calls + report.failures.infinite_loop_hits
+        + report.failures.reported_in_prose_calls, report.total_runs, "every run got a definite verdict");
+
+    // When the terminal turn IS foreign-dialect soup, it must be flagged foreign — and never
+    // when it isn't (no false-positive on a plain prose/hallucinated yield).
+    let terminal = steps.last().expect("at least one step");
+    if looks_like_foreign_dialect(&terminal.raw_output) {
+        assert_eq!(report.top_error, TopError::ForeignDialect, "soup must be flagged ForeignDialect");
+        assert_eq!(report.failures.hallucinated_completions, 0, "soup must not be a hallucination");
+        assert_eq!(report.failures.malformed_json_calls, 0, "soup must not be broken-JSON");
+    } else {
+        assert_eq!(report.failures.foreign_dialect_calls, 0, "a non-soup yield must NOT be false-flagged foreign");
+    }
+}
+
+#[tokio::test]
+async fn foreign_dialect_soup_is_flagged_not_hallucinated_or_malformed() {
+    // A mis-built model emits an unparseable channel/harmony dialect (paren form in
+    // control tokens) that the parser — like a real deployment — does NOT salvage. It must
+    // be labeled ForeignDialect (a template/dialect artifact), NOT mislabeled as a
+    // hallucinated completion or broken JSON, which would blame the model's capability.
+    let model = ScriptedModel::new(vec![(
+        "<channel|><|tool_response|>call:reply(text='cart suite failed: test_apply_discount_negative_total')<tool_call|>",
+        14,
+    )]);
+    let (tx, mut rx) = unbounded_channel();
+    let report = run_agentic(&model, &sandbox(), AgenticConfig { k: 1, max_steps: 8, ..Default::default() }, &tx).await.unwrap();
+    drop(tx);
+
+    assert_eq!(report.passes, 0);
+    assert_eq!(report.failures.foreign_dialect_calls, 1);
+    assert_eq!(report.failures.hallucinated_completions, 0, "not a hallucination");
+    assert_eq!(report.failures.malformed_json_calls, 0, "not broken JSON");
+    assert_eq!(report.top_error, TopError::ForeignDialect);
+
+    let steps = drain(&mut rx);
+    assert_eq!(steps.len(), 1);
+    assert_eq!(steps[0].kind, StepKind::ForeignDialect);
+}
+
+#[tokio::test]
 async fn transient_trap_is_retried_to_success() {
     // The final call is trapped with a transient 503 that clears after one attempt.
     // The model re-issues the same valid call: turn 1 trips the 503, turn 2 the trap

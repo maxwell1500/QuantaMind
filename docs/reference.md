@@ -447,7 +447,10 @@ Error), with a click-through Trace Debugger. See [the workspace](#eval-runner).
   per-task `AgenticReport` carries `passes/total_runs`, a
   `FailureTracker` with **distinct** tallies (`infinite_loop_hits` = hit the step
   cap, `hallucinated_completions` = fake done, `malformed_json_calls` = broken
-  JSON, `schema_unrecovered_calls` = exhausted the recovery budget), and a
+  JSON, `schema_unrecovered_calls` = exhausted the recovery budget,
+  `reported_in_prose_calls` = content-correct/wrong-channel, `foreign_dialect_calls`
+  = emitted an unparseable non-JSON tool dialect — see the production-parity note
+  below), and a
   `top_error` headline. `unknown_tool_calls` is a Phase-9 **diagnostic** tally
   (decoy / hallucinated-tool calls) — it captures *how* a model coped with decoys
   but is **not** a terminal failure, so it is excluded from `top_error`. The **collection-level Pass^k** (the Matrix headline and
@@ -456,6 +459,23 @@ Error), with a click-through Trace Debugger. See [the workspace](#eval-runner).
   flaky 3/5 task counts as a failure, not 0.6 — reliability compounds and a model
   that "usually works" is not agent-ready. The run-level sums (`passes/total_runs`)
   are retained only as the secondary per-run rate behind the "Partial *p/k*" badge.
+- **Foreign-dialect verdict & production-parity (no over-lenient salvage).** A
+  mis-built model (e.g. a mis-quantized GGUF) can emit a non-JSON tool grammar — a
+  mismatched harmony/channel dialect like `<|tool_response|>call:reply(text='…')` —
+  that neither the parser nor a real deployment can read. Such a run is labeled
+  **`foreign_dialect`** (its own `StepKind`/`TopError`/tally), *distinct* from
+  `malformed_json` (broke real JSON) and `hallucinated_completions` (yielded
+  nothing): the failure verdict names the real cause — a template/dialect artifact,
+  **not** a model-capability failure. Crucially the harness does **not** salvage
+  these forms. The bar is **production parity**: a call is recovered only when a real
+  client (Ollama's native tools parser) would also recover it — the existing
+  `Harmony` normalizer keeps salvaging the clean `call:NAME{…}` form Ollama recovers,
+  but the broken `<|"|>`-wrapped and paren forms Ollama drops are labeled, not
+  reconstructed. Salvaging what production can't would make the bench *more lenient
+  than reality*, inverting the founding principle into "pass in the bench → fail in
+  production". The detector keys on an attempted-call **structure** (`call:IDENT`
+  + `{`/`(`) co-occurring with a channel control token, so prose merely mentioning
+  these tokens is never mislabeled.
 - **Lazy-agent traps (Driver B fault injection).** A task may attach `faults` —
   per-call `TransientError { status_code, clears_after }` or
   `PersistentError { status_code }`, keyed by the same canonical call form as the
@@ -1228,7 +1248,8 @@ new `ModelVerdict` field stays private until added to `project` on purpose): `mo
 (`status`, `eval_method`, `tier_tested`, `cleared_tier`, `hardware_class`,
 `recommended_tier`), the per-tier saturation curve (`by_tier`:
 `{tier, pass_k_rate, k, avg_steps?, decoy_count?}`), the failure **distribution**
-(`failure_distribution` — counts by mode incl. the new `reported_in_prose`, never the
+(`failure_distribution` — counts by mode incl. `reported_in_prose` and
+`foreign_dialect`, never the
 failing runs), the collection identity (`collection_name` + a content `collection_hash`
 so results compare only across an identical scenario set), build provenance
 (`schema_version`, `engine_version`, `build_hash` — a short git commit from `build.rs`),

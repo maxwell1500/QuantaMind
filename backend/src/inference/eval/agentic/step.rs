@@ -37,6 +37,10 @@ pub enum StepKind {
     /// instead of calling the required reporter tool — content correct, channel wrong.
     /// A failure, but the mildest (rendered amber, not the red of a true hallucination).
     ReportedInProse,
+    /// The model emitted an unparseable foreign tool-call dialect (channel-token soup from
+    /// a mis-built model) — neither valid JSON nor a recoverable native grammar. Named
+    /// honestly so a template/dialect artifact isn't shown as a hallucination or bad JSON.
+    ForeignDialect,
 }
 
 /// One turn of an agentic run, streamed to the UI as it happens. `injection` is
