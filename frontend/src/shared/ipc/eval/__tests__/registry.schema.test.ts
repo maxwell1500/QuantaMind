@@ -46,4 +46,17 @@ describe("ToolTaskSchema — bundled v2 (agent_loop) scenarios", () => {
     expect(parsed.agentic?.world_state).toEqual({ cart_tests: { failing: "test_total_with_tax", result: "fail" } });
     expect(parsed.agentic?.must_not_call).toEqual(["write_file"]);
   });
+
+  it("PRESERVES `environment` so a filesystem task round-trips and the fs env activates", () => {
+    // Regression: `environment` was missing from the schema → z.object() stripped it on the
+    // round-trip → the backend re-received it as Entity → the fs env never activated
+    // (read_file acked empty, no visual replay). It must survive verbatim.
+    const fsTask = {
+      ...EASY_CODING_TASK,
+      id: "es_fs_read_config",
+      agentic: { ...EASY_CODING_TASK.agentic, environment: "filesystem", world_state: { "config.yaml": "timeout: 30\n" } },
+    };
+    const parsed = ToolTaskSchema.parse(fsTask);
+    expect(parsed.agentic?.environment).toBe("filesystem");
+  });
 });
