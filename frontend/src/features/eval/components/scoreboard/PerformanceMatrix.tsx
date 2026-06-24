@@ -90,21 +90,45 @@ function getTopErrorBadge(val: string) {
   if (val === "Error") {
     return <span style={{ ...badgeStyle, background: "#fee2e2", border: "1px solid #fca5a5", color: "#991b1b" }}>Error</span>;
   }
+  if (val === "Bad Dialect") {
+    // Amber, not red: an unparseable foreign tool dialect is a template/build artifact, not
+    // a hard capability failure — visually distinct from Fake Done / Bad Schema.
+    return <span style={{ ...badgeStyle, background: "#fffbeb", border: "1px solid #fef3c7", color: "#b45309" }}>Bad Dialect</span>;
+  }
   if (val === "—" || val === "N/A") {
     return <span style={{ color: "#94a3b8" }}>—</span>;
   }
   return <span style={{ ...badgeStyle, background: "#f1f5f9", border: "1px solid #e2e8f0", color: "#475569" }}>{val}</span>;
 }
 
-/// The full failure breakdown behind `top_error` — all four counts including the two
-/// the cell otherwise hides (Fake Done / Bad Schema). `total` gates whether to show
-/// the ⓘ at all. Labels mirror TOP_ERROR_LABEL.
+/// The full failure breakdown behind `top_error` — every TERMINAL failure count, so the ⓘ
+/// total can never disagree with a `top_error` badge (e.g. a Bad-Dialect-only model used to
+/// show the badge but `total === 0`, hiding the ⓘ). The four original modes are always shown;
+/// the newer terminal modes (Forbidden / Timeout / Wrong Channel / Bad Dialect) are appended
+/// only when non-zero to keep the tooltip terse. `unknown_tool_calls` is a diagnostic, not a
+/// terminal failure — excluded here, mirroring the backend `top()`. Labels mirror
+/// TOP_ERROR_LABEL.
 function failureBreakdown(f: FailureTracker): { total: number; text: string } {
+  const extra: [string, number][] = [
+    ["Forbidden", f.forbidden_calls ?? 0],
+    ["Timeout", f.turn_timeouts ?? 0],
+    ["Wrong Channel", f.reported_in_prose_calls ?? 0],
+    ["Bad Dialect", f.foreign_dialect_calls ?? 0],
+  ];
   const total =
-    f.infinite_loop_hits + f.hallucinated_completions + f.schema_unrecovered_calls + f.malformed_json_calls;
+    f.infinite_loop_hits +
+    f.hallucinated_completions +
+    f.schema_unrecovered_calls +
+    f.malformed_json_calls +
+    extra.reduce((s, [, n]) => s + n, 0);
+  const extraText = extra
+    .filter(([, n]) => n > 0)
+    .map(([l, n]) => ` · ${l} ${n}`)
+    .join("");
   const text =
     `Loop Cap ${f.infinite_loop_hits} · Fake Done ${f.hallucinated_completions} · ` +
     `Bad Schema ${f.schema_unrecovered_calls} · Malformed ${f.malformed_json_calls}` +
+    extraText +
     ` — Top Error is the dominant mode`;
   return { total, text };
 }

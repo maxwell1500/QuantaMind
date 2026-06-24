@@ -385,6 +385,72 @@ async fn live_gemma_verdict_matches_its_actual_output() {
 }
 
 #[tokio::test]
+#[ignore = "hits a live Ollama on :11434 driving gemma-4-12b-it-qat through the NATIVE /api/chat tools path"]
+async fn live_gemma_native_path_gives_an_honest_verdict_not_silent_empty() {
+    // The native-path wiring fix end-to-end: NativeOllamaTurn now surfaces the assistant
+    // `content` when Ollama parses zero tool_calls, so a mis-built model's output is given a
+    // real verdict instead of collapsing to a silent empty → Hallucinated. Drives the REAL
+    // /api/chat tools path. gemma-qat is nondeterministic, so we assert the INVARIANT: the run
+    // gets a definite verdict, and any foreign-dialect soup in the terminal turn is flagged
+    // foreign (never false-flagged on a clean/prose turn).
+    use crate::inference::eval::toolcall::parse::looks_like_foreign_dialect;
+    use crate::inference::eval::toolcall::tasks::ToolSchema;
+
+    let tool = |name: &str, props: serde_json::Value| ToolSchema {
+        name: name.into(),
+        description: format!("Agent tool '{name}'."),
+        parameters: json!({ "type": "object", "properties": props }),
+    };
+    let tools = vec![
+        tool("run_tests", json!({ "module": { "type": "string" } })),
+        tool("read_file", json!({ "path": { "type": "string" } })),
+        tool("reply", json!({ "text": { "type": "string" } })),
+        tool("write_file", json!({ "path": { "type": "string" }, "content": { "type": "string" } })),
+    ];
+    let cart = DeterministicSandbox::new(
+        "Run the test suite for module 'cart'. If it fails, report which test failed. Do not edit any source.".into(),
+        tools.clone(),
+        vec![MockResponse {
+            call: Call { name: "run_tests".into(), args: json!({ "module": "cart" }) },
+            response: r#"{"failed":["test_apply_discount_negative_total"]}"#.into(),
+        }],
+        EndStateRule::RequireSequence(vec![TaskCheckpoint {
+            tool: "run_tests".into(),
+            args: json!({ "module": "cart" }),
+        }]),
+    );
+    let model = crate::inference::eval::agentic::model_turn::NativeOllamaTurn {
+        endpoint: "http://localhost:11434".into(),
+        model: "gemma-4-12b-it-qat:q4_0".into(),
+        tools,
+        options: None,
+    };
+    let (tx, mut rx) = unbounded_channel();
+    let report = run_agentic(&model, &cart, AgenticConfig { k: 1, max_steps: 3, ..Default::default() }, &tx)
+        .await
+        .unwrap();
+    drop(tx);
+
+    let steps = drain(&mut rx);
+    for s in &steps {
+        eprintln!("step {} kind={:?}\n  raw={}", s.step_index, s.kind, s.raw_output);
+    }
+    eprintln!("NATIVE report = {report:?}");
+
+    // Definite verdict — never the silent-empty bug.
+    assert_eq!(report.passes + report.failures.foreign_dialect_calls + report.failures.hallucinated_completions
+        + report.failures.malformed_json_calls + report.failures.infinite_loop_hits
+        + report.failures.reported_in_prose_calls, report.total_runs, "every run got a definite verdict");
+
+    let terminal = steps.last().expect("at least one step");
+    if looks_like_foreign_dialect(&terminal.raw_output) {
+        assert_eq!(report.top_error, TopError::ForeignDialect, "native soup must be flagged ForeignDialect");
+    } else {
+        assert_eq!(report.failures.foreign_dialect_calls, 0, "a non-soup native yield must NOT be false-flagged");
+    }
+}
+
+#[tokio::test]
 async fn foreign_dialect_soup_is_flagged_not_hallucinated_or_malformed() {
     // A mis-built model emits an unparseable channel/harmony dialect (paren form in
     // control tokens) that the parser — like a real deployment — does NOT salvage. It must
