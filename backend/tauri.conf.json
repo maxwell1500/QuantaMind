@@ -36,7 +36,16 @@
     },
     "linux": {
       "deb": {
-        "depends": ["libwebkit2gtk-4.1-0", "libgtk-3-0"]
+        "depends": [
+          "libwebkit2gtk-4.1-0",
+          "libgtk-3-0",
+          "libayatana-appindicator3-1",
+          "librsvg2-common",
+          "libssl3",
+          "libasound2t64",
+          "libpulse0",
+          "ffmpeg"
+        ]
       }
     }
   },
