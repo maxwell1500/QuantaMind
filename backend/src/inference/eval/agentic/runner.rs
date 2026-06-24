@@ -6,7 +6,9 @@ use crate::inference::eval::agentic::scoring::report::{AgenticReport, FailureKin
 use crate::inference::eval::agentic::sandbox::{canonical, DeterministicSandbox, EndStateRule, SandboxState, TaskCheckpoint};
 use crate::inference::eval::agentic::v2::r#match::text_matches;
 use crate::inference::eval::agentic::step::{StepKind, TrajectoryStep};
-use crate::inference::eval::toolcall::parse::{extract_calls_dialect, looks_like_broken_json, strip_think, ToolCallDialect};
+use crate::inference::eval::toolcall::parse::{
+    extract_calls_dialect, looks_like_broken_json, looks_like_foreign_dialect, strip_think, ToolCallDialect,
+};
 use crate::inference::eval::toolcall::prompt::{build_system_for, TerminalGuidance};
 use crate::inference::generate::generate_options::{GenerateOptions, EVAL_REPEAT_PENALTY};
 use crate::inference::generate::generate_spec::GenerateSpec;
@@ -364,7 +366,13 @@ async fn run_steps<M: ModelTurn>(
                 }
                 // Yielded (no call) without completing the required checkpoints.
                 EndStateRule::RequireSequence(_) | EndStateRule::RequireAll(_) => {
-                    let (kind, failure) = if looks_like_broken_json(&clean) {
+                    let (kind, failure) = if looks_like_foreign_dialect(&clean) {
+                        // The model spoke a non-JSON tool dialect the parser (and a real
+                        // deployment) can't read — a template/dialect artifact, NOT a
+                        // hallucination or broken JSON. Checked first so it wins over the
+                        // braces-but-no-object `Malformed` heuristic.
+                        (StepKind::ForeignDialect, FailureKind::ForeignDialect)
+                    } else if looks_like_broken_json(&clean) {
                         (StepKind::MalformedJson, FailureKind::Malformed)
                     } else if reported_in_prose(&sandbox.end_state, &satisfied, next_cp, &clean) {
                         // G3: did ALL the work, only failed to route the final answer through

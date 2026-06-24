@@ -289,6 +289,54 @@ pub(crate) fn looks_like_broken_json(text: &str) -> bool {
     text.contains('{') && !has_json_object(text)
 }
 
+/// `call:IDENT` immediately followed (after optional whitespace) by `{` or `(` — the
+/// SHAPE of an attempted tool call in the channel/harmony dialect, regardless of whether
+/// the body parses. Mirrors `harmony_calls`'s anchor but also accepts the paren form and
+/// does not require a parseable body, so it recognizes an *attempt* the normalizer dropped.
+fn has_call_structure(text: &str) -> bool {
+    let chars: Vec<char> = text.chars().collect();
+    const MARK: [char; 5] = ['c', 'a', 'l', 'l', ':'];
+    let mut i = 0;
+    while i < chars.len() {
+        if !chars[i..].starts_with(&MARK) {
+            i += 1;
+            continue;
+        }
+        let mut j = i + MARK.len();
+        let name_start = j;
+        while j < chars.len() && (chars[j].is_alphanumeric() || chars[j] == '_') {
+            j += 1;
+        }
+        if j > name_start {
+            let mut k = j;
+            while k < chars.len() && chars[k].is_whitespace() {
+                k += 1;
+            }
+            if k < chars.len() && (chars[k] == '{' || chars[k] == '(') {
+                return true;
+            }
+        }
+        i += 1;
+    }
+    false
+}
+
+/// A no-call yield whose text is genuine foreign tool-call DIALECT soup — the model
+/// generated in a non-JSON tool grammar (a mis-built gemma-qat emits harmony-ish channel
+/// tokens) the parser can't read, rather than fumbling JSON ([`looks_like_broken_json`] →
+/// `Malformed`) or yielding nothing (`Hallucinated`). Deliberately NOT salvaged: a real
+/// deployment (Ollama's native parser) also drops these forms, so crediting them would make
+/// the bench more lenient than production. Anchored on BOTH a channel control token AND an
+/// attempted [`has_call_structure`]: either alone appears in ordinary prose (a model quoting
+/// `<|tool_response|>`, or writing "call:foo(x)"), so the verdict requires the pair — they
+/// only co-occur when the model is actually emitting the dialect. A bare `call:x{}` with no
+/// channel token stays in the existing `Malformed`/`Hallucinated` buckets (conservative).
+pub(crate) fn looks_like_foreign_dialect(text: &str) -> bool {
+    let has_channel_token =
+        text.contains("<|tool_response") || text.contains("<channel|") || text.contains("<tool_call|");
+    has_channel_token && has_call_structure(text)
+}
+
 /// Remove every `<think>…</think>` reasoning span from a model turn so the tool-call
 /// parser and the transcript see the model's ACTUAL output, not its scratchpad. A
 /// reasoning model emits its chain-of-thought before the call; left in place its inner
@@ -472,5 +520,62 @@ mod tests {
         let calls = extract_calls(&cleaned).unwrap();
         assert_eq!(calls.len(), 1);
         assert_eq!(calls[0].name, "bar");
+    }
+
+    // ---- foreign-dialect detection (production-parity: flag, do NOT salvage) ----
+
+    #[test]
+    fn foreign_dialect_paren_form_is_not_salvaged_but_is_flagged() {
+        // A mis-built gemma-qat (prompt path) emits paren-form calls in channel tokens.
+        // Ollama's native parser does not recover paren-form function calls, so neither do
+        // we — but it IS recognized as foreign dialect, not a bare hallucination.
+        let raw = "<audio|>thought<channel|><|tool_response|>call:reply(text='The test suite for module \"cart\" failed: test_add_item_to_cart_success')<tool_call|>";
+        assert!(extract_calls_dialect(raw).is_none(), "paren form must NOT be salvaged (production drops it)");
+        assert!(looks_like_foreign_dialect(raw));
+        // And it isn't mistaken for a broken-JSON attempt (no '{' anywhere).
+        assert!(!looks_like_broken_json(raw));
+    }
+
+    #[test]
+    fn foreign_dialect_brace_with_pseudo_quote_wrappers_is_not_salvaged_but_is_flagged() {
+        // The `<|"|>` string-value wrappers break relax_object — Ollama's native parser
+        // dropped this `reply` too, so we drop it as well and flag the run foreign.
+        let raw = "thought\n<channel|><|tool_response|>call:reply{text:<|\"|>The test suite for module 'cart' failed: test_add_item_to_cart_success<|\"|>}<tool_call|>";
+        assert!(extract_calls_dialect(raw).is_none(), "<|\"|>-wrapped body must NOT be salvaged");
+        assert!(looks_like_foreign_dialect(raw));
+    }
+
+    #[test]
+    fn clean_brace_harmony_call_is_still_salvaged_at_production_parity() {
+        // `call:run_tests{module:'cart'}` has no `<|"|>` wrapper — Ollama's native parser
+        // recovers it, so the existing harmony path must keep recovering it (unchanged).
+        let raw = "<channel|><|tool_response|>call:run_tests{module: \"cart\"}<tool_call|>";
+        let (calls, dialect) = extract_calls_dialect(raw).unwrap();
+        assert_eq!(dialect, ToolCallDialect::Harmony);
+        assert_eq!(calls.len(), 1);
+        assert_eq!(calls[0].name, "run_tests");
+        assert_eq!(calls[0].args, json!({"module": "cart"}));
+    }
+
+    #[test]
+    fn prose_mentioning_call_syntax_is_not_flagged_foreign() {
+        // Adversarial false-positive: a model EXPLAINING the dialect in plain prose has a
+        // call-structure-looking substring and a stray `<|"|>`, but no channel control
+        // token — so it must NOT be labeled foreign dialect (nor salvaged).
+        let prose = "To invoke it you'd write call:foo(x) or wrap the value in a <|\"|> delimiter.";
+        assert!(!looks_like_foreign_dialect(prose));
+        assert!(extract_calls_dialect(prose).is_none());
+    }
+
+    #[test]
+    fn channel_token_alone_without_a_call_is_not_flagged_foreign() {
+        // A model discussing harmony tokens in prose, with no attempted call, is not foreign.
+        let prose = "Harmony models wrap output in a <|tool_response|> block before the answer.";
+        assert!(!looks_like_foreign_dialect(prose));
+    }
+
+    #[test]
+    fn standard_json_is_not_flagged_foreign() {
+        assert!(!looks_like_foreign_dialect("{\"name\":\"run_tests\",\"args\":{\"module\":\"cart\"}}"));
     }
 }

@@ -27,6 +27,7 @@ const KIND_LABEL: Record<StepKind, string> = {
   forbidden_call: "forbidden call",
   turn_timeout: "turn timed out",
   reported_in_prose: "answered in prose",
+  foreign_dialect: "foreign tool dialect",
 };
 
 function formatElapsed(ms: number): string {

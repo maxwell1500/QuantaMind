@@ -71,7 +71,7 @@ const FlagIcon = () => (
 
 const getStepIcon = (kind: string, isError: boolean): React.ReactNode => {
   if (kind === "tool_call") return <GearIcon />;
-  if (kind === "tool_error" || kind === "schema_error" || kind === "malformed_json" || kind === "turn_timeout") return <ErrorIcon />;
+  if (kind === "tool_error" || kind === "schema_error" || kind === "malformed_json" || kind === "turn_timeout" || kind === "foreign_dialect") return <ErrorIcon />;
   if (kind === "infinite_loop") return <LoopIcon />;
   if (kind === "hallucinated_completion" || kind === "forbidden_call" || kind === "reported_in_prose") return <StopIcon />;
   if (kind === "end_state_reached") return <FlagIcon />;
@@ -90,7 +90,8 @@ export const isErrorKind = (kind: string): boolean =>
   kind === "infinite_loop" ||
   kind === "forbidden_call" ||
   kind === "turn_timeout" ||
-  kind === "reported_in_prose";
+  kind === "reported_in_prose" ||
+  kind === "foreign_dialect";
 
 export const getStepTitle = (kind: string, isError: boolean) => {
   if (kind === "tool_call") return "Model Outputs Tool Call";
@@ -103,6 +104,7 @@ export const getStepTitle = (kind: string, isError: boolean) => {
   if (kind === "forbidden_call") return "Forbidden Action (Trap Sprung)";
   if (kind === "turn_timeout") return "Turn Timeout (Stalled Model)";
   if (kind === "reported_in_prose") return "Reported In Prose (Wrong Channel)";
+  if (kind === "foreign_dialect") return "Foreign Tool Dialect (Unparseable)";
   if (kind === "end_state_reached") return "End State Verification";
   return isError ? "Execution Failure" : "Model Output Success";
 };
@@ -125,6 +127,12 @@ export const verdictLabel = (topError: string): { title: string; detail: string 
       return { title: "FORBIDDEN ACTION", detail: "The model invoked a must_not_call trap — terminal the moment it fired." };
     case "turn_timeout":
       return { title: "TURN TIMEOUT", detail: "A model turn exceeded the per-step wall-clock budget (a stalled model)." };
+    case "foreign_dialect":
+      return {
+        title: "FOREIGN TOOL DIALECT",
+        detail:
+          "The model emitted an unparseable non-JSON tool dialect (a mis-built model's channel-token soup) — a template/dialect artifact, not a capability failure. Not salvaged: a real deployment couldn't read it either.",
+      };
     case "reported_in_prose":
       return {
         title: "REPORTED IN PROSE",
@@ -157,7 +165,7 @@ const getStepNodeStyle = (kind: string, isError: boolean): React.CSSProperties =
     bg = "#f0fdfa";
     border = "1px solid #ccfbf1";
     color = "#0f766e"; // teal — mildest failure, distinct from amber/red
-  } else if (kind === "schema_error" || kind === "hallucinated_completion" || kind === "malformed_json") {
+  } else if (kind === "schema_error" || kind === "hallucinated_completion" || kind === "malformed_json" || kind === "foreign_dialect") {
     bg = "#fffbeb";
     border = "1px solid #fef3c7";
     color = "#b45309";
@@ -201,7 +209,7 @@ const getCardStyle = (kind: string, isError: boolean): React.CSSProperties => {
     bg = "#f0fdfa";
     border = "1px solid #ccfbf1";
     borderLeft = "3px solid #14b8a6"; // teal — mildest failure, distinct from amber/red
-  } else if (kind === "schema_error" || kind === "hallucinated_completion" || kind === "malformed_json") {
+  } else if (kind === "schema_error" || kind === "hallucinated_completion" || kind === "malformed_json" || kind === "foreign_dialect") {
     bg = "#fffbeb";
     border = "1px solid #fef3c7";
     borderLeft = "3px solid #f59e0b";

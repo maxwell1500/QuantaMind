@@ -23,6 +23,7 @@ export const StepKindSchema = z.enum([
   "forbidden_call",
   "turn_timeout",
   "reported_in_prose",
+  "foreign_dialect",
 ]);
 export type StepKind = z.infer<typeof StepKindSchema>;
 
@@ -44,6 +45,7 @@ export const TopErrorSchema = z.enum([
   "forbidden_call",
   "turn_timeout",
   "reported_in_prose",
+  "foreign_dialect",
 ]);
 export type TopError = z.infer<typeof TopErrorSchema>;
 
@@ -60,6 +62,9 @@ export const FailureTrackerSchema = z.object({
   turn_timeouts: z.number().int().optional(),
   // G3: content-correct, wrong-channel (answered in prose instead of the reporter tool).
   reported_in_prose_calls: z.number().int().optional(),
+  // Unparseable foreign tool-call dialect (a mis-built model emitting channel-token soup).
+  // A template/dialect artifact, not a capability failure — labeled, never salvaged.
+  foreign_dialect_calls: z.number().int().optional(),
 });
 export type FailureTracker = z.infer<typeof FailureTrackerSchema>;
 

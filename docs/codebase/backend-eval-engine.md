@@ -198,12 +198,25 @@ if abstain != matches!(t.expected, Expected::NoCall) { return Err(bad(&t.id, "ex
   (`{name, args|arguments}`), `balanced_brace`, `relax_object`/`relax_to_json` (quote bare
   keys + escape raw control chars in code strings so a JS-object body parses);
   `pub(crate) has_json_object`, `looks_like_broken_json` (used by the agentic runner to
-  tell broken JSON from a hallucinated completion).
+  tell broken JSON from a hallucinated completion), and `pub(crate)
+  looks_like_foreign_dialect` (a channel control token co-occurring with an attempted
+  `call:IDENT{`/`(` structure — see below).
 - **Dialect (`ToolCallDialect`):** `Standard` (instructed JSON) or `Harmony` (native
   channel grammar). The runner threads the recovered dialect onto `RunOutcome`→`AgenticReport`
   so the scoreboard flags a model that only scored via normalization (transparency — the
   score isn't silently laundered). Standard is tried first, so a clean-JSON model is never
   mislabeled; a bareword VALUE still fails to relax → dropped, not guessed.
+- **Foreign-dialect detection — `looks_like_foreign_dialect` (production parity):** a
+  mis-built model can emit an unparseable non-JSON dialect (harmony-ish soup like
+  `<|tool_response|>call:reply(text='…')`, or `call:reply{text:<|"|>…<|"|>}`). The harness
+  does NOT salvage these — `harmony_calls` already drops them (paren form has no `{`; the
+  `<|"|>`-wrapped body fails `relax_object`), matching what Ollama's native parser also
+  drops, so the bench never scores looser than a real deployment. Instead the runner labels
+  such a no-call turn `ForeignDialect` (its own `FailureKind`/`StepKind`/`TopError`/tally),
+  distinct from `Malformed`/`Hallucinated`. The detector requires BOTH a channel control
+  token (`<|tool_response`/`<channel|`/`<tool_call|`) AND an attempted-call structure, so
+  prose merely quoting those tokens is never mislabeled. (`foreign_dialect_calls` is
+  internal-only; not on the publish allowlist — see `backend-publish.md`.)
 - **How/Where used:** `eval::trace_one_with`, `runner::run_steps`.
 
 ```rust

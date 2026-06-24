@@ -14,6 +14,7 @@ const FAILURE_MODES: { key: keyof FailureTracker; label: string; vuln: string }[
   { key: "schema_unrecovered_calls", label: "SchemaError", vuln: "Exhausted the schema-recovery budget on invalid calls." },
   { key: "turn_timeouts", label: "TurnTimeout", vuln: "Exceeded the per-step wall-clock budget (wedged)." },
   { key: "reported_in_prose_calls", label: "ReportedInProse", vuln: "Did the work but answered in plain text instead of the required tool (content correct, wrong channel)." },
+  { key: "foreign_dialect_calls", label: "ForeignDialect", vuln: "Emitted an unparseable non-JSON tool dialect (mis-built model) — a template/dialect artifact, not a capability gap." },
 ];
 
 const ZERO: FailureTracker = {
@@ -25,6 +26,7 @@ const ZERO: FailureTracker = {
   forbidden_calls: 0,
   turn_timeouts: 0,
   reported_in_prose_calls: 0,
+  foreign_dialect_calls: 0,
 };
 
 function sumFailures(list: FailureTracker[]): FailureTracker {
