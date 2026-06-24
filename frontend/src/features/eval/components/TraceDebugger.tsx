@@ -10,6 +10,7 @@ import { Spinner } from "../../../shared/ui/Spinner";
 import { TOOL_HELP } from "../help";
 import { agenticSystemPreview } from "../agenticPrompt";
 import { RunIoModal, type RunIoMode } from "./RunIoModal";
+import { EnvironmentReplayPanel, hasEnvReplay } from "./replay/EnvironmentReplayPanel";
 import { isStrictPass, type TrajectoryStep } from "../../../shared/ipc/eval/batch";
 
 interface TraceDebuggerProps {
@@ -561,7 +562,8 @@ export function TraceDebugger({
                           </div>
 
                           {expanded && (
-                            <div style={{ ...timelineContainer, marginTop: 12 }}>
+                            <div style={hasEnvReplay(group.steps) ? splitRow : undefined}>
+                            <div style={{ ...timelineContainer, marginTop: 12, ...(hasEnvReplay(group.steps) ? splitTimeline : null) }}>
                               {group.steps.map((s, index) => {
                                 const isError = isErrorKind(s.kind);
 
@@ -618,6 +620,12 @@ export function TraceDebugger({
                                   </div>
                                 );
                               })}
+                            </div>
+                            {hasEnvReplay(group.steps) && (
+                              <div style={replayCol} data-testid={`env-replay-${group.runIndex}`}>
+                                <EnvironmentReplayPanel steps={group.steps} />
+                              </div>
+                            )}
                             </div>
                           )}
                         </div>
@@ -836,6 +844,11 @@ const timelineContainer: React.CSSProperties = {
   gap: "18px",
   position: "relative",
 };
+
+// Split-view: text trace (left) + visual environment replay (right), for environment tasks.
+const splitRow: React.CSSProperties = { display: "flex", gap: 12, alignItems: "flex-start", marginTop: 12 };
+const splitTimeline: React.CSSProperties = { flex: "1 1 0", minWidth: 0, marginTop: 0 };
+const replayCol: React.CSSProperties = { flex: "1 1 0", minWidth: 0, position: "sticky", top: 12 };
 
 const runSectionStyle: React.CSSProperties = {
   border: "1px solid #e2e8f0",
