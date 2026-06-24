@@ -1,4 +1,5 @@
 use crate::inference::eval::agentic::spec::{FaultInjection, FaultRule};
+use crate::inference::eval::agentic::v2::env_fs::FsState;
 use crate::inference::eval::agentic::v2::r#match::MustNotCall;
 use crate::inference::eval::toolcall::tasks::{Call, ToolSchema};
 use serde::{Deserialize, Serialize};
@@ -51,6 +52,9 @@ pub enum EndStateRule {
 pub enum ResponderKind {
     StaticMocks,
     WorldState(Value),
+    /// Phase 1: a simulated filesystem the agent browses with `read_file`/`list_dir`/
+    /// `search_files`/`grep`. Getters return REAL content (never an empty ack).
+    FileSystem(FsState),
 }
 
 #[derive(Clone, Debug)]
@@ -150,6 +154,13 @@ impl DeterministicSandbox {
         self
     }
 
+    /// Switch to the Phase-1 simulated-filesystem responder (builder form). `read_file` etc.
+    /// then return real content from `fs` instead of static mocks / entity blobs.
+    pub fn with_filesystem(mut self, fs: FsState) -> Self {
+        self.responder = ResponderKind::FileSystem(fs);
+        self
+    }
+
     /// The deterministic result for a parsed call. `StaticMocks`: `Some(mock)` or
     /// `None` for an unknown/hallucinated tool or wrong args (matched via `canonical`).
     /// `WorldState`: three-way — a GETTER surfaces the entity blob, a recognized ACTION
@@ -169,6 +180,7 @@ impl DeterministicSandbox {
                     None
                 }
             }
+            ResponderKind::FileSystem(fs) => fs.respond(call, &self.recognized_tools),
         }
     }
 }
@@ -345,6 +357,35 @@ mod tests {
         assert_eq!(sb.respond(&call("get_dep", json!({ "id": "D-1" }))).as_deref(), Some(r#"{"kind":"major"}"#));
         assert_eq!(sb.respond(&call("pin_and_flag", json!({ "dep": "D-1" }))).as_deref(), Some(r#"{"ok":true}"#));
         assert!(sb.respond(&call("read_file", json!({ "path": "x.py" }))).is_none());
+    }
+
+    #[test]
+    fn respond_byte_parity_anchor_for_the_responderkind_refactor() {
+        // GOLDEN: pins the EXACT bytes respond() returns for the pre-environment responder
+        // kinds. Adding a ResponderKind variant (FileSystem/WebCorpus/WebUi) must NOT change
+        // these — the model's next-turn transcript depends on them byte-for-byte. If this fails
+        // after a responder refactor, the refactor drifted the baseline; fix the refactor, not
+        // the assertion. (Fault/recovery transcript parity is pinned by the runner trap tests.)
+        let mocks = sandbox();
+        assert_eq!(
+            mocks.respond(&call("get_balance", json!({"account_id":"ACC-123"}))).as_deref(),
+            Some(r#"{"status":200,"balance":450.0}"#)
+        );
+        assert_eq!(mocks.respond(&call("nope", json!({}))), None);
+
+        let ws = DeterministicSandbox::new(
+            "p".into(),
+            vec![],
+            vec![],
+            EndStateRule::RequireAll(vec![TaskCheckpoint { tool: "act".into(), args: json!({}) }]),
+        )
+        .with_world_state(json!({ "E-1": { "v": 1 }, "calc": { "2+2": 4 } }))
+        .with_entity_tools(["get".to_string()])
+        .with_recognized_tools(["get".to_string(), "act".to_string()]);
+        assert_eq!(ws.respond(&call("get", json!({"id":"E-1"}))).as_deref(), Some(r#"{"v":1}"#));
+        assert_eq!(ws.respond(&call("get", json!({"expr":"2+2"}))).as_deref(), Some("4")); // calc submap
+        assert_eq!(ws.respond(&call("act", json!({"id":"E-1"}))).as_deref(), Some(r#"{"ok":true}"#));
+        assert!(ws.respond(&call("decoy", json!({}))).is_none());
     }
 
     #[test]

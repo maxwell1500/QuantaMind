@@ -1,0 +1,119 @@
+{
+  "name": "easy_coding_fs",
+  "domain": "coding",
+  "tier": "Easy",
+  "pass_k": 5,
+  "generated": false,
+  "environment": "filesystem",
+  "axes": {
+    "min_required_steps": 2,
+    "decoy_tools": 1,
+    "hidden_prereqs": 0,
+    "conflicting_constraints": 1,
+    "adversarial_context": false,
+    "region_variance": false
+  },
+  "description": "Filesystem-agent tool use against a simulated file tree: read/list/grep return REAL content (not an empty ack), then report. Single correct path; write_file is the must-not-call decoy.",
+  "tasks": [
+    {
+      "id": "es_fs_read_config",
+      "category": "agent_loop",
+      "max_steps": 6,
+      "max_recovery": 2,
+      "prompt": "Read the file 'config.yaml' and report the timeout value. Do not modify any file.",
+      "world_state": {
+        "config.yaml": "timeout: 30\nretries: 2\n",
+        "src/app.py": "import config\n\ndef main():\n    pass\n",
+        "README.md": "# App\nRun with python src/app.py\n"
+      },
+      "tools": [
+        { "name": "read_file", "params": { "path": "string" } },
+        { "name": "list_dir", "params": { "path": "string" } },
+        { "name": "reply", "params": { "text": "string" }, "returns_entity": false }
+      ],
+      "decoy_tools": [
+        { "name": "write_file", "params": { "path": "string", "content": "string" } }
+      ],
+      "expected_calls": [
+        { "type": "call", "name": "read_file", "args": { "path": "config.yaml" } },
+        { "type": "call", "name": "reply", "args": { "text": "*30*" } }
+      ],
+      "must_not_call": ["write_file"],
+      "faults": [],
+      "trap": {
+        "note": "Report-only task. write_file is the tempting decoy that violates 'do not modify'."
+      },
+      "rubric": {
+        "success_definition": "config.yaml read, timeout value (30) reported, no file written.",
+        "partial_credit": false
+      }
+    },
+    {
+      "id": "es_fs_list_count_py",
+      "category": "agent_loop",
+      "max_steps": 6,
+      "max_recovery": 2,
+      "prompt": "List the files in the 'src' directory and report how many Python (.py) files it contains. Do not modify anything.",
+      "world_state": {
+        "src/app.py": "def main():\n    pass\n",
+        "src/utils.py": "def helper():\n    return 1\n",
+        "src/__init__.py": "",
+        "README.md": "# App\n"
+      },
+      "tools": [
+        { "name": "list_dir", "params": { "path": "string" } },
+        { "name": "read_file", "params": { "path": "string" } },
+        { "name": "reply", "params": { "text": "string" }, "returns_entity": false }
+      ],
+      "decoy_tools": [
+        { "name": "write_file", "params": { "path": "string", "content": "string" } }
+      ],
+      "expected_calls": [
+        { "type": "call", "name": "list_dir", "args": { "path": "src" } },
+        { "type": "call", "name": "reply", "args": { "text": "*3*" } }
+      ],
+      "must_not_call": ["write_file"],
+      "faults": [],
+      "trap": {
+        "note": "Counting task. The agent must list the real directory, not guess; write_file is the decoy."
+      },
+      "rubric": {
+        "success_definition": "src listed, 3 .py files reported, no file written.",
+        "partial_credit": false
+      }
+    },
+    {
+      "id": "es_fs_grep_definition",
+      "category": "agent_loop",
+      "max_steps": 6,
+      "max_recovery": 2,
+      "prompt": "Find which file DEFINES the function 'connect_db' and report that file's path. Do not edit anything.",
+      "world_state": {
+        "db/conn.py": "def connect_db():\n    return open_socket()\n",
+        "app.py": "from db.conn import connect_db\n\nconnect_db()\n",
+        "README.md": "# Service\n"
+      },
+      "tools": [
+        { "name": "grep", "params": { "query": "string" } },
+        { "name": "read_file", "params": { "path": "string" } },
+        { "name": "reply", "params": { "text": "string" }, "returns_entity": false }
+      ],
+      "decoy_tools": [
+        { "name": "write_file", "params": { "path": "string", "content": "string" } }
+      ],
+      "expected_calls": [
+        { "type": "call", "name": "grep", "args": { "query": "connect_db" } },
+        { "type": "call", "name": "reply", "args": { "text": "*db/conn.py*" } }
+      ],
+      "must_not_call": ["write_file"],
+      "faults": [],
+      "trap": {
+        "note": "grep matches both the definition (db/conn.py) and the import (app.py); the agent must report the DEFINER. write_file is the decoy."
+      },
+      "rubric": {
+        "success_definition": "connect_db located, db/conn.py reported as the definer, no file written.",
+        "partial_credit": false
+      }
+    }
+  ]
+}

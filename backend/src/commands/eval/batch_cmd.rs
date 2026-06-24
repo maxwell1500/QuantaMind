@@ -380,6 +380,7 @@ mod override_tests {
             agentic: Some(AgenticSpec {
                 mocks: vec![],
                 end_state: EndStateRule::ExpectAbstainingText,
+                environment: Default::default(),
                 tier,
                 axes,
                 k,

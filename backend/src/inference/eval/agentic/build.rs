@@ -3,6 +3,8 @@ use crate::inference::eval::agentic::difficulty::decoys;
 use crate::inference::eval::agentic::difficulty::passk::{max_steps_for, pass_k_for};
 use crate::inference::eval::agentic::runner::AgenticConfig;
 use crate::inference::eval::agentic::sandbox::{DeterministicSandbox, EndStateRule};
+use crate::inference::eval::agentic::spec::EnvKind;
+use crate::inference::eval::agentic::v2::env_fs::FsState;
 use crate::inference::eval::toolcall::tasks::ToolTask;
 
 /// FNV-1a over the task id: a stable, dependency-free seed so a task's decoy set is
@@ -70,10 +72,15 @@ pub fn sandbox_for(task: &ToolTask) -> AppResult<(DeterministicSandbox, AgenticC
     )
     .with_faults(spec.faults.clone())
     .with_must_not_call(spec.must_not_call.clone());
-    // v2: ground-truth responder when the task carries a world_state. The getter set
-    // (authored `returns_entity`) splits entity-returning tools from acting tools.
+    // v2: ground-truth responder when the task carries a world_state. `Filesystem` builds the
+    // simulated-filesystem responder (path→content; getters return real content); the default
+    // `Entity` keeps the world_state responder, where the getter set (authored
+    // `returns_entity`) splits entity-returning tools from acting tools.
     if let Some(ws) = &spec.world_state {
-        sandbox = sandbox.with_world_state(ws.clone()).with_entity_tools(spec.entity_tools.clone());
+        sandbox = match spec.environment {
+            EnvKind::Filesystem => sandbox.with_filesystem(FsState::from_world_state(ws)),
+            EnvKind::Entity => sandbox.with_world_state(ws.clone()).with_entity_tools(spec.entity_tools.clone()),
+        };
     }
     // Recognized real-tool whitelist (getters + actions) so a decoy/hallucinated call in
     // WorldState mode gets the corrective nudge, not a misleading `{"ok":true}`. v1
@@ -139,6 +146,7 @@ mod tests {
                     tool: "transfer".into(),
                     args: json!({ "amount": 1.0 }),
                 }]),
+                environment: Default::default(),
                 tier: Default::default(),
                 axes: None,
                 k: None,

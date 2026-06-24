@@ -1,5 +1,6 @@
 use crate::errors::AppResult;
 use crate::inference::eval::agentic::context::{tool_result_line, Conversation};
+use crate::inference::eval::agentic::env_view::{env_view, EnvView};
 use crate::inference::eval::agentic::scoring::endstate;
 use crate::inference::eval::agentic::model_turn::ModelTurn;
 use crate::inference::eval::agentic::scoring::report::{AgenticReport, FailureKind, RunOutcome};
@@ -334,6 +335,7 @@ async fn run_steps<M: ModelTurn>(
                     raw_output: String::new(),
                     injection: None,
                     kind: StepKind::TurnTimeout,
+                    env: EnvView::None,
                 });
                 return Ok(RunOutcome::failure(step_index + 1, output_tokens, FailureKind::TurnTimeout)
                     .with_schema(hit_schema_error, schema_recovered)
@@ -341,8 +343,8 @@ async fn run_steps<M: ModelTurn>(
             }
         };
         output_tokens += stats.eval_count.unwrap_or(0);
-        let send = |kind: StepKind, injection: Option<String>| {
-            let _ = tx.send(TrajectoryStep { run_index, step_index, raw_output: raw.clone(), injection, kind });
+        let send = |kind: StepKind, injection: Option<String>, env: EnvView| {
+            let _ = tx.send(TrajectoryStep { run_index, step_index, raw_output: raw.clone(), injection, kind, env });
         };
 
         // For a reasoning model, parse and persist the `<think>`-stripped output: its inner
@@ -361,7 +363,7 @@ async fn run_steps<M: ModelTurn>(
             None => match &sandbox.end_state {
                 // Declined to call any tool, exactly as the task demanded.
                 EndStateRule::ExpectAbstainingText => {
-                    send(StepKind::EndStateReached, None);
+                    send(StepKind::EndStateReached, None, EnvView::None);
                     return Ok(RunOutcome::success(step_index + 1, output_tokens));
                 }
                 // Yielded (no call) without completing the required checkpoints.
@@ -381,7 +383,7 @@ async fn run_steps<M: ModelTurn>(
                     } else {
                         (StepKind::HallucinatedCompletion, FailureKind::Hallucinated)
                     };
-                    send(kind, None);
+                    send(kind, None, EnvView::None);
                     return Ok(RunOutcome::failure(step_index + 1, output_tokens, failure)
                         .with_schema(hit_schema_error, schema_recovered)
                         .with_unknown_tools(unknown_tools));
@@ -396,10 +398,16 @@ async fn run_steps<M: ModelTurn>(
             }
         };
 
+        // The per-turn environment snapshot for the visual replay, derived from the turn's
+        // calls (the env picks its representative action — e.g. the last file read, even when
+        // batched before a reply). A pure fn of the immutable responder + calls, so the picture
+        // can never disagree with the score. `None` for non-env tasks.
+        let turn_env = env_view(&sandbox.responder, &calls);
+
         // Acted (called ≥1 tool) when the task wanted a plain-text abstention — declining
         // was correct, so this is a failure.
         if matches!(sandbox.end_state, EndStateRule::ExpectAbstainingText) {
-            send(StepKind::HallucinatedCompletion, None);
+            send(StepKind::HallucinatedCompletion, None, turn_env.clone());
             return Ok(RunOutcome::failure(step_index + 1, output_tokens, FailureKind::Hallucinated));
         }
 
@@ -417,7 +425,7 @@ async fn run_steps<M: ModelTurn>(
         for call in &calls {
             let schema_ok = sandbox.tools.is_empty() || endstate::validate_call(call, &sandbox.tools).is_ok();
             if schema_ok && sandbox.must_not_call.iter().any(|m| m.matches(call)) {
-                send(StepKind::ForbiddenCall, None);
+                send(StepKind::ForbiddenCall, None, turn_env.clone());
                 return Ok(RunOutcome::failure(step_index + 1, output_tokens, FailureKind::ForbiddenCall)
                     .with_schema(hit_schema_error, schema_recovered)
                     .with_unknown_tools(unknown_tools));
@@ -441,7 +449,7 @@ async fn run_steps<M: ModelTurn>(
                 if let Err(msg) = endstate::validate_call(call, &sandbox.tools) {
                     hit_schema_error = true;
                     if recoveries >= max_recovery {
-                        send(StepKind::SchemaError, join_injection(&turn_lines)); // terminal: budget spent
+                        send(StepKind::SchemaError, join_injection(&turn_lines), turn_env.clone()); // terminal: budget spent
                         return Ok(RunOutcome::failure(step_index + 1, output_tokens, FailureKind::MalformedSchema)
                             .with_schema(true, schema_recovered)
                             .with_unknown_tools(unknown_tools));
@@ -489,7 +497,7 @@ async fn run_steps<M: ModelTurn>(
             // 3d — terminal success the instant the last checkpoint is satisfied (race-free:
             // step 1 already cleared the turn of forbidden calls).
             if complete {
-                send(StepKind::EndStateReached, join_injection(&turn_lines));
+                send(StepKind::EndStateReached, join_injection(&turn_lines), turn_env.clone());
                 return Ok(RunOutcome::success(step_index + 1, output_tokens)
                     .with_schema(hit_schema_error, schema_recovered)
                     .with_unknown_tools(unknown_tools));
@@ -507,9 +515,10 @@ async fn run_steps<M: ModelTurn>(
             turn_lines.push((kind, tool_result_line(&result)));
         }
 
-        // Turn complete, NON-terminal: stream one step carrying every injected result.
+        // Turn complete, NON-terminal: stream one step carrying every injected result + the
+        // environment snapshot for the visual replay.
         let (kind, injection) = summarize_turn(&turn_lines);
-        send(kind, injection);
+        send(kind, injection, turn_env);
 
         // Loop detector: a turn that re-emits the exact same calls as the previous turn
         // AND advanced no checkpoint is a stall. After `STALL_REPEAT_LIMIT` such turns in a
@@ -529,6 +538,7 @@ async fn run_steps<M: ModelTurn>(
                 raw_output: String::new(),
                 injection: None,
                 kind: StepKind::InfiniteLoop,
+                env: EnvView::None,
             });
             return Ok(RunOutcome::failure(step_index + 1, output_tokens, FailureKind::InfiniteLoop)
                 .with_schema(hit_schema_error, schema_recovered)
@@ -542,6 +552,7 @@ async fn run_steps<M: ModelTurn>(
         raw_output: String::new(),
         injection: None,
         kind: StepKind::InfiniteLoop,
+        env: EnvView::None,
     });
     Ok(RunOutcome::failure(max_steps, output_tokens, FailureKind::InfiniteLoop)
         .with_schema(hit_schema_error, schema_recovered)

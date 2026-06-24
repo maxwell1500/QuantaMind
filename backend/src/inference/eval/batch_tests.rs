@@ -75,6 +75,7 @@ fn agentic_task(id: &str, k: u32) -> ToolTask {
         agentic: Some(AgenticSpec {
             mocks: vec![],
             end_state: EndStateRule::RequireSequence(vec![TaskCheckpoint { tool: "ping".into(), args: json!({}) }]),
+            environment: Default::default(),
             tier: Default::default(),
             axes: None,
             k: Some(k),

@@ -3,6 +3,7 @@
 //! traps) transpiles into the existing `ToolTask`/`AgenticSpec` and runs on the
 //! UNCHANGED agentic runner — no second execution path.
 pub mod collection;
+pub mod env_fs;
 pub mod generator;
 pub mod r#match;
 pub mod scenarios;

@@ -27,12 +27,34 @@ export const StepKindSchema = z.enum([
 ]);
 export type StepKind = z.infer<typeof StepKindSchema>;
 
+// A per-turn snapshot of the deterministic environment the agent acted on, for the visual
+// replay panel. Mirrors Rust `EnvView` (serde internally-tagged on `kind`). Streamed only,
+// never published.
+export const FsOpSchema = z.enum(["none", "read", "list", "search"]);
+export const FsNodeSchema = z.object({ path: z.string(), is_dir: z.boolean() });
+export const EnvViewSchema = z.discriminatedUnion("kind", [
+  z.object({ kind: z.literal("none") }),
+  z.object({
+    kind: z.literal("file_system"),
+    tree: z.array(FsNodeSchema),
+    focus_path: z.string().nullable(),
+    op: FsOpSchema,
+    content: z.string().nullable(),
+    matches: z.array(z.string()),
+  }),
+]);
+export type EnvView = z.infer<typeof EnvViewSchema>;
+export type FsNode = z.infer<typeof FsNodeSchema>;
+
 export const TrajectoryStepSchema = z.object({
   run_index: z.number().int(),
   step_index: z.number().int(),
   raw_output: z.string(),
   injection: z.string().nullable(),
   kind: StepKindSchema,
+  // Back-compat: events/reports before the visual-replay work have no `env`. Optional so old
+  // payloads + test fixtures parse; consumers treat a missing env as "no replay" (`env?.kind`).
+  env: EnvViewSchema.optional(),
 });
 export type TrajectoryStep = z.infer<typeof TrajectoryStepSchema>;
 
