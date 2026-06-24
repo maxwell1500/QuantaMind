@@ -102,7 +102,7 @@
         { "name": "write_file", "params": { "path": "string", "content": "string" } }
       ],
       "expected_calls": [
-        { "type": "call", "name": "grep", "args": { "query": "connect_db" } },
+        { "type": "call", "name": "grep", "args": { "query": "*connect_db*" } },
         { "type": "call", "name": "reply", "args": { "text": "*db/conn.py*" } }
       ],
       "must_not_call": ["write_file"],
