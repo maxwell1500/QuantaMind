@@ -423,6 +423,21 @@ Error), with a click-through Trace Debugger. See [the workspace](#eval-runner).
   holds the initial prompt, the tool schemas (injected into the system prompt via
   the shared `build_system_for`), the mock tool results, and an `EndStateRule`.
   No native function-calling — identical across Ollama / llama.cpp / MLX.
+- **Deterministic environments (`ResponderKind`) + visual replay.** A task's tool
+  responses come from one of: `StaticMocks` (authored map), `WorldState` (entity
+  ground-truth the model discovers), or — Phase 1 — `FileSystem` (a simulated file
+  tree). The filesystem env's getters (`read_file`/`list_dir`/`search_files`/`grep`)
+  return **real content** (or a deterministic not-found), fixing the world_state
+  acks-empty bug where `read_file` used to ack `{"ok":true}`. Authored via
+  `"environment": "filesystem"` on a collection with a `world_state` of
+  `path → content`; the `easy-coding-fs` bundle is the reference (`write_file` is the
+  `must_not_call` decoy). Each turn streams an `EnvView` snapshot (a PURE function of
+  the immutable env + the turn's calls — so it can never disagree with the score) that
+  the Trace Debugger replays as a file tree beside the text trace, with a step
+  scrubber. `EnvView` is internal/local-only — it is the agent's run (model output)
+  and is **never** added to the publish allowlist; the leaderboard ships metrics only.
+  Adding a new `ResponderKind` variant is a compile-forced decision (exhaustive match,
+  not a trait), and `StaticMocks`/`WorldState` byte-parity is pinned by a golden test.
 - **The loop.** Each turn: render the running transcript → model emits a JSON tool
   call (parsed with the same lenient `extract_calls`) → the sandbox returns the
   mocked result, injected back as a `"Tool result: …"` text message. A call the

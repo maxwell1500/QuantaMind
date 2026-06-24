@@ -140,6 +140,17 @@ toggles are tracked per `run_index` and reset on task/model change. Without this
 k single-step runs rendered as ambiguous duplicate "TURN 1 / Sandbox Response
 Injection" cards.
 
+**Visual environment replay (split-view).** When a run's steps carry an `EnvView`
+(`hasEnvReplay(steps)` — i.e. an environment task like the filesystem env), the expanded
+timeline becomes a 2-column split: the text trace (left) beside a visual replay (right) in
+`components/replay/`. `EnvironmentReplayPanel` holds a `StepScrubber` (◀/▶ + range over the
+run's turns) and a kind-switched panel; it follows the live tail (defaults to the latest real
+filesystem action, not a terminal no-op) until the user scrubs, then pins. `FileTreeReplay`
+draws the file tree with the touched path highlighted and the **real returned content/matches**
+(making the acks-empty fix visible — the user watches the model open a file and read it).
+Non-environment tasks stream `env.kind === "none"` → no panel, zero change to the text trace.
+`EnvView` is local-only (never published). Tested in `__tests__/EnvironmentReplay.test.tsx`.
+
 **Per-run Input/Output drill-down.** Every run in the trace carries an **Input** and
 an **Output** button (single-turn → on the Turn-1 card; agentic → on each "Run N of
 K" header, `stopPropagation` so they don't toggle the run's expand). They open
