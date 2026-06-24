@@ -183,10 +183,14 @@ export const BatchProgressSchema = z.discriminatedUnion("phase", [
 ]);
 export type BatchProgress = z.infer<typeof BatchProgressSchema>;
 
-/// The `agentic-step` event: a live turn tagged with its (model, task).
+/// The `agentic-step` event: a live turn tagged with its (model, task) and which pass produced
+/// it — the native function-calling pass (`is_native`) or the prompt pass. The Evaluator shows
+/// the two trajectories separately. `default(false)` so pre-native-streaming events parse.
 export const AgenticStepPayloadSchema = TrajectoryStepSchema.extend({
   model: z.string(),
   task_id: z.string(),
+  // Optional so pre-native-streaming events + test fixtures parse; absent ⇒ prompt pass.
+  is_native: z.boolean().optional(),
 });
 export type AgenticStepPayload = z.infer<typeof AgenticStepPayloadSchema>;
 

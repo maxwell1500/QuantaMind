@@ -28,6 +28,21 @@ describe("batchStore (rAF-buffered)", () => {
     expect(get().stepsByKey[cellKey("m1", "a1")]).toHaveLength(500);
   });
 
+  it("routes native steps to nativeStepsByKey, separate from the prompt trace", () => {
+    get().startRun();
+    // Two prompt turns, then two native turns for the same (model, task).
+    get().ingestStep(step("m1", "a1", 0));
+    get().ingestStep(step("m1", "a1", 1));
+    get().ingestStep({ ...step("m1", "a1", 0), is_native: true });
+    get().ingestStep({ ...step("m1", "a1", 1), is_native: true });
+    flushBatchBufferForTests();
+
+    const key = cellKey("m1", "a1");
+    // The two trajectories are kept apart — the native run never pollutes the prompt trace.
+    expect(get().stepsByKey[key]).toHaveLength(2);
+    expect(get().nativeStepsByKey[key]).toHaveLength(2);
+  });
+
   it("routes progress + steps by (model, task) and tracks done/total", () => {
     get().startRun();
     const started: BatchProgress = { phase: "started", model: "m1", task_id: "a1", index: 0, total: 3, category: "agentic" };

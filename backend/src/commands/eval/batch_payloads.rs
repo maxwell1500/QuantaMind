@@ -22,6 +22,9 @@ pub enum BatchProgress {
 pub struct AgenticStepPayload {
     pub model: String,
     pub task_id: String,
+    /// Which pass produced this turn — the native function-calling pass (`true`) or the prompt
+    /// pass (`false`). The UI renders the two trajectories as separate sections.
+    pub is_native: bool,
     #[serde(flatten)]
     pub step: TrajectoryStep,
 }

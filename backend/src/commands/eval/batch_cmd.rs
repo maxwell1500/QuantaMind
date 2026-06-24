@@ -69,9 +69,9 @@ impl BatchSink for TauriBatchSink {
             model: model.into(), task_id: task_id.into(), index, total, category: category.into(),
         });
     }
-    fn agentic_turn(&self, model: &str, task_id: &str, step: &TrajectoryStep) {
+    fn agentic_turn(&self, model: &str, task_id: &str, step: &TrajectoryStep, is_native: bool) {
         log_emit(&self.app, EVENT_AGENTIC_STEP, AgenticStepPayload {
-            model: model.into(), task_id: task_id.into(), step: step.clone(),
+            model: model.into(), task_id: task_id.into(), step: step.clone(), is_native,
         });
     }
     fn task_done(&self, model: &str, task_id: &str, outcome: &TaskOutcome) {
@@ -225,7 +225,7 @@ pub(crate) async fn run_passes(
         &config.targets,
         &tasks,
         cancel,
-        sink,
+        sink.clone(),
         move |t: &ModelTarget| BackendTurn {
             backend: t.backend,
             endpoint: endpoint_for(t.backend),
@@ -290,6 +290,7 @@ pub(crate) async fn run_passes(
             prior,
             &record,
             &OllamaVramGate,
+            sink.clone(),
         )
         .await?; // a gate Err halts; per-task run errors are swallowed inside
         log_emit(app, EVENT_BATCH_COMPLETE, BatchCompletePayload { report: report.clone() });

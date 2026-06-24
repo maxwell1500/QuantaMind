@@ -32,14 +32,18 @@ struct CountingSink {
     started: Mutex<Vec<(String, String)>>,
     done: Mutex<u32>,
     turns: Mutex<u32>,
+    native_turns: Mutex<u32>,
 }
 
 impl BatchSink for CountingSink {
     fn task_started(&self, model: &str, task_id: &str, _i: usize, _total: usize, _cat: &str) {
         self.started.lock().unwrap().push((model.into(), task_id.into()));
     }
-    fn agentic_turn(&self, _m: &str, _t: &str, _step: &TrajectoryStep) {
+    fn agentic_turn(&self, _m: &str, _t: &str, _step: &TrajectoryStep, is_native: bool) {
         *self.turns.lock().unwrap() += 1;
+        if is_native {
+            *self.native_turns.lock().unwrap() += 1;
+        }
     }
     fn task_done(&self, _m: &str, _t: &str, _o: &TaskOutcome) {
         *self.done.lock().unwrap() += 1;
@@ -146,7 +150,7 @@ async fn native_fc_pass_aggregates_into_the_column_for_supported_models_only() {
     let targets = vec![target("m1"), target("m2")];
     let tasks = vec![agentic_task("a1", 3)];
     let sink = Arc::new(CountingSink::default());
-    let mut report = run_batch("c", &targets, &tasks, CancellationToken::new(), sink, make_turn).await.unwrap();
+    let mut report = run_batch("c", &targets, &tasks, CancellationToken::new(), sink.clone(), make_turn).await.unwrap();
 
     // Only m1 reports the `tools` capability; m2 doesn't → stays N/A.
     let supported: std::collections::HashSet<String> = ["m1".to_string()].into_iter().collect();
@@ -159,6 +163,7 @@ async fn native_fc_pass_aggregates_into_the_column_for_supported_models_only() {
         &[],
         &|_| {},
         &NoVramGate,
+        sink.clone(),
     )
     .await
     .unwrap();
@@ -167,6 +172,9 @@ async fn native_fc_pass_aggregates_into_the_column_for_supported_models_only() {
     let m2 = report.columns.iter().find(|c| c.model == "m2").unwrap();
     assert_eq!(m1.agentic_native_fc.as_ref().unwrap().passes, 3); // native ping passes all 3 runs
     assert!(m2.agentic_native_fc.is_none()); // unsupported → never a fabricated native score
+    // The native pass STREAMS its trajectory to the sink (tagged native) — not the old
+    // throwaway drain — so the UI can show the native run.
+    assert!(*sink.native_turns.lock().unwrap() > 0, "native steps must stream to the sink");
 }
 
 /// A native turn that ALWAYS errors with a fixed message (so every run errors → the task
@@ -192,7 +200,7 @@ async fn native_errored_tasks_are_counted_and_labeled_not_silently_dropped() {
     let targets = vec![target("m1")];
     let tasks = vec![agentic_task("a_ok", 2), agentic_task("a_infra", 2), agentic_task("a_schema", 2)];
     let sink = Arc::new(CountingSink::default());
-    let mut report = run_batch("c", &targets, &tasks, CancellationToken::new(), sink, make_turn).await.unwrap();
+    let mut report = run_batch("c", &targets, &tasks, CancellationToken::new(), sink.clone(), make_turn).await.unwrap();
 
     let supported: std::collections::HashSet<String> = ["m1".to_string()].into_iter().collect();
     run_native_fc_pass(
@@ -211,6 +219,7 @@ async fn native_errored_tasks_are_counted_and_labeled_not_silently_dropped() {
         &[],
         &|_| {},
         &NoVramGate,
+        sink.clone(),
     )
     .await
     .unwrap();
