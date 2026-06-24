@@ -71,11 +71,11 @@ jobs:
 
       - name: Build .deb
         working-directory: backend
-        run: cargo tauri build -b deb
+        run: cargo tauri build --config tauri.linux.ci.conf.json -b deb
 
       - name: Build .rpm
         working-directory: backend
-        run: cargo tauri build -b rpm
+        run: cargo tauri build --config tauri.linux.ci.conf.json -b rpm
 
       - name: List built artifacts
         working-directory: backend
