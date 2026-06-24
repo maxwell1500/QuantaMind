@@ -12,6 +12,7 @@ const TOP_ERROR_LABEL: Record<TopError, string> = {
   turn_timeout: "Timeout",
   reported_in_prose: "Wrong Channel",
   foreign_dialect: "Bad Dialect",
+  empty_output: "No Output",
 };
 
 /// One per-model row of the Matrix Scoreboard. Every metric is a display string;

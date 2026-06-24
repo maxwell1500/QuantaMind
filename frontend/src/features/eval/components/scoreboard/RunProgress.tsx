@@ -28,6 +28,7 @@ const KIND_LABEL: Record<StepKind, string> = {
   turn_timeout: "turn timed out",
   reported_in_prose: "answered in prose",
   foreign_dialect: "foreign tool dialect",
+  empty_output: "empty output",
 };
 
 function formatElapsed(ms: number): string {

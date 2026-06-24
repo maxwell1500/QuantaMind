@@ -15,6 +15,7 @@ const FAILURE_MODES: { key: keyof FailureTracker; label: string; vuln: string }[
   { key: "turn_timeouts", label: "TurnTimeout", vuln: "Exceeded the per-step wall-clock budget (wedged)." },
   { key: "reported_in_prose_calls", label: "ReportedInProse", vuln: "Did the work but answered in plain text instead of the required tool (content correct, wrong channel)." },
   { key: "foreign_dialect_calls", label: "ForeignDialect", vuln: "Emitted an unparseable non-JSON tool dialect (mis-built model) — a template/dialect artifact, not a capability gap." },
+  { key: "empty_output_calls", label: "EmptyOutput", vuln: "Produced no usable output (empty / punctuation-only) — a generation/template artifact; often needs native tool-calling." },
 ];
 
 const ZERO: FailureTracker = {
@@ -27,6 +28,7 @@ const ZERO: FailureTracker = {
   turn_timeouts: 0,
   reported_in_prose_calls: 0,
   foreign_dialect_calls: 0,
+  empty_output_calls: 0,
 };
 
 function sumFailures(list: FailureTracker[]): FailureTracker {

@@ -385,6 +385,57 @@ async fn live_gemma_verdict_matches_its_actual_output() {
 }
 
 #[tokio::test]
+#[ignore = "DIAGNOSTIC: prompt-path gemma on the real es_co_lint_then_report task — prints raw bytes"]
+async fn live_gemma_prompt_path_lint_task_raw_output() {
+    // Reproduce the exact app scenario from the screenshot: prompt path (native FC off),
+    // Easy/Coding es_co_lint_then_report, gemma-4-12b-it-qat. Print the raw output bytes and
+    // the verdict so we can see whether the model emits empty, foreign soup, or prose.
+    use crate::inference::backend::backend_kind::BackendKind;
+    use crate::inference::eval::toolcall::parse::{extract_calls_dialect, looks_like_broken_json, looks_like_foreign_dialect};
+    use crate::inference::eval::toolcall::tasks::ToolSchema;
+
+    let tool = |name: &str, props: serde_json::Value| ToolSchema {
+        name: name.into(),
+        description: format!("Agent tool '{name}'."),
+        parameters: json!({ "type": "object", "properties": props }),
+    };
+    let lint = DeterministicSandbox::new(
+        "Run the linter on 'api/routes.py' and report the number of errors. Do not fix them.".into(),
+        vec![tool("run_lint", json!({ "path": { "type": "string" } })), tool("reply", json!({ "text": { "type": "string" } }))],
+        vec![MockResponse {
+            call: Call { name: "run_lint".into(), args: json!({ "path": "api/routes.py" }) },
+            response: r#"{"errors":3}"#.into(),
+        }],
+        EndStateRule::RequireSequence(vec![
+            TaskCheckpoint { tool: "run_lint".into(), args: json!({ "path": "api/routes.py" }) },
+            TaskCheckpoint { tool: "reply".into(), args: json!({ "text": "*3*" }) },
+        ]),
+    );
+    let model = crate::inference::eval::agentic::model_turn::BackendTurn {
+        backend: BackendKind::Ollama,
+        endpoint: "http://localhost:11434".into(),
+        model: "gemma-4-12b-it-qat:q4_0".into(),
+        cancel: CancellationToken::new(),
+        options: None,
+        keep_alive: None,
+        is_thinking: false,
+        max_tokens: 512,
+        stop_cache: Default::default(),
+    };
+    let (tx, mut rx) = unbounded_channel();
+    let report = run_agentic(&model, &lint, AgenticConfig { k: 1, max_steps: 5, ..Default::default() }, &tx).await.unwrap();
+    drop(tx);
+    for s in drain(&mut rx) {
+        let raw = &s.raw_output;
+        eprintln!("--- step {} kind={:?} len={} ---", s.step_index, s.kind, raw.len());
+        eprintln!("RAW(debug)={:?}", raw);
+        eprintln!("foreign={} broken_json={}", looks_like_foreign_dialect(raw), looks_like_broken_json(raw));
+        eprintln!("extract={:?}", extract_calls_dialect(raw).map(|(c, d)| (c.len(), d)));
+    }
+    eprintln!("report = {report:?}");
+}
+
+#[tokio::test]
 #[ignore = "hits a live Ollama on :11434 driving gemma-4-12b-it-qat through the NATIVE /api/chat tools path"]
 async fn live_gemma_native_path_gives_an_honest_verdict_not_silent_empty() {
     // The native-path wiring fix end-to-end: NativeOllamaTurn now surfaces the assistant
@@ -473,6 +524,27 @@ async fn foreign_dialect_soup_is_flagged_not_hallucinated_or_malformed() {
     let steps = drain(&mut rx);
     assert_eq!(steps.len(), 1);
     assert_eq!(steps[0].kind, StepKind::ForeignDialect);
+}
+
+#[tokio::test]
+async fn empty_output_is_flagged_not_hallucinated() {
+    // The real gemma-qat prompt-path symptom: the model emits a lone "." then ends its turn
+    // (a generation/template artifact). It must read as EmptyOutput — "the model said
+    // nothing" — NOT Hallucinated, which would imply it falsely claimed completion.
+    let model = ScriptedModel::new(vec![(".", 1)]);
+    let (tx, mut rx) = unbounded_channel();
+    let report = run_agentic(&model, &sandbox(), AgenticConfig { k: 1, max_steps: 8, ..Default::default() }, &tx).await.unwrap();
+    drop(tx);
+
+    assert_eq!(report.passes, 0);
+    assert_eq!(report.failures.empty_output_calls, 1);
+    assert_eq!(report.failures.hallucinated_completions, 0, "not a hallucination — it produced nothing");
+    assert_eq!(report.failures.foreign_dialect_calls, 0);
+    assert_eq!(report.top_error, TopError::EmptyOutput);
+
+    let steps = drain(&mut rx);
+    assert_eq!(steps.len(), 1);
+    assert_eq!(steps[0].kind, StepKind::EmptyOutput);
 }
 
 #[tokio::test]

@@ -450,7 +450,7 @@ Error), with a click-through Trace Debugger. See [the workspace](#eval-runner).
   JSON, `schema_unrecovered_calls` = exhausted the recovery budget,
   `reported_in_prose_calls` = content-correct/wrong-channel, `foreign_dialect_calls`
   = emitted an unparseable non-JSON tool dialect — see the production-parity note
-  below), and a
+  below, `empty_output_calls` = produced no usable output at all), and a
   `top_error` headline. `unknown_tool_calls` is a Phase-9 **diagnostic** tally
   (decoy / hallucinated-tool calls) — it captures *how* a model coped with decoys
   but is **not** a terminal failure, so it is excluded from `top_error`. The **collection-level Pass^k** (the Matrix headline and
@@ -476,6 +476,15 @@ Error), with a click-through Trace Debugger. See [the workspace](#eval-runner).
   production". The detector keys on an attempted-call **structure** (`call:IDENT`
   + `{`/`(`) co-occurring with a channel control token, so prose merely mentioning
   these tokens is never mislabeled.
+- **Empty-output verdict.** A model that emits nothing usable — empty / whitespace /
+  punctuation-only (e.g. gemma-qat on the prompt path emits a lone `.` then its stop
+  token, because it doesn't engage the prompt-based JSON tool format) — is labeled
+  **`empty_output`** (its own `StepKind`/`TopError`/tally), *distinct* from
+  `hallucinated_completions`: "the model said nothing" is not "the model claimed it
+  finished". Detected by the **absence of any alphanumeric character**, so a real prose
+  answer or foreign `call:` soup (which carries the tool name) is never swept in. Such a
+  model usually needs **native tool-calling** (the `Measure native tool-calling` toggle):
+  the same model that emits `.` on the prompt path returns clean `tool_calls` natively.
 - **Lazy-agent traps (Driver B fault injection).** A task may attach `faults` —
   per-call `TransientError { status_code, clears_after }` or
   `PersistentError { status_code }`, keyed by the same canonical call form as the
