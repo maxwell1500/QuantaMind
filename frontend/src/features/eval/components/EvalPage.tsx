@@ -286,7 +286,7 @@ export function EvalPage() {
                 setFocusedTaskId={setFocusedTaskId}
               />
             </div>
-            <TraceDebugger model={focusedModel} taskId={focusedTaskId} setTaskId={setFocusedTaskId} />
+            <TraceDebugger model={focusedModel} taskId={focusedTaskId} setTaskId={setFocusedTaskId} decoys={decoys} />
             <PerformanceMatrix focusedModel={focusedModel} onFocusModel={focusModel} />
           </>
         )}
