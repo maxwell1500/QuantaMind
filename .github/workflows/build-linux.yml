@@ -63,11 +63,11 @@ jobs:
         run: pnpm install --frozen-lockfile
 
       - name: Build .deb
-        working-directory: backend
+        working-directory: frontend
         run: pnpm tauri build -b deb
 
       - name: Build .rpm
-        working-directory: backend
+        working-directory: frontend
         run: pnpm tauri build -b rpm
 
       - name: List built artifacts
