@@ -32,6 +32,12 @@ pub enum FailureKind {
     /// Distinct from `Malformed` (broke real JSON) and `Hallucinated` (yielded nothing) so
     /// a template/dialect artifact isn't mislabeled as a model-capability failure.
     ForeignDialect,
+    /// The model produced NO usable output — empty / whitespace / punctuation-only (e.g. a
+    /// lone `.` before its stop token, common for a model that doesn't engage the prompt-based
+    /// tool format and immediately ends its turn). A generation/template artifact, distinct
+    /// from `Hallucinated` (which claims completion in real words) — naming it honestly keeps
+    /// "the model said nothing" from reading as "the model lied about finishing".
+    EmptyOutput,
 }
 
 /// The result of ONE agentic attempt — the unit the Pass^k loop folds into an
@@ -142,6 +148,11 @@ pub struct FailureTracker {
     /// `#[serde(default)]` so reports persisted before this load as 0.
     #[serde(default)]
     pub foreign_dialect_calls: u32,
+    /// Runs whose output was empty / whitespace / punctuation-only — the model produced
+    /// nothing usable (a generation/template artifact), distinct from a hallucinated
+    /// completion. `#[serde(default)]` so reports persisted before this load as 0.
+    #[serde(default)]
+    pub empty_output_calls: u32,
 }
 
 impl FailureTracker {
@@ -155,6 +166,7 @@ impl FailureTracker {
             FailureKind::TurnTimeout => self.turn_timeouts += 1,
             FailureKind::ReportedInProse => self.reported_in_prose_calls += 1,
             FailureKind::ForeignDialect => self.foreign_dialect_calls += 1,
+            FailureKind::EmptyOutput => self.empty_output_calls += 1,
         }
     }
 
@@ -170,14 +182,15 @@ impl FailureTracker {
         self.turn_timeouts += o.turn_timeouts;
         self.reported_in_prose_calls += o.reported_in_prose_calls;
         self.foreign_dialect_calls += o.foreign_dialect_calls;
+        self.empty_output_calls += o.empty_output_calls;
     }
 
     /// The most common failure mode (argmax). Ties resolve by severity order:
     /// forbidden-call > turn-timeout > infinite-loop > hallucinated >
-    /// malformed-schema > malformed-json > foreign-dialect > reported-in-prose. Count wins
-    /// first (a model that MOSTLY reports-in-prose still headlines it — the G3 honesty
-    /// payload), but on a tie `ReportedInProse` is LAST so any genuinely worse failure
-    /// dominates the verdict. `None` when there were no failures at all.
+    /// malformed-schema > malformed-json > foreign-dialect > empty-output >
+    /// reported-in-prose. Count wins first (a model that MOSTLY reports-in-prose still
+    /// headlines it — the G3 honesty payload), but on a tie `ReportedInProse` is LAST so any
+    /// genuinely worse failure dominates the verdict. `None` when there were no failures.
     pub(crate) fn top(&self) -> TopError {
         [
             (self.forbidden_calls, TopError::ForbiddenCall),
@@ -187,6 +200,7 @@ impl FailureTracker {
             (self.schema_unrecovered_calls, TopError::MalformedSchema),
             (self.malformed_json_calls, TopError::MalformedJson),
             (self.foreign_dialect_calls, TopError::ForeignDialect),
+            (self.empty_output_calls, TopError::EmptyOutput),
             (self.reported_in_prose_calls, TopError::ReportedInProse),
         ]
         .into_iter()
@@ -208,6 +222,7 @@ pub enum TopError {
     TurnTimeout,
     ReportedInProse,
     ForeignDialect,
+    EmptyOutput,
 }
 
 /// The Pass^k payload: how many of `total_runs` reached the end state, the

@@ -24,6 +24,7 @@ export const StepKindSchema = z.enum([
   "turn_timeout",
   "reported_in_prose",
   "foreign_dialect",
+  "empty_output",
 ]);
 export type StepKind = z.infer<typeof StepKindSchema>;
 
@@ -46,6 +47,7 @@ export const TopErrorSchema = z.enum([
   "turn_timeout",
   "reported_in_prose",
   "foreign_dialect",
+  "empty_output",
 ]);
 export type TopError = z.infer<typeof TopErrorSchema>;
 
@@ -65,6 +67,9 @@ export const FailureTrackerSchema = z.object({
   // Unparseable foreign tool-call dialect (a mis-built model emitting channel-token soup).
   // A template/dialect artifact, not a capability failure — labeled, never salvaged.
   foreign_dialect_calls: z.number().int().optional(),
+  // Empty / whitespace / punctuation-only output (the model produced nothing usable) — a
+  // generation/template artifact, distinct from a hallucinated completion.
+  empty_output_calls: z.number().int().optional(),
 });
 export type FailureTracker = z.infer<typeof FailureTrackerSchema>;
 

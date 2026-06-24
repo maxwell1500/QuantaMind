@@ -41,6 +41,10 @@ pub enum StepKind {
     /// a mis-built model) — neither valid JSON nor a recoverable native grammar. Named
     /// honestly so a template/dialect artifact isn't shown as a hallucination or bad JSON.
     ForeignDialect,
+    /// The model produced no usable output — empty / whitespace / punctuation-only (e.g. a
+    /// lone `.` before its stop token). A generation/template artifact, distinct from a
+    /// hallucinated completion.
+    EmptyOutput,
 }
 
 /// One turn of an agentic run, streamed to the UI as it happens. `injection` is

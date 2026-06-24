@@ -289,6 +289,16 @@ pub(crate) fn looks_like_broken_json(text: &str) -> bool {
     text.contains('{') && !has_json_object(text)
 }
 
+/// A yield with NO usable answer — empty, whitespace, or only punctuation/symbols (e.g. a
+/// lone `.` a model emits right before its stop token, or `""` from a native turn that
+/// returned no call and no content). A generation/template artifact (the model produced
+/// nothing), distinct from a `Hallucinated` completion, which claims "done" in real words.
+/// Keyed on the ABSENCE of any alphanumeric character so a real prose answer (or foreign
+/// `call:` soup, which contains the tool name) is never swept in.
+pub(crate) fn is_empty_output(text: &str) -> bool {
+    !text.chars().any(|c| c.is_alphanumeric())
+}
+
 /// `call:IDENT` immediately followed (after optional whitespace) by `{` or `(` — the
 /// SHAPE of an attempted tool call in the channel/harmony dialect, regardless of whether
 /// the body parses. Mirrors `harmony_calls`'s anchor but also accepts the paren form and
@@ -577,5 +587,26 @@ mod tests {
     #[test]
     fn standard_json_is_not_flagged_foreign() {
         assert!(!looks_like_foreign_dialect("{\"name\":\"run_tests\",\"args\":{\"module\":\"cart\"}}"));
+    }
+
+    // ---- empty-output detection (no usable answer; a generation artifact) ----
+
+    #[test]
+    fn lone_punctuation_and_blank_strings_are_empty_output() {
+        // The real gemma-qat prompt-path symptom: a single "." before the stop token.
+        assert!(is_empty_output("."));
+        assert!(is_empty_output(""));
+        assert!(is_empty_output("   \n\t "));
+        assert!(is_empty_output("•")); // the UI's empty-render glyph
+        assert!(is_empty_output("...")); // ellipsis-only
+    }
+
+    #[test]
+    fn any_real_content_is_not_empty_output() {
+        assert!(!is_empty_output("3")); // a bare number is a (wrong-channel) answer, not empty
+        assert!(!is_empty_output("The suite failed."));
+        // foreign soup carries the tool name → not empty (the foreign check owns it)
+        assert!(!is_empty_output("<channel|>call:reply(text='x')<tool_call|>"));
+        assert!(!is_empty_output("{\"name\":\"run_tests\",\"args\":{}}"));
     }
 }

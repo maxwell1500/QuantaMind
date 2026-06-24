@@ -198,9 +198,11 @@ if abstain != matches!(t.expected, Expected::NoCall) { return Err(bad(&t.id, "ex
   (`{name, args|arguments}`), `balanced_brace`, `relax_object`/`relax_to_json` (quote bare
   keys + escape raw control chars in code strings so a JS-object body parses);
   `pub(crate) has_json_object`, `looks_like_broken_json` (used by the agentic runner to
-  tell broken JSON from a hallucinated completion), and `pub(crate)
+  tell broken JSON from a hallucinated completion), `pub(crate)
   looks_like_foreign_dialect` (a channel control token co-occurring with an attempted
-  `call:IDENT{`/`(` structure — see below).
+  `call:IDENT{`/`(` structure — see below), and `pub(crate) is_empty_output` (no
+  alphanumeric char → the model produced nothing usable → `EmptyOutput`, not
+  `Hallucinated`).
 - **Dialect (`ToolCallDialect`):** `Standard` (instructed JSON) or `Harmony` (native
   channel grammar). The runner threads the recovered dialect onto `RunOutcome`→`AgenticReport`
   so the scoreboard flags a model that only scored via normalization (transparency — the
@@ -217,6 +219,11 @@ if abstain != matches!(t.expected, Expected::NoCall) { return Err(bad(&t.id, "ex
   token (`<|tool_response`/`<channel|`/`<tool_call|`) AND an attempted-call structure, so
   prose merely quoting those tokens is never mislabeled. (`foreign_dialect_calls` is
   internal-only; not on the publish allowlist — see `backend-publish.md`.)
+- **Empty-output detection — `is_empty_output`:** a no-call turn whose text has no
+  alphanumeric char (empty / whitespace / a lone `.` before the stop token — gemma-qat's
+  prompt-path symptom) is labeled `EmptyOutput`, checked FIRST in the no-call arm, distinct
+  from `Hallucinated`. Such a model usually needs the native tools path (it returns clean
+  `tool_calls` natively). Also internal-only (not on the publish allowlist).
 - **How/Where used:** `eval::trace_one_with`, `runner::run_steps`.
 
 ```rust

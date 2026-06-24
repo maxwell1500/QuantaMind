@@ -177,6 +177,33 @@ describe("PerformanceMatrix", () => {
     expect(screen.getByTestId("tooltip-failbreak-gemmaqat")).toHaveTextContent(/Bad Dialect 3/);
   });
 
+  it("shows the No Output badge AND its breakdown for an empty-output-only model", () => {
+    // The gemma-qat prompt-path symptom: the model emits nothing usable ('.') → empty_output,
+    // NOT hallucinated. Badge + ⓘ must both reflect it (not a silent '0 failures').
+    const emptyReport: BatchReport = {
+      collection_id: "c",
+      columns: [
+        {
+          model: "gemmaqat",
+          backend: "ollama",
+          toolcall: null,
+          agentic: {
+            tasks_passed: 0, tasks_total: 3, passes: 0, total_runs: 3, avg_steps: 1, avg_output_tokens_success: null,
+            schema_resilience: null, top_error: "empty_output",
+            failures: { infinite_loop_hits: 0, hallucinated_completions: 0, malformed_json_calls: 0, schema_unrecovered_calls: 0, empty_output_calls: 3 },
+          },
+          error: null,
+        },
+      ],
+    };
+    useBatchStore.setState({ report: emptyReport });
+    render(<PerformanceMatrix focusedModel="gemmaqat" onFocusModel={() => {}} />);
+    expect(screen.getByTestId("matrix-model-row-gemmaqat")).toHaveTextContent("No Output");
+    const info = screen.getByTestId("failbreak-gemmaqat");
+    fireEvent.mouseEnter(info);
+    expect(screen.getByTestId("tooltip-failbreak-gemmaqat")).toHaveTextContent(/No Output 3/);
+  });
+
   const failures = { infinite_loop_hits: 0, hallucinated_completions: 0, malformed_json_calls: 0, schema_unrecovered_calls: 0 };
   const nativeReport: BatchReport = {
     collection_id: "c",

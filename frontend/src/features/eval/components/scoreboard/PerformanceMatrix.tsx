@@ -95,6 +95,11 @@ function getTopErrorBadge(val: string) {
     // a hard capability failure — visually distinct from Fake Done / Bad Schema.
     return <span style={{ ...badgeStyle, background: "#fffbeb", border: "1px solid #fef3c7", color: "#b45309" }}>Bad Dialect</span>;
   }
+  if (val === "No Output") {
+    // Amber: the model emitted nothing usable — a generation/template artifact, not a hard
+    // capability failure (often this model needs native tool-calling).
+    return <span style={{ ...badgeStyle, background: "#fffbeb", border: "1px solid #fef3c7", color: "#b45309" }}>No Output</span>;
+  }
   if (val === "—" || val === "N/A") {
     return <span style={{ color: "#94a3b8" }}>—</span>;
   }
@@ -114,6 +119,7 @@ function failureBreakdown(f: FailureTracker): { total: number; text: string } {
     ["Timeout", f.turn_timeouts ?? 0],
     ["Wrong Channel", f.reported_in_prose_calls ?? 0],
     ["Bad Dialect", f.foreign_dialect_calls ?? 0],
+    ["No Output", f.empty_output_calls ?? 0],
   ];
   const total =
     f.infinite_loop_hits +
