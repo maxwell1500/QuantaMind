@@ -4,7 +4,6 @@ import { MetricsChart } from "./MetricsChart";
 import { CompareDiff } from "./CompareDiff";
 import { ExportButtons } from "./ExportButtons";
 import { SttAnalysisSection } from "../../sttInspector/components/SttAnalysisSection";
-import { SttEvalPanel } from "../../sttEval/components/SttEvalPanel";
 import { useSttResultStore } from "../../sttInspector/state/sttResultStore";
 
 /// Read-only results of the latest run: per-model output columns, throughput /
@@ -41,7 +40,6 @@ export function AnalysisTab() {
         </>
       )}
       <SttAnalysisSection />
-      <SttEvalPanel />
     </section>
   );
 }
