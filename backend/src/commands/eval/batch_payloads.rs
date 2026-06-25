@@ -22,6 +22,9 @@ pub enum BatchProgress {
 pub struct AgenticStepPayload {
     pub model: String,
     pub task_id: String,
+    /// Which pass produced this turn — the native function-calling pass (`true`) or the prompt
+    /// pass (`false`). The UI renders the two trajectories as separate sections.
+    pub is_native: bool,
     #[serde(flatten)]
     pub step: TrajectoryStep,
 }
@@ -29,4 +32,8 @@ pub struct AgenticStepPayload {
 #[derive(Serialize, Clone)]
 pub struct BatchCompletePayload {
     pub report: BatchReport,
+    /// `false` for an INTERMEDIATE complete (the native pass's result before the prompt pass,
+    /// or a resume's partial replay) — the run is still going, so the UI keeps "running" true
+    /// and shows pending cells as "Running…". `true` only on the last complete of the run.
+    pub r#final: bool,
 }

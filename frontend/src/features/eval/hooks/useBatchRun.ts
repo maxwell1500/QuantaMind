@@ -48,7 +48,7 @@ export function useBatchRun() {
         }),
         listen(EVENT_BATCH_COMPLETE, (e) => {
           const r = BatchCompletePayloadSchema.safeParse(e.payload);
-          if (r.success) useBatchStore.getState().complete(r.data.report);
+          if (r.success) useBatchStore.getState().complete(r.data.report, r.data.final);
           else console.error("IPC payload drift (batch-complete):", r.error.issues, e.payload);
         }),
       ]);

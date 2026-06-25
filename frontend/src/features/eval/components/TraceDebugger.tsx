@@ -290,9 +290,12 @@ export function TraceDebugger({
   const { tasks } = useEvalRegistryStore();
   const outcomeByKey = useBatchStore((s) => s.outcomeByKey);
   const stepsByKey = useBatchStore((s) => s.stepsByKey);
+  const nativeStepsByKey = useBatchStore((s) => s.nativeStepsByKey);
   const running = useBatchStore((s) => s.running);
 
   const [activeTab, setActiveTab] = useState<TabType>("trace");
+  // Which pass's trajectory the trace shows: the prompt pass or the native (Ollama tools) pass.
+  const [tracePass, setTracePass] = useState<"prompt" | "native">("prompt");
   const [collapsed, setCollapsed] = useState(false);
   // The per-run Input/Output drill-down: which run (null = the single-turn run) and
   // which view. Reset when the task/model changes so it never points at a stale run.
@@ -304,6 +307,7 @@ export function TraceDebugger({
   useEffect(() => {
     setRunOverrides({});
     setIoRun(null);
+    setTracePass("prompt");
   }, [model, taskId]);
 
   // Find the selected task definition
@@ -332,7 +336,11 @@ export function TraceDebugger({
 
   const key = cellKey(model, taskId);
   const outcome = outcomeByKey[key];
-  const steps = stepsByKey[key] || [];
+  const nativeSteps = nativeStepsByKey[key] || [];
+  const hasNative = nativeSteps.length > 0;
+  // Show the selected pass's trajectory. Native is only selectable once it has streamed
+  // (it runs after the whole prompt pass), so fall back to prompt until then.
+  const steps = (tracePass === "native" && hasNative ? nativeSteps : stepsByKey[key]) || [];
 
   // Split the flat trajectory into per-run sections. Runs execute sequentially, so
   // every group but the last is complete; while `running`, the last group may still
@@ -481,6 +489,32 @@ export function TraceDebugger({
 
         {activeTab === "trace" && (
           <div style={{ display: "flex", flexDirection: "column", gap: 14 }}>
+            {/* Prompt vs Native trajectory toggle — Native is enabled once it has streamed
+                (it runs after the whole prompt pass). Lets the user WATCH the native run. */}
+            {hasNative && (
+              <div style={{ display: "flex", gap: 6 }} data-testid="trace-pass-toggle">
+                {(["prompt", "native"] as const).map((p) => (
+                  <button
+                    key={p}
+                    type="button"
+                    onClick={() => setTracePass(p)}
+                    data-testid={`trace-pass-${p}`}
+                    style={{
+                      fontSize: 11,
+                      fontWeight: 700,
+                      padding: "3px 10px",
+                      borderRadius: 6,
+                      cursor: "pointer",
+                      border: tracePass === p ? "1px solid #3b82f6" : "1px solid #e2e8f0",
+                      background: tracePass === p ? "#eff6ff" : "#f8fafc",
+                      color: tracePass === p ? "#1d4ed8" : "#475569",
+                    }}
+                  >
+                    {p === "prompt" ? "Prompt-based" : "Native (Ollama tools)"}
+                  </button>
+                ))}
+              </div>
+            )}
             {!outcome ? (
               <div style={{ color: "#64748b", fontSize: 13, fontFamily: "Inter, sans-serif", textAlign: "center", padding: 24 }}>
                 No trace recorded for this task yet. Run the batch to simulate.
@@ -634,8 +668,9 @@ export function TraceDebugger({
                   </div>
                 )}
 
-                {/* Final Verdict */}
-                {steps.length > 0 && (
+                {/* Final Verdict — prompt pass only; `outcome.report` is the prompt result, so
+                    the native trace shows its own per-run PASS/FAIL chips instead of this. */}
+                {tracePass === "prompt" && steps.length > 0 && (
                   <div
                      style={verdictStyle(
                        isStrictPass(outcome.report)

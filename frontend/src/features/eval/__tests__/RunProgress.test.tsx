@@ -10,6 +10,7 @@ const live = (over: Partial<LiveActivity> = {}): LiveActivity => ({
   stepIndex: 4,
   stepKind: "tool_call",
   startedAt: Date.now(),
+  native: false,
   ...over,
 });
 
@@ -29,6 +30,20 @@ describe("RunProgress (live run line)", () => {
   it("a loop-cap turn reads honestly (not 'working') so a stalled run isn't disguised", () => {
     render(<RunProgress done={0} total={1} live={live({ stepKind: "infinite_loop" })} k={2} maxSteps={10} />);
     expect(screen.getByTestId("scoreboard-progress-detail").textContent).toContain("loop cap hit");
+  });
+
+  it("names the native (tool-calling) pass so a slow native run isn't a silent mystery", () => {
+    render(<RunProgress done={0} total={1} live={live({ native: true })} k={1} maxSteps={10} />);
+    const line = screen.getByTestId("scoreboard-progress-detail").textContent ?? "";
+    expect(line).toContain("Native (Ollama tools) pass");
+  });
+
+  it("shows an ETA from the average per-task time once a task has completed", () => {
+    // 60s elapsed, 1 of 3 tasks done → ~120s (2m) left for the remaining 2.
+    render(<RunProgress done={1} total={3} live={live({ startedAt: Date.now() - 60_000 })} k={1} maxSteps={10} />);
+    const line = screen.getByTestId("scoreboard-progress-detail").textContent ?? "";
+    expect(line).toContain("left");
+    expect(line).toMatch(/~\d+m/);
   });
 
   it("before the first turn lands, shows the task without phantom run/step counters", () => {

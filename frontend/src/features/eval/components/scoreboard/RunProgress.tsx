@@ -48,16 +48,25 @@ export function RunProgress({ done, total, live, k, maxSteps }: RunProgressProps
     return () => clearInterval(id);
   }, []);
 
-  const pct = total > 0 ? Math.round((done / total) * 100) : 0;
-  const elapsed = live.startedAt != null ? formatElapsed(now - live.startedAt) : "0s";
+  const pct = total > 0 ? Math.min(100, Math.round((done / total) * 100)) : 0;
+  const elapsedMs = live.startedAt != null ? now - live.startedAt : 0;
+  const elapsed = live.startedAt != null ? formatElapsed(elapsedMs) : "0s";
+  // Estimate the time left from the average per completed task (only meaningful once a task
+  // has finished — the native pass streams no task_done, so its line shows elapsed only).
+  const eta =
+    live.startedAt != null && done > 0 && total > done ? formatElapsed((elapsedMs / done) * (total - done)) : null;
 
   const parts: string[] = [];
+  // Name the pass — the native (tool-calling) pass runs first and is the slow one, so saying
+  // so turns a long silent stretch into "Native pass, 45s elapsed" instead of a mystery.
+  parts.push(live.native ? "Native (Ollama tools) pass" : "Prompt pass");
   parts.push(live.taskId ? `Task ${live.taskId}` : "Preparing…");
   if (total > 0) parts.push(`${done}/${total} tasks`);
   if (live.runIndex != null) parts.push(`Run ${live.runIndex + 1}/${k}`);
   if (live.stepIndex != null) parts.push(`Step ${live.stepIndex + 1}/${maxSteps}`);
   if (live.stepKind) parts.push(KIND_LABEL[live.stepKind]);
   parts.push(`${elapsed} elapsed`);
+  if (eta) parts.push(`~${eta} left`);
 
   return (
     <div style={{ padding: "10px 16px", borderBottom: "1px solid #e2e8f0" }} data-testid="scoreboard-progress">

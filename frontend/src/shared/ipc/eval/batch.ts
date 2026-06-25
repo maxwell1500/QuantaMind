@@ -183,14 +183,24 @@ export const BatchProgressSchema = z.discriminatedUnion("phase", [
 ]);
 export type BatchProgress = z.infer<typeof BatchProgressSchema>;
 
-/// The `agentic-step` event: a live turn tagged with its (model, task).
+/// The `agentic-step` event: a live turn tagged with its (model, task) and which pass produced
+/// it — the native function-calling pass (`is_native`) or the prompt pass. The Evaluator shows
+/// the two trajectories separately. `default(false)` so pre-native-streaming events parse.
 export const AgenticStepPayloadSchema = TrajectoryStepSchema.extend({
   model: z.string(),
   task_id: z.string(),
+  // Optional so pre-native-streaming events + test fixtures parse; absent ⇒ prompt pass.
+  is_native: z.boolean().optional(),
 });
 export type AgenticStepPayload = z.infer<typeof AgenticStepPayloadSchema>;
 
-export const BatchCompletePayloadSchema = z.object({ report: BatchReportSchema });
+/// `final` is false for an intermediate complete (native pass before the prompt pass, or a
+/// resume's partial replay) — the run is still going. Defaults true so pre-flag events still
+/// read as terminal.
+export const BatchCompletePayloadSchema = z.object({
+  report: BatchReportSchema,
+  final: z.boolean().optional().default(true),
+});
 
 /// The one streaming eval command. Returns the final report (also delivered via
 /// the `batch-complete` event); progress arrives on `batch-progress` /

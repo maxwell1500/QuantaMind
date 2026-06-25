@@ -436,6 +436,45 @@ async fn live_gemma_prompt_path_lint_task_raw_output() {
 }
 
 #[tokio::test]
+#[ignore = "Gap A' validation: gemma4 native on a reporter-tool task CALLS reply (not prose) with the mandate"]
+async fn live_gap_a_prime_gemma4_native_calls_reply_with_the_mandate() {
+    // Step 0 showed gemma4 native answered in PROSE (ReportedInProse) because the old native
+    // system said "...otherwise reply in plain text". With the reporter mandate, it should now
+    // CALL the reply tool. Drives the real native path on a reporter-tool act task.
+    use crate::inference::eval::agentic::build::sandbox_for;
+    use crate::inference::eval::agentic::model_turn::NativeOllamaTurn;
+    use crate::inference::eval::agentic::v2::collection::load_v2_collection;
+    use crate::inference::eval::agentic::v2::scenarios::v2_json;
+    use crate::inference::eval::toolcall::prompt::TerminalGuidance;
+    let task = load_v2_collection(v2_json("easy-coding").unwrap())
+        .unwrap()
+        .into_iter()
+        .find(|t| t.id == "es_co_run_failing_test")
+        .unwrap();
+    let (sandbox, cfg) = sandbox_for(&task).unwrap();
+    let model = NativeOllamaTurn {
+        endpoint: "http://localhost:11434".into(),
+        model: "gemma-4-12b-it-qat:q4_0".into(),
+        tools: task.tools.clone(),
+        options: None,
+        terminal: TerminalGuidance::MustUseTools,
+    };
+    let (tx, mut rx) = unbounded_channel();
+    let outcome = run_once(&model, &sandbox, cfg.max_steps, cfg.max_recovery, 0, &tx).await.unwrap();
+    drop(tx);
+    let steps = drain(&mut rx);
+    for s in &steps {
+        eprintln!("turn {} kind={:?}\n  raw={}", s.step_index, s.kind, s.raw_output.trim());
+    }
+    eprintln!("GAP A' RESULT: reached_end={} failure={:?}", outcome.reached_end, outcome.failure);
+    // The mandate must move gemma4 off pure-prose: SOME turn calls a tool (reply/run_tests),
+    // and the run is NOT a ReportedInProse (the failure mode the mandate fixes).
+    let called_a_tool = steps.iter().any(|s| s.raw_output.contains("\"name\""));
+    assert!(called_a_tool, "with the reporter mandate gemma4 must CALL a tool, not only prose");
+    assert_ne!(outcome.failure, Some(FailureKind::ReportedInProse), "the mandate should prevent the prose-channel failure");
+}
+
+#[tokio::test]
 #[ignore = "hits a live Ollama on :11434 driving gemma-4-12b-it-qat through the NATIVE /api/chat tools path"]
 async fn live_gemma_native_path_gives_an_honest_verdict_not_silent_empty() {
     // The native-path wiring fix end-to-end: NativeOllamaTurn now surfaces the assistant
@@ -475,6 +514,7 @@ async fn live_gemma_native_path_gives_an_honest_verdict_not_silent_empty() {
         model: "gemma-4-12b-it-qat:q4_0".into(),
         tools,
         options: None,
+        terminal: crate::inference::eval::toolcall::prompt::TerminalGuidance::MustUseTools,
     };
     let (tx, mut rx) = unbounded_channel();
     let report = run_agentic(&model, &cart, AgenticConfig { k: 1, max_steps: 3, ..Default::default() }, &tx)

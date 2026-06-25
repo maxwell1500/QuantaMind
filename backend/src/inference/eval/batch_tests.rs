@@ -32,14 +32,18 @@ struct CountingSink {
     started: Mutex<Vec<(String, String)>>,
     done: Mutex<u32>,
     turns: Mutex<u32>,
+    native_turns: Mutex<u32>,
 }
 
 impl BatchSink for CountingSink {
     fn task_started(&self, model: &str, task_id: &str, _i: usize, _total: usize, _cat: &str) {
         self.started.lock().unwrap().push((model.into(), task_id.into()));
     }
-    fn agentic_turn(&self, _m: &str, _t: &str, _step: &TrajectoryStep) {
+    fn agentic_turn(&self, _m: &str, _t: &str, _step: &TrajectoryStep, is_native: bool) {
         *self.turns.lock().unwrap() += 1;
+        if is_native {
+            *self.native_turns.lock().unwrap() += 1;
+        }
     }
     fn task_done(&self, _m: &str, _t: &str, _o: &TaskOutcome) {
         *self.done.lock().unwrap() += 1;
@@ -146,7 +150,7 @@ async fn native_fc_pass_aggregates_into_the_column_for_supported_models_only() {
     let targets = vec![target("m1"), target("m2")];
     let tasks = vec![agentic_task("a1", 3)];
     let sink = Arc::new(CountingSink::default());
-    let mut report = run_batch("c", &targets, &tasks, CancellationToken::new(), sink, make_turn).await.unwrap();
+    let mut report = run_batch("c", &targets, &tasks, CancellationToken::new(), sink.clone(), make_turn).await.unwrap();
 
     // Only m1 reports the `tools` capability; m2 doesn't → stays N/A.
     let supported: std::collections::HashSet<String> = ["m1".to_string()].into_iter().collect();
@@ -159,6 +163,7 @@ async fn native_fc_pass_aggregates_into_the_column_for_supported_models_only() {
         &[],
         &|_| {},
         &NoVramGate,
+        sink.clone(),
     )
     .await
     .unwrap();
@@ -167,6 +172,9 @@ async fn native_fc_pass_aggregates_into_the_column_for_supported_models_only() {
     let m2 = report.columns.iter().find(|c| c.model == "m2").unwrap();
     assert_eq!(m1.agentic_native_fc.as_ref().unwrap().passes, 3); // native ping passes all 3 runs
     assert!(m2.agentic_native_fc.is_none()); // unsupported → never a fabricated native score
+    // The native pass STREAMS its trajectory to the sink (tagged native) — not the old
+    // throwaway drain — so the UI can show the native run.
+    assert!(*sink.native_turns.lock().unwrap() > 0, "native steps must stream to the sink");
 }
 
 /// A native turn that ALWAYS errors with a fixed message (so every run errors → the task
@@ -192,7 +200,7 @@ async fn native_errored_tasks_are_counted_and_labeled_not_silently_dropped() {
     let targets = vec![target("m1")];
     let tasks = vec![agentic_task("a_ok", 2), agentic_task("a_infra", 2), agentic_task("a_schema", 2)];
     let sink = Arc::new(CountingSink::default());
-    let mut report = run_batch("c", &targets, &tasks, CancellationToken::new(), sink, make_turn).await.unwrap();
+    let mut report = run_batch("c", &targets, &tasks, CancellationToken::new(), sink.clone(), make_turn).await.unwrap();
 
     let supported: std::collections::HashSet<String> = ["m1".to_string()].into_iter().collect();
     run_native_fc_pass(
@@ -211,6 +219,7 @@ async fn native_errored_tasks_are_counted_and_labeled_not_silently_dropped() {
         &[],
         &|_| {},
         &NoVramGate,
+        sink.clone(),
     )
     .await
     .unwrap();
@@ -499,4 +508,115 @@ async fn warms_up_each_model_once_before_its_first_scored_task() {
         let first_run = ev.iter().position(|e| *e == format!("run:{m}")).unwrap();
         assert!(warm < first_run, "{m}: warm_up must precede the first scored run");
     }
+}
+
+#[test]
+fn ollama_version_makes_a_native_garble_diagnosable_on_the_report() {
+    // Closes the Gap-C loop: a garbled native run (ForeignDialect) AND the Ollama version
+    // coexist on the report, so a native tool-calling regression on a version bump reads as
+    // "garbled at Ollama vX" — diagnosable, never a silent zero. Survives the serde round-trip
+    // the saved/published report uses.
+    use crate::inference::eval::agentic::scoring::report::{FailureTracker, TopError};
+    let garbled = AggAgentic {
+        tasks_passed: 0,
+        tasks_total: 1,
+        passes: 0,
+        total_runs: 1,
+        avg_steps: None,
+        avg_output_tokens_success: None,
+        schema_resilience: None,
+        top_error: TopError::ForeignDialect,
+        failures: FailureTracker { foreign_dialect_calls: 1, ..Default::default() },
+        by_tier: vec![],
+        tasks_errored: 0,
+        native_error_class: Default::default(),
+    };
+    let report = BatchReport {
+        collection_id: "c".into(),
+        num_ctx: None,
+        ollama_version: Some("0.11.10".into()),
+        columns: vec![BatchColumn {
+            model: "qwen3".into(),
+            backend: BackendKind::Ollama,
+            toolcall: None,
+            agentic: None,
+            agentic_native_fc: Some(garbled),
+            error: None,
+            is_thinking: false,
+        }],
+    };
+    let round: BatchReport = serde_json::from_str(&serde_json::to_string(&report).unwrap()).unwrap();
+    // Both signals present together → the regression is diagnosable.
+    assert_eq!(round.ollama_version.as_deref(), Some("0.11.10"));
+    let native = round.columns[0].agentic_native_fc.as_ref().unwrap();
+    assert_eq!(native.top_error, TopError::ForeignDialect);
+    assert_eq!(native.failures.foreign_dialect_calls, 1);
+}
+
+#[tokio::test]
+#[ignore = "DIAG: replicate the app's native pass for gemma4 — probe + run_native_fc_pass + streaming"]
+async fn live_diag_app_native_pass_for_gemma4() {
+    use crate::inference::eval::agentic::model_turn::NativeOllamaTurn;
+    use crate::inference::eval::agentic::sandbox::EndStateRule as ESR;
+    use crate::inference::eval::agentic::v2::collection::load_v2_collection;
+    use crate::inference::eval::agentic::v2::scenarios::v2_json;
+    use crate::inference::eval::toolcall::prompt::TerminalGuidance;
+    use crate::inference::ollama::ollama_show::probe_supports_tools;
+
+    const GEMMA: &str = "gemma-4-12b-it-qat:q4_0";
+    let endpoint = "http://localhost:11434";
+
+    // 1) Probe — exactly what batch_cmd does to build the `supported` set.
+    let supports = probe_supports_tools(endpoint, GEMMA).await;
+    eprintln!("STEP probe_supports_tools({GEMMA}) = {supports}");
+    let supported: std::collections::HashSet<String> =
+        if supports { [GEMMA.to_string()].into_iter().collect() } else { Default::default() };
+
+    // One fast reporter-tool task.
+    let tasks: Vec<ToolTask> = load_v2_collection(v2_json("easy-coding").unwrap())
+        .unwrap()
+        .into_iter()
+        .filter(|t| t.id == "es_co_run_failing_test")
+        .collect();
+
+    // A report with a gemma4 Ollama column (as the prompt pass would leave it).
+    let mut report = BatchReport {
+        collection_id: "easy-coding".into(),
+        num_ctx: None,
+        ollama_version: None,
+        columns: vec![BatchColumn {
+            model: GEMMA.into(),
+            backend: BackendKind::Ollama,
+            toolcall: None,
+            agentic: None,
+            agentic_native_fc: None,
+            error: None,
+            is_thinking: false,
+        }],
+    };
+    let sink = Arc::new(CountingSink::default());
+    run_native_fc_pass(
+        &mut report,
+        &tasks,
+        &supported,
+        CancellationToken::new(),
+        |model, task| {
+            let terminal = match task.agentic.as_ref().map(|s| &s.end_state) {
+                Some(ESR::RequireAll(_)) | Some(ESR::RequireSequence(_)) => TerminalGuidance::MustUseTools,
+                _ => TerminalGuidance::PlainTextOk,
+            };
+            NativeOllamaTurn { endpoint: endpoint.to_string(), model: model.to_string(), tools: task.tools.clone(), options: None, terminal }
+        },
+        &[],
+        &|_| {},
+        &NoVramGate,
+        sink.clone(),
+    )
+    .await
+    .unwrap();
+
+    let col = &report.columns[0];
+    eprintln!("STEP agentic_native_fc = {:?}", col.agentic_native_fc);
+    eprintln!("STEP native_turns streamed = {}", *sink.native_turns.lock().unwrap());
+    eprintln!("(N/A in the matrix means agentic_native_fc is None or total_runs==0 → all errored)");
 }
