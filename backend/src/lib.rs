@@ -165,6 +165,7 @@ pub fn run() {
             commands::eval::vision_cmd::run_vision_eval,
             commands::ocr::ocr_cmd::read_file_base64,
             commands::ocr::ocr_cmd::write_text_file,
+            commands::ocr::ocr_cmd::ocr_model_supports_vision,
             commands::ocr::ocr_cmd::run_ocr_live,
             commands::ocr::ocr_cmd::stop_ocr,
             commands::eval::batch_cmd::check_unfinished_run,

@@ -26,6 +26,9 @@ pub const EVENT_OCR_CANNOT_PROCESS: &str = "ocr-cannot-process";
 
 const OCR_SYSTEM: &str = "You are an OCR engine. Transcribe ALL visible text in the image exactly, preserving reading order. Output ONLY the transcribed text — no commentary, no markdown.";
 const OCR_PROMPT: &str = "Extract all text from this image.";
+/// Hard per-page cap so a repetition-collapse (greedy decoding latching onto a highly repetitive
+/// page) stops after a generous page's worth of tokens instead of looping forever.
+const OCR_MAX_TOKENS: u32 = 4096;
 
 /// Holds the in-flight OCR run's cancel token (one at a time; a new run cancels the previous).
 #[derive(Default)]
@@ -58,10 +61,18 @@ pub fn write_text_file(path: PathBuf, content: String) -> Result<(), AppError> {
     files::write_text_capped(&path, &content)
 }
 
-/// Stream a live OCR extraction of ONE base64 image from a vision model. Emits `ocr-token` per
-/// chunk, `ocr-done` at the end, all tagged with `request_id` (the page id) so the UI routes them.
-/// Modality-gated: a non-vision model emits `ocr-cannot-process` and runs nothing (never a silent
-/// empty result). Vision is Ollama-only.
+/// Whether a model can read images (vision). Probed ONCE per run (the frontend gates the whole
+/// document up front) — never per page, which would false-negative while Ollama is busy loading or
+/// finishing the previous page. Vision is Ollama-only.
+#[tauri::command]
+pub async fn ocr_model_supports_vision(model: String) -> Result<bool, AppError> {
+    let ep = endpoint::default_for(BackendKind::Ollama).to_string();
+    Ok(probe_supports_vision(&ep, &model).await)
+}
+
+/// Stream a live OCR extraction of ONE base64 image. Emits `ocr-token` per chunk and `ocr-done` at
+/// the end, tagged with `request_id` (the page id) so the UI routes them. The caller has already
+/// gated the model via `ocr_model_supports_vision`, so this just runs. Capped at `OCR_MAX_TOKENS`.
 #[tauri::command]
 pub async fn run_ocr_live(
     app: tauri::AppHandle,
@@ -71,12 +82,6 @@ pub async fn run_ocr_live(
     request_id: String,
 ) -> Result<(), AppError> {
     let ep = endpoint::default_for(BackendKind::Ollama).to_string();
-    if !probe_supports_vision(&ep, &model).await {
-        app.emit(EVENT_OCR_CANNOT_PROCESS, OcrRequestPayload { request_id, model })
-            .map_err(|e| AppError::Internal(e.to_string()))?;
-        return Ok(());
-    }
-
     let token = CancellationToken::new();
     {
         let mut guard = state.current.lock_recover();
@@ -103,7 +108,7 @@ pub async fn run_ocr_live(
         model: model.clone(),
         prompt: OCR_PROMPT.to_string(),
         system: Some(OCR_SYSTEM.to_string()),
-        options: Some(GenerateOptions { temperature: Some(0.0), ..Default::default() }),
+        options: Some(GenerateOptions { temperature: Some(0.0), num_predict: Some(OCR_MAX_TOKENS), ..Default::default() }),
         keep_alive: None,
         images: Some(vec![image_b64]),
     };

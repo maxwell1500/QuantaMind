@@ -12,7 +12,7 @@ const basename = (p: string) => p.split(/[\\/]/).pop() ?? p;
 /// against source" note keeps the output honest. Copy / Export the text.
 export function OcrPage() {
   useOcrStream();
-  const { docs, selectedId, running, addDocuments, select, runSelected } = useOcrStore();
+  const { docs, selectedId, running, activePage, addDocuments, select, runSelected, stop } = useOcrStore();
   // The model is ALWAYS the global header selection (the first selected model). Read directly from
   // the global store — no per-page picker, no local copy that could drift. A text-only model → the
   // run reports "Cannot process".
@@ -53,10 +53,22 @@ export function OcrPage() {
           </span>
         </div>
         <div className="flex gap-2">
-          <button type="button" onClick={() => void runSelected()} disabled={!doc || !model || running || !!doc?.error} data-testid="ocr-run" className="flex-1 bg-blue-600 disabled:bg-slate-200 disabled:text-slate-400 text-white rounded-lg text-sm font-semibold py-2">
-            {running ? "Running…" : "Run OCR"}
-          </button>
+          {running ? (
+            <button type="button" onClick={stop} data-testid="ocr-stop" className="flex-1 bg-red-600 hover:bg-red-700 text-white rounded-lg text-sm font-semibold py-2">
+              ■ Stop
+            </button>
+          ) : (
+            <button type="button" onClick={() => void runSelected()} disabled={!doc || !model || !!doc?.error} data-testid="ocr-run" className="flex-1 bg-blue-600 disabled:bg-slate-200 disabled:text-slate-400 text-white rounded-lg text-sm font-semibold py-2">
+              Run OCR
+            </button>
+          )}
         </div>
+        {running && (
+          <div className="flex items-center gap-2 text-xs text-blue-700" data-testid="ocr-progress">
+            <span className="inline-block h-3 w-3 animate-spin rounded-full border-2 border-blue-600 border-t-transparent" aria-hidden />
+            Extracting{activePage ? ` page ${activePage}` : ""}…
+          </div>
+        )}
         <div className="flex gap-2">
           <button type="button" onClick={onCopy} disabled={!doc} data-testid="ocr-copy" className="flex-1 border border-slate-200 rounded-lg text-sm py-1.5 disabled:text-slate-300">Copy</button>
           <button type="button" onClick={() => void onExport()} disabled={!doc} data-testid="ocr-export" className="flex-1 border border-slate-200 rounded-lg text-sm py-1.5 disabled:text-slate-300">Export .txt</button>
@@ -103,7 +115,10 @@ export function OcrPage() {
                   ) : p.status === "error" ? (
                     <div className="text-xs text-red-700 bg-red-50 border border-red-200 rounded px-2 py-1" data-testid={`ocr-page-error-${p.page}`}>{p.text}</div>
                   ) : p.status === "running" && !p.text ? (
-                    <div className="text-xs text-slate-400" data-testid={`ocr-running-${p.page}`}>Extracting…</div>
+                    <div className="flex items-center gap-2 text-xs text-slate-500" data-testid={`ocr-running-${p.page}`}>
+                      <span className="inline-block h-3 w-3 animate-spin rounded-full border-2 border-slate-400 border-t-transparent" aria-hidden />
+                      Reading the page… (the first page can take a moment while the model loads)
+                    </div>
                   ) : p.status === "done" && !p.text ? (
                     <div className="text-xs text-slate-400" data-testid={`ocr-empty-${p.page}`}>(no text found on this page)</div>
                   ) : (

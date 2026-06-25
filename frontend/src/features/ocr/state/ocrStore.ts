@@ -1,10 +1,19 @@
 import { create } from "zustand";
-import { readFileBase64, runOcrLive } from "../../../shared/ipc/ocr/ocr";
+import { readFileBase64, runOcrLive, ocrModelSupportsVision, stopOcr } from "../../../shared/ipc/ocr/ocr";
 import { useSelectedModelStore } from "../../../shared/state/selectedModelStore";
 
 /// The OCR model is ALWAYS the global header selection (architecture rule 7) — read fresh at run
 /// time so it can never be stale relative to the header.
 const currentModel = () => useSelectedModelStore.getState().selectedModels[0]?.name ?? "";
+
+/// Tauri rejects with a serialized error (often an object), not an `Error` — extract a readable
+/// message so the UI never shows "[object Object]".
+const errMsg = (e: unknown): string =>
+  typeof e === "string" ? e
+    : e instanceof Error ? e.message
+      : e && typeof e === "object" && "message" in e && typeof (e as { message: unknown }).message === "string"
+        ? (e as { message: string }).message
+        : JSON.stringify(e);
 
 export type PageStatus = "pending" | "running" | "done" | "error" | "cannot_process";
 
@@ -31,11 +40,15 @@ interface OcrStore {
   docs: OcrDoc[];
   selectedId: string | null;
   running: boolean;
+  /// The page currently being extracted (1-based), for the live progress indicator. null when idle.
+  activePage: number | null;
+  cancelRequested: boolean;
   addDocuments: (files: { path: string; name: string }[]) => Promise<void>;
   select: (id: string) => void;
   appendToken: (requestId: string, text: string) => void;
   markCannotProcess: (requestId: string) => void;
   runSelected: () => Promise<void>;
+  stop: () => void;
   reset: () => void;
 }
 
@@ -56,6 +69,8 @@ export const useOcrStore = create<OcrStore>((set, get) => ({
   docs: [],
   selectedId: null,
   running: false,
+  activePage: null,
+  cancelRequested: false,
 
   addDocuments: async (files) => {
     for (const f of files) {
@@ -108,10 +123,22 @@ export const useOcrStore = create<OcrStore>((set, get) => ({
 
     const setPage = (page: number, patch: Partial<OcrPage>) =>
       set((s) => ({ docs: s.docs.map((d) => (d.id === doc.id ? { ...d, pages: d.pages.map((p) => (p.page === page ? { ...p, ...patch } : p)) } : d)) }));
+    const setAllPages = (patch: Partial<OcrPage>) =>
+      set((s) => ({ docs: s.docs.map((d) => (d.id === doc.id ? { ...d, pages: d.pages.map((p) => ({ ...p, ...patch })) } : d)) }));
 
-    set({ running: true });
-    // Clear prior text on re-run.
-    set((s) => ({ docs: s.docs.map((d) => (d.id === doc.id ? { ...d, pages: d.pages.map((p) => ({ ...p, text: "", status: "pending" as PageStatus })) } : d)) }));
+    set({ running: true, cancelRequested: false, activePage: null });
+    setAllPages({ text: "", status: "pending" }); // clear prior text on re-run
+
+    // Gate ONCE up front (not per page — a per-page probe false-negatives while Ollama is busy).
+    try {
+      if (!(await ocrModelSupportsVision(model))) {
+        setAllPages({ status: "cannot_process" });
+        return;
+      }
+    } catch (e) {
+      setAllPages({ status: "error", text: `Couldn't check the model — ${errMsg(e)}` });
+      return;
+    }
 
     let opened: Awaited<ReturnType<typeof import("../lib/pdf").openPdf>> | null = null;
     try {
@@ -120,30 +147,37 @@ export const useOcrStore = create<OcrStore>((set, get) => ({
         opened = await pdf.openPdf(pdf.base64ToBytes(doc.sourceB64));
       }
       for (const p of doc.pages) {
+        if (get().cancelRequested) break;
+        set({ activePage: p.page });
         setPage(p.page, { status: "running" });
         let inputB64: string;
         try {
           inputB64 = doc.kind === "image" ? doc.sourceB64 : await pdf.renderPage(opened!.doc, p.page); // transient — discarded after this iteration
         } catch (e) {
-          setPage(p.page, { status: "error", text: `Could not render page — ${e instanceof Error ? e.message : String(e)}` });
+          setPage(p.page, { status: "error", text: `Could not render page — ${errMsg(e)}` });
           continue;
         }
         try {
           await runOcrLive(model, inputB64, reqId(doc.id, p.page));
         } catch (e) {
           // A failed run (e.g. Ollama unreachable) must surface, not leave the page silently blank.
-          setPage(p.page, { status: "error", text: `OCR failed — ${e instanceof Error ? e.message : String(e)}` });
+          setPage(p.page, { status: "error", text: `OCR failed — ${errMsg(e)}` });
           continue;
         }
-        // The backend emits ocr-done (invoke resolved) or ocr-cannot-process (status already set).
-        const cur = get().docs.find((d) => d.id === doc.id)?.pages.find((x) => x.page === p.page)?.status;
-        setPage(p.page, cur === "cannot_process" ? {} : { status: "done" });
+        setPage(p.page, { status: "done" });
+        if (get().cancelRequested) break;
       }
     } finally {
       await opened?.destroy();
-      set({ running: false });
+      set({ running: false, activePage: null, cancelRequested: false });
     }
   },
 
-  reset: () => set({ docs: [], selectedId: null, running: false }),
+  stop: () => {
+    if (!get().running) return;
+    set({ cancelRequested: true });
+    void stopOcr(); // cancels the in-flight backend run so the current page resolves promptly
+  },
+
+  reset: () => set({ docs: [], selectedId: null, running: false, activePage: null, cancelRequested: false }),
 }));
