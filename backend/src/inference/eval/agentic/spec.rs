@@ -87,6 +87,9 @@ pub enum EnvKind {
     Filesystem,
     /// Phase 2: the frozen web-search corpus — `search`/`fetch` over bundled docs.
     WebCorpus,
+    /// Phase 2 Slice 3: the stateful web UI — `fill`/`click`/`navigate`/`submit` mutate a state
+    /// machine; graded on the final state (`RequireEndState`).
+    WebUi,
 }
 
 impl EnvKind {

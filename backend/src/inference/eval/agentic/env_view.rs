@@ -1,18 +1,23 @@
 use crate::inference::eval::agentic::sandbox::ResponderKind;
+use crate::inference::eval::agentic::v2::env_webui::WebUiState;
 use crate::inference::eval::toolcall::tasks::Call;
 use serde::{Deserialize, Serialize};
+use serde_json::Value;
 
 /// The per-turn environment snapshot for the visual replay — a PURE function of the
 /// (immutable) responder and the turn's calls. Each environment picks its representative
 /// action from the calls (the filesystem env uses the last read/list/search call, so a
 /// `read_file` batched before a `reply` still shows the read). `EnvView::None` for
 /// entity/static-mock tasks. The exhaustive match means adding a `ResponderKind` variant
-/// forces a decision here.
-pub fn env_view(responder: &ResponderKind, calls: &[Call]) -> EnvView {
+/// forces a decision here. `web_ui` is the per-RUN mutable state (the only STATEFUL env): its
+/// view must reflect the CURRENT (post-action) state, so the runner passes it in (the immutable
+/// `ResponderKind::WebUi` holds only the spec). `None` when not a web-UI run.
+pub fn env_view(responder: &ResponderKind, calls: &[Call], web_ui: Option<&WebUiState>) -> EnvView {
     match responder {
         ResponderKind::StaticMocks | ResponderKind::WorldState(_) => EnvView::None,
         ResponderKind::FileSystem(fs) => EnvView::FileSystem(fs.view(calls)),
         ResponderKind::WebCorpus(c) => EnvView::WebCorpus(c.view(calls)),
+        ResponderKind::WebUi(_) => web_ui.map_or(EnvView::None, |st| EnvView::WebUi(st.view(calls))),
     }
 }
 
@@ -36,6 +41,9 @@ pub enum EnvView {
     FileSystem(FsView),
     /// A frozen web-search-corpus turn (Phase 2): a `search` or `fetch` over a bundled corpus.
     WebCorpus(CorpusView),
+    /// A stateful web-UI turn (Phase 2, Slice 3): the CURRENT (post-action) UI state + the action
+    /// the agent took this turn. The state MUTATES across turns (fill/click/navigate).
+    WebUi(WebUiView),
 }
 
 /// What the frozen search corpus looked like and what the agent did this turn. Lazy by design:
@@ -109,6 +117,19 @@ pub struct FsNode {
     pub is_dir: bool,
 }
 
+/// What the web UI looked like AFTER this turn's action(s) + which control the agent touched. The
+/// `state` is the full (small) UI state machine (routes/fields/toggles/submitted), rendered as a
+/// schematic in the replay. A pure function of the per-run state + the turn's calls.
+#[derive(Serialize, Deserialize, Clone, Debug, PartialEq)]
+pub struct WebUiView {
+    /// The current (post-action) UI state — the schematic the replay renders.
+    pub state: Value,
+    /// The UI action the agent took this turn (`fill`/`click`/`navigate`/…). `None` if no UI action.
+    pub action: Option<String>,
+    /// The widget/field/route the action touched — highlighted in the schematic.
+    pub focus: Option<String>,
+}
+
 /// The filesystem operation a turn performed (drives the panel's highlight + which detail
 /// to show). `None` = a recognized call that didn't map to a filesystem op (e.g. `reply`).
 #[derive(Serialize, Deserialize, Clone, Copy, Debug, PartialEq, Default)]
@@ -179,6 +200,26 @@ mod tests {
                 "focus_doc": null,
                 "content": null,
                 "op": "search"
+            })
+        );
+    }
+
+    #[test]
+    fn web_ui_flattens_webuiview_next_to_the_kind_tag() {
+        // Internally-tagged newtype variant flattens WebUiView beside "kind", which the Zod
+        // web_ui branch (state/action/focus) parses.
+        let v = EnvView::WebUi(WebUiView {
+            state: json!({ "route": "/cart", "submitted": true }),
+            action: Some("submit".into()),
+            focus: Some("checkout".into()),
+        });
+        assert_eq!(
+            serde_json::to_value(v).unwrap(),
+            json!({
+                "kind": "web_ui",
+                "state": { "route": "/cart", "submitted": true },
+                "action": "submit",
+                "focus": "checkout"
             })
         );
     }

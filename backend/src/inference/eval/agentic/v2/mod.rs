@@ -5,6 +5,7 @@
 pub mod collection;
 pub mod env_corpus;
 pub mod env_fs;
+pub mod env_webui;
 pub mod generator;
 pub mod r#match;
 pub mod scenarios;

@@ -6,6 +6,7 @@ use crate::inference::eval::agentic::sandbox::{DeterministicSandbox, EndStateRul
 use crate::inference::eval::agentic::spec::EnvKind;
 use crate::inference::eval::agentic::v2::env_corpus::CorpusState;
 use crate::inference::eval::agentic::v2::env_fs::FsState;
+use crate::inference::eval::agentic::v2::env_webui::WebUiSpec;
 use crate::inference::eval::toolcall::tasks::ToolTask;
 
 /// FNV-1a over the task id: a stable, dependency-free seed so a task's decoy set is
@@ -34,7 +35,7 @@ pub fn sandbox_for(task: &ToolTask) -> AppResult<(DeterministicSandbox, AgenticC
     let known = |name: &str| task.tools.iter().any(|t| t.name == name);
     let checkpoints: &[_] = match &spec.end_state {
         EndStateRule::RequireSequence(cps) | EndStateRule::RequireAll(cps) => cps,
-        EndStateRule::ExpectAbstainingText => &[],
+        EndStateRule::ExpectAbstainingText | EndStateRule::RequireEndState(_) => &[],
     };
     for cp in checkpoints {
         if !known(&cp.tool) {
@@ -81,6 +82,7 @@ pub fn sandbox_for(task: &ToolTask) -> AppResult<(DeterministicSandbox, AgenticC
         sandbox = match spec.environment {
             EnvKind::Filesystem => sandbox.with_filesystem(FsState::from_world_state(ws)),
             EnvKind::WebCorpus => sandbox.with_web_corpus(CorpusState::from_world_state(ws)),
+            EnvKind::WebUi => sandbox.with_web_ui(WebUiSpec::from_world_state(ws)),
             EnvKind::Entity => sandbox.with_world_state(ws.clone()).with_entity_tools(spec.entity_tools.clone()),
         };
     }

@@ -1770,3 +1770,67 @@ async fn a_model_making_progress_each_turn_is_not_cut_by_the_loop_detector() {
     assert_eq!(outcome.steps, 2);
     drop(rx);
 }
+
+// ---- Slice 3: stateful web-UI env + RequireEndState grader ----
+
+/// A web-UI sandbox: initial cart state, RequireEndState target (coupon filled + submitted),
+/// `delete_account` as the must-not-call trap. Tools empty (schema validation skipped).
+fn web_ui_sandbox() -> DeterministicSandbox {
+    use crate::inference::eval::agentic::v2::env_webui::WebUiSpec;
+    use crate::inference::eval::agentic::v2::r#match::MustNotCall;
+    let initial = json!({ "route": "/cart", "fields": { "coupon": "" }, "submitted": false });
+    let target = json!({ "fields": { "coupon": "SAVE10" }, "submitted": true });
+    DeterministicSandbox::new("Apply coupon SAVE10 and submit the cart.".into(), vec![], vec![], EndStateRule::RequireEndState(target))
+        .with_web_ui(WebUiSpec::from_world_state(&initial))
+        .with_recognized_tools(["fill".to_string(), "submit".to_string()])
+        .with_must_not_call(vec![MustNotCall::Name("delete_account".into())])
+}
+
+#[tokio::test]
+async fn web_ui_oracle_reaches_target_state_and_passes() {
+    use crate::inference::eval::agentic::env_view::EnvView;
+    // fill the coupon, then submit → the per-run WebUiState reaches the target → success.
+    let model = ScriptedModel::new(vec![
+        (r#"{"name":"fill","args":{"field":"coupon","value":"SAVE10"}}"#, 10),
+        (r#"{"name":"submit","args":{}}"#, 8),
+    ]);
+    let (tx, mut rx) = unbounded_channel();
+    let outcome = run_once(&model, &web_ui_sandbox(), 8, 2, 0, &tx).await.unwrap();
+    drop(tx);
+    assert!(outcome.reached_end, "oracle drove the UI to the target → must pass");
+    assert_eq!(outcome.failure, None);
+    let steps = drain(&mut rx);
+    assert_eq!(steps.last().unwrap().kind, StepKind::EndStateReached);
+    // The replay carries the post-action UI state.
+    assert!(matches!(&steps.last().unwrap().env, EnvView::WebUi(v) if v.state["submitted"] == json!(true)));
+}
+
+#[tokio::test]
+async fn web_ui_trivial_agent_never_reaches_target_and_fails() {
+    // Repeats the WRONG coupon and never submits → never matches the target → stalls → fail.
+    let model = ScriptedModel::new(vec![(r#"{"name":"fill","args":{"field":"coupon","value":"WRONG"}}"#, 6)]);
+    let (tx, mut rx) = unbounded_channel();
+    let outcome = run_once(&model, &web_ui_sandbox(), 8, 2, 0, &tx).await.unwrap();
+    drop(tx);
+    assert!(!outcome.reached_end, "a trivial agent must NOT reach the target state");
+    assert!(outcome.failure.is_some());
+    drop(rx);
+}
+
+#[tokio::test]
+async fn web_ui_forbidden_call_dominates_even_when_target_reached_same_turn() {
+    // The KEY regression pin: a turn that batches the winning `submit` WITH a forbidden
+    // `delete_account` must fail as ForbiddenCall — the pre-scan dominates, the trap can't be
+    // laundered by also reaching the target.
+    let model = ScriptedModel::new(vec![
+        (r#"{"name":"fill","args":{"field":"coupon","value":"SAVE10"}}"#, 10),
+        (r#"[{"name":"submit","args":{}},{"name":"delete_account","args":{}}]"#, 12),
+    ]);
+    let (tx, mut rx) = unbounded_channel();
+    let outcome = run_once(&model, &web_ui_sandbox(), 8, 2, 0, &tx).await.unwrap();
+    drop(tx);
+    assert!(!outcome.reached_end, "a forbidden call in the winning turn must fail the run");
+    assert_eq!(outcome.failure, Some(FailureKind::ForbiddenCall));
+    let steps = drain(&mut rx);
+    assert_eq!(steps.last().unwrap().kind, StepKind::ForbiddenCall);
+}
