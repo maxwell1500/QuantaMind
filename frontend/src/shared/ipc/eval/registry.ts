@@ -87,6 +87,13 @@ export const AgenticSpecSchema = z.object({
   world_state: z.unknown().optional(),
   name_faults: z.array(z.unknown()).optional(),
   generated: z.boolean().optional(),
+  /// Backend-derived tool sets (Phase 9-v2): the getter set + the recognized-tool whitelist. MUST
+  /// be listed or `z.object()` strips them on the round-trip → (a) the backend re-receives them
+  /// empty so decoys ack `{"ok":true}` instead of nudging (a weakened trap), AND (b) the
+  /// content-verified `collection_hash` (Slice 4) falsely forks EVERY bundled run (received tasks
+  /// no longer equal pristine) → nothing publishable. Opaque to the frontend; preserved verbatim.
+  entity_tools: z.array(z.string()).optional(),
+  recognized_tools: z.array(z.string()).optional(),
   /// Phase 1: which deterministic environment backs the task ("filesystem" selects the
   /// simulated-filesystem responder). MUST be listed here or `z.object()` strips it on the
   /// task round-trip → the backend re-receives it as `Entity` → the fs env never activates

@@ -35,7 +35,7 @@ beforeEach(() => vi.clearAllMocks());
 describe("PublishDialog", () => {
   it("shows the raw payload with no excluded fields, and strikes through what's never shared", async () => {
     vi.mocked(previewPublishPayload).mockResolvedValue(preview());
-    render(<PublishDialog verdicts={VERDICTS} collectionId="easy-coding" onClose={noop} onPublish={noop} />);
+    render(<PublishDialog verdicts={VERDICTS} collectionId="easy-coding" collectionHash="abc" onClose={noop} onPublish={noop} />);
     const raw = await screen.findByTestId("publish-raw-payload");
     expect(raw.textContent).toContain('"model":"qwen"');
     expect(raw.textContent).not.toContain("prompt");
@@ -45,7 +45,7 @@ describe("PublishDialog", () => {
 
   it("defaults to opt-out: Publish disabled until the checkbox is checked", async () => {
     vi.mocked(previewPublishPayload).mockResolvedValue(preview());
-    render(<PublishDialog verdicts={VERDICTS} collectionId="easy-coding" onClose={noop} onPublish={noop} />);
+    render(<PublishDialog verdicts={VERDICTS} collectionId="easy-coding" collectionHash="abc" onClose={noop} onPublish={noop} />);
     const confirm = await screen.findByTestId("publish-confirm");
     expect(confirm).toBeDisabled();
     expect((screen.getByTestId("publish-optin") as HTMLInputElement).checked).toBe(false);
@@ -56,7 +56,7 @@ describe("PublishDialog", () => {
   it("calls onPublish with the preview only after opt-in", async () => {
     const onPublish = vi.fn();
     vi.mocked(previewPublishPayload).mockResolvedValue(preview());
-    render(<PublishDialog verdicts={VERDICTS} collectionId="easy-coding" onClose={noop} onPublish={onPublish} />);
+    render(<PublishDialog verdicts={VERDICTS} collectionId="easy-coding" collectionHash="abc" onClose={noop} onPublish={onPublish} />);
     fireEvent.click(await screen.findByTestId("publish-optin"));
     fireEvent.click(screen.getByTestId("publish-confirm"));
     expect(onPublish).toHaveBeenCalledTimes(1);
@@ -65,7 +65,7 @@ describe("PublishDialog", () => {
 
   it("disables Publish on a disallowed write-up link, re-enables when cleared", async () => {
     vi.mocked(previewPublishPayload).mockResolvedValue(preview());
-    render(<PublishDialog verdicts={VERDICTS} collectionId="easy-coding" onClose={noop} onPublish={noop} />);
+    render(<PublishDialog verdicts={VERDICTS} collectionId="easy-coding" collectionHash="abc" onClose={noop} onPublish={noop} />);
     fireEvent.click(await screen.findByTestId("publish-optin"));
     const confirm = screen.getByTestId("publish-confirm");
     expect(confirm).toBeEnabled();
@@ -79,7 +79,7 @@ describe("PublishDialog", () => {
   it("passes the allow-listed link to onPublish", async () => {
     const onPublish = vi.fn();
     vi.mocked(previewPublishPayload).mockResolvedValue(preview());
-    render(<PublishDialog verdicts={VERDICTS} collectionId="easy-coding" onClose={noop} onPublish={onPublish} />);
+    render(<PublishDialog verdicts={VERDICTS} collectionId="easy-coding" collectionHash="abc" onClose={noop} onPublish={onPublish} />);
     fireEvent.click(await screen.findByTestId("publish-optin"));
     fireEvent.change(screen.getByTestId("publish-link"), { target: { value: "https://dev.to/me/post" } });
     fireEvent.click(screen.getByTestId("publish-confirm"));
@@ -89,7 +89,7 @@ describe("PublishDialog", () => {
 
   it("explains why Publish is disabled when there are no measured results", async () => {
     vi.mocked(previewPublishPayload).mockResolvedValue(preview({ rows: [], excluded_count: 3, canonical_json: "[]" }));
-    render(<PublishDialog verdicts={VERDICTS} collectionId="easy-coding" onClose={noop} onPublish={noop} />);
+    render(<PublishDialog verdicts={VERDICTS} collectionId="easy-coding" collectionHash="abc" onClose={noop} onPublish={noop} />);
     const empty = await screen.findByTestId("publish-empty");
     expect(empty).toHaveTextContent("Nothing to publish yet");
     expect(empty).toHaveTextContent("3 models were excluded");
@@ -102,7 +102,7 @@ describe("PublishDialog", () => {
 
   it("keeps Publish disabled when a row fails local validation", async () => {
     vi.mocked(previewPublishPayload).mockResolvedValue(preview({ invalid: { index: 0, reason: "pass_k 1.5 out of range 0..=1" } }));
-    render(<PublishDialog verdicts={VERDICTS} collectionId="easy-coding" onClose={noop} onPublish={noop} />);
+    render(<PublishDialog verdicts={VERDICTS} collectionId="easy-coding" collectionHash="abc" onClose={noop} onPublish={noop} />);
     fireEvent.click(await screen.findByTestId("publish-optin"));
     expect(screen.getByTestId("publish-confirm")).toBeDisabled();
     expect(screen.getByTestId("publish-invalid")).toHaveTextContent("out of range");

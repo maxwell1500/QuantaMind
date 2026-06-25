@@ -45,7 +45,7 @@ the hash covers the full extended row deterministically.
 |---|---|---|---|
 | `save_readiness_image(path, bytes)` | `export_cmd.rs` | always built | Offline: write the readiness card PNG to disk. No auth, no network. |
 | `start_login(app, state)` | `identity/login_cmd.rs` | `not(enterprise)` | PKCE browser sign-in → caches access token, stores rotated refresh token. |
-| `preview_publish_payload(verdicts, params, collection_id)` | `preview_cmd.rs` | `not(enterprise)` | Build the exact payload (rows + canonical JSON + hash + cohort + excluded count + first validation error). `collection_id` stamps the collection identity/hash and excludes custom-collection rows. Offline. |
+| `preview_publish_payload(verdicts, params, collection_id, collection_hash)` | `preview_cmd.rs` | `not(enterprise)` | Build the exact payload (rows + canonical JSON + hash + cohort + excluded count + first validation error). `collection_id` stamps the display name; `collection_hash` is the RUN-VERIFIED hash (from the report) that gates publishability — `None` for custom/edited collections. Offline. |
 | `publish_to_board(state, verdicts, params, collection_id, link)` | `publish_cmd.rs` | `not(enterprise)` | Validate → resolve token → POST one batch to `api.quantamind.co`. |
 
 ### Managed state & the enterprise gate
@@ -351,6 +351,16 @@ publish-specific semantics are below.
     the unmeasured/unquantized exclusions that would skew the server's baseline `n`.
 - **How/Where used:** `build_preview` filters verdicts through `project`; the dropped count
   becomes `excluded_count`. `PublishContext` is assembled by `preview_cmd::publish_context`.
+- **Fork-on-edit (Slice 4) — `collection_hash` is RUN-VERIFIED, the single source of truth.**
+  `ctx.collection_hash` is NO LONGER re-derived from `collection_id` at publish time (that let an
+  *edited* bundled collection publish under the real hash). It is computed once at run time
+  (`batch_cmd::verified_collection_hash`): `Some(collection_hash(id))` ONLY when the run's received
+  tasks byte-for-byte equal the pristine `load_v2_collection` (serde `Value`, exact — zero
+  tolerance); `None` for a custom id OR ANY edit. It rides on `BatchReport.collection_hash` and is
+  threaded into `preview_publish_payload`/`publish_to_board` → `publish_context`. So a doctored or
+  user-edited collection is unpublishable by construction; editing the in-app snapshot
+  (`world_state`) forks it automatically. Pinned by near-miss (one-char edit → `None`) +
+  round-trip-completeness tests.
 
 ```rust
 pub fn project(v: &ModelVerdict, ctx: &PublishContext) -> Option<PublishRow> {
