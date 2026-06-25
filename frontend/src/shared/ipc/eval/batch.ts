@@ -179,7 +179,14 @@ export const BatchProgressSchema = z.discriminatedUnion("phase", [
     total: z.number().int(),
     category: z.string(),
   }),
-  z.object({ phase: z.literal("done"), model: z.string(), task_id: z.string(), outcome: TaskOutcomeSchema }),
+  z.object({
+    phase: z.literal("done"),
+    model: z.string(),
+    task_id: z.string(),
+    outcome: TaskOutcomeSchema,
+    // The NATIVE pass's per-task result, routed to its own column. Absent ⇒ prompt pass.
+    is_native: z.boolean().optional(),
+  }),
 ]);
 export type BatchProgress = z.infer<typeof BatchProgressSchema>;
 

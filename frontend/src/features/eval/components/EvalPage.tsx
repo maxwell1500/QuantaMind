@@ -41,6 +41,9 @@ export function EvalPage() {
   const [evalModel, setEvalModel] = useState<string>("");
   const [focusedModel, setFocusedModel] = useState<string>("");
   const [focusedTaskId, setFocusedTaskId] = useState<string | null>(null);
+  // Which pass the Evaluator shows — set when the user clicks a Prompt vs Native result in the
+  // Simulator, so the trace opens on the pass they clicked.
+  const [focusedPass, setFocusedPass] = useState<"prompt" | "native">("prompt");
   // The per-model detail panels live above the Performance Matrix; a row click
   // scrolls them into view so the inspect action is tangible even for one model.
   const detailRef = useRef<HTMLDivElement>(null);
@@ -284,9 +287,18 @@ export function EvalPage() {
                 decoys={decoys}
                 focusedTaskId={focusedTaskId}
                 setFocusedTaskId={setFocusedTaskId}
+                focusedPass={focusedPass}
+                setFocusedPass={setFocusedPass}
               />
             </div>
-            <TraceDebugger model={focusedModel} taskId={focusedTaskId} setTaskId={setFocusedTaskId} decoys={decoys} />
+            <TraceDebugger
+              model={focusedModel}
+              taskId={focusedTaskId}
+              setTaskId={setFocusedTaskId}
+              decoys={decoys}
+              tracePass={focusedPass}
+              setTracePass={setFocusedPass}
+            />
             <PerformanceMatrix focusedModel={focusedModel} onFocusModel={focusModel} />
           </>
         )}

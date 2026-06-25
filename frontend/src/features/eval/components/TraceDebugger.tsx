@@ -19,6 +19,10 @@ interface TraceDebuggerProps {
   /// The active run's decoy-tool budget — passed through to the per-run Input drill-down
   /// so a reconstructed agentic prompt admits the decoy tools the model also saw.
   decoys?: number;
+  /// Which pass's trajectory to show — controlled by the parent so clicking a Prompt vs Native
+  /// result in the Simulator opens the trace on that pass.
+  tracePass: "prompt" | "native";
+  setTracePass: (p: "prompt" | "native") => void;
 }
 
 type TabType = "config" | "prompt" | "trace" | "matcher";
@@ -286,6 +290,8 @@ export function TraceDebugger({
   taskId,
   setTaskId,
   decoys,
+  tracePass,
+  setTracePass,
 }: TraceDebuggerProps) {
   const { tasks } = useEvalRegistryStore();
   const outcomeByKey = useBatchStore((s) => s.outcomeByKey);
@@ -294,8 +300,6 @@ export function TraceDebugger({
   const running = useBatchStore((s) => s.running);
 
   const [activeTab, setActiveTab] = useState<TabType>("trace");
-  // Which pass's trajectory the trace shows: the prompt pass or the native (Ollama tools) pass.
-  const [tracePass, setTracePass] = useState<"prompt" | "native">("prompt");
   const [collapsed, setCollapsed] = useState(false);
   // The per-run Input/Output drill-down: which run (null = the single-turn run) and
   // which view. Reset when the task/model changes so it never points at a stale run.
@@ -307,7 +311,6 @@ export function TraceDebugger({
   useEffect(() => {
     setRunOverrides({});
     setIoRun(null);
-    setTracePass("prompt");
   }, [model, taskId]);
 
   // Find the selected task definition

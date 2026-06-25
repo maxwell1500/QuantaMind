@@ -13,7 +13,9 @@ pub const EVENT_BATCH_COMPLETE: &str = "batch-complete";
 #[serde(tag = "phase", rename_all = "snake_case")]
 pub enum BatchProgress {
     Started { model: String, task_id: String, index: usize, total: usize, category: String },
-    Done { model: String, task_id: String, outcome: TaskOutcome },
+    /// `is_native` tags the NATIVE pass's per-task result so the UI fills its native column
+    /// separately, streamed as each native task finishes (the prompt pass uses `false`).
+    Done { model: String, task_id: String, outcome: TaskOutcome, is_native: bool },
 }
 
 /// A live agentic turn, tagged so the trace debugger routes it to the right

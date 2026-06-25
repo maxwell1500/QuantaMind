@@ -31,6 +31,7 @@ fn make_turn(_t: &ModelTarget) -> ScriptedModel {
 struct CountingSink {
     started: Mutex<Vec<(String, String)>>,
     done: Mutex<u32>,
+    native_done: Mutex<u32>,
     turns: Mutex<u32>,
     native_turns: Mutex<u32>,
 }
@@ -45,8 +46,11 @@ impl BatchSink for CountingSink {
             *self.native_turns.lock().unwrap() += 1;
         }
     }
-    fn task_done(&self, _m: &str, _t: &str, _o: &TaskOutcome) {
+    fn task_done(&self, _m: &str, _t: &str, _o: &TaskOutcome, is_native: bool) {
         *self.done.lock().unwrap() += 1;
+        if is_native {
+            *self.native_done.lock().unwrap() += 1;
+        }
     }
 }
 
@@ -175,6 +179,9 @@ async fn native_fc_pass_aggregates_into_the_column_for_supported_models_only() {
     // The native pass STREAMS its trajectory to the sink (tagged native) — not the old
     // throwaway drain — so the UI can show the native run.
     assert!(*sink.native_turns.lock().unwrap() > 0, "native steps must stream to the sink");
+    // ...and it streams a per-task native OUTCOME (tagged native) so the UI fills its native
+    // column progressively, as each native task finishes.
+    assert_eq!(*sink.native_done.lock().unwrap(), 1, "native task_done must fire (tagged native) for the one supported model");
 }
 
 /// A native turn that ALWAYS errors with a fixed message (so every run errors → the task

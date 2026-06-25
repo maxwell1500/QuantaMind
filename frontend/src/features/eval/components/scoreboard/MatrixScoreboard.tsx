@@ -3,7 +3,7 @@ import { useEvalRegistryStore } from "../../state/evalRegistryStore";
 import { useInstalledModelsStore } from "../../../models/state/installedModelsStore";
 import { useBatchStore, cellKey } from "../../state/batchStore";
 import { modelLabel } from "../../../../shared/models/modelLabel";
-import { isStrictPass, dialectLabel } from "../../../../shared/ipc/eval/batch";
+import { isStrictPass, dialectLabel, type TaskOutcome } from "../../../../shared/ipc/eval/batch";
 import { InfoButton } from "../../../../shared/ui/InfoButton";
 import { Spinner } from "../../../../shared/ui/Spinner";
 import { RunProgress } from "./RunProgress";
@@ -20,6 +20,9 @@ interface MatrixScoreboardProps {
   decoys?: number;
   focusedTaskId: string | null;
   setFocusedTaskId: (taskId: string | null) => void;
+  /// The pass the Evaluator is showing — set when a Prompt vs Native result is clicked.
+  focusedPass: "prompt" | "native";
+  setFocusedPass: (p: "prompt" | "native") => void;
 }
 
 export function MatrixScoreboard({
@@ -30,6 +33,8 @@ export function MatrixScoreboard({
   decoys,
   focusedTaskId,
   setFocusedTaskId,
+  focusedPass,
+  setFocusedPass,
 }: MatrixScoreboardProps) {
   const [collapsed, setCollapsed] = useState(false);
   const { tasks } = useEvalRegistryStore();
@@ -38,7 +43,19 @@ export function MatrixScoreboard({
   const progress = useBatchStore((s) => s.progress);
   const live = useBatchStore((s) => s.live);
   const outcomeByKey = useBatchStore((s) => s.outcomeByKey);
+  const nativeOutcomeByKey = useBatchStore((s) => s.nativeOutcomeByKey);
   const error = useBatchStore((s) => s.error);
+
+  // Show the Native column once any native result has streamed for this model (the native pass
+  // runs first, so it fills in as the run progresses).
+  const hasNative = tasks.some((t) => nativeOutcomeByKey[cellKey(model, t.id)] != null);
+
+  // Open the Evaluator on a specific (task, pass) — used by both result cells so clicking a
+  // Native pass/fail opens the native trace and a Prompt one opens the prompt trace.
+  const openTrace = (taskId: string, pass: "prompt" | "native") => {
+    setFocusedTaskId(taskId);
+    setFocusedPass(pass);
+  };
 
   const mInfo = list.find((x) => x.name === model);
   const modelTargetLabel = mInfo
@@ -169,8 +186,8 @@ export function MatrixScoreboard({
                   <th style={thStyle}>Category</th>
                   <th style={thStyle}>Target Tool</th>
                   <th style={thStyle}>Steps</th>
-                  <th style={thStyle}>Result</th>
-                  <th style={{ ...thStyle, textAlign: "right" }}>Action</th>
+                  <th style={thStyle}>Prompt</th>
+                  {hasNative && <th style={thStyle}>Native</th>}
                 </tr>
               </thead>
               <tbody>
@@ -204,76 +221,22 @@ export function MatrixScoreboard({
                     }
                   }
 
-                  // Determine result badge/styling
-                  let resultEl = <span style={{ color: "#64748b" }}>—</span>;
-                  // A non-standard tool-call dialect (e.g. Harmony) the calls were
-                  // normalized from — flagged so a model that only scored via its native
-                  // grammar is visible, not silently credited.
-                  let dialectEl: React.ReactNode = null;
-                  if (outcome && outcome.kind === "agentic") {
-                    const dl = dialectLabel(outcome.report.dialect);
-                    if (dl) {
-                      dialectEl = (
-                        <span
-                          style={dialectChipStyle}
-                          title={`Model emitted the ${dl} tool-call dialect instead of the instructed JSON — its calls were normalized so the run could be scored.`}
-                        >
-                          {dl}
-                        </span>
-                      );
-                    }
-                  }
-                  if (outcome) {
-                    if (outcome.kind === "single") {
-                      resultEl = outcome.passed ? (
-                        <span style={passBadgeStyle}>Pass</span>
-                      ) : (
-                        <span style={failBadgeStyle}>Fail</span>
-                      );
-                    } else if (outcome.kind === "agentic") {
-                      // Pass^k over k runs: all-pass = Pass, none = Fail, but a
-                      // PARTIAL pass (e.g. 3/5) is "Unreliable", not a flat Fail —
-                      // shown as an amber badge that matches the Matrix fraction. A
-                      // budget-truncated batch is NEVER a clean Pass (isStrictPass) — the
-                      // un-run reps were never observed; the badge says "of {requested}".
-                      const { passes, total_runs, requested_runs } = outcome.report;
-                      const truncated = requested_runs != null;
-                      resultEl =
-                        isStrictPass(outcome.report) ? (
-                          <span style={passBadgeStyle} data-testid={`result-${t.id}`}>Pass</span>
-                        ) : passes === 0 ? (
-                          <span style={failBadgeStyle} data-testid={`result-${t.id}`}>Fail</span>
-                        ) : (
-                          <span
-                            style={partialBadgeStyle}
-                            data-testid={`result-${t.id}`}
-                            title={
-                              truncated
-                                ? `${passes}/${total_runs} of ${requested_runs} runs passed — stopped at the time budget, incomplete, not a clean pass`
-                                : `${passes}/${total_runs} runs passed — unreliable, not a clean pass`
-                            }
-                          >
-                            Partial {passes}/{total_runs}{truncated ? ` of ${requested_runs}` : ""}
-                          </span>
-                        );
-                    } else if (outcome.kind === "error") {
-                      resultEl = <span style={failBadgeStyle}>Error</span>;
-                    }
-                  }
-
+                  // Per-task PROMPT and NATIVE outcomes — each rendered in its own clickable
+                  // column so the user can open the trace for the pass they care about.
+                  const nativeOutcome = nativeOutcomeByKey[key];
                   const isActive = focusedTaskId === t.id;
 
                   return (
                     <tr
                       key={t.id}
-                      onClick={() => setFocusedTaskId(t.id)}
+                      onClick={() => openTrace(t.id, "prompt")}
                       style={{
                         ...trStyle,
                         cursor: "pointer",
                         background: isActive ? "#eff6ff" : "transparent",
                       }}
                       data-testid={`scoreboard-row-${t.id}`}
-                      title="Click to inspect this task in the Evaluator below"
+                      title="Click a Prompt or Native result to open that trace in the Evaluator below"
                     >
                       <td style={{ ...tdStyle, fontFamily: "'JetBrains Mono', monospace", color: isActive ? "#2563eb" : "#0f172a" }}>
                         {t.id}
@@ -283,28 +246,32 @@ export function MatrixScoreboard({
                         {targetTool}
                       </td>
                       <td style={tdStyle}>{stepsStr}</td>
-                      <td style={tdStyle}>
+                      {/* PROMPT result — click opens the prompt-based trace. */}
+                      <td
+                        style={{ ...tdStyle, cursor: "pointer" }}
+                        onClick={(e) => { e.stopPropagation(); openTrace(t.id, "prompt"); }}
+                        data-testid={`prompt-cell-${t.id}`}
+                        title="Open the prompt-based trace in the Evaluator"
+                      >
                         <div style={{ display: "inline-flex", alignItems: "center", gap: 6 }}>
-                          {resultEl}
-                          {dialectEl}
+                          {resultBadge(outcome, `result-${t.id}`)}
+                          {isActive && focusedPass === "prompt" && <span style={{ color: "#2563eb", fontSize: 14 }}>◄</span>}
                         </div>
                       </td>
-                      <td style={{ ...tdStyle, textAlign: "right" }}>
-                        <div style={{ display: "inline-flex", alignItems: "center", gap: 6 }}>
-                          <button
-                            type="button"
-                            onClick={() => setFocusedTaskId(t.id)}
-                            style={{
-                              ...actionBtnStyle,
-                              color: "#2563eb",
-                              fontWeight: isActive ? 600 : 400,
-                            }}
-                          >
-                            [ View Trace ]
-                          </button>
-                          {isActive && <span style={{ color: "#2563eb", fontSize: 14 }}>◄</span>}
-                        </div>
-                      </td>
+                      {/* NATIVE result — only once measured; click opens the native trace. */}
+                      {hasNative && (
+                        <td
+                          style={{ ...tdStyle, cursor: "pointer" }}
+                          onClick={(e) => { e.stopPropagation(); openTrace(t.id, "native"); }}
+                          data-testid={`native-cell-${t.id}`}
+                          title="Open the native (Ollama tools) trace in the Evaluator"
+                        >
+                          <div style={{ display: "inline-flex", alignItems: "center", gap: 6 }}>
+                            {resultBadge(nativeOutcome, `result-native-${t.id}`)}
+                            {isActive && focusedPass === "native" && <span style={{ color: "#2563eb", fontSize: 14 }}>◄</span>}
+                          </div>
+                        </td>
+                      )}
                     </tr>
                   );
                 })}
@@ -319,6 +286,62 @@ export function MatrixScoreboard({
       </div>
       </>
       )}
+    </div>
+  );
+}
+
+/// The pass/fail badge (+ dialect chip) for one task outcome — shared by the Prompt and Native
+/// result columns so both render identically. `—` until that pass produces this task's outcome.
+/// A PARTIAL Pass^k (e.g. 3/5) is "Unreliable" (amber), never a flat Fail; a budget-truncated
+/// run is never a clean Pass (`isStrictPass`) — the un-run reps were never observed.
+function resultBadge(outcome: TaskOutcome | undefined, testId: string): React.ReactNode {
+  if (!outcome) return <span style={{ color: "#cbd5e1" }}>—</span>;
+  // A non-standard tool-call dialect (e.g. Harmony) the calls were normalized from — flagged so
+  // a model that only scored via its native grammar is visible, not silently credited.
+  let dialectEl: React.ReactNode = null;
+  if (outcome.kind === "agentic") {
+    const dl = dialectLabel(outcome.report.dialect);
+    if (dl) {
+      dialectEl = (
+        <span
+          style={dialectChipStyle}
+          title={`Model emitted the ${dl} tool-call dialect instead of the instructed JSON — its calls were normalized so the run could be scored.`}
+        >
+          {dl}
+        </span>
+      );
+    }
+  }
+  let badge: React.ReactNode = <span style={{ color: "#64748b" }}>—</span>;
+  if (outcome.kind === "single") {
+    badge = outcome.passed ? <span style={passBadgeStyle}>Pass</span> : <span style={failBadgeStyle}>Fail</span>;
+  } else if (outcome.kind === "agentic") {
+    const { passes, total_runs, requested_runs } = outcome.report;
+    const truncated = requested_runs != null;
+    badge = isStrictPass(outcome.report) ? (
+      <span style={passBadgeStyle} data-testid={testId}>Pass</span>
+    ) : passes === 0 ? (
+      <span style={failBadgeStyle} data-testid={testId}>Fail</span>
+    ) : (
+      <span
+        style={partialBadgeStyle}
+        data-testid={testId}
+        title={
+          truncated
+            ? `${passes}/${total_runs} of ${requested_runs} runs passed — stopped at the time budget, incomplete, not a clean pass`
+            : `${passes}/${total_runs} runs passed — unreliable, not a clean pass`
+        }
+      >
+        Partial {passes}/{total_runs}{truncated ? ` of ${requested_runs}` : ""}
+      </span>
+    );
+  } else if (outcome.kind === "error") {
+    badge = <span style={failBadgeStyle}>Error</span>;
+  }
+  return (
+    <div style={{ display: "inline-flex", alignItems: "center", gap: 6 }}>
+      {badge}
+      {dialectEl}
     </div>
   );
 }
@@ -461,13 +484,3 @@ const failBadgeStyle: React.CSSProperties = {
   fontFamily: "Inter, sans-serif",
 };
 
-const actionBtnStyle: React.CSSProperties = {
-  background: "transparent",
-  border: "none",
-  fontSize: 12,
-  fontFamily: "Inter, sans-serif",
-  cursor: "pointer",
-  padding: "4px 8px",
-  borderRadius: 4,
-  transition: "all 0.15s ease",
-};
