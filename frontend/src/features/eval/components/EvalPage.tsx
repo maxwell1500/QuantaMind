@@ -175,6 +175,19 @@ export function EvalPage() {
     if (evalModel) setFocusedModel(evalModel);
   }, [evalModel]);
 
+  // Auto-follow: while a run streams, point the Evaluator at the live task + its pass so each
+  // task's trace shows AS it runs/finishes — the user watches every task, not a blank panel
+  // until the whole batch ends. After the run (running=false) the user can click any task freely.
+  const liveTaskId = useBatchStore((s) => s.live.taskId);
+  const liveNative = useBatchStore((s) => s.live.native);
+  const batchRunning = useBatchStore((s) => s.running);
+  useEffect(() => {
+    if (batchRunning && liveTaskId) {
+      setFocusedTaskId(liveTaskId);
+      setFocusedPass(liveNative ? "native" : "prompt");
+    }
+  }, [batchRunning, liveTaskId, liveNative]);
+
   // Resolve the tier selection into the effective tier. `Auto` resolves to the machine's
   // recommended tier (undefined only in the brief window before `hwTier` lands).
   const effectiveTier: Tier | undefined = tierSel === "auto" ? hwTier?.recommended_tier : tierSel;
@@ -297,7 +310,6 @@ export function EvalPage() {
               setTaskId={setFocusedTaskId}
               decoys={decoys}
               tracePass={focusedPass}
-              setTracePass={setFocusedPass}
             />
             <PerformanceMatrix focusedModel={focusedModel} onFocusModel={focusModel} />
           </>

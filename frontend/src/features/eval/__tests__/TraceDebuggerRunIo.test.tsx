@@ -46,7 +46,7 @@ describe("TraceDebugger — per-run Input/Output drill-down", () => {
     } as BatchProgress);
     flushBatchBufferForTests();
 
-    render(<TraceDebugger model={MODEL} taskId="weather" setTaskId={() => {}} tracePass="prompt" setTracePass={() => {}} />);
+    render(<TraceDebugger model={MODEL} taskId="weather" setTaskId={() => {}} tracePass="prompt" />);
     fireEvent.click(screen.getByTestId("trace-io-input"));
     const modal = screen.getByTestId("run-io-modal");
     expect(screen.getByTestId("run-io-title")).toHaveTextContent("Single-turn run");
@@ -70,7 +70,7 @@ describe("TraceDebugger — per-run Input/Output drill-down", () => {
     } as BatchProgress);
     flushBatchBufferForTests();
 
-    render(<TraceDebugger model={MODEL} taskId="weather" setTaskId={() => {}} tracePass="prompt" setTracePass={() => {}} />);
+    render(<TraceDebugger model={MODEL} taskId="weather" setTaskId={() => {}} tracePass="prompt" />);
     fireEvent.click(screen.getByTestId("trace-io-output"));
     expect(screen.getByTestId("run-io-empty")).toHaveTextContent("no output");
   });
@@ -89,7 +89,7 @@ describe("TraceDebugger — per-run Input/Output drill-down", () => {
     s.complete({ collection_id: "c", columns: [] } as never); // running=false → deterministic run status
     flushBatchBufferForTests();
 
-    render(<TraceDebugger model={MODEL} taskId="book" setTaskId={() => {}} tracePass="prompt" setTracePass={() => {}} />);
+    render(<TraceDebugger model={MODEL} taskId="book" setTaskId={() => {}} tracePass="prompt" />);
 
     // Open RUN 2's Output — must show only run 1's turn, titled "RUN 2 OF 2".
     fireEvent.click(screen.getByTestId("trace-io-output-1"));
@@ -117,7 +117,7 @@ describe("TraceDebugger — per-run Input/Output drill-down", () => {
     s.ingestProgress({ phase: "done", model: MODEL, task_id: "book", outcome: { kind: "agentic", report: agenticReport } } as BatchProgress);
     flushBatchBufferForTests();
 
-    render(<TraceDebugger model={MODEL} taskId="book" setTaskId={() => {}} tracePass="prompt" setTracePass={() => {}} decoys={3} />);
+    render(<TraceDebugger model={MODEL} taskId="book" setTaskId={() => {}} tracePass="prompt" decoys={3} />);
     fireEvent.click(screen.getByTestId("trace-io-input-0"));
     expect(screen.getByTestId("run-io-input")).toHaveTextContent("Constructed agentic prompt package");
     expect(screen.getByTestId("run-io-input")).toHaveTextContent("search_flights");
@@ -135,7 +135,7 @@ describe("TraceDebugger — per-run Input/Output drill-down", () => {
     } as BatchProgress);
     flushBatchBufferForTests();
 
-    render(<TraceDebugger model={MODEL} taskId="weather" setTaskId={() => {}} tracePass="prompt" setTracePass={() => {}} />);
+    render(<TraceDebugger model={MODEL} taskId="weather" setTaskId={() => {}} tracePass="prompt" />);
 
     fireEvent.click(screen.getByTestId("trace-io-input"));
     fireEvent.click(screen.getByTestId("run-io-close"));

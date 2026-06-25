@@ -19,10 +19,9 @@ interface TraceDebuggerProps {
   /// The active run's decoy-tool budget — passed through to the per-run Input drill-down
   /// so a reconstructed agentic prompt admits the decoy tools the model also saw.
   decoys?: number;
-  /// Which pass's trajectory to show — controlled by the parent so clicking a Prompt vs Native
-  /// result in the Simulator opens the trace on that pass.
+  /// Which pass's trajectory to show — controlled by the parent (the Simulator click), so the
+  /// Evaluator has no toggle of its own.
   tracePass: "prompt" | "native";
-  setTracePass: (p: "prompt" | "native") => void;
 }
 
 type TabType = "config" | "prompt" | "trace" | "matcher";
@@ -291,7 +290,6 @@ export function TraceDebugger({
   setTaskId,
   decoys,
   tracePass,
-  setTracePass,
 }: TraceDebuggerProps) {
   const { tasks } = useEvalRegistryStore();
   const outcomeByKey = useBatchStore((s) => s.outcomeByKey);
@@ -492,30 +490,23 @@ export function TraceDebugger({
 
         {activeTab === "trace" && (
           <div style={{ display: "flex", flexDirection: "column", gap: 14 }}>
-            {/* Prompt vs Native trajectory toggle — Native is enabled once it has streamed
-                (it runs after the whole prompt pass). Lets the user WATCH the native run. */}
-            {hasNative && (
-              <div style={{ display: "flex", gap: 6 }} data-testid="trace-pass-toggle">
-                {(["prompt", "native"] as const).map((p) => (
-                  <button
-                    key={p}
-                    type="button"
-                    onClick={() => setTracePass(p)}
-                    data-testid={`trace-pass-${p}`}
-                    style={{
-                      fontSize: 11,
-                      fontWeight: 700,
-                      padding: "3px 10px",
-                      borderRadius: 6,
-                      cursor: "pointer",
-                      border: tracePass === p ? "1px solid #3b82f6" : "1px solid #e2e8f0",
-                      background: tracePass === p ? "#eff6ff" : "#f8fafc",
-                      color: tracePass === p ? "#1d4ed8" : "#475569",
-                    }}
-                  >
-                    {p === "prompt" ? "Prompt-based" : "Native (Ollama tools)"}
-                  </button>
-                ))}
+            {/* Which pass this trace is — read-only. The pass is chosen by clicking a Prompt or
+                Native result in the Simulator (no in-Evaluator toggle). */}
+            {tracePass === "native" && (
+              <div data-testid="trace-pass-label" style={{ alignSelf: "flex-start" }}>
+                <span
+                  style={{
+                    fontSize: 11,
+                    fontWeight: 700,
+                    padding: "3px 10px",
+                    borderRadius: 6,
+                    border: "1px solid #c4b5fd",
+                    background: "#f5f3ff",
+                    color: "#6d28d9",
+                  }}
+                >
+                  Native (Ollama tools) trace
+                </span>
               </div>
             )}
             {!outcome ? (
