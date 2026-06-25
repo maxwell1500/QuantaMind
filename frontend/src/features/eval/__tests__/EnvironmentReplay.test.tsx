@@ -2,8 +2,23 @@ import { describe, it, expect } from "vitest";
 import { render, screen, fireEvent } from "@testing-library/react";
 
 import { FileTreeReplay } from "../components/replay/FileTreeReplay";
+import { CorpusReplay } from "../components/replay/CorpusReplay";
 import { EnvironmentReplayPanel, hasEnvReplay } from "../components/replay/EnvironmentReplayPanel";
 import type { EnvView, TrajectoryStep } from "../../../shared/ipc/eval/batch";
+
+const corpusView = (over: Partial<Extract<EnvView, { kind: "web_corpus" }>> = {}): Extract<EnvView, { kind: "web_corpus" }> => ({
+  kind: "web_corpus",
+  index: [
+    { doc_id: "d_photo", title: "Photosynthesis" },
+    { doc_id: "d_resp", title: "Cellular Respiration" },
+  ],
+  query: "photosynthesis",
+  results: [{ doc_id: "d_photo", title: "Photosynthesis", snippet: "Plants release oxygen" }],
+  focus_doc: null,
+  content: null,
+  op: "search",
+  ...over,
+});
 
 const fsView = (over: Partial<Extract<EnvView, { kind: "file_system" }>> = {}): Extract<EnvView, { kind: "file_system" }> => ({
   kind: "file_system",
@@ -42,6 +57,25 @@ describe("FileTreeReplay", () => {
   it("shows matches for a list/search op", () => {
     render(<FileTreeReplay view={fsView({ op: "search", focus_path: "connect_db", content: null, matches: ["db/conn.py:1: def connect_db():"] })} />);
     expect(screen.getByTestId("fs-matches")).toHaveTextContent("db/conn.py:1: def connect_db():");
+  });
+});
+
+describe("CorpusReplay", () => {
+  it("renders the corpus index + ranked search results with snippets", () => {
+    render(<CorpusReplay view={corpusView()} />);
+    expect(screen.getByTestId("corpus-replay")).toBeInTheDocument();
+    expect(screen.getByTestId("corpus-doc-d_photo")).toHaveTextContent("Photosynthesis");
+    expect(screen.getByTestId("corpus-results")).toHaveTextContent("Plants release oxygen");
+  });
+
+  it("highlights the fetched doc and shows its real full content", () => {
+    render(
+      <CorpusReplay
+        view={corpusView({ op: "fetch", query: null, results: [], focus_doc: "d_photo", content: "It converts light energy into glucose." })}
+      />,
+    );
+    expect(screen.getByTestId("corpus-doc-d_photo")).toHaveAttribute("data-focused", "true");
+    expect(screen.getByTestId("corpus-content")).toHaveTextContent("converts light energy into glucose");
   });
 });
 

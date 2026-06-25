@@ -2,6 +2,7 @@ import { useEffect, useState } from "react";
 import type { TrajectoryStep } from "../../../../shared/ipc/eval/batch";
 import { StepScrubber } from "./StepScrubber";
 import { FileTreeReplay } from "./FileTreeReplay";
+import { CorpusReplay } from "./CorpusReplay";
 
 /// Does this run carry any environment snapshot worth replaying? (Non-env tasks stream
 /// `env.kind === "none"` for every step → no panel, zero regression to the text-only trace.)
@@ -15,6 +16,7 @@ function latestActionIndex(steps: TrajectoryStep[]): number {
   for (let i = steps.length - 1; i >= 0; i--) {
     const env = steps[i]?.env;
     if (env?.kind === "file_system" && env.op !== "none") return i;
+    if (env?.kind === "web_corpus" && env.op !== "none") return i;
   }
   return -1;
 }
@@ -48,6 +50,8 @@ export function EnvironmentReplayPanel({ steps }: { steps: TrajectoryStep[] }) {
       <div style={{ marginTop: 8 }}>
         {env && env.kind === "file_system" ? (
           <FileTreeReplay view={env} />
+        ) : env && env.kind === "web_corpus" ? (
+          <CorpusReplay view={env} />
         ) : (
           <div style={empty}>no environment action this turn</div>
         )}
