@@ -147,9 +147,21 @@ export function PerformanceMatrix({
   onFocusModel: (m: string) => void;
 }) {
   const report = useBatchStore((s) => s.report);
+  // The run isn't final yet (e.g. the native pass posted its column but the prompt pass is still
+  // running) — so a still-empty Pass^k cell is PENDING, not a measured N/A.
+  const running = useBatchStore((s) => s.running);
   const models = useInstalledModelsStore((s) => s.list);
   const goAudit = useNavStore((s) => s.setTopView);
   const rows = toScoreRows(report, models);
+
+  /// Pass^k cell: while the run is still going, a missing value reads "Running…" (pending),
+  /// never "N/A" — which would wrongly imply it was measured and came back empty.
+  const passKCell = (val: string) =>
+    running && val === "N/A" ? (
+      <span style={{ color: "#2563eb", fontSize: 12, fontWeight: 600, fontFamily: "Inter, sans-serif" }}>Running…</span>
+    ) : (
+      getPassKBadge(val)
+    );
 
   // Measured cliff depths come from the backend store (per the report's collection),
   // hydrated on mount — not browser localStorage.
@@ -297,7 +309,7 @@ export function PerformanceMatrix({
                   >
                     <td style={{ ...td, color: active ? "#1d4ed8" : "#0f172a", fontWeight: active ? 700 : 500 }}>{r.label}</td>
                     <td style={{ ...td, color: "#64748b", fontFamily: "'JetBrains Mono', monospace", fontSize: 12 }}>{r.quant}</td>
-                    <td style={{ ...td, fontWeight: 700 }}>{getPassKBadge(r.passK)}</td>
+                    <td style={{ ...td, fontWeight: 700 }}>{passKCell(r.passK)}</td>
                     {showNative && (
                       <td
                         style={{ ...td, fontWeight: 700 }}

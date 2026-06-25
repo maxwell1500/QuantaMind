@@ -194,7 +194,13 @@ export const AgenticStepPayloadSchema = TrajectoryStepSchema.extend({
 });
 export type AgenticStepPayload = z.infer<typeof AgenticStepPayloadSchema>;
 
-export const BatchCompletePayloadSchema = z.object({ report: BatchReportSchema });
+/// `final` is false for an intermediate complete (native pass before the prompt pass, or a
+/// resume's partial replay) — the run is still going. Defaults true so pre-flag events still
+/// read as terminal.
+export const BatchCompletePayloadSchema = z.object({
+  report: BatchReportSchema,
+  final: z.boolean().optional().default(true),
+});
 
 /// The one streaming eval command. Returns the final report (also delivered via
 /// the `batch-complete` event); progress arrives on `batch-progress` /

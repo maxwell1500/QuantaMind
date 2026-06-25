@@ -14,8 +14,8 @@ use crate::inference::eval::agentic::spec::Tier;
 use crate::inference::eval::toolcall::prompt::TerminalGuidance;
 use crate::inference::eval::agentic::step::TrajectoryStep;
 use crate::inference::eval::batch::{
-    batch_summaries, fold_report, run_batch_resumable, run_native_fc_pass, BatchReport, BatchSink, CompletedUnit,
-    OllamaVramGate, TaskOutcome,
+    batch_summaries, fold_report, run_batch_resumable, run_native_fc_pass, AggAgentic, BatchColumn, BatchReport,
+    BatchSink, CompletedUnit, OllamaVramGate, TaskOutcome,
 };
 use crate::inference::eval::toolcall::matrix::ModelTarget;
 use crate::inference::eval::toolcall::tasks::{validate_tasks, ToolTask};
@@ -26,7 +26,7 @@ use crate::persistence::prompts::schema::InferenceParams;
 use crate::persistence::readiness::reports;
 use crate::sync::MutexExt;
 use serde::Serialize;
-use std::collections::HashSet;
+use std::collections::{HashMap, HashSet};
 use std::path::PathBuf;
 use std::sync::{Arc, Mutex};
 use tauri::{AppHandle, Manager};
@@ -78,6 +78,29 @@ impl BatchSink for TauriBatchSink {
         log_emit(&self.app, EVENT_BATCH_PROGRESS, BatchProgress::Done {
             model: model.into(), task_id: task_id.into(), outcome: outcome.clone(),
         });
+    }
+}
+
+/// An empty report with one column per target (all metrics `None`). The native pass runs FIRST
+/// and fills `agentic_native_fc` on this skeleton; the prompt pass then produces the real report
+/// and we merge the native aggregates in. Lets the native column surface before the prompt pass.
+fn skeleton_report(collection_id: &str, targets: &[ModelTarget]) -> BatchReport {
+    BatchReport {
+        collection_id: collection_id.to_string(),
+        num_ctx: None,
+        ollama_version: None,
+        columns: targets
+            .iter()
+            .map(|t| BatchColumn {
+                model: t.model.clone(),
+                backend: t.backend,
+                toolcall: None,
+                agentic: None,
+                agentic_native_fc: None,
+                error: None,
+                is_thinking: t.is_thinking,
+            })
+            .collect(),
     }
 }
 
@@ -220,43 +243,10 @@ pub(crate) async fn run_passes(
     // often `Auto` (→ `None`) and would collapse every tier to Easy's cap.
     let tier = effective_tier(&tasks);
 
-    let mut report = run_batch_resumable(
-        &config.collection_id,
-        &config.targets,
-        &tasks,
-        cancel,
-        sink.clone(),
-        move |t: &ModelTarget| BackendTurn {
-            backend: t.backend,
-            endpoint: endpoint_for(t.backend),
-            model: t.model.clone(),
-            cancel: turn_cancel.clone(),
-            options: options.clone(),
-            keep_alive,
-            is_thinking: t.is_thinking,
-            max_tokens: max_tokens_for(tier, t.is_thinking),
-            stop_cache: Default::default(),
-        },
-        prior,
-        &record,
-        &OllamaVramGate,
-    )
-    .await?;
-    report.num_ctx = config.params.as_ref().and_then(|p| p.num_ctx);
-    // Stamp the running Ollama version so a native tool-calling regression on a version bump is
-    // diagnosable (the honest garbled/foreign verdict reads as "at Ollama vX"). Best-effort.
-    report.ollama_version = probe_ollama_version(&endpoint_for(BackendKind::Ollama)).await;
-    log_emit(app, EVENT_BATCH_COMPLETE, BatchCompletePayload { report: report.clone() });
-
-    if let Ok(dir) = history_dir(app) {
-        let entries = batch_summaries(&report, &crate::time_iso::now_utc());
-        if !entries.is_empty() {
-            let _ = eval_history::append(&dir, &config.collection_id, &entries);
-        }
-    }
-
-    // Native FC pass — also queued/resumable (is_native units) and gated.
-    if config.native {
+    // Native (tool-calling) pass FIRST — so a slow native run streams to the UI immediately
+    // instead of waiting out the whole prompt pass. It fills `agentic_native_fc` on a column
+    // skeleton; the prompt pass runs next and we merge the native aggregates into its report.
+    let native_aggs: HashMap<String, AggAgentic> = if config.native {
         let endpoint = endpoint_for(BackendKind::Ollama);
         let mut supported = HashSet::new();
         for t in &config.targets {
@@ -264,8 +254,9 @@ pub(crate) async fn run_passes(
                 supported.insert(t.model.clone());
             }
         }
+        let mut skeleton = skeleton_report(&config.collection_id, &config.targets);
         run_native_fc_pass(
-            &mut report,
+            &mut skeleton,
             &tasks,
             &supported,
             native_cancel,
@@ -293,7 +284,54 @@ pub(crate) async fn run_passes(
             sink.clone(),
         )
         .await?; // a gate Err halts; per-task run errors are swallowed inside
-        log_emit(app, EVENT_BATCH_COMPLETE, BatchCompletePayload { report: report.clone() });
+        // Surface the native column right away (before the prompt pass fills the rest). NOT
+        // final — the prompt pass is still to come, so the UI keeps showing "running".
+        log_emit(app, EVENT_BATCH_COMPLETE, BatchCompletePayload { report: skeleton.clone(), r#final: false });
+        skeleton.columns.into_iter().filter_map(|c| c.agentic_native_fc.map(|a| (c.model, a))).collect()
+    } else {
+        HashMap::new()
+    };
+
+    // Prompt pass.
+    let mut report = run_batch_resumable(
+        &config.collection_id,
+        &config.targets,
+        &tasks,
+        cancel,
+        sink.clone(),
+        move |t: &ModelTarget| BackendTurn {
+            backend: t.backend,
+            endpoint: endpoint_for(t.backend),
+            model: t.model.clone(),
+            cancel: turn_cancel.clone(),
+            options: options.clone(),
+            keep_alive,
+            is_thinking: t.is_thinking,
+            max_tokens: max_tokens_for(tier, t.is_thinking),
+            stop_cache: Default::default(),
+        },
+        prior,
+        &record,
+        &OllamaVramGate,
+    )
+    .await?;
+    // Merge the native aggregates (collected before the prompt pass) into its columns.
+    for col in &mut report.columns {
+        if let Some(a) = native_aggs.get(&col.model) {
+            col.agentic_native_fc = Some(a.clone());
+        }
+    }
+    report.num_ctx = config.params.as_ref().and_then(|p| p.num_ctx);
+    // Stamp the running Ollama version so a native tool-calling regression on a version bump is
+    // diagnosable (the honest garbled/foreign verdict reads as "at Ollama vX"). Best-effort.
+    report.ollama_version = probe_ollama_version(&endpoint_for(BackendKind::Ollama)).await;
+    log_emit(app, EVENT_BATCH_COMPLETE, BatchCompletePayload { report: report.clone(), r#final: true });
+
+    if let Ok(dir) = history_dir(app) {
+        let entries = batch_summaries(&report, &crate::time_iso::now_utc());
+        if !entries.is_empty() {
+            let _ = eval_history::append(&dir, &config.collection_id, &entries);
+        }
     }
 
     // Transactional finish: persist → verify on disk → only THEN delete the log,
@@ -372,7 +410,8 @@ pub async fn resume_batch_eval(
         return Err(AppError::NotFound(format!("no interrupted run to resume for '{run_id}'")));
     };
     let partial = fold_report(&config.collection_id, &config.targets, &config.tasks, &units);
-    log_emit(&app, EVENT_BATCH_COMPLETE, BatchCompletePayload { report: partial });
+    // Partial replay before resuming — NOT final, run_passes emits the real final complete.
+    log_emit(&app, EVENT_BATCH_COMPLETE, BatchCompletePayload { report: partial, r#final: false });
     run_passes(&app, &state, &config, &units).await
 }
 

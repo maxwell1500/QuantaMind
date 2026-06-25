@@ -32,4 +32,8 @@ pub struct AgenticStepPayload {
 #[derive(Serialize, Clone)]
 pub struct BatchCompletePayload {
     pub report: BatchReport,
+    /// `false` for an INTERMEDIATE complete (the native pass's result before the prompt pass,
+    /// or a resume's partial replay) — the run is still going, so the UI keeps "running" true
+    /// and shows pending cells as "Running…". `true` only on the last complete of the run.
+    pub r#final: bool,
 }

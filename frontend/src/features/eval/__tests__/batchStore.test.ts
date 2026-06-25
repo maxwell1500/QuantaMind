@@ -73,6 +73,25 @@ describe("batchStore (rAF-buffered)", () => {
     expect(get().outcomeByKey[cellKey("m1", "a1")]?.kind).toBe("agentic");
   });
 
+  it("an intermediate complete (final=false) keeps running true; the final one ends the run", () => {
+    get().startRun();
+    expect(get().running).toBe(true);
+    const report = { collection_id: "c", columns: [] } as unknown as BatchReport;
+    // Native pass posts its column but the prompt pass is still going → still running.
+    get().complete(report, false);
+    expect(get().running).toBe(true);
+    // The final (prompt) complete ends it.
+    get().complete(report, true);
+    expect(get().running).toBe(false);
+  });
+
+  it("marks the live pass native when a native-tagged step streams", () => {
+    get().startRun();
+    get().ingestStep({ ...step("m1", "a1", 0), is_native: true });
+    flushBatchBufferForTests();
+    expect(get().live.native).toBe(true);
+  });
+
   it("tracks the live task/run/step so the UI can show motion during a run", () => {
     get().startRun();
     expect(get().live.startedAt).not.toBeNull(); // elapsed clock has a baseline
