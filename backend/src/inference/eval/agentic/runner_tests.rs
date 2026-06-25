@@ -656,6 +656,48 @@ async fn live_web_corpus_runs_on_the_prompt_path() {
 }
 
 #[tokio::test]
+#[ignore = "Slice-2 abstain gate (NATIVE): qwen3.5:9b searches, finds nothing, reports no-doc-found → PASS"]
+async fn live_web_corpus_abstains_when_doc_absent_native() {
+    // Regression for the brittle-checkpoint bug: a CORRECT abstain (the native model said "No
+    // document about black holes ... was found in the corpus") was failed by the old exact-phrase
+    // `*not available*` checkpoint → the model looped re-replying → InfiniteLoop. The checkpoint is
+    // now the natural absence phrasing (`*no*document*found*`), so a correct abstain reaches the
+    // end state on the native path. NOT a fabrication test — it asserts the abstain is ACCEPTED.
+    use crate::inference::eval::agentic::build::sandbox_for;
+    use crate::inference::eval::agentic::difficulty::passk::max_tokens_for;
+    use crate::inference::eval::agentic::model_turn::NativeOllamaTurn;
+    use crate::inference::eval::agentic::v2::collection::load_v2_collection;
+    use crate::inference::eval::agentic::v2::scenarios::v2_json;
+    use crate::inference::eval::toolcall::prompt::TerminalGuidance;
+    let task = load_v2_collection(v2_json("easy-research-search").unwrap())
+        .unwrap()
+        .into_iter()
+        .find(|t| t.id == "es_rs_abstain_when_absent")
+        .unwrap();
+    let tier = task.agentic.as_ref().map(|s| s.tier).unwrap_or_default();
+    let (sandbox, cfg) = sandbox_for(&task).unwrap();
+    let model = NativeOllamaTurn {
+        endpoint: "http://localhost:11434".into(),
+        model: "qwen3.5:9b".into(),
+        tools: task.tools.clone(),
+        options: None,
+        terminal: TerminalGuidance::MustUseTools,
+        max_tokens: max_tokens_for(tier, true),
+        is_thinking: false,
+    };
+    let (tx, mut rx) = unbounded_channel();
+    let outcome = run_once(&model, &sandbox, cfg.max_steps, cfg.max_recovery, 0, &tx).await.unwrap();
+    drop(tx);
+    let steps = drain(&mut rx);
+    for s in &steps {
+        eprintln!("turn {} kind={:?} raw={}", s.step_index, s.kind, s.raw_output.trim());
+    }
+    eprintln!("CORPUS-ABSTAIN-NATIVE: reached_end={} failure={:?}", outcome.reached_end, outcome.failure);
+    assert!(outcome.reached_end, "a correct native abstain must reach the end state (no exact-phrase brittleness)");
+    assert_eq!(outcome.failure, None);
+}
+
+#[tokio::test]
 #[ignore = "hits a live Ollama on :11434 driving gemma-4-12b-it-qat through the NATIVE /api/chat tools path"]
 async fn live_gemma_native_path_gives_an_honest_verdict_not_silent_empty() {
     // The native-path wiring fix end-to-end: NativeOllamaTurn now surfaces the assistant
