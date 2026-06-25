@@ -206,6 +206,11 @@ export const BatchReportSchema = z.object({
   // The running Ollama version (`/api/version`) when the batch ran — so a native tool-calling
   // regression on a version bump is diagnosable. Nullish: older reports / non-Ollama runs omit it.
   ollama_version: z.string().nullish(),
+  // The run's content-verified leaderboard hash (Slice 4): a string ONLY for a pristine bundled
+  // collection; null for a custom/imported collection OR any edit (the fork-on-edit guard). Pass
+  // this to publish — it's the single source of truth for publishability (the backend never
+  // re-derives it). Nullish so older reports parse (as not-publishable).
+  collection_hash: z.string().nullish(),
 });
 export type BatchReport = z.infer<typeof BatchReportSchema>;
 

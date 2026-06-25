@@ -270,6 +270,13 @@ pub struct BatchReport {
     /// / Ollama down. `#[serde(default)]` so older reports load.
     #[serde(default)]
     pub ollama_version: Option<String>,
+    /// The leaderboard identity hash for THIS run — content-verified at run time: `Some(hash)`
+    /// ONLY when the run's tasks are byte-for-byte the pristine bundled collection; `None` for a
+    /// custom/imported collection OR any edit (the fork-on-edit guard). Publish reads THIS (never
+    /// re-derives from `collection_id`), so an edited/doctored collection can't publish under a
+    /// real bundled identity. `#[serde(default)]` so older reports load (as `None` = unpublishable).
+    #[serde(default)]
+    pub collection_hash: Option<String>,
 }
 
 fn mean_f64(xs: &[f64]) -> Option<f64> {
@@ -547,7 +554,7 @@ where
         prev = Some((target.model.clone(), target.backend));
     }
     // The engine is param-agnostic; the command layer stamps `num_ctx`/`ollama_version` after.
-    Ok(BatchReport { collection_id: collection_id.to_string(), columns, num_ctx: None, ollama_version: None })
+    Ok(BatchReport { collection_id: collection_id.to_string(), columns, num_ctx: None, ollama_version: None, collection_hash: None })
 }
 
 /// Build a partial `BatchReport` from already-completed units ONLY — no execution.
@@ -593,7 +600,7 @@ pub fn fold_report(
             }
         })
         .collect();
-    BatchReport { collection_id: collection_id.to_string(), columns, num_ctx: None, ollama_version: None }
+    BatchReport { collection_id: collection_id.to_string(), columns, num_ctx: None, ollama_version: None, collection_hash: None }
 }
 
 fn unit_of(target: &ModelTarget, task: &ToolTask, outcome: TaskOutcome, is_native: bool) -> CompletedUnit {

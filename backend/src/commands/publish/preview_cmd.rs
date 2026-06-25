@@ -3,7 +3,6 @@ use crate::commands::publish::publish_cmd::{BUILD_HASH, ENGINE_VERSION};
 use crate::commands::system::hardware::snapshot;
 use crate::errors::AppError;
 use crate::inference::eval::agentic::spec::Tier;
-use crate::inference::eval::agentic::v2::scenarios::collection_hash;
 use crate::inference::eval::readiness::hardware::hwclass::{classify_bytes, default_required_tier};
 use crate::inference::eval::readiness::types::ModelVerdict;
 use crate::inference::eval::toolcall::tasks::builtin_collection;
@@ -45,14 +44,22 @@ pub struct PublishPreview {
 /// NOTE: this command (with auth/send) compiles OUT of enterprise builds once the
 /// `enterprise` feature gate lands in B1; export stays in.
 #[tauri::command]
-pub fn preview_publish_payload(verdicts: Vec<ModelVerdict>, params: InferenceParams, collection_id: String) -> Result<PublishPreview, AppError> {
-    build_preview(&verdicts, &publish_context(&collection_id, params))
+pub fn preview_publish_payload(
+    verdicts: Vec<ModelVerdict>,
+    params: InferenceParams,
+    collection_id: String,
+    collection_hash: Option<String>,
+) -> Result<PublishPreview, AppError> {
+    build_preview(&verdicts, &publish_context(&collection_id, params, collection_hash))
 }
 
-/// Assemble the batch's run-wide [`PublishContext`] from the local hardware snapshot
-/// and the active collection id. `collection_hash` is `None` for a non-built-in
-/// collection — the signal `project` uses to exclude custom/user-authored results.
-pub(crate) fn publish_context(collection_id: &str, params: InferenceParams) -> PublishContext {
+/// Assemble the batch's run-wide [`PublishContext`] from the local hardware snapshot, the active
+/// collection id, and the RUN-VERIFIED `collection_hash` (computed at run time in `batch_cmd` and
+/// carried on the report). `None` for a custom/imported collection OR any edit — the signal
+/// `project` uses to exclude non-publishable results. The hash is the SINGLE source of truth: this
+/// never re-derives it from `collection_id` (that would let an edited collection publish under the
+/// real bundled identity). `collection_id` is still used for the display name + per-tier decoys.
+pub(crate) fn publish_context(collection_id: &str, params: InferenceParams, collection_hash: Option<String>) -> PublishContext {
     let hw = snapshot();
     let hardware_class = classify_bytes(hw.total_memory_bytes);
     PublishContext {
@@ -61,7 +68,7 @@ pub(crate) fn publish_context(collection_id: &str, params: InferenceParams) -> P
         engine_version: ENGINE_VERSION.to_string(),
         build_hash: BUILD_HASH.to_string(),
         collection_name: collection_id.to_string(),
-        collection_hash: collection_hash(collection_id),
+        collection_hash,
         decoys_by_tier: decoys_by_tier(collection_id),
         hardware_class,
         recommended_tier: default_required_tier(hardware_class),

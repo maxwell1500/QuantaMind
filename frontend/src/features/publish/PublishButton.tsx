@@ -11,7 +11,7 @@ import { PublishDialog } from "./PublishDialog";
 /// Opens the privacy-gate dialog and handles every publish outcome WITHOUT ever
 /// freezing the UI — each server status becomes a toast/next-action. The offline
 /// app keeps working regardless of what the board returns.
-export function PublishButton({ verdicts, collectionId }: { verdicts: ModelVerdict[]; collectionId: string }) {
+export function PublishButton({ verdicts, collectionId, collectionHash }: { verdicts: ModelVerdict[]; collectionId: string; collectionHash: string | null }) {
   const toast = useToast();
   const [open, setOpen] = useState(false);
 
@@ -20,7 +20,7 @@ export function PublishButton({ verdicts, collectionId }: { verdicts: ModelVerdi
   /// or failed), we stop and ask the user instead of looping forever.
   const onPublish = async (preview: PublishPreview, link: string, params: InferenceParams, retried = false) => {
     try {
-      const outcome = await publishToBoard(verdicts, params, collectionId, link);
+      const outcome = await publishToBoard(verdicts, params, collectionId, collectionHash, link);
       switch (outcome.kind) {
         case "ok":
           toast("Published to the board ✓");
@@ -71,7 +71,7 @@ export function PublishButton({ verdicts, collectionId }: { verdicts: ModelVerdi
       >
         🚀 Deploy
       </button>
-      {open && <PublishDialog verdicts={verdicts} collectionId={collectionId} onClose={() => setOpen(false)} onPublish={onPublish} />}
+      {open && <PublishDialog verdicts={verdicts} collectionId={collectionId} collectionHash={collectionHash} onClose={() => setOpen(false)} onPublish={onPublish} />}
     </>
   );
 }

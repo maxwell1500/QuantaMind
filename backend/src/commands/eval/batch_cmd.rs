@@ -13,6 +13,8 @@ use crate::inference::eval::agentic::sandbox::EndStateRule;
 use crate::inference::eval::agentic::spec::Tier;
 use crate::inference::eval::toolcall::prompt::TerminalGuidance;
 use crate::inference::eval::agentic::step::TrajectoryStep;
+use crate::inference::eval::agentic::v2::collection::load_v2_collection;
+use crate::inference::eval::agentic::v2::scenarios::{collection_hash, v2_json};
 use crate::inference::eval::batch::{
     batch_summaries, fold_report, run_batch_resumable, run_native_fc_pass, AggAgentic, BatchColumn, BatchReport,
     BatchSink, CompletedUnit, OllamaVramGate, TaskOutcome,
@@ -89,6 +91,7 @@ fn skeleton_report(collection_id: &str, targets: &[ModelTarget]) -> BatchReport 
         collection_id: collection_id.to_string(),
         num_ctx: None,
         ollama_version: None,
+        collection_hash: None, // set on the FINAL report only (content-verified); intermediates stay unpublishable
         columns: targets
             .iter()
             .map(|t| BatchColumn {
@@ -101,6 +104,24 @@ fn skeleton_report(collection_id: &str, targets: &[ModelTarget]) -> BatchReport 
                 is_thinking: t.is_thinking,
             })
             .collect(),
+    }
+}
+
+/// The leaderboard identity hash for a run — CONTENT-VERIFIED (the fork-on-edit guard).
+/// `Some(collection_hash(id))` ONLY when `tasks` are byte-for-byte the pristine bundled collection
+/// (compared as `serde_json::Value`, exact — no tolerance); `None` for a custom/imported id OR ANY
+/// edit to ANY field (world_state, end_state, prompt, tools, …). Compared on the RECEIVED tasks
+/// (pre-`apply_overrides`) so run params (k/tier/decoys, passed separately) never fork the identity.
+/// This is the single source of truth for publishability — publish reads the report's hash, never
+/// re-derives from `collection_id`.
+fn verified_collection_hash(collection_id: &str, tasks: &[ToolTask]) -> Option<String> {
+    let pristine = v2_json(collection_id).and_then(|j| load_v2_collection(j).ok())?;
+    let received = serde_json::to_value(tasks).ok()?;
+    let pristine_v = serde_json::to_value(&pristine).ok()?;
+    if received == pristine_v {
+        collection_hash(collection_id)
+    } else {
+        None
     }
 }
 
@@ -342,6 +363,9 @@ pub(crate) async fn run_passes(
         }
     }
     report.num_ctx = config.params.as_ref().and_then(|p| p.num_ctx);
+    // Fork-on-edit guard: stamp the content-verified hash from the RECEIVED tasks (pre-override).
+    // `Some` only for a pristine bundled collection; `None` for custom OR any edit → unpublishable.
+    report.collection_hash = verified_collection_hash(&config.collection_id, &config.tasks);
     // Stamp the running Ollama version so a native tool-calling regression on a version bump is
     // diagnosable (the honest garbled/foreign verdict reads as "at Ollama vX"). Best-effort.
     report.ollama_version = probe_ollama_version(&endpoint_for(BackendKind::Ollama)).await;
@@ -562,5 +586,56 @@ mod override_tests {
         // Explicit values win — forever, or a deliberately shorter window.
         assert_eq!(agentic_keep_alive(Some(-1)), Some(-1));
         assert_eq!(agentic_keep_alive(Some(30)), Some(30));
+    }
+}
+
+#[cfg(test)]
+mod fork_on_edit_tests {
+    use super::*;
+    use crate::inference::eval::agentic::sandbox::EndStateRule;
+
+    fn pristine(id: &str) -> Vec<ToolTask> {
+        load_v2_collection(v2_json(id).unwrap()).unwrap()
+    }
+
+    #[test]
+    fn pristine_bundled_run_carries_the_real_hash() {
+        let tasks = pristine("easy-webui-tasks");
+        assert!(verified_collection_hash("easy-webui-tasks", &tasks).is_some());
+        assert_eq!(verified_collection_hash("easy-webui-tasks", &tasks), collection_hash("easy-webui-tasks"));
+    }
+
+    #[test]
+    fn custom_or_unknown_id_is_none() {
+        let tasks = pristine("easy-webui-tasks");
+        assert_eq!(verified_collection_hash("my-imported-collection", &tasks), None);
+    }
+
+    #[test]
+    fn editing_world_state_forks_to_none() {
+        let mut tasks = pristine("easy-webui-tasks");
+        if let Some(spec) = tasks[0].agentic.as_mut() {
+            spec.world_state = Some(serde_json::json!({ "route": "/hacked", "submitted": true }));
+        }
+        assert_eq!(verified_collection_hash("easy-webui-tasks", &tasks), None);
+    }
+
+    #[test]
+    fn near_miss_single_char_edit_forks_to_none() {
+        // ZERO TOLERANCE: a one-character change to a SINGLE field must sever the hash — proves the
+        // Value compare has no normalization an attacker could exploit to publish a doctored
+        // answer key as pristine.
+        let mut a = pristine("easy-webui-tasks");
+        a[0].prompt.push('!'); // one char, one field
+        assert_eq!(verified_collection_hash("easy-webui-tasks", &a), None);
+
+        // The same, buried in a RequireEndState target value (the answer key).
+        let mut b = pristine("easy-webui-tasks");
+        if let Some(spec) = b[0].agentic.as_mut() {
+            if let EndStateRule::RequireEndState(target) = &mut spec.end_state {
+                *target = serde_json::json!({ "fields": { "coupon": "SAVE11" }, "submitted": true });
+            }
+        }
+        assert_eq!(verified_collection_hash("easy-webui-tasks", &b), None);
     }
 }

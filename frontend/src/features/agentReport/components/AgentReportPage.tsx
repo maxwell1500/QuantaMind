@@ -470,7 +470,7 @@ export function AgentReportPage() {
               hardware={hardware}
               cardRef={cardRef}
             />
-            <PublishButton verdicts={verdicts} collectionId={selected} />
+            <PublishButton verdicts={verdicts} collectionId={selected} collectionHash={batchReport?.collection_hash ?? null} />
           </div>
         )}
       </footer>

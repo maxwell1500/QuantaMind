@@ -80,6 +80,6 @@ export type PublishPreview = z.infer<typeof PublishPreviewSchema>;
 /// params in effect + the active collection id (so the backend stamps the collection
 /// identity/hash and excludes custom-collection rows). Offline + read-only — derives
 /// the cohort from the local hardware snapshot and sends nothing.
-export async function previewPublishPayload(verdicts: ModelVerdict[], params: InferenceParams, collectionId: string): Promise<PublishPreview> {
-  return PublishPreviewSchema.parse(await invoke("preview_publish_payload", { verdicts, params, collectionId }));
+export async function previewPublishPayload(verdicts: ModelVerdict[], params: InferenceParams, collectionId: string, collectionHash: string | null): Promise<PublishPreview> {
+  return PublishPreviewSchema.parse(await invoke("preview_publish_payload", { verdicts, params, collectionId, collectionHash }));
 }
