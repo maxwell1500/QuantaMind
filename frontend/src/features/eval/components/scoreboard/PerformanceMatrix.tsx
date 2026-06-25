@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useEffect } from "react";
 import { useBatchStore } from "../../state/batchStore";
 import { useInstalledModelsStore } from "../../../models/state/installedModelsStore";
 import { useNavStore } from "../../../../shared/state/navStore";
@@ -177,7 +177,6 @@ export function PerformanceMatrix({
     if (collectionId) void hydrateCliff(collectionId);
   }, [collectionId, hydrateCliff]);
   const anyNative = (report?.columns ?? []).some((c) => c.agentic_native_fc != null);
-  const [showNative, setShowNative] = useState(false);
 
   // Pre-fill the Context-Cliff probe for a model + the current collection and switch to
   // the Audit tab. NEVER auto-runs (guardrail 1). Shared by the unprobed "Run probe ↗"
@@ -204,12 +203,15 @@ export function PerformanceMatrix({
       ↻
     </button>
   );
+  // Always-on columns — Native FC / TC Steps / PB Steps are permanent (no Show/Hide toggle), so
+  // the per-model summary always compares the Tool-Calling and Prompt-based passes side by side.
   const columns = [
     "Model",
     "Quant",
     "Pass^k",
-    ...(showNative ? ["Native FC", "TC Steps"] : []),
-    ...(showNative ? ["PB Steps"] : ["Avg Steps"]),
+    "Native FC",
+    "TC Steps",
+    "PB Steps",
     "Effort",
     "Schema Resil.",
     "Cliff Depth",
@@ -235,25 +237,6 @@ export function PerformanceMatrix({
           {rows.length > 1 ? " (per-model summary — click a row to inspect model details)" : " (per-model summary)"}
         </span>
         <span style={{ marginLeft: "auto", display: "inline-flex", alignItems: "center", gap: 10 }}>
-          {rows.length > 0 && (
-            <button
-              type="button"
-              data-testid="matrix-native-toggle"
-              onClick={() => setShowNative((v) => !v)}
-              style={{
-                fontSize: 11,
-                fontWeight: 700,
-                padding: "3px 10px",
-                borderRadius: 6,
-                border: "1px solid #bfdbfe",
-                background: showNative ? "#eff6ff" : "transparent",
-                color: "#2563eb",
-                cursor: "pointer",
-              }}
-            >
-              {showNative ? "Hide" : "Show"} Native-FC
-            </button>
-          )}
           <InfoButton {...TOOL_HELP.performanceMatrix} testId="performance-matrix" />
         </span>
       </div>
@@ -264,7 +247,7 @@ export function PerformanceMatrix({
         </div>
       ) : (
         <>
-        {showNative && !anyNative && (
+        {!anyNative && (
           <div
             data-testid="native-fc-empty-hint"
             style={{ margin: "0 16px 10px", padding: "8px 12px", fontSize: 12, lineHeight: 1.5, color: "#475569", background: "#f8fafc", border: "1px solid #e2e8f0", borderRadius: 8, fontFamily: "Inter, sans-serif" }}
@@ -310,33 +293,34 @@ export function PerformanceMatrix({
                     <td style={{ ...td, color: active ? "#1d4ed8" : "#0f172a", fontWeight: active ? 700 : 500 }}>{r.label}</td>
                     <td style={{ ...td, color: "#64748b", fontFamily: "'JetBrains Mono', monospace", fontSize: 12 }}>{r.quant}</td>
                     <td style={{ ...td, fontWeight: 700 }}>{passKCell(r.passK)}</td>
-                    {showNative && (
-                      <td
-                        style={{ ...td, fontWeight: 700 }}
-                        data-testid={`matrix-native-${r.model}`}
-                        // Explain an N/A rather than leave a silent wall. The reason is the
-                        // model, not the toggle: native FC needs an Ollama model whose
-                        // /api/show lists the `tools` capability (gemma/most fine-tuned &
-                        // quantized models don't); llama.cpp / MLX are always N/A.
-                        title={
-                          r.passKNative === "N/A"
-                            ? "Native tool-calling is N/A for this model — it's measured only for Ollama models whose /api/show lists the `tools` capability (gemma & many fine-tuned / quantized models don't); llama.cpp / MLX are always N/A."
-                            : undefined
-                        }
-                      >
-                        {getPassKBadge(r.passKNative)}
-                      </td>
-                    )}
-                    {showNative && (
-                      <td
-                        style={{ ...td, color: r.avgStepsNative === "—" || r.avgStepsNative === "N/A" ? "#94a3b8" : "#334155" }}
-                        data-testid={`matrix-native-steps-${r.model}`}
-                        title="Avg steps of the Tool-Calling (native) run — comparable to PB Steps (the prompt run)."
-                      >
-                        {r.avgStepsNative}
-                      </td>
-                    )}
-                    <td style={{ ...td, color: r.avgSteps === "—" ? "#94a3b8" : "#334155" }}>{r.avgSteps}</td>
+                    <td
+                      style={{ ...td, fontWeight: 700 }}
+                      data-testid={`matrix-native-${r.model}`}
+                      // Explain an N/A rather than leave a silent wall: native FC needs an Ollama
+                      // model whose /api/show lists the `tools` capability (gemma/most fine-tuned
+                      // & quantized models don't); llama.cpp / MLX are always N/A.
+                      title={
+                        r.passKNative === "N/A"
+                          ? "Native tool-calling is N/A for this model — it's measured only for Ollama models whose /api/show lists the `tools` capability (gemma & many fine-tuned / quantized models don't); llama.cpp / MLX are always N/A."
+                          : undefined
+                      }
+                    >
+                      {getPassKBadge(r.passKNative)}
+                    </td>
+                    <td
+                      style={{ ...td, color: r.avgStepsNative === "—" || r.avgStepsNative === "N/A" ? "#94a3b8" : "#334155" }}
+                      data-testid={`matrix-native-steps-${r.model}`}
+                      title="Avg steps of the Tool-Calling (native) run — comparable to PB Steps (the prompt run)."
+                    >
+                      {r.avgStepsNative}
+                    </td>
+                    <td
+                      style={{ ...td, color: r.avgSteps === "—" ? "#94a3b8" : "#334155" }}
+                      data-testid={`matrix-prompt-steps-${r.model}`}
+                      title="Avg steps of the Prompt-based run."
+                    >
+                      {r.avgSteps}
+                    </td>
                     <td style={{ ...td, color: r.effort === "—" ? "#94a3b8" : "#334155", fontFamily: r.effort !== "—" ? "'JetBrains Mono', monospace" : "inherit", fontSize: 12 }}>{r.effort}</td>
                     <td style={td}>{getSchemaResilBadge(r.schemaResil)}</td>
                     <td style={td}>

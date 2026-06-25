@@ -219,20 +219,17 @@ describe("PerformanceMatrix", () => {
     ],
   };
 
-  it("reveals a parallel Native-FC pass^k column behind a toggle when native was measured", () => {
+  it("ALWAYS shows the Native-FC + TC/PB Steps columns (no toggle), side by side with prompt", () => {
     useBatchStore.setState({ report: nativeReport });
     render(<PerformanceMatrix focusedModel="qwen" onFocusModel={() => {}} />);
 
-    // Hidden by default — prompt-based is the default view.
-    expect(screen.queryByRole("columnheader", { name: "Native FC" })).toBeNull();
-
-    fireEvent.click(screen.getByTestId("matrix-native-toggle"));
+    // Permanent columns — present without any toggle.
     expect(screen.getByRole("columnheader", { name: "Native FC" })).toBeInTheDocument();
+    expect(screen.getByRole("columnheader", { name: "TC Steps" })).toBeInTheDocument();
+    expect(screen.getByRole("columnheader", { name: "PB Steps" })).toBeInTheDocument();
+    expect(screen.queryByTestId("matrix-native-toggle")).toBeNull(); // toggle removed
     expect(screen.getByTestId("matrix-native-qwen")).toHaveTextContent("2/5"); // native pass^k
     expect(screen.getByTestId("matrix-model-row-qwen")).toHaveTextContent("5/5"); // prompt-based still there
-
-    fireEvent.click(screen.getByTestId("matrix-native-toggle"));
-    expect(screen.queryByRole("columnheader", { name: "Native FC" })).toBeNull(); // toggled back off
   });
 
   it("explains an N/A Native-FC cell instead of leaving a silent wall", () => {
@@ -246,19 +243,15 @@ describe("PerformanceMatrix", () => {
     };
     useBatchStore.setState({ report: mixed });
     render(<PerformanceMatrix focusedModel="qwen" onFocusModel={() => {}} />);
-    fireEvent.click(screen.getByTestId("matrix-native-toggle"));
     const naCell = screen.getByTestId("matrix-native-tinyllama.gguf");
     expect(naCell).toHaveTextContent("—"); // N/A renders as an em-dash badge
     expect(naCell.getAttribute("title")).toMatch(/tools.*capability|N\/A for this model/i);
   });
 
-  it("always offers the Native-FC toggle and explains how to populate it when it was not measured", () => {
+  it("shows the Native-FC column (all N/A) + a hint when native was not measured", () => {
     useBatchStore.setState({ report }); // no agentic_native_fc on any column
     render(<PerformanceMatrix focusedModel="qwen" onFocusModel={() => {}} />);
-    // The toggle is always available — clicking it must DO something, not vanish.
-    const toggle = screen.getByTestId("matrix-native-toggle");
-    fireEvent.click(toggle);
-    // Reveals the column (N/A here) plus a hint pointing at the run-config checkbox.
+    // The column is always present; the hint explains the all-N/A state.
     expect(screen.getByTestId("native-fc-empty-hint")).toHaveTextContent(/Measure native tool-calling/i);
     expect(screen.getByTestId("matrix-native-qwen")).toHaveTextContent("—"); // N/A renders as an em-dash badge
   });
