@@ -111,12 +111,31 @@ graded on the final state matching a target. Architecture keeps the shared-sandb
   UI to the target on BOTH native (`tool_calls`) and prompt (JSON-in-text) channels, `failure=None`,
   EnvView carried the mutated state (`live_web_ui_passes_on_the_native_path` + `..._runs_on_the_prompt_path`).
 
-## ⬜ Slice 4 — Custom environments (imported + edited) — NOT STARTED
-- 4a: runtime load of a user JSON/dir via `load_v2_collection`; `collection_hash = None` → excluded
-  from publish (structural).
-- 4b: **modifiable in-memory snapshots** (edit tree/content in-app) + **freeze-per-run** +
-  **fork-on-edit guard** (editing a *bundled* snapshot flips `collection_hash` → `None` so a doctored
-  copy can never publish under the real identity — security-critical; pin with a test).
+## ✅ Slice 4 — Custom environments (imported + edited) — DONE (live-validated)
+- **4a v2 import:** `persistence/evals.rs::parse_collection` routes by top-level JSON shape — ARRAY →
+  raw `ToolTask[]` (legacy); OBJECT → `load_v2_collection` (so users import env collections in the
+  same v2 format as bundled). An object that isn't valid v2 → a clear error, never a raw fallthrough.
+  Reuses the existing picker. Custom ids hash to `None` → excluded from publish (structural).
+- **4b fork-on-edit guard (security-critical) = content-verified hash.** `BatchReport.collection_hash`
+  is computed at RUN time (`batch_cmd::verified_collection_hash`): `Some(collection_hash(id))` ONLY
+  when the received tasks byte-for-byte equal the pristine `load_v2_collection` (serde Value, exact);
+  `None` for a custom id OR ANY edit to ANY field. Publish reads THIS (single source of truth — the
+  publish-time `collection_hash(collection_id)` re-derivation was REMOVED), so an edited/doctored
+  collection can't publish under a real identity. Editing is fork-on-edit by construction (any edit
+  ⇒ content differs ⇒ `None`).
+- **Editor:** `WorldStateEditor.tsx` — a JSON editor whose VALIDATION gates Save (JSON parse +
+  per-env shape via `env/worldStateShape.ts`; inline env-specific errors). `evalRegistryStore`
+  `editWorldState` mutates the in-memory task + sets `edited`; an amber "local-only, won't publish"
+  banner. Freeze-per-run already holds (sandbox built once, cloned k times). `registry.ts`
+  `AgenticSpecSchema` gained `entity_tools`/`recognized_tools` (were serialized but stripped on the
+  round-trip → would false-fork every bundled run + lost the decoy nudge — fixed).
+- **Tests:** 352 backend (incl. security pins: pristine→Some, custom→None, edited→None, **near-miss
+  one-char→None**, no publish path re-derives the hash) + 256 frontend (round-trip-completeness incl.
+  representational edges, editor parse/shape gates, store mutate). **Live:** an EDITED config.yaml
+  reached qwen3.5:9b (`read_file` → "timeout: 777"), and the edited run is non-pristine →
+  unpublishable (`live_edited_world_state_reaches_the_model`).
+- **Slice 4.5 (follow-up):** a structured per-env editor (editable file tree / corpus rows / UI
+  fields) reusing `worldStateShape` — deferred, not in this slice.
 
 ## ⬜ Slice 5 — Vision OCR-as-capability — NOT STARTED
 - Separate eval family (NOT a sandbox tool loop; own module `inference/eval/vision/`, NOT Pass^k).

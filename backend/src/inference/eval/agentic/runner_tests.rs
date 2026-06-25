@@ -1987,3 +1987,54 @@ async fn live_web_ui_enable_setting_prompt() {
     assert!(outcome.reached_end, "prompt navigate+toggle must reach the target after the fix");
     assert_eq!(outcome.failure, None);
 }
+
+#[tokio::test]
+#[ignore = "Slice-4: an EDITED env snapshot reaches the live model (edit → sandbox → model is real)"]
+async fn live_edited_world_state_reaches_the_model() {
+    // The editor's whole point: editing world_state changes what the model actually sees. Edit a
+    // bundled fs task's config.yaml to a distinctive value and confirm the live model reads it. (The
+    // edit also makes this run non-pristine → collection_hash None — the fork-on-edit guard, unit-pinned.)
+    use crate::inference::eval::agentic::build::sandbox_for;
+    use crate::inference::eval::agentic::difficulty::passk::max_tokens_for;
+    use crate::inference::eval::agentic::model_turn::NativeOllamaTurn;
+    use crate::inference::eval::agentic::v2::collection::load_v2_collection;
+    use crate::inference::eval::agentic::v2::scenarios::v2_json;
+    use crate::inference::eval::toolcall::prompt::TerminalGuidance;
+    let mut task = load_v2_collection(v2_json("easy-coding-fs").unwrap())
+        .unwrap()
+        .into_iter()
+        .find(|t| t.id == "es_fs_read_config")
+        .unwrap();
+    // EDIT the snapshot: change config.yaml's timeout to a distinctive value the pristine never had.
+    if let Some(spec) = task.agentic.as_mut() {
+        spec.world_state = Some(serde_json::json!({
+            "config.yaml": "timeout: 777\nretries: 2\n",
+            "src/app.py": "import config\n",
+            "README.md": "# App\n"
+        }));
+    }
+    let tier = task.agentic.as_ref().map(|s| s.tier).unwrap_or_default();
+    let (sandbox, cfg) = sandbox_for(&task).unwrap();
+    let model = NativeOllamaTurn {
+        endpoint: "http://localhost:11434".into(),
+        model: "qwen3.5:9b".into(),
+        tools: task.tools.clone(),
+        options: None,
+        terminal: TerminalGuidance::MustUseTools,
+        max_tokens: max_tokens_for(tier, true),
+        is_thinking: false,
+    };
+    let (tx, mut rx) = unbounded_channel();
+    let outcome = run_once(&model, &sandbox, cfg.max_steps, cfg.max_recovery, 0, &tx).await.unwrap();
+    drop(tx);
+    let steps = drain(&mut rx);
+    for s in &steps {
+        eprintln!("turn {} kind={:?} inj={:?} raw={}", s.step_index, s.kind, s.injection, s.raw_output.trim());
+    }
+    eprintln!("EDITED-WS: reached_end={} failure={:?}", outcome.reached_end, outcome.failure);
+    // The sandbox served the EDITED file (777), proving the edit reached the live model's tool results.
+    assert!(
+        steps.iter().any(|s| s.injection.as_deref().is_some_and(|i| i.contains("777")) || s.raw_output.contains("777")),
+        "the edited config (timeout: 777) must reach the model",
+    );
+}
