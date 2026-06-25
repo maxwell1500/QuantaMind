@@ -15,6 +15,7 @@ import type { HardwareTier } from "../../../../shared/ipc/compare/hardware";
 import { batchToCsv, download } from "../../exportBatch";
 import { ConfirmDialog } from "./ConfirmDialog";
 import { CsvImportModal } from "./CsvImportModal";
+import { WorldStateEditor } from "./WorldStateEditor";
 import { KebabMenu } from "./KebabMenu";
 import { Spinner } from "../../../../shared/ui/Spinner";
 
@@ -63,7 +64,7 @@ export function EvalManager({
   onEditTask,
   onDeleteTask,
 }: Partial<EvalManagerProps> = {}) {
-  const { presets, collections, selected, tasks, init, select, isPreset, importFile, save, remove, hidePreset } =
+  const { presets, collections, selected, tasks, edited, init, select, isPreset, importFile, save, remove, hidePreset, editWorldState } =
     useEvalRegistryStore();
   const showToast = useToast();
   const list = useInstalledModelsStore((s) => s.list);
@@ -76,6 +77,7 @@ export function EvalManager({
 
   const [collectionsExpanded, setCollectionsExpanded] = useState(true);
   const [hoverTaskId, setHoverTaskId] = useState<string | null>(null);
+  const [editEnvTaskId, setEditEnvTaskId] = useState<string | null>(null);
   // Which collection's task list is expanded (accordion). Toggled by double-clicking
   // the collection; only the SELECTED collection's tasks are loaded, so the list shows
   // when `expandedId === selected`.
@@ -219,6 +221,9 @@ export function EvalManager({
             </span>
             {hov && (
               <>
+                {t.agentic?.world_state != null && (
+                  <button type="button" onClick={(e) => { e.stopPropagation(); setEditEnvTaskId(t.id); }} style={taskBtnStyle} data-testid={`eval-task-edit-env-${t.id}`} title="Edit environment snapshot">🌐</button>
+                )}
                 <button type="button" onClick={(e) => { e.stopPropagation(); onEditTask?.(t.id); }} style={taskBtnStyle} data-testid={`eval-task-edit-${t.id}`} title="Edit task">✎</button>
                 <button type="button" onClick={(e) => { e.stopPropagation(); onDeleteTask?.(t.id); }} style={{ ...taskBtnStyle, color: "#b91c1c" }} data-testid={`eval-task-delete-${t.id}`} title="Delete task">🗑</button>
               </>
@@ -285,6 +290,12 @@ export function EvalManager({
       {error && (
         <div style={{ padding: "10px 16px" }}>
           <p style={errorTextStyle}>{error}</p>
+        </div>
+      )}
+
+      {edited && (
+        <div style={{ margin: "8px 16px 0", padding: "6px 10px", background: "#fffbeb", border: "1px solid #fde68a", borderRadius: 6, fontSize: 11, color: "#92400e", fontFamily: "Inter, sans-serif" }} data-testid="eval-edited-banner">
+          Environment edited — this collection is now <b>local-only</b> and its results won't publish to the leaderboard.
         </div>
       )}
 
@@ -590,6 +601,21 @@ export function EvalManager({
         />
       )}
       {csvOpen && <CsvImportModal onImport={handleCsvImport} onClose={() => setCsvOpen(false)} />}
+      {editEnvTaskId &&
+        (() => {
+          const t = tasks.find((x) => x.id === editEnvTaskId);
+          if (!t) return null;
+          return (
+            <WorldStateEditor
+              task={t}
+              onClose={() => setEditEnvTaskId(null)}
+              onSave={(ws) => {
+                editWorldState(t.id, ws);
+                setEditEnvTaskId(null);
+              }}
+            />
+          );
+        })()}
     </div>
   );
 }
