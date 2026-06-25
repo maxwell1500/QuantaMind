@@ -77,8 +77,16 @@ frontend ~217 green; live-verified on `qwen2.5-coder`.
 - **Status:** 337 backend + 232 frontend tests green (incl. the oracle solving all 3 corpus tasks
   end-to-end + a trivial agent failing). **Live gate PASSED** — qwen3.5:9b (confirmed `tools`-capable)
   on `es_rs_search_fact` reached the end state on BOTH the native path (`tool_calls`) and the prompt
-  path (JSON-in-text), `failure=None`, and the EnvView carried the real deterministic ranked
-  results (`live_web_corpus_passes_on_the_native_path` + `..._runs_on_the_prompt_path`).
+  path (JSON-in-text), `failure=None`, EnvView carried the real ranked results
+  (`live_web_corpus_passes_on_the_native_path` + `..._runs_on_the_prompt_path`).
+- **Abstain-checkpoint fix:** `es_rs_abstain_when_absent` first graded the reply on the exact phrase
+  `*not available*`; the native model correctly abstained in *different* words ("No document … was
+  **found**") → end state unreachable → it looped re-replying → InfiniteLoop (a false negative).
+  `glob_match` has no alternation, so the checkpoint is now the natural absence phrasing
+  (`*no*document*found*`, ordered segments) — any correctly-worded abstain passes, only a fabricated
+  radius fails. Live-validated native (`live_web_corpus_abstains_when_doc_absent_native`:
+  search→"No matching document was found."→PASS). **Lesson: never grade free-text / abstain on one
+  exact phrase — the matcher can't OR, and an unreachable reply checkpoint loops to the cap.**
 
 ## ⬜ Slice 3 — Web-UI environment (schematic SVG, state-diff) — NOT STARTED
 - `v2/env_webui.rs`: per-**run** `WebUiState` machine (click/navigate/fill mutate it — held in run
