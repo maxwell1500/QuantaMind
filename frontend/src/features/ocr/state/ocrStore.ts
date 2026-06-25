@@ -58,11 +58,10 @@ const parseReq = (rid: string): { docId: string; page: number } => {
   return { docId: rid.slice(0, i), page: Number(rid.slice(i + 1)) };
 };
 
-/// Join a document's per-page text for Copy/Export — multi-page gets `--- Page N ---` delimiters so
-/// the output isn't a wall of run-together pages.
+/// Join a document's text for Copy/Export — one continuous document (matches the UI), pages flowing
+/// together with a blank line between them, no per-page headers.
 export function joinedText(doc: OcrDoc): string {
-  if (doc.pages.length <= 1) return doc.pages[0]?.text ?? "";
-  return doc.pages.map((p) => `--- Page ${p.page} ---\n${p.text}`).join("\n\n");
+  return doc.pages.map((p) => p.text).filter(Boolean).join("\n\n");
 }
 
 export const useOcrStore = create<OcrStore>((set, get) => ({

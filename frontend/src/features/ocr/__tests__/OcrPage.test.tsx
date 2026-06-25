@@ -32,7 +32,7 @@ const doc = (over: Partial<OcrDoc> = {}): OcrDoc => ({
   error: null,
   pages: [
     { page: 1, text: "Invoice total $42", status: "done" },
-    { page: 2, text: "", status: "cannot_process" },
+    { page: 2, text: "Second page text", status: "done" },
   ],
   ...over,
 });
@@ -44,12 +44,15 @@ describe("OcrPage", () => {
     expect(screen.getByTestId("ocr-output")).toHaveTextContent("Select a document");
   });
 
-  it("renders the sticky verify-against-source note with the model + per-page text", () => {
+  it("renders the sticky verify note + ALL pages as one continuous block (no Page N breaks)", () => {
     useOcrStore.setState({ docs: [doc()], selectedId: "D" });
     render(<OcrPage />);
     expect(screen.getByTestId("ocr-verify-note")).toHaveTextContent("verify important text against the source");
-    expect(screen.getByTestId("ocr-verify-note")).toHaveTextContent("qwen3.5:9b");
-    expect(screen.getByTestId("ocr-page-1")).toHaveTextContent("Invoice total $42");
+    const text = screen.getByTestId("ocr-text");
+    expect(text).toHaveTextContent("Invoice total $42");
+    expect(text).toHaveTextContent("Second page text"); // page 2 flows into the same block
+    expect(text.textContent).not.toMatch(/Page 1|Page 2/); // no per-page headers
+    expect(screen.queryByTestId("ocr-page-1")).toBeNull();
   });
 
   it("uses the global header model and has no per-page model picker", () => {
@@ -61,10 +64,18 @@ describe("OcrPage", () => {
     expect(screen.getByTestId("ocr-verify-note")).toHaveTextContent("qwen3.5:9b");
   });
 
-  it("shows a Cannot process notice for a gated page (no fabricated text)", () => {
-    useOcrStore.setState({ docs: [doc()], selectedId: "D" });
+  it("shows one Cannot process notice when the model is text-only (no fabricated text)", () => {
+    useOcrStore.setState({ docs: [doc({ pages: [{ page: 1, text: "", status: "cannot_process" }, { page: 2, text: "", status: "cannot_process" }] })], selectedId: "D" });
     render(<OcrPage />);
-    expect(screen.getByTestId("ocr-cannot-2")).toHaveTextContent("Cannot process");
+    expect(screen.getByTestId("ocr-cannot")).toHaveTextContent("Cannot process");
+    expect(screen.queryByTestId("ocr-text")).toBeNull();
+  });
+
+  it("surfaces a per-page run error inline without breaking the flow", () => {
+    useOcrStore.setState({ docs: [doc({ pages: [{ page: 1, text: "good text", status: "done" }, { page: 2, text: "OCR failed — boom", status: "error" }] })], selectedId: "D" });
+    render(<OcrPage />);
+    expect(screen.getByTestId("ocr-error")).toHaveTextContent("OCR failed — boom");
+    expect(screen.getByTestId("ocr-text")).toHaveTextContent("good text");
   });
 
   it("shows Stop + a live progress indicator while running (never feels stuck)", () => {

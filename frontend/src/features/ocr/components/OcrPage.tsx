@@ -34,6 +34,10 @@ export function OcrPage() {
   }, [running, activePage]);
 
   const doc = docs.find((d) => d.id === selectedId) ?? null;
+  // One continuous document — all pages' text joined (no per-page boxes).
+  const fullText = doc ? doc.pages.map((p) => p.text).filter(Boolean).join("\n\n") : "";
+  const allCannotProcess = !!doc && doc.pages.length > 0 && doc.pages.every((p) => p.status === "cannot_process");
+  const pageErrors = doc ? doc.pages.filter((p) => p.status === "error") : [];
 
   const onUpload = async () => {
     const picked = await open({
@@ -119,28 +123,30 @@ export function OcrPage() {
             <div className="sticky top-0 z-10 bg-amber-50 border-b border-amber-200 px-4 py-2 text-xs text-amber-800" data-testid="ocr-verify-note">
               Extracted by <b>{model || "—"}</b> — OCR accuracy varies by model; verify important text against the source.
             </div>
-            <div className="flex-1 overflow-auto p-4 flex flex-col gap-4">
-              {doc.pages.map((p) => (
-                <section key={p.page} data-testid={`ocr-page-${p.page}`}>
-                  {doc.pages.length > 1 && <div className="text-xs font-semibold text-slate-400 mb-1">Page {p.page}</div>}
-                  {p.status === "cannot_process" ? (
-                    <div className="text-xs text-slate-500 bg-slate-50 border border-slate-200 rounded px-2 py-1" data-testid={`ocr-cannot-${p.page}`}>
-                      Cannot process — “{model}” is a text-only model. Pick a vision model in the header.
+            <div className="flex-1 overflow-auto p-4">
+              {allCannotProcess ? (
+                <div className="text-sm text-slate-600 bg-slate-50 border border-slate-200 rounded px-3 py-2" data-testid="ocr-cannot">
+                  Cannot process — “{model}” is a text-only model. Pick a vision model in the header.
+                </div>
+              ) : (
+                <>
+                  {pageErrors.length > 0 && (
+                    <div className="mb-3 text-xs text-red-700 bg-red-50 border border-red-200 rounded px-2 py-1" data-testid="ocr-error">
+                      {pageErrors.map((p) => p.text).join(" · ")}
                     </div>
-                  ) : p.status === "error" ? (
-                    <div className="text-xs text-red-700 bg-red-50 border border-red-200 rounded px-2 py-1" data-testid={`ocr-page-error-${p.page}`}>{p.text}</div>
-                  ) : p.status === "running" && !p.text ? (
-                    <div className="flex items-center gap-2 text-xs text-slate-500" data-testid={`ocr-running-${p.page}`}>
-                      <span className="inline-block h-3 w-3 animate-spin rounded-full border-2 border-slate-400 border-t-transparent" aria-hidden />
-                      Reading the page… (the first page can take a moment while the model loads)
-                    </div>
-                  ) : p.status === "done" && !p.text ? (
-                    <div className="text-xs text-slate-400" data-testid={`ocr-empty-${p.page}`}>(no text found on this page)</div>
-                  ) : (
-                    <pre className="whitespace-pre-wrap break-words text-sm text-slate-900 font-mono">{p.text}{p.status === "running" ? " …" : ""}</pre>
                   )}
-                </section>
-              ))}
+                  {/* All pages flow as one continuous document — no per-page breaks. */}
+                  {fullText && <pre className="whitespace-pre-wrap break-words text-sm text-slate-900 font-mono" data-testid="ocr-text">{fullText}</pre>}
+                  {running ? (
+                    <div className="mt-2 flex items-center gap-2 text-xs text-blue-700" data-testid="ocr-reading">
+                      <span className="inline-block h-3 w-3 animate-spin rounded-full border-2 border-blue-600 border-t-transparent" aria-hidden />
+                      Extracting{activePage ? ` page ${activePage}` : ""}… {elapsed}s{!fullText ? " — the first page can take a couple of minutes while the model loads" : ""}
+                    </div>
+                  ) : (
+                    !fullText && <div className="text-sm text-slate-400" data-testid="ocr-empty">No text extracted.</div>
+                  )}
+                </>
+              )}
             </div>
           </>
         )}
