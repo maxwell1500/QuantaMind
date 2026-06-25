@@ -1,3 +1,4 @@
+import { useEffect, useState } from "react";
 import { open, save } from "@tauri-apps/plugin-dialog";
 import { useOcrStore, joinedText } from "../state/ocrStore";
 import { useOcrStream } from "../hooks/useOcrStream";
@@ -17,6 +18,20 @@ export function OcrPage() {
   // the global store — no per-page picker, no local copy that could drift. A text-only model → the
   // run reports "Cannot process".
   const model = useSelectedModelStore((s) => s.selectedModels[0]?.name ?? "");
+
+  // Elapsed-seconds ticker for the current page — a long first-token wait (model load + image
+  // prefill can take a couple of minutes) shouldn't look frozen. Resets each page.
+  const [elapsed, setElapsed] = useState(0);
+  useEffect(() => {
+    if (!running) {
+      setElapsed(0);
+      return;
+    }
+    setElapsed(0);
+    const start = Date.now();
+    const id = setInterval(() => setElapsed(Math.round((Date.now() - start) / 1000)), 1000);
+    return () => clearInterval(id);
+  }, [running, activePage]);
 
   const doc = docs.find((d) => d.id === selectedId) ?? null;
 
@@ -66,7 +81,7 @@ export function OcrPage() {
         {running && (
           <div className="flex items-center gap-2 text-xs text-blue-700" data-testid="ocr-progress">
             <span className="inline-block h-3 w-3 animate-spin rounded-full border-2 border-blue-600 border-t-transparent" aria-hidden />
-            Extracting{activePage ? ` page ${activePage}` : ""}…
+            Extracting{activePage ? ` page ${activePage}` : ""}… {elapsed}s
           </div>
         )}
         <div className="flex gap-2">
