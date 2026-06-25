@@ -171,9 +171,10 @@ describe("MatrixScoreboard (Simulator) data flow", () => {
     render(<MatrixScoreboard model={MODEL} k={1} maxSteps={8} focusedTaskId={null} setFocusedTaskId={() => {}} focusedPass="prompt" setFocusedPass={() => {}} />);
     // Target Tool is no longer a blank "—" for an agentic task — it names the end-state tool.
     expect(screen.getByTestId("scoreboard-row-pr_task")).toHaveTextContent("open_pr");
-    // TC Steps shows the native run's avg steps; PB Steps is still "—" (prompt pass not run).
+    // TC Steps shows the native run's avg steps; this is a NATIVE-ONLY run so the Prompt-based /
+    // PB Steps columns are hidden entirely (no empty prompt cells).
     expect(screen.getByTestId("native-steps-pr_task")).toHaveTextContent("1.5");
-    expect(screen.getByTestId("prompt-steps-pr_task")).toHaveTextContent("—");
+    expect(screen.queryByTestId("prompt-steps-pr_task")).toBeNull();
   });
 
   it("the Action column is gone — the result cells themselves open the trace", () => {

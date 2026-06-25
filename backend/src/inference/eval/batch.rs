@@ -98,7 +98,9 @@ fn fold_completed(
 /// `app.emit()` progress; the engine stays Tauri-free. `Send + Sync` so the
 /// agentic per-turn pump can forward from a spawned task.
 pub trait BatchSink: Send + Sync {
-    fn task_started(&self, model: &str, task_id: &str, index: usize, total: usize, category: &str);
+    /// A task is about to run. `is_native` tags the native pass so the UI shows progress the
+    /// instant a pass begins (and can reset the per-pass progress bar at the pass boundary).
+    fn task_started(&self, model: &str, task_id: &str, index: usize, total: usize, category: &str, is_native: bool);
     /// A live agentic turn. `is_native` distinguishes the NATIVE function-calling pass from
     /// the prompt pass so the UI can render the two trajectories separately (both stream to
     /// the same (model, task) cell).
@@ -491,7 +493,7 @@ where
                 fold_completed(unit, task, &mut single_tasks, &mut single_results, &mut agentic_reports, &mut col_error);
                 continue;
             }
-            sink.task_started(&target.model, &task.id, i, tasks.len(), &task.category);
+            sink.task_started(&target.model, &task.id, i, tasks.len(), &task.category, false);
             if is_agentic(&task.category) {
                 match run_one_agentic(&turn, task, &target.model, &cancel, sink.clone()).await {
                     Ok(report) => {
@@ -657,7 +659,7 @@ where
         let mut reports: Vec<AgenticReport> = Vec::new();
         let mut errored: u32 = 0; // tasks whose every run errored (a backend Err)
         let mut error_class = NativeErrorClass::None;
-        for task in &agentic_tasks {
+        for (i, task) in agentic_tasks.iter().enumerate() {
             if cancel.is_cancelled() {
                 break;
             }
@@ -667,6 +669,9 @@ where
                 }
                 continue;
             }
+            // Announce the task BEFORE the (slow) model call so the UI shows the native pass is
+            // running immediately — not blank until the first turn returns.
+            sink.task_started(&col.model, &task.id, i, agentic_tasks.len(), &task.category, true);
             let turn = make_native(&col.model, task);
             let (sandbox, cfg) = sandbox_for(task)?;
             let (tx, mut rx) = unbounded_channel::<TrajectoryStep>();

@@ -458,6 +458,8 @@ async fn live_gap_a_prime_gemma4_native_calls_reply_with_the_mandate() {
         tools: task.tools.clone(),
         options: None,
         terminal: TerminalGuidance::MustUseTools,
+        max_tokens: 256,
+        is_thinking: false,
     };
     let (tx, mut rx) = unbounded_channel();
     let outcome = run_once(&model, &sandbox, cfg.max_steps, cfg.max_recovery, 0, &tx).await.unwrap();
@@ -497,6 +499,8 @@ async fn live_filesystem_env_passes_on_the_native_path() {
         tools: task.tools.clone(),
         options: None,
         terminal: TerminalGuidance::MustUseTools,
+        max_tokens: 256,
+        is_thinking: false,
     };
     let (tx, mut rx) = unbounded_channel();
     let outcome = run_once(&model, &sandbox, cfg.max_steps, cfg.max_recovery, 0, &tx).await.unwrap();
@@ -508,6 +512,55 @@ async fn live_filesystem_env_passes_on_the_native_path() {
     eprintln!("FS-NATIVE RESULT: reached_end={} failure={:?}", outcome.reached_end, outcome.failure);
     assert!(outcome.reached_end, "fs env on the native path must reach the end state (read → reply)");
     assert_eq!(outcome.failure, None);
+}
+
+#[tokio::test]
+#[ignore = "tier coverage: native path RUNS + produces a definite verdict on medium/hard/extreme"]
+async fn live_native_path_runs_across_medium_hard_extreme_tiers() {
+    // Confirms native tool-calling is tier-agnostic: a native-capable model produces a DEFINITE
+    // scored outcome (reached_end OR a real failure — never an infra error) on a representative
+    // task from each higher tier, on the tier-scaled budget. The model may FAIL a hard/extreme
+    // task — that's a capability measurement, not a harness bug; we only assert it ran + scored.
+    use crate::inference::eval::agentic::build::sandbox_for;
+    use crate::inference::eval::agentic::difficulty::passk::max_tokens_for;
+    use crate::inference::eval::agentic::model_turn::NativeOllamaTurn;
+    use crate::inference::eval::agentic::v2::collection::load_v2_collection;
+    use crate::inference::eval::agentic::v2::scenarios::v2_json;
+    use crate::inference::eval::toolcall::prompt::TerminalGuidance;
+    let cases = [
+        ("medium-coding", "md_co_trace_root_cause"),
+        ("hard-coding", "hd_co_ci_multifile_instance0"),
+        ("extreme-supply-chain-recon", "ex_sc_release_instance0"),
+    ];
+    for (collection, task_id) in cases {
+        let task = load_v2_collection(v2_json(collection).unwrap())
+            .unwrap()
+            .into_iter()
+            .find(|t| t.id == task_id)
+            .unwrap();
+        let tier = task.agentic.as_ref().map(|s| s.tier).unwrap_or_default();
+        let (sandbox, cfg) = sandbox_for(&task).unwrap();
+        let model = NativeOllamaTurn {
+            endpoint: "http://localhost:11434".into(),
+            model: "qwen3.5:9b".into(),
+            tools: task.tools.clone(),
+            options: None,
+            terminal: TerminalGuidance::MustUseTools,
+            max_tokens: max_tokens_for(tier, false),
+            is_thinking: false,
+        };
+        let (tx, mut rx) = unbounded_channel();
+        let outcome = run_once(&model, &sandbox, cfg.max_steps, cfg.max_recovery, 0, &tx).await.unwrap();
+        drop(tx);
+        let steps = drain(&mut rx);
+        eprintln!(
+            "[{collection}/{task_id}] tier={tier:?} budget={} turns={} reached_end={} failure={:?}",
+            max_tokens_for(tier, false), steps.len(), outcome.reached_end, outcome.failure,
+        );
+        // A definite scored verdict: either it reached the end state, or it hit a real failure
+        // kind. Both are valid measurements; the run must NOT silently produce nothing.
+        assert!(outcome.reached_end || outcome.failure.is_some(), "{collection}/{task_id}: native run produced no verdict");
+    }
 }
 
 #[tokio::test]
@@ -551,6 +604,8 @@ async fn live_gemma_native_path_gives_an_honest_verdict_not_silent_empty() {
         tools,
         options: None,
         terminal: crate::inference::eval::toolcall::prompt::TerminalGuidance::MustUseTools,
+        max_tokens: 256,
+        is_thinking: false,
     };
     let (tx, mut rx) = unbounded_channel();
     let report = run_agentic(&model, &cart, AgenticConfig { k: 1, max_steps: 3, ..Default::default() }, &tx)

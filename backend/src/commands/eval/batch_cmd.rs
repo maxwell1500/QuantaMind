@@ -64,9 +64,9 @@ struct TauriBatchSink {
 }
 
 impl BatchSink for TauriBatchSink {
-    fn task_started(&self, model: &str, task_id: &str, index: usize, total: usize, category: &str) {
+    fn task_started(&self, model: &str, task_id: &str, index: usize, total: usize, category: &str, is_native: bool) {
         log_emit(&self.app, EVENT_BATCH_PROGRESS, BatchProgress::Started {
-            model: model.into(), task_id: task_id.into(), index, total, category: category.into(),
+            model: model.into(), task_id: task_id.into(), index, total, category: category.into(), is_native,
         });
     }
     fn agentic_turn(&self, model: &str, task_id: &str, step: &TrajectoryStep, is_native: bool) {
@@ -274,12 +274,17 @@ pub(crate) async fn run_passes(
                     }
                     _ => TerminalGuidance::PlainTextOk,
                 };
+                // Tier-scaled per-turn budget, matching the prompt path — a thinking model gets
+                // the raised budget so its native turn isn't truncated on hard/extreme.
+                let is_thinking = config.targets.iter().find(|t| t.model == model).is_some_and(|t| t.is_thinking);
                 NativeOllamaTurn {
                     endpoint: endpoint.clone(),
                     model: model.to_string(),
                     tools: task.tools.clone(),
                     options: native_options.clone(),
                     terminal,
+                    max_tokens: max_tokens_for(tier, is_thinking),
+                    is_thinking,
                 }
             },
             prior,

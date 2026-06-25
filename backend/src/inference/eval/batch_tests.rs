@@ -37,7 +37,7 @@ struct CountingSink {
 }
 
 impl BatchSink for CountingSink {
-    fn task_started(&self, model: &str, task_id: &str, _i: usize, _total: usize, _cat: &str) {
+    fn task_started(&self, model: &str, task_id: &str, _i: usize, _total: usize, _cat: &str, _is_native: bool) {
         self.started.lock().unwrap().push((model.into(), task_id.into()));
     }
     fn agentic_turn(&self, _m: &str, _t: &str, _step: &TrajectoryStep, is_native: bool) {
@@ -613,7 +613,7 @@ async fn live_diag_app_native_pass_for_gemma4() {
                 Some(ESR::RequireAll(_)) | Some(ESR::RequireSequence(_)) => TerminalGuidance::MustUseTools,
                 _ => TerminalGuidance::PlainTextOk,
             };
-            NativeOllamaTurn { endpoint: endpoint.to_string(), model: model.to_string(), tools: task.tools.clone(), options: None, terminal }
+            NativeOllamaTurn { endpoint: endpoint.to_string(), model: model.to_string(), tools: task.tools.clone(), options: None, terminal, max_tokens: 256, is_thinking: false }
         },
         &[],
         &|_| {},
