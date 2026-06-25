@@ -177,6 +177,29 @@ describe("MatrixScoreboard (Simulator) data flow", () => {
     expect(screen.queryByTestId("prompt-steps-pr_task")).toBeNull();
   });
 
+  it("derives Target Tool for a web-UI (require_end_state) task from its action tools, minus the decoy", () => {
+    // Regression: a state-diff task has no tool checkpoints, so Target Tool was blank "—". It now
+    // names the action tools the model drives the UI with (fill/submit), excluding the must-not-call
+    // decoy (delete_account).
+    const webUiTask: ToolTask = {
+      id: "es_wu_apply_coupon",
+      category: "agentic",
+      prompt: "Apply the coupon and submit.",
+      tools: [
+        { name: "fill", description: "", parameters: { type: "object", properties: {} } },
+        { name: "submit", description: "", parameters: { type: "object", properties: {} } },
+        { name: "delete_account", description: "", parameters: { type: "object", properties: {} } },
+      ],
+      expected: { type: "no_call" },
+      agentic: { mocks: [], end_state: { require_end_state: { submitted: true } }, must_not_call: ["delete_account"] },
+    };
+    useEvalRegistryStore.setState({ tasks: [webUiTask] });
+    render(<MatrixScoreboard model={MODEL} k={1} maxSteps={8} focusedTaskId={null} setFocusedTaskId={() => {}} focusedPass="prompt" setFocusedPass={() => {}} />);
+    const row = screen.getByTestId("scoreboard-row-es_wu_apply_coupon");
+    expect(row).toHaveTextContent("fill, submit");
+    expect(row).not.toHaveTextContent("delete_account");
+  });
+
   it("the Action column is gone — the result cells themselves open the trace", () => {
     render(<MatrixScoreboard model={MODEL} k={1} maxSteps={8} focusedTaskId={null} setFocusedTaskId={() => {}} focusedPass="prompt" setFocusedPass={() => {}} />);
     expect(screen.getByTestId("scoreboard-table")).not.toHaveTextContent("View Trace");
