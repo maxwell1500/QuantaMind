@@ -352,6 +352,20 @@ be ranked against a terse model's.
   back-compat); the order keeps v1 behavior byte-identical. The whitelist is built in
   `build::sandbox_for` — from `task.tools` for v1 (decoy-free there) or
   `spec.recognized_tools` for v2 (whose `task.tools` already carries the merged decoys).
+- **`ResponderKind` (enum, not trait) + filesystem env (Phase 1):** `respond` dispatches an
+  exhaustive `match` over `StaticMocks` / `WorldState(Value)` / `FileSystem(FsState)`. Adding
+  a variant is compile-forced everywhere; `StaticMocks`/`WorldState` output is pinned
+  byte-identical by `respond_byte_parity_anchor_for_the_responderkind_refactor`. The
+  `FileSystem` arm (`v2/env_fs.rs`) returns REAL content for `read_file`/`list_dir`/
+  `search_files`/`grep` (or a deterministic `{"error":"not found"}`) — the acks-empty fix.
+  Built from `world_state` (a `path → content` map) when a collection declares
+  `"environment": "filesystem"` (`spec::EnvKind`, default `Entity`). Stateless-per-call →
+  determinism is structural.
+- **`env_view.rs` (visual replay spine):** `EnvView{None, FileSystem(FsView)}` is a per-turn
+  snapshot streamed on each `TrajectoryStep` (`#[serde(default)]`). `env_view(responder,
+  calls)` (exhaustive match) is a PURE fn of the immutable env + the turn's calls (the fs env
+  picks the last read/list/search call, so a `read_file` batched before a `reply` still
+  replays the read). Internal/local-only — NOT on the publish allowlist.
 
 ```rust
 FaultInjection::TransientError { status_code, clears_after } => {

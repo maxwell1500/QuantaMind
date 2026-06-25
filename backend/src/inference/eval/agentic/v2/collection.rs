@@ -1,6 +1,6 @@
 use crate::errors::{AppError, AppResult};
 use crate::inference::eval::agentic::difficulty::passk::pass_k_for;
-use crate::inference::eval::agentic::spec::{DifficultyAxes, Tier};
+use crate::inference::eval::agentic::spec::{DifficultyAxes, EnvKind, Tier};
 use crate::inference::eval::agentic::v2::transpile::{transpile_task, V2Task};
 use crate::inference::eval::toolcall::tasks::{validate_tasks, ToolTask};
 use serde::Deserialize;
@@ -21,6 +21,11 @@ struct V2Collection {
     generated: bool,
     #[serde(default)]
     axes: DifficultyAxes,
+    /// Phase 1: which deterministic environment backs the collection's tool responses.
+    /// `entity` (default) = the world_state/static behavior; `filesystem` = the simulated
+    /// filesystem (read_file/list_dir/search_files/grep return real content).
+    #[serde(default)]
+    environment: EnvKind,
     tasks: Vec<V2Task>,
 }
 
@@ -35,7 +40,7 @@ pub fn load_v2_collection(json: &str) -> AppResult<Vec<ToolTask>> {
     let tasks = c
         .tasks
         .into_iter()
-        .map(|t| transpile_task(t, tier, pass_k, c.axes.clone(), c.generated))
+        .map(|t| transpile_task(t, tier, pass_k, c.axes.clone(), c.generated, c.environment))
         .collect::<AppResult<Vec<_>>>()?;
     if tasks.is_empty() {
         return Err(AppError::InvalidTaskSchema(format!("v2 collection '{}' ({}) has no tasks", c.name, c.domain)));

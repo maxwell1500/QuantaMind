@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useEffect } from "react";
 import { useBatchStore } from "../../state/batchStore";
 import { useInstalledModelsStore } from "../../../models/state/installedModelsStore";
 import { useNavStore } from "../../../../shared/state/navStore";
@@ -38,6 +38,20 @@ const badgeStyle: React.CSSProperties = {
   letterSpacing: "0.02em",
   fontFamily: "Inter, sans-serif",
 };
+
+/// The per-row "Method" pill — violet for the Tool-Calling (native) pass, slate for Prompt-based,
+/// so the two rows of a model read apart at a glance.
+const methodPillBase: React.CSSProperties = {
+  display: "inline-block",
+  fontSize: 11,
+  fontWeight: 700,
+  padding: "2px 8px",
+  borderRadius: 6,
+  fontFamily: "Inter, sans-serif",
+  whiteSpace: "nowrap",
+};
+const methodNativeStyle: React.CSSProperties = { ...methodPillBase, background: "#f5f3ff", border: "1px solid #ddd6fe", color: "#6d28d9" };
+const methodPromptStyle: React.CSSProperties = { ...methodPillBase, background: "#f1f5f9", border: "1px solid #e2e8f0", color: "#475569" };
 
 function getPassKBadge(val: string) {
   if (val === "Error") {
@@ -177,7 +191,6 @@ export function PerformanceMatrix({
     if (collectionId) void hydrateCliff(collectionId);
   }, [collectionId, hydrateCliff]);
   const anyNative = (report?.columns ?? []).some((c) => c.agentic_native_fc != null);
-  const [showNative, setShowNative] = useState(false);
 
   // Pre-fill the Context-Cliff probe for a model + the current collection and switch to
   // the Audit tab. NEVER auto-runs (guardrail 1). Shared by the unprobed "Run probe ↗"
@@ -204,12 +217,15 @@ export function PerformanceMatrix({
       ↻
     </button>
   );
+  // Each model gets a row PER measured pass: a Tool-Calling (native) row AND a Prompt-based row
+  // when native was measured, else just Prompt-based. "Method" names the pass; the metric columns
+  // hold that pass's numbers.
   const columns = [
     "Model",
     "Quant",
+    "Method",
     "Pass^k",
-    ...(showNative ? ["Native FC"] : []),
-    "Avg Steps",
+    "Steps",
     "Effort",
     "Schema Resil.",
     "Cliff Depth",
@@ -235,25 +251,6 @@ export function PerformanceMatrix({
           {rows.length > 1 ? " (per-model summary — click a row to inspect model details)" : " (per-model summary)"}
         </span>
         <span style={{ marginLeft: "auto", display: "inline-flex", alignItems: "center", gap: 10 }}>
-          {rows.length > 0 && (
-            <button
-              type="button"
-              data-testid="matrix-native-toggle"
-              onClick={() => setShowNative((v) => !v)}
-              style={{
-                fontSize: 11,
-                fontWeight: 700,
-                padding: "3px 10px",
-                borderRadius: 6,
-                border: "1px solid #bfdbfe",
-                background: showNative ? "#eff6ff" : "transparent",
-                color: "#2563eb",
-                cursor: "pointer",
-              }}
-            >
-              {showNative ? "Hide" : "Show"} Native-FC
-            </button>
-          )}
           <InfoButton {...TOOL_HELP.performanceMatrix} testId="performance-matrix" />
         </span>
       </div>
@@ -264,7 +261,7 @@ export function PerformanceMatrix({
         </div>
       ) : (
         <>
-        {showNative && !anyNative && (
+        {!anyNative && (
           <div
             data-testid="native-fc-empty-hint"
             style={{ margin: "0 16px 10px", padding: "8px 12px", fontSize: 12, lineHeight: 1.5, color: "#475569", background: "#f8fafc", border: "1px solid #e2e8f0", borderRadius: 8, fontFamily: "Inter, sans-serif" }}
@@ -293,44 +290,81 @@ export function PerformanceMatrix({
             <tbody>
               {rows.map((r) => {
                 const active = r.model === focusedModel;
-                return (
+                // One row per MEASURED pass: Tool-Calling (native) first when it ran, then
+                // Prompt-based. If native wasn't selected/supported, only the Prompt-based row.
+                const passRows = [
+                  ...(r.hasNative
+                    ? [{
+                        kind: "native" as const,
+                        method: "Tool-Calling",
+                        passK: r.passKNative,
+                        steps: r.avgStepsNative,
+                        effort: r.effortNative,
+                        schemaResil: r.schemaResilNative,
+                        topError: r.topErrorNative,
+                        failures: r.failuresNative,
+                      }]
+                    : []),
+                  {
+                    kind: "prompt" as const,
+                    method: "Prompt-based",
+                    passK: r.passK,
+                    steps: r.avgSteps,
+                    effort: r.effort,
+                    schemaResil: r.schemaResil,
+                    topError: r.topError,
+                    failures: r.failures,
+                  },
+                ];
+                return passRows.map((p, i) => {
+                  const first = i === 0;
+                  const span = passRows.length;
+                  return (
                   <tr
-                    key={r.model}
+                    key={`${r.model}-${p.kind}`}
                     onClick={() => onFocusModel(r.model)}
-                    data-testid={`matrix-model-row-${r.model}`}
+                    data-testid={p.kind === "prompt" ? `matrix-model-row-${r.model}` : `matrix-native-row-${r.model}`}
                     className="hover:bg-slate-50 transition-all duration-150 relative"
                     style={{
                       cursor: "pointer",
                       background: active ? "#eff6ff" : "transparent",
-                      borderBottom: "1px solid #e2e8f0",
+                      borderBottom: i === span - 1 ? "1px solid #e2e8f0" : "1px solid #f1f5f9",
                       borderLeft: active ? "3px solid #3b82f6" : "3px solid transparent",
                     }}
                     title="Click to inspect this model above"
                   >
-                    <td style={{ ...td, color: active ? "#1d4ed8" : "#0f172a", fontWeight: active ? 700 : 500 }}>{r.label}</td>
-                    <td style={{ ...td, color: "#64748b", fontFamily: "'JetBrains Mono', monospace", fontSize: 12 }}>{r.quant}</td>
-                    <td style={{ ...td, fontWeight: 700 }}>{passKCell(r.passK)}</td>
-                    {showNative && (
-                      <td
-                        style={{ ...td, fontWeight: 700 }}
-                        data-testid={`matrix-native-${r.model}`}
-                        // Explain an N/A rather than leave a silent wall. The reason is the
-                        // model, not the toggle: native FC needs an Ollama model whose
-                        // /api/show lists the `tools` capability (gemma/most fine-tuned &
-                        // quantized models don't); llama.cpp / MLX are always N/A.
-                        title={
-                          r.passKNative === "N/A"
-                            ? "Native tool-calling is N/A for this model — it's measured only for Ollama models whose /api/show lists the `tools` capability (gemma & many fine-tuned / quantized models don't); llama.cpp / MLX are always N/A."
-                            : undefined
-                        }
-                      >
-                        {getPassKBadge(r.passKNative)}
-                      </td>
+                    {first && (
+                      <td rowSpan={span} style={{ ...td, color: active ? "#1d4ed8" : "#0f172a", fontWeight: active ? 700 : 500 }}>{r.label}</td>
                     )}
-                    <td style={{ ...td, color: r.avgSteps === "—" ? "#94a3b8" : "#334155" }}>{r.avgSteps}</td>
-                    <td style={{ ...td, color: r.effort === "—" ? "#94a3b8" : "#334155", fontFamily: r.effort !== "—" ? "'JetBrains Mono', monospace" : "inherit", fontSize: 12 }}>{r.effort}</td>
-                    <td style={td}>{getSchemaResilBadge(r.schemaResil)}</td>
-                    <td style={td}>
+                    {first && (
+                      <td rowSpan={span} style={{ ...td, color: "#64748b", fontFamily: "'JetBrains Mono', monospace", fontSize: 12 }}>{r.quant}</td>
+                    )}
+                    <td style={{ ...td }}>
+                      <span style={p.kind === "native" ? methodNativeStyle : methodPromptStyle}>{p.method}</span>
+                    </td>
+                    <td
+                      style={{ ...td, fontWeight: 700 }}
+                      data-testid={p.kind === "native" ? `matrix-native-${r.model}` : `matrix-prompt-${r.model}`}
+                      // Explain an N/A native cell rather than leave a silent wall: native FC needs
+                      // an Ollama model whose /api/show lists the `tools` capability.
+                      title={
+                        p.kind === "native" && p.passK === "N/A"
+                          ? "Native tool-calling is N/A for this model — it's measured only for Ollama models whose /api/show lists the `tools` capability (gemma & many fine-tuned / quantized models don't); llama.cpp / MLX are always N/A."
+                          : undefined
+                      }
+                    >
+                      {passKCell(p.passK)}
+                    </td>
+                    <td
+                      style={{ ...td, color: p.steps === "—" || p.steps === "N/A" ? "#94a3b8" : "#334155" }}
+                      data-testid={`matrix-${p.kind}-steps-${r.model}`}
+                    >
+                      {p.steps}
+                    </td>
+                    <td style={{ ...td, color: p.effort === "—" || p.effort === "N/A" ? "#94a3b8" : "#334155", fontFamily: p.effort !== "—" && p.effort !== "N/A" ? "'JetBrains Mono', monospace" : "inherit", fontSize: 12 }}>{p.effort}</td>
+                    <td style={td}>{getSchemaResilBadge(p.schemaResil)}</td>
+                    {first && (
+                    <td rowSpan={span} style={td}>
                       {cliffRunning && cliffRunningModel === r.model ? (
                         <span data-testid={`cliff-probing-${r.model}`} style={{ color: "#2563eb", fontSize: 12, fontWeight: 600, fontFamily: "Inter, sans-serif" }}>
                           probing…
@@ -386,20 +420,20 @@ export function PerformanceMatrix({
                         </button>
                       )}
                     </td>
+                    )}
                     <td style={td}>
-                      {getTopErrorBadge(r.topError)}
+                      {getTopErrorBadge(p.topError)}
                       {(() => {
-                        // Clip-safe portal tooltip — the table card scrolls
-                        // (overflow), which would clip an in-flow popup, and the
-                        // native title= the cell used before doesn't render
-                        // reliably in the WebView. Tooltip portals to <body>.
-                        if (!r.failures) return null;
-                        const fb = failureBreakdown(r.failures);
+                        // Clip-safe portal tooltip (the table card scrolls → an in-flow popup
+                        // would clip). Per-pass failure breakdown.
+                        if (!p.failures) return null;
+                        const fb = failureBreakdown(p.failures);
                         if (fb.total === 0) return null;
+                        const tid = p.kind === "native" ? `failbreak-native-${r.model}` : `failbreak-${r.model}`;
                         return (
-                          <Tooltip label={fb.text} testId={`failbreak-${r.model}`}>
+                          <Tooltip label={fb.text} testId={tid}>
                             <span
-                              data-testid={`failbreak-${r.model}`}
+                              data-testid={tid}
                               style={{ marginLeft: 5, cursor: "help", color: "#94a3b8", fontSize: 10, fontWeight: 700 }}
                             >
                               ⓘ
@@ -409,7 +443,8 @@ export function PerformanceMatrix({
                       })()}
                     </td>
                   </tr>
-                );
+                  );
+                });
               })}
             </tbody>
           </table>

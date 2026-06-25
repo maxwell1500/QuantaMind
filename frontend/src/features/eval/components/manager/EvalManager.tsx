@@ -83,8 +83,10 @@ export function EvalManager({
   const [error, setError] = useState<string | null>(null);
   const [deleteTarget, setDeleteTarget] = useState<string | null>(null);
   const [csvOpen, setCsvOpen] = useState(false);
-  // Phase 7.2: also measure each Ollama model's NATIVE tool-calling path.
-  const [nativeFc, setNativeFc] = useState(false);
+  // Phase 7.2: also measure each Ollama model's NATIVE tool-calling path. Pre-selected so every
+  // run (built-in OR custom/uploaded collections) measures native tool-calling by default; the
+  // user can still untick it. Native is N/A for non-Ollama / no-`tools` models regardless.
+  const [nativeFc, setNativeFc] = useState(true);
 
   const handleCsvImport = async (name: string, csvTasks: ToolTask[]) => {
     await save(name, csvTasks);

@@ -82,6 +82,11 @@ export const AgenticSpecSchema = z.object({
   world_state: z.unknown().optional(),
   name_faults: z.array(z.unknown()).optional(),
   generated: z.boolean().optional(),
+  /// Phase 1: which deterministic environment backs the task ("filesystem" selects the
+  /// simulated-filesystem responder). MUST be listed here or `z.object()` strips it on the
+  /// task round-trip → the backend re-receives it as `Entity` → the fs env never activates
+  /// (read_file acks empty, no visual replay). Opaque to the frontend; preserved verbatim.
+  environment: z.string().optional(),
 });
 export type AgenticSpec = z.infer<typeof AgenticSpecSchema>;
 

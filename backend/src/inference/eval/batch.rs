@@ -103,7 +103,9 @@ pub trait BatchSink: Send + Sync {
     /// the prompt pass so the UI can render the two trajectories separately (both stream to
     /// the same (model, task) cell).
     fn agentic_turn(&self, model: &str, task_id: &str, step: &TrajectoryStep, is_native: bool);
-    fn task_done(&self, model: &str, task_id: &str, outcome: &TaskOutcome);
+    /// A task's terminal outcome. `is_native` tags the NATIVE pass's per-task result so the UI
+    /// can show native pass/fail in its own column, streamed as each native task finishes.
+    fn task_done(&self, model: &str, task_id: &str, outcome: &TaskOutcome, is_native: bool);
 }
 
 /// Phase 9: a model's strict Pass^k within ONE difficulty tier. `by_tier` carries
@@ -495,13 +497,13 @@ where
                     Ok(report) => {
                         let outcome = TaskOutcome::Agentic { report: report.clone() };
                         record(&unit_of(target, task, outcome.clone(), false));
-                        sink.task_done(&target.model, &task.id, &outcome);
+                        sink.task_done(&target.model, &task.id, &outcome, false);
                         agentic_reports.push(report);
                     }
                     Err(e) => {
                         // Errors are NOT recorded → they re-run on resume (the backend may be back).
                         let msg = e.to_string();
-                        sink.task_done(&target.model, &task.id, &TaskOutcome::Error { message: msg.clone() });
+                        sink.task_done(&target.model, &task.id, &TaskOutcome::Error { message: msg.clone() }, false);
                         col_error = Some(msg);
                     }
                 }
@@ -518,11 +520,11 @@ where
                         });
                         let outcome = TaskOutcome::Single { passed, trace };
                         record(&unit_of(target, task, outcome.clone(), false));
-                        sink.task_done(&target.model, &task.id, &outcome);
+                        sink.task_done(&target.model, &task.id, &outcome, false);
                     }
                     Err(e) => {
                         let msg = e.to_string();
-                        sink.task_done(&target.model, &task.id, &TaskOutcome::Error { message: msg.clone() });
+                        sink.task_done(&target.model, &task.id, &TaskOutcome::Error { message: msg.clone() }, false);
                         col_error = Some(msg);
                     }
                 }
@@ -682,13 +684,17 @@ where
             match result {
                 Ok(report) => {
                     let report = report.with_tier(task_tier(task));
+                    let outcome = TaskOutcome::Agentic { report: report.clone() };
                     record(&CompletedUnit {
                         model: col.model.clone(),
                         task_id: task.id.clone(),
                         category: task.category.clone(),
-                        outcome: TaskOutcome::Agentic { report: report.clone() },
+                        outcome: outcome.clone(),
                         is_native: true,
                     });
+                    // Stream this task's NATIVE result so the UI fills its native column as each
+                    // task finishes — progressive, not only at batch-complete.
+                    sink.task_done(&col.model, &task.id, &outcome, true);
                     reports.push(report);
                 }
                 // Every run of this task errored — a backend `Err`, NOT a scored failure (a
@@ -696,8 +702,13 @@ where
                 // a host/infra crash is never read as model incapability. The dropped task is
                 // why the native denominator silently shrank before this fix.
                 Err(e) => {
+                    let msg = e.to_string();
                     errored += 1;
-                    error_class = merge_error_class(error_class, classify_native_error(&e.to_string()));
+                    error_class = merge_error_class(error_class, classify_native_error(&msg));
+                    // Stream the per-task native ERROR too (the prompt pass does on its Err arm),
+                    // so the Simulator's Tool-Calling cell shows "Error" for this task, not a
+                    // stale "—" until the batch finishes.
+                    sink.task_done(&col.model, &task.id, &TaskOutcome::Error { message: msg }, true);
                 }
             }
         }

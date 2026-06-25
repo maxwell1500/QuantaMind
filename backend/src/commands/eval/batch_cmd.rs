@@ -74,9 +74,9 @@ impl BatchSink for TauriBatchSink {
             model: model.into(), task_id: task_id.into(), step: step.clone(), is_native,
         });
     }
-    fn task_done(&self, model: &str, task_id: &str, outcome: &TaskOutcome) {
+    fn task_done(&self, model: &str, task_id: &str, outcome: &TaskOutcome, is_native: bool) {
         log_emit(&self.app, EVENT_BATCH_PROGRESS, BatchProgress::Done {
-            model: model.into(), task_id: task_id.into(), outcome: outcome.clone(),
+            model: model.into(), task_id: task_id.into(), outcome: outcome.clone(), is_native,
         });
     }
 }
@@ -437,6 +437,7 @@ mod override_tests {
             agentic: Some(AgenticSpec {
                 mocks: vec![],
                 end_state: EndStateRule::ExpectAbstainingText,
+                environment: Default::default(),
                 tier,
                 axes,
                 k,

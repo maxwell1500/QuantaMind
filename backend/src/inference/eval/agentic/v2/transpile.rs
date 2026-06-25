@@ -1,6 +1,6 @@
 use crate::errors::{AppError, AppResult};
 use crate::inference::eval::agentic::sandbox::{EndStateRule, TaskCheckpoint};
-use crate::inference::eval::agentic::spec::{AgenticSpec, DifficultyAxes, FaultInjection, NameFault, Tier};
+use crate::inference::eval::agentic::spec::{AgenticSpec, DifficultyAxes, EnvKind, FaultInjection, NameFault, Tier};
 use crate::inference::eval::agentic::v2::r#match::MustNotCall;
 use crate::inference::eval::toolcall::tasks::{ToolSchema, ToolTask};
 use serde::Deserialize;
@@ -118,7 +118,14 @@ fn to_tool_schema(t: &V2Tool) -> ToolSchema {
 /// `expected_calls` → `RequireAll` (or `ExpectAbstainingText` when empty); authored
 /// `decoy_tools` merge into the presented tool list; `faults` become name-keyed;
 /// `world_state` drives the responder.
-pub fn transpile_task(t: V2Task, tier: Tier, pass_k: u32, axes: DifficultyAxes, generated: bool) -> AppResult<ToolTask> {
+pub fn transpile_task(
+    t: V2Task,
+    tier: Tier,
+    pass_k: u32,
+    axes: DifficultyAxes,
+    generated: bool,
+    environment: EnvKind,
+) -> AppResult<ToolTask> {
     let mut tools: Vec<ToolSchema> = t.tools.iter().map(to_tool_schema).collect();
     tools.extend(t.decoy_tools.iter().map(to_tool_schema));
 
@@ -157,6 +164,7 @@ pub fn transpile_task(t: V2Task, tier: Tier, pass_k: u32, axes: DifficultyAxes, 
     let spec = AgenticSpec {
         mocks: vec![],
         end_state,
+        environment,
         tier,
         axes: Some(axes),
         k: Some(pass_k),

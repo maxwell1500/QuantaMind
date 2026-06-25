@@ -10,6 +10,7 @@ import { Spinner } from "../../../shared/ui/Spinner";
 import { TOOL_HELP } from "../help";
 import { agenticSystemPreview } from "../agenticPrompt";
 import { RunIoModal, type RunIoMode } from "./RunIoModal";
+import { EnvironmentReplayPanel, hasEnvReplay } from "./replay/EnvironmentReplayPanel";
 import { isStrictPass, type TrajectoryStep } from "../../../shared/ipc/eval/batch";
 
 interface TraceDebuggerProps {
@@ -19,6 +20,9 @@ interface TraceDebuggerProps {
   /// The active run's decoy-tool budget — passed through to the per-run Input drill-down
   /// so a reconstructed agentic prompt admits the decoy tools the model also saw.
   decoys?: number;
+  /// Which pass's trajectory to show — controlled by the parent (the Simulator click), so the
+  /// Evaluator has no toggle of its own.
+  tracePass: "prompt" | "native";
 }
 
 type TabType = "config" | "prompt" | "trace" | "matcher";
@@ -286,16 +290,16 @@ export function TraceDebugger({
   taskId,
   setTaskId,
   decoys,
+  tracePass,
 }: TraceDebuggerProps) {
   const { tasks } = useEvalRegistryStore();
   const outcomeByKey = useBatchStore((s) => s.outcomeByKey);
+  const nativeOutcomeByKey = useBatchStore((s) => s.nativeOutcomeByKey);
   const stepsByKey = useBatchStore((s) => s.stepsByKey);
   const nativeStepsByKey = useBatchStore((s) => s.nativeStepsByKey);
   const running = useBatchStore((s) => s.running);
 
   const [activeTab, setActiveTab] = useState<TabType>("trace");
-  // Which pass's trajectory the trace shows: the prompt pass or the native (Ollama tools) pass.
-  const [tracePass, setTracePass] = useState<"prompt" | "native">("prompt");
   const [collapsed, setCollapsed] = useState(false);
   // The per-run Input/Output drill-down: which run (null = the single-turn run) and
   // which view. Reset when the task/model changes so it never points at a stale run.
@@ -307,7 +311,6 @@ export function TraceDebugger({
   useEffect(() => {
     setRunOverrides({});
     setIoRun(null);
-    setTracePass("prompt");
   }, [model, taskId]);
 
   // Find the selected task definition
@@ -335,12 +338,14 @@ export function TraceDebugger({
   }
 
   const key = cellKey(model, taskId);
-  const outcome = outcomeByKey[key];
   const nativeSteps = nativeStepsByKey[key] || [];
   const hasNative = nativeSteps.length > 0;
-  // Show the selected pass's trajectory. Native is only selectable once it has streamed
-  // (it runs after the whole prompt pass), so fall back to prompt until then.
-  const steps = (tracePass === "native" && hasNative ? nativeSteps : stepsByKey[key]) || [];
+  // Everything below renders the SELECTED pass: its steps AND its terminal outcome. Gating on
+  // the prompt outcome was the bug — with native-first the prompt pass hasn't run, so a live
+  // native trace was hidden behind "No trace recorded".
+  const onNative = tracePass === "native" && hasNative;
+  const steps = (onNative ? nativeSteps : stepsByKey[key]) || [];
+  const outcome = onNative ? nativeOutcomeByKey[key] : outcomeByKey[key];
 
   // Split the flat trajectory into per-run sections. Runs execute sequentially, so
   // every group but the last is complete; while `running`, the last group may still
@@ -489,37 +494,30 @@ export function TraceDebugger({
 
         {activeTab === "trace" && (
           <div style={{ display: "flex", flexDirection: "column", gap: 14 }}>
-            {/* Prompt vs Native trajectory toggle — Native is enabled once it has streamed
-                (it runs after the whole prompt pass). Lets the user WATCH the native run. */}
-            {hasNative && (
-              <div style={{ display: "flex", gap: 6 }} data-testid="trace-pass-toggle">
-                {(["prompt", "native"] as const).map((p) => (
-                  <button
-                    key={p}
-                    type="button"
-                    onClick={() => setTracePass(p)}
-                    data-testid={`trace-pass-${p}`}
-                    style={{
-                      fontSize: 11,
-                      fontWeight: 700,
-                      padding: "3px 10px",
-                      borderRadius: 6,
-                      cursor: "pointer",
-                      border: tracePass === p ? "1px solid #3b82f6" : "1px solid #e2e8f0",
-                      background: tracePass === p ? "#eff6ff" : "#f8fafc",
-                      color: tracePass === p ? "#1d4ed8" : "#475569",
-                    }}
-                  >
-                    {p === "prompt" ? "Prompt-based" : "Native (Ollama tools)"}
-                  </button>
-                ))}
+            {/* Which pass this trace is — read-only. The pass is chosen by clicking a Prompt or
+                Native result in the Simulator (no in-Evaluator toggle). */}
+            {tracePass === "native" && (
+              <div data-testid="trace-pass-label" style={{ alignSelf: "flex-start" }}>
+                <span
+                  style={{
+                    fontSize: 11,
+                    fontWeight: 700,
+                    padding: "3px 10px",
+                    borderRadius: 6,
+                    border: "1px solid #c4b5fd",
+                    background: "#f5f3ff",
+                    color: "#6d28d9",
+                  }}
+                >
+                  Tool-Calling (native) trace
+                </span>
               </div>
             )}
-            {!outcome ? (
+            {!outcome && steps.length === 0 ? (
               <div style={{ color: "#64748b", fontSize: 13, fontFamily: "Inter, sans-serif", textAlign: "center", padding: 24 }}>
                 No trace recorded for this task yet. Run the batch to simulate.
               </div>
-            ) : outcome.kind === "single" ? (
+            ) : outcome?.kind === "single" ? (
               <div style={{ display: "flex", flexDirection: "column", gap: 16 }}>
                 {/* Single turn trace */}
                 <div style={{ ...getCardStyle("tool_call", false) }}>
@@ -564,9 +562,10 @@ export function TraceDebugger({
                   )}
                 </div>
               </div>
-            ) : outcome.kind === "agentic" ? (
+            ) : outcome?.kind === "agentic" || (!outcome && steps.length > 0) ? (
               <div style={{ display: "flex", flexDirection: "column", gap: 20 }}>
-                {/* Chronological agentic turns */}
+                {/* Chronological agentic turns (renders live from streaming steps even before
+                    the terminal outcome lands — the native-first live-trace fix). */}
                 {steps.length === 0 ? (
                   <div style={{ color: "#64748b", fontSize: 13, fontFamily: "Inter, sans-serif", textAlign: "center" }}>
                     No steps recorded for this multi-turn run yet.
@@ -603,7 +602,8 @@ export function TraceDebugger({
                           </div>
 
                           {expanded && (
-                            <div style={{ ...timelineContainer, marginTop: 12 }}>
+                            <div style={hasEnvReplay(group.steps) ? splitRow : undefined}>
+                            <div style={{ ...timelineContainer, marginTop: 12, ...(hasEnvReplay(group.steps) ? splitTimeline : null) }}>
                               {group.steps.map((s, index) => {
                                 const isError = isErrorKind(s.kind);
 
@@ -661,6 +661,12 @@ export function TraceDebugger({
                                 );
                               })}
                             </div>
+                            {hasEnvReplay(group.steps) && (
+                              <div style={replayCol} data-testid={`env-replay-${group.runIndex}`}>
+                                <EnvironmentReplayPanel steps={group.steps} />
+                              </div>
+                            )}
+                            </div>
                           )}
                         </div>
                       );
@@ -668,9 +674,10 @@ export function TraceDebugger({
                   </div>
                 )}
 
-                {/* Final Verdict — prompt pass only; `outcome.report` is the prompt result, so
-                    the native trace shows its own per-run PASS/FAIL chips instead of this. */}
-                {tracePass === "prompt" && steps.length > 0 && (
+                {/* Final Verdict — prompt pass only, and only once the outcome has LANDED (a
+                    still-streaming prompt task has steps but no `outcome.report` yet). The native
+                    trace shows its own per-run PASS/FAIL chips instead of this. */}
+                {tracePass === "prompt" && outcome?.kind === "agentic" && (
                   <div
                      style={verdictStyle(
                        isStrictPass(outcome.report)
@@ -879,6 +886,11 @@ const timelineContainer: React.CSSProperties = {
   gap: "18px",
   position: "relative",
 };
+
+// Split-view: text trace (left) + visual environment replay (right), for environment tasks.
+const splitRow: React.CSSProperties = { display: "flex", gap: 12, alignItems: "flex-start", marginTop: 12 };
+const splitTimeline: React.CSSProperties = { flex: "1 1 0", minWidth: 0, marginTop: 0 };
+const replayCol: React.CSSProperties = { flex: "1 1 0", minWidth: 0, position: "sticky", top: 12 };
 
 const runSectionStyle: React.CSSProperties = {
   border: "1px solid #e2e8f0",

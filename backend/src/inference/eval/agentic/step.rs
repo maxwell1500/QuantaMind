@@ -1,3 +1,4 @@
+use crate::inference::eval::agentic::env_view::EnvView;
 use serde::Serialize;
 
 /// What happened on a single agent turn — drives the Trajectory Inspector's
@@ -57,4 +58,8 @@ pub struct TrajectoryStep {
     pub raw_output: String,
     pub injection: Option<String>,
     pub kind: StepKind,
+    /// A snapshot of the environment the agent acted on this turn, for the visual replay
+    /// panel. `EnvView::None` for entity/static tasks (no replay). Streamed, never published.
+    #[serde(default)]
+    pub env: EnvView,
 }

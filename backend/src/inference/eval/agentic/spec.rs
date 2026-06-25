@@ -76,10 +76,32 @@ pub struct DifficultyAxes {
 /// collection can mix single-turn and agentic tasks and existing fixtures
 /// round-trip unchanged. The task's `prompt` is the agent's initial prompt; its
 /// `tools` are the schemas injected into the system prompt.
+/// Which deterministic environment backs a task's tool responses. `Entity` (default) is the
+/// existing world_state / static-mock behavior; `Filesystem` builds the simulated-filesystem
+/// responder (Phase 1), where `read_file`/`list_dir`/`search_files`/`grep` return real content.
+#[derive(Serialize, Deserialize, Clone, Copy, Debug, PartialEq, Eq, Default)]
+#[serde(rename_all = "snake_case")]
+pub enum EnvKind {
+    #[default]
+    Entity,
+    Filesystem,
+}
+
+impl EnvKind {
+    pub fn is_entity(&self) -> bool {
+        matches!(self, EnvKind::Entity)
+    }
+}
+
 #[derive(Serialize, Deserialize, Clone, Debug, PartialEq)]
 pub struct AgenticSpec {
     pub mocks: Vec<MockResponse>,
     pub end_state: EndStateRule,
+    /// Phase 1: which deterministic environment backs tool responses (default `Entity` =
+    /// the world_state/static behavior). `Filesystem` selects the simulated-filesystem
+    /// responder. `#[serde(default)]` so every existing fixture loads as `Entity`.
+    #[serde(default, skip_serializing_if = "EnvKind::is_entity")]
+    pub environment: EnvKind,
     /// Phase 9 difficulty tier. Defaults to `Easy` so pre-Phase-9 fixtures load
     /// and run exactly as before; scales Pass^k and gates readiness by hardware.
     #[serde(default, skip_serializing_if = "Tier::is_easy")]
@@ -167,6 +189,7 @@ mod tests {
         let spec = AgenticSpec {
             mocks: vec![],
             end_state: EndStateRule::ExpectAbstainingText,
+            environment: EnvKind::Entity,
             tier: Tier::Easy,
             axes: None,
             k: None,
@@ -187,5 +210,6 @@ mod tests {
         assert!(v.get("must_not_call").is_none());
         assert!(v.get("world_state").is_none());
         assert!(v.get("entity_tools").is_none()); // empty → omitted
+        assert!(v.get("environment").is_none()); // Entity is the default → omitted
     }
 }

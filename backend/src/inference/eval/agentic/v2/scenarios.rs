@@ -5,6 +5,7 @@ use serde::Deserialize;
 /// THE eval content — they replace the old hand-coded single/multi fixtures.
 pub const V2_SCENARIOS: &[(&str, &str)] = &[
     ("easy-coding", include_str!("scenarios/easy-coding.json")),
+    ("easy-coding-fs", include_str!("scenarios/easy-coding-fs.json")),
     ("easy-customer-support", include_str!("scenarios/easy-customer-support.json")),
     ("easy-ecommerce", include_str!("scenarios/easy-ecommerce.json")),
     ("easy-finance", include_str!("scenarios/easy-finance.json")),
@@ -354,7 +355,7 @@ mod tests {
 
     #[test]
     fn every_bundled_v2_collection_loads_and_validates() {
-        assert_eq!(V2_SCENARIOS.len(), 19);
+        assert_eq!(V2_SCENARIOS.len(), 20);
         for (id, json) in V2_SCENARIOS {
             let tasks = load_v2_collection(json).unwrap_or_else(|e| panic!("collection '{id}' failed to load: {e}"));
             assert!(!tasks.is_empty(), "collection '{id}' has no tasks");
@@ -438,6 +439,12 @@ mod tests {
         use crate::inference::eval::agentic::build::sandbox_for;
         for (id, json) in V2_SCENARIOS {
             let raw: Value = serde_json::from_str(json).unwrap();
+            // `entity_tools` getter/action threading is entity-mode semantics. A filesystem
+            // collection uses the FileSystem responder (getters dispatch by name + return real
+            // content; `entity_tools` is unused), so this invariant doesn't apply.
+            if raw.get("environment").and_then(Value::as_str) == Some("filesystem") {
+                continue;
+            }
             let tasks = load_v2_collection(json).unwrap();
             for rawtask in raw["tasks"].as_array().into_iter().flatten() {
                 let tid = rawtask["id"].as_str().unwrap_or("?");
