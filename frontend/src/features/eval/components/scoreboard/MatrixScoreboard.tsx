@@ -45,11 +45,24 @@ export function MatrixScoreboard({
   const live = useBatchStore((s) => s.live);
   const outcomeByKey = useBatchStore((s) => s.outcomeByKey);
   const nativeOutcomeByKey = useBatchStore((s) => s.nativeOutcomeByKey);
+  const stepsByKey = useBatchStore((s) => s.stepsByKey);
+  const nativeStepsByKey = useBatchStore((s) => s.nativeStepsByKey);
   const error = useBatchStore((s) => s.error);
 
-  // Show the Native column once any native result has streamed for this model (the native pass
-  // runs first, so it fills in as the run progresses).
-  const hasNative = tasks.some((t) => nativeOutcomeByKey[cellKey(model, t.id)] != null);
+  // Which passes this run measured — from outcomes OR live steps, so the column appears the
+  // instant a pass streams (not only after a task finishes). A native-only run shows only the
+  // Tool-Calling columns (no empty Prompt-based / PB Steps); prompt-only shows only those.
+  const hasNative = tasks.some((t) => {
+    const key = cellKey(model, t.id);
+    return nativeOutcomeByKey[key] != null || (nativeStepsByKey[key]?.length ?? 0) > 0;
+  });
+  const hasPromptData = tasks.some((t) => {
+    const key = cellKey(model, t.id);
+    return outcomeByKey[key] != null || (stepsByKey[key]?.length ?? 0) > 0;
+  });
+  // Prompt columns show when prompt ran — or as the default when native hasn't appeared yet
+  // (so a fresh run isn't a column-less table).
+  const showPrompt = hasPromptData || !hasNative;
 
   // Open the Evaluator on a specific (task, pass) — used by both result cells so clicking a
   // Native pass/fail opens the native trace and a Prompt one opens the prompt trace.
@@ -188,8 +201,8 @@ export function MatrixScoreboard({
                   <th style={thStyle}>Target Tool</th>
                   {hasNative && <th style={thStyle}>Tool-Calling</th>}
                   {hasNative && <th style={thStyle} title="Avg steps of the Tool-Calling (native) run">TC Steps</th>}
-                  <th style={thStyle}>Prompt-based</th>
-                  <th style={thStyle} title="Avg steps of the Prompt-based run">PB Steps</th>
+                  {showPrompt && <th style={thStyle}>Prompt-based</th>}
+                  {showPrompt && <th style={thStyle} title="Avg steps of the Prompt-based run">PB Steps</th>}
                 </tr>
               </thead>
               <tbody>
@@ -214,7 +227,7 @@ export function MatrixScoreboard({
                   return (
                     <tr
                       key={t.id}
-                      onClick={() => openTrace(t.id, "prompt")}
+                      onClick={() => openTrace(t.id, showPrompt ? "prompt" : "native")}
                       style={{
                         ...trStyle,
                         cursor: "pointer",
@@ -254,25 +267,30 @@ export function MatrixScoreboard({
                           </td>
                         </>
                       )}
-                      {/* PROMPT-BASED result + its OWN steps — clicking opens the prompt trace. */}
-                      <td
-                        style={{ ...tdStyle, cursor: "pointer" }}
-                        onClick={(e) => { e.stopPropagation(); openTrace(t.id, "prompt"); }}
-                        data-testid={`prompt-cell-${t.id}`}
-                        title="Open the prompt-based trace in the Evaluator"
-                      >
-                        <div style={{ display: "inline-flex", alignItems: "center", gap: 6 }}>
-                          {resultBadge(outcome, `result-${t.id}`)}
-                          {isActive && focusedPass === "prompt" && <span style={{ color: "#2563eb", fontSize: 14 }}>◄</span>}
-                        </div>
-                      </td>
-                      <td
-                        style={{ ...tdStyle, cursor: "pointer" }}
-                        onClick={(e) => { e.stopPropagation(); openTrace(t.id, "prompt"); }}
-                        data-testid={`prompt-steps-${t.id}`}
-                      >
-                        {stepsOf(outcome)}
-                      </td>
+                      {/* PROMPT-BASED result + its OWN steps — only when the prompt pass ran;
+                          clicking opens the prompt trace. */}
+                      {showPrompt && (
+                        <>
+                          <td
+                            style={{ ...tdStyle, cursor: "pointer" }}
+                            onClick={(e) => { e.stopPropagation(); openTrace(t.id, "prompt"); }}
+                            data-testid={`prompt-cell-${t.id}`}
+                            title="Open the prompt-based trace in the Evaluator"
+                          >
+                            <div style={{ display: "inline-flex", alignItems: "center", gap: 6 }}>
+                              {resultBadge(outcome, `result-${t.id}`)}
+                              {isActive && focusedPass === "prompt" && <span style={{ color: "#2563eb", fontSize: 14 }}>◄</span>}
+                            </div>
+                          </td>
+                          <td
+                            style={{ ...tdStyle, cursor: "pointer" }}
+                            onClick={(e) => { e.stopPropagation(); openTrace(t.id, "prompt"); }}
+                            data-testid={`prompt-steps-${t.id}`}
+                          >
+                            {stepsOf(outcome)}
+                          </td>
+                        </>
+                      )}
                     </tr>
                   );
                 })}

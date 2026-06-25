@@ -229,6 +229,13 @@ pub struct NativeOllamaTurn {
     /// Act-vs-abstain mandate for this task (from its end_state), so the native system tells the
     /// model to use the reporter tool on an ACT task instead of inviting prose.
     pub terminal: TerminalGuidance,
+    /// Per-turn output-token budget — tier-scaled exactly like the prompt path's `BackendTurn`
+    /// (`max_tokens_for(tier, is_thinking)`), so native isn't run on a different budget than
+    /// prompt (budget parity across the two passes).
+    pub max_tokens: u32,
+    /// Reasoning model? Raises the per-turn budget so a `<think>` scratchpad isn't truncated —
+    /// matches the prompt path.
+    pub is_thinking: bool,
 }
 
 /// Shape the tool schemas into Ollama's `tools` array (OpenAI-style function specs).
@@ -271,9 +278,13 @@ impl ModelTurn for NativeOllamaTurn {
     async fn run(&self, spec: &GenerateSpec) -> AppResult<(String, GenerateStats)> {
         let tools = build_tools_value(&self.tools);
         let system = native_system(&self.tools, self.terminal);
+        // Budget parity with the prompt path: the runner pins the tier-scaled per-turn
+        // `num_predict` on `spec.options` (from `max_output_tokens()` below); merge it in so the
+        // native turn runs on the SAME budget — the spec's structural cap wins, user sampling
+        // prefs come from `self.options` (see `merge_eval_options`).
+        let options = merge_eval_options(self.options.as_ref(), spec.options.as_ref());
         let result =
-            chat_with_tools(&self.endpoint, &self.model, &system, &spec.prompt, &tools, self.options.clone())
-                .await?;
+            chat_with_tools(&self.endpoint, &self.model, &system, &spec.prompt, &tools, options).await?;
         // When Ollama's native parser returned tool calls, hand the runner the canonical
         // JSON. When it returned NONE, surface the raw assistant `content` instead of an
         // empty string: a mis-built model often emits a foreign dialect (channel-token soup)
@@ -285,6 +296,14 @@ impl ModelTurn for NativeOllamaTurn {
         // text salvager (`harmony_calls`) also drops — so this never credits a call Ollama
         // missed, it only makes the FAILURE honest.
         Ok((native_turn_text(&result.tool_calls, result.content), result.stats))
+    }
+
+    fn is_thinking(&self) -> bool {
+        self.is_thinking
+    }
+
+    fn max_output_tokens(&self) -> u32 {
+        self.max_tokens
     }
 }
 

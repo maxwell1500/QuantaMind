@@ -73,19 +73,26 @@ describe("batchStore (rAF-buffered)", () => {
     expect(get().outcomeByKey[cellKey("m1", "a1")]?.kind).toBe("agentic");
   });
 
-  it("routes a native task result to nativeOutcomeByKey without bumping the prompt progress bar", () => {
+  it("routes native vs prompt results to their own slices; the bar resets at the pass boundary", () => {
     get().startRun();
-    const base = { model: "m1", task_id: "a1", outcome: { kind: "single", passed: true, trace: {} } } as unknown as BatchProgress;
-    // Native pass posts its per-task result first (native-first ordering).
-    get().ingestProgress({ ...base, phase: "done", is_native: true } as BatchProgress);
-    // Then the prompt pass posts its result.
-    get().ingestProgress({ ...base, phase: "done", is_native: false } as BatchProgress);
+    const started = (is_native: boolean) =>
+      ({ phase: "started", model: "m1", task_id: "a1", index: 0, total: 1, category: "agentic", is_native }) as BatchProgress;
+    const done = (is_native: boolean) =>
+      ({ phase: "done", model: "m1", task_id: "a1", is_native, outcome: { kind: "single", passed: true, trace: {} } }) as unknown as BatchProgress;
+    // Native pass first: started → done advances its bar to 1/1.
+    get().ingestProgress(started(true));
+    get().ingestProgress(done(true));
+    flushBatchBufferForTests();
+    expect(get().progress.done).toBe(1);
+    // Prompt pass starts → pass boundary resets the bar to 0, then its done → 1/1 again.
+    get().ingestProgress(started(false));
+    get().ingestProgress(done(false));
     flushBatchBufferForTests();
 
     const key = cellKey("m1", "a1");
     expect(get().nativeOutcomeByKey[key]).toBeDefined(); // native result kept separate
     expect(get().outcomeByKey[key]).toBeDefined(); // prompt result in its own slice
-    expect(get().progress.done).toBe(1); // only the PROMPT done advanced the bar (no double-count)
+    expect(get().progress.done).toBe(1); // bar reset at the boundary — not 2 (no double-count)
   });
 
   it("an intermediate complete (final=false) keeps running true; the final one ends the run", () => {

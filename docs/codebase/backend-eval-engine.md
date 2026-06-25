@@ -844,14 +844,18 @@ crash-resume.
   every run errors is COUNTED into `tasks_errored` + classified, never silently dropped;
   an all-errored pass still emits a column, which `inputs.rs` filters on `total_runs>0`
   so it never pollutes the verdict), `batch_summaries`, `agg_agentic`.
-- **Pass order (`run_passes`, batch_cmd):** the NATIVE pass runs FIRST (into a `skeleton_report`
-  column shell), emits an intermediate `batch-complete` (`final:false`) so its column shows
-  immediately, then the PROMPT pass runs and its report is merged with the native aggregates by
-  model; the terminal `batch-complete` carries `final:true`. Native steps stream to the sink
-  tagged `is_native` (so the UI shows the native trajectory as a separate trace). Rationale: a
-  slow native model (e.g. gemma4-qat, which times out ~half its turns at the 180s STEP_TIMEOUT)
-  is watchable up front instead of after the whole prompt pass; the UI keeps `running` true
-  until `final` so a still-empty cell reads "Running…", not a misleading "N/A".
+- **Pass selection + order (`run_passes`, batch_cmd):** the UI picks the calling method(s) —
+  `RunConfig.native` (Tool-Calling) and/or `RunConfig.prompt` (Prompt-based), at least one
+  (Tool-Calling is the default; `prompt` defaults true for back-compat on resumed job logs). The
+  NATIVE pass runs FIRST when selected (into a `skeleton_report` column shell), emitting an
+  intermediate `batch-complete` (`final:false`) ONLY if the prompt pass will follow; then the
+  PROMPT pass runs **when selected** (else the report is the skeleton the native aggregates merge
+  into — a native-only run), merged by model; the terminal `batch-complete` carries `final:true`.
+  Native steps stream to the sink tagged `is_native` (UI shows the native trajectory separately).
+  Rationale: a slow native model (e.g. gemma4-qat, ~half its turns time out at the 180s
+  STEP_TIMEOUT) is watchable up front; the UI keeps `running` true until `final` so a still-empty
+  cell reads "Running…", not a misleading "N/A". The Matrix renders one row PER measured pass
+  (`scoreRows` `hasNative`/`hasPrompt`), so a native-only run shows no empty Prompt-based row.
 
 **Pass^k is strict** — a task is credited only when *all k runs* succeed:
 

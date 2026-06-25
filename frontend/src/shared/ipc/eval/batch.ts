@@ -203,6 +203,9 @@ export const BatchProgressSchema = z.discriminatedUnion("phase", [
     index: z.number().int(),
     total: z.number().int(),
     category: z.string(),
+    // Which pass is starting — lets the progress bar reset at the native↔prompt boundary so
+    // each pass shows its own 0→N. Absent ⇒ prompt pass.
+    is_native: z.boolean().optional(),
   }),
   z.object({
     phase: z.literal("done"),
@@ -251,6 +254,7 @@ export async function runBatchEval(
   runNativeFc?: boolean,
   tier?: Tier,
   decoyTools?: number,
+  runPromptBased?: boolean,
 ): Promise<BatchReport> {
   return BatchReportSchema.parse(
     await invoke("run_batch_eval", {
@@ -264,6 +268,7 @@ export async function runBatchEval(
       runNativeFc,
       tier,
       decoyTools,
+      runPromptBased,
     }),
   );
 }

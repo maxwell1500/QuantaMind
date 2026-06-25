@@ -64,9 +64,9 @@ struct TauriBatchSink {
 }
 
 impl BatchSink for TauriBatchSink {
-    fn task_started(&self, model: &str, task_id: &str, index: usize, total: usize, category: &str) {
+    fn task_started(&self, model: &str, task_id: &str, index: usize, total: usize, category: &str, is_native: bool) {
         log_emit(&self.app, EVENT_BATCH_PROGRESS, BatchProgress::Started {
-            model: model.into(), task_id: task_id.into(), index, total, category: category.into(),
+            model: model.into(), task_id: task_id.into(), index, total, category: category.into(), is_native,
         });
     }
     fn agentic_turn(&self, model: &str, task_id: &str, step: &TrajectoryStep, is_native: bool) {
@@ -184,6 +184,7 @@ pub async fn run_batch_eval(
     run_native_fc: Option<bool>,
     tier: Option<Tier>,
     decoy_tools: Option<u32>,
+    run_prompt_based: Option<bool>,
 ) -> Result<BatchReport, AppError> {
     validate_tasks(&tasks)?;
     if let Some(p) = &params {
@@ -198,6 +199,9 @@ pub async fn run_batch_eval(
         params,
         keep_alive,
         native: run_native_fc.unwrap_or(false),
+        // Default true: an old frontend / persisted job without the flag keeps the prior behavior
+        // where the prompt pass always ran.
+        prompt: run_prompt_based.unwrap_or(true),
         tier,
         decoy_tools,
     };
@@ -270,12 +274,20 @@ pub(crate) async fn run_passes(
                     }
                     _ => TerminalGuidance::PlainTextOk,
                 };
+                // Native turns emit STRUCTURED tool_calls — often several parallel calls per turn
+                // (plus any reasoning) — so the prompt path's terse 256-token cap truncates them
+                // (→ EmptyOutput on hard/extreme). Give native the GENEROUS tier budget
+                // (`max_tokens_for(tier, true)` = 1536–4096): tier-scaled, ample headroom, still
+                // bounded (anti-runaway) and capped by the per-turn wall-clock timeout.
+                let is_thinking = config.targets.iter().find(|t| t.model == model).is_some_and(|t| t.is_thinking);
                 NativeOllamaTurn {
                     endpoint: endpoint.clone(),
                     model: model.to_string(),
                     tools: task.tools.clone(),
                     options: native_options.clone(),
                     terminal,
+                    max_tokens: max_tokens_for(tier, true),
+                    is_thinking,
                 }
             },
             prior,
@@ -284,37 +296,45 @@ pub(crate) async fn run_passes(
             sink.clone(),
         )
         .await?; // a gate Err halts; per-task run errors are swallowed inside
-        // Surface the native column right away (before the prompt pass fills the rest). NOT
-        // final — the prompt pass is still to come, so the UI keeps showing "running".
-        log_emit(app, EVENT_BATCH_COMPLETE, BatchCompletePayload { report: skeleton.clone(), r#final: false });
+        // Surface the native column right away — but ONLY as an INTERMEDIATE complete when the
+        // prompt pass will follow (so the UI keeps "running"). If native is the only selected
+        // pass, the skeleton becomes the final report below, emitted once.
+        if config.prompt {
+            log_emit(app, EVENT_BATCH_COMPLETE, BatchCompletePayload { report: skeleton.clone(), r#final: false });
+        }
         skeleton.columns.into_iter().filter_map(|c| c.agentic_native_fc.map(|a| (c.model, a))).collect()
     } else {
         HashMap::new()
     };
 
-    // Prompt pass.
-    let mut report = run_batch_resumable(
-        &config.collection_id,
-        &config.targets,
-        &tasks,
-        cancel,
-        sink.clone(),
-        move |t: &ModelTarget| BackendTurn {
-            backend: t.backend,
-            endpoint: endpoint_for(t.backend),
-            model: t.model.clone(),
-            cancel: turn_cancel.clone(),
-            options: options.clone(),
-            keep_alive,
-            is_thinking: t.is_thinking,
-            max_tokens: max_tokens_for(tier, t.is_thinking),
-            stop_cache: Default::default(),
-        },
-        prior,
-        &record,
-        &OllamaVramGate,
-    )
-    .await?;
+    // Prompt pass — only when selected. When it's NOT, the report is the column skeleton that the
+    // native aggregates merge into (a native-only run). At least one pass is guaranteed by the UI.
+    let mut report = if config.prompt {
+        run_batch_resumable(
+            &config.collection_id,
+            &config.targets,
+            &tasks,
+            cancel,
+            sink.clone(),
+            move |t: &ModelTarget| BackendTurn {
+                backend: t.backend,
+                endpoint: endpoint_for(t.backend),
+                model: t.model.clone(),
+                cancel: turn_cancel.clone(),
+                options: options.clone(),
+                keep_alive,
+                is_thinking: t.is_thinking,
+                max_tokens: max_tokens_for(tier, t.is_thinking),
+                stop_cache: Default::default(),
+            },
+            prior,
+            &record,
+            &OllamaVramGate,
+        )
+        .await?
+    } else {
+        skeleton_report(&config.collection_id, &config.targets)
+    };
     // Merge the native aggregates (collected before the prompt pass) into its columns.
     for col in &mut report.columns {
         if let Some(a) = native_aggs.get(&col.model) {

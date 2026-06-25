@@ -305,16 +305,20 @@ export function PerformanceMatrix({
                         failures: r.failuresNative,
                       }]
                     : []),
-                  {
-                    kind: "prompt" as const,
-                    method: "Prompt-based",
-                    passK: r.passK,
-                    steps: r.avgSteps,
-                    effort: r.effort,
-                    schemaResil: r.schemaResil,
-                    topError: r.topError,
-                    failures: r.failures,
-                  },
+                  // Prompt-based row only when that pass ran (or as the sole fallback row when
+                  // neither pass has data) — so a native-only run shows no empty prompt row.
+                  ...(r.hasPrompt || !r.hasNative
+                    ? [{
+                        kind: "prompt" as const,
+                        method: "Prompt-based",
+                        passK: r.passK,
+                        steps: r.avgSteps,
+                        effort: r.effort,
+                        schemaResil: r.schemaResil,
+                        topError: r.topError,
+                        failures: r.failures,
+                      }]
+                    : []),
                 ];
                 return passRows.map((p, i) => {
                   const first = i === 0;
