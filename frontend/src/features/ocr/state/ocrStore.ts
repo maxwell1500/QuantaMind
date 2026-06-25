@@ -1,5 +1,10 @@
 import { create } from "zustand";
 import { readFileBase64, runOcrLive } from "../../../shared/ipc/ocr/ocr";
+import { useSelectedModelStore } from "../../../shared/state/selectedModelStore";
+
+/// The OCR model is ALWAYS the global header selection (architecture rule 7) — read fresh at run
+/// time so it can never be stale relative to the header.
+const currentModel = () => useSelectedModelStore.getState().selectedModels[0]?.name ?? "";
 
 export type PageStatus = "pending" | "running" | "done" | "error" | "cannot_process";
 
@@ -25,11 +30,9 @@ export interface OcrDoc {
 interface OcrStore {
   docs: OcrDoc[];
   selectedId: string | null;
-  model: string;
   running: boolean;
   addDocuments: (files: { path: string; name: string }[]) => Promise<void>;
   select: (id: string) => void;
-  setModel: (m: string) => void;
   appendToken: (requestId: string, text: string) => void;
   markCannotProcess: (requestId: string) => void;
   runSelected: () => Promise<void>;
@@ -52,7 +55,6 @@ export function joinedText(doc: OcrDoc): string {
 export const useOcrStore = create<OcrStore>((set, get) => ({
   docs: [],
   selectedId: null,
-  model: "",
   running: false,
 
   addDocuments: async (files) => {
@@ -79,7 +81,6 @@ export const useOcrStore = create<OcrStore>((set, get) => ({
   },
 
   select: (id) => set({ selectedId: id }),
-  setModel: (m) => set({ model: m }),
 
   appendToken: (requestId, text) => {
     const { docId, page } = parseReq(requestId);
@@ -100,7 +101,8 @@ export const useOcrStore = create<OcrStore>((set, get) => ({
   },
 
   runSelected: async () => {
-    const { selectedId, docs, model } = get();
+    const model = currentModel();
+    const { selectedId, docs } = get();
     const doc = docs.find((d) => d.id === selectedId);
     if (!doc || !model || doc.error || get().running) return;
 
@@ -123,10 +125,16 @@ export const useOcrStore = create<OcrStore>((set, get) => ({
         try {
           inputB64 = doc.kind === "image" ? doc.sourceB64 : await pdf.renderPage(opened!.doc, p.page); // transient — discarded after this iteration
         } catch (e) {
-          setPage(p.page, { status: "error", text: e instanceof Error ? e.message : String(e) });
+          setPage(p.page, { status: "error", text: `Could not render page — ${e instanceof Error ? e.message : String(e)}` });
           continue;
         }
-        await runOcrLive(model, inputB64, reqId(doc.id, p.page));
+        try {
+          await runOcrLive(model, inputB64, reqId(doc.id, p.page));
+        } catch (e) {
+          // A failed run (e.g. Ollama unreachable) must surface, not leave the page silently blank.
+          setPage(p.page, { status: "error", text: `OCR failed — ${e instanceof Error ? e.message : String(e)}` });
+          continue;
+        }
         // The backend emits ocr-done (invoke resolved) or ocr-cannot-process (status already set).
         const cur = get().docs.find((d) => d.id === doc.id)?.pages.find((x) => x.page === p.page)?.status;
         setPage(p.page, cur === "cannot_process" ? {} : { status: "done" });

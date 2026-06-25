@@ -17,8 +17,8 @@ import { useOcrStore, type OcrDoc } from "../state/ocrStore";
 import { useSelectedModelStore } from "../../../shared/state/selectedModelStore";
 
 beforeEach(() => {
-  useOcrStore.setState({ docs: [], selectedId: null, model: "qwen3.5:9b", running: false });
-  // OCR uses the GLOBAL header model (no per-page picker).
+  useOcrStore.setState({ docs: [], selectedId: null, running: false });
+  // OCR uses the GLOBAL header model (no per-page picker, no local copy).
   useSelectedModelStore.setState({ selectedModels: [{ name: "qwen3.5:9b", backend: "ollama", size_bytes: 0 }] });
 });
 
