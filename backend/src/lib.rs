@@ -15,6 +15,7 @@ pub fn run() {
         .plugin(tauri_plugin_shell::init())
         .plugin(tauri_plugin_updater::Builder::new().build())
         .manage(commands::prompt::prompt::RunState::default())
+        .manage(commands::ocr::ocr_cmd::OcrRunState::default())
         .manage(commands::models::models_pull::PullState::default())
         .manage(commands::hf::hf_install::HfInstallState::default())
         .manage(commands::compare::compare::CompareRunState::default())
@@ -162,6 +163,10 @@ pub fn run() {
             commands::eval::batch_cmd::run_batch_eval,
             commands::eval::batch_cmd::stop_batch_eval,
             commands::eval::vision_cmd::run_vision_eval,
+            commands::ocr::ocr_cmd::read_file_base64,
+            commands::ocr::ocr_cmd::write_text_file,
+            commands::ocr::ocr_cmd::run_ocr_live,
+            commands::ocr::ocr_cmd::stop_ocr,
             commands::eval::batch_cmd::check_unfinished_run,
             commands::eval::batch_cmd::resume_batch_eval,
             commands::eval::batch_cmd::discard_run,

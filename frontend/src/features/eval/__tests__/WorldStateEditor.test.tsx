@@ -1,6 +1,6 @@
 import { describe, it, expect, vi } from "vitest";
 import { render, screen, fireEvent } from "@testing-library/react";
-import { WorldStateEditor } from "../components/manager/WorldStateEditor";
+import { WorldStateEditor } from "../env/WorldStateEditor";
 import type { ToolTask } from "../../../shared/ipc/eval/registry";
 
 const fsTask: ToolTask = {
