@@ -13,6 +13,7 @@ export type TopView =
   | "eval"
   | "audit"
   | "agentReport"
+  | "ocr"
   | "settings"
   | "help";
 

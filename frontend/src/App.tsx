@@ -6,6 +6,7 @@ import { SettingsPage } from "./features/settings/components/SettingsPage";
 import { ModelsPage } from "./features/models/components/ModelsPage";
 import { DownloadsPage } from "./features/models/components/DownloadsPage";
 import { EvalPage } from "./features/eval/components/EvalPage";
+import { OcrPage } from "./features/ocr/components/OcrPage";
 import { AuditPage } from "./features/audit/components/AuditPage";
 import { AgentReportPage } from "./features/agentReport/components/AgentReportPage";
 import { startInstalledModelsBus } from "./features/models/state/installedModelsBus";
@@ -30,6 +31,7 @@ const TABS: { id: TopView; label: string }[] = [
    { id: "eval", label: "Eval" },
    { id: "audit", label: "Audit" },
    { id: "agentReport", label: "Agent Report" },
+   { id: "ocr", label: "OCR" },
    { id: "models", label: "Models" },
    { id: "downloads", label: "Downloads" },
    { id: "settings", label: "Settings" },
@@ -88,6 +90,7 @@ export default function App() {
            <div hidden={view !== "compare"} data-testid="view-compare"><AnalysisPage /></div>
            <div hidden={view !== "inspector"} data-testid="view-inspector"><InspectorPage /></div>
            <div hidden={view !== "eval"} data-testid="view-eval"><EvalPage /></div>
+          <div hidden={view !== "ocr"} data-testid="view-ocr"><OcrPage /></div>
            <div hidden={view !== "audit"} data-testid="view-audit"><AuditPage /></div>
            <div hidden={view !== "agentReport"} data-testid="view-agentReport"><AgentReportPage /></div>
            <div hidden={view !== "models"} data-testid="view-models"><ModelsPage /></div>
