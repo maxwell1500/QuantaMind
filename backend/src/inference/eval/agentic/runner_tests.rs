@@ -1809,7 +1809,7 @@ async fn web_ui_oracle_reaches_target_state_and_passes() {
 async fn web_ui_trivial_agent_never_reaches_target_and_fails() {
     // Repeats the WRONG coupon and never submits → never matches the target → stalls → fail.
     let model = ScriptedModel::new(vec![(r#"{"name":"fill","args":{"field":"coupon","value":"WRONG"}}"#, 6)]);
-    let (tx, mut rx) = unbounded_channel();
+    let (tx, rx) = unbounded_channel();
     let outcome = run_once(&model, &web_ui_sandbox(), 8, 2, 0, &tx).await.unwrap();
     drop(tx);
     assert!(!outcome.reached_end, "a trivial agent must NOT reach the target state");

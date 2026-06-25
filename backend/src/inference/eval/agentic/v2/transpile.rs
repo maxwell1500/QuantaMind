@@ -25,6 +25,11 @@ pub struct V2Task {
     pub decoy_tools: Vec<V2Tool>,
     #[serde(default)]
     pub expected_calls: Vec<V2ExpectedCall>,
+    /// Slice 3 (stateful web-UI): the target end state. When present, the task is graded on the
+    /// final UI state matching this sub-state (`RequireEndState`), NOT on `expected_calls`
+    /// (those become the oracle's drive script in tests). Absent → checkpoint grading.
+    #[serde(default)]
+    pub target_state: Option<Value>,
     #[serde(default)]
     pub must_not_call: Vec<MustNotCall>,
     #[serde(default)]
@@ -150,8 +155,13 @@ pub fn transpile_task(
             }
         }
     }
-    let end_state =
-        if checkpoints.is_empty() { EndStateRule::ExpectAbstainingText } else { EndStateRule::RequireAll(checkpoints) };
+    // A `target_state` (stateful web-UI) grades on the final state and overrides checkpoint
+    // grading — `expected_calls` then serve only as the oracle's drive script (in tests).
+    let end_state = match t.target_state {
+        Some(target) => EndStateRule::RequireEndState(target),
+        None if checkpoints.is_empty() => EndStateRule::ExpectAbstainingText,
+        None => EndStateRule::RequireAll(checkpoints),
+    };
 
     let name_faults = t
         .faults
