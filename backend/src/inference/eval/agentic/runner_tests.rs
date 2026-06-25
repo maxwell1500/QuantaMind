@@ -1834,3 +1834,90 @@ async fn web_ui_forbidden_call_dominates_even_when_target_reached_same_turn() {
     let steps = drain(&mut rx);
     assert_eq!(steps.last().unwrap().kind, StepKind::ForbiddenCall);
 }
+
+#[tokio::test]
+#[ignore = "Slice-3 gate (NATIVE): qwen3.5:9b fills the coupon + submits → target reached, EnvView shows submitted"]
+async fn live_web_ui_passes_on_the_native_path() {
+    // The stateful web-UI env on the NATIVE path: the model fills SAVE10 and submits → the per-run
+    // WebUiState reaches the target → success, and the streamed EnvView carries the mutated state.
+    use crate::inference::eval::agentic::build::sandbox_for;
+    use crate::inference::eval::agentic::difficulty::passk::max_tokens_for;
+    use crate::inference::eval::agentic::env_view::EnvView;
+    use crate::inference::eval::agentic::model_turn::NativeOllamaTurn;
+    use crate::inference::eval::agentic::v2::collection::load_v2_collection;
+    use crate::inference::eval::agentic::v2::scenarios::v2_json;
+    use crate::inference::eval::toolcall::prompt::TerminalGuidance;
+    let task = load_v2_collection(v2_json("easy-webui-tasks").unwrap())
+        .unwrap()
+        .into_iter()
+        .find(|t| t.id == "es_wu_apply_coupon")
+        .unwrap();
+    let tier = task.agentic.as_ref().map(|s| s.tier).unwrap_or_default();
+    let (sandbox, cfg) = sandbox_for(&task).unwrap();
+    let model = NativeOllamaTurn {
+        endpoint: "http://localhost:11434".into(),
+        model: "qwen3.5:9b".into(),
+        tools: task.tools.clone(),
+        options: None,
+        terminal: TerminalGuidance::MustUseTools,
+        max_tokens: max_tokens_for(tier, true),
+        is_thinking: false,
+    };
+    let (tx, mut rx) = unbounded_channel();
+    let outcome = run_once(&model, &sandbox, cfg.max_steps, cfg.max_recovery, 0, &tx).await.unwrap();
+    drop(tx);
+    let steps = drain(&mut rx);
+    for s in &steps {
+        eprintln!("turn {} kind={:?} raw={} env={:?}", s.step_index, s.kind, s.raw_output.trim(), s.env);
+    }
+    eprintln!("WEBUI-NATIVE: reached_end={} failure={:?}", outcome.reached_end, outcome.failure);
+    assert!(outcome.reached_end, "native web-UI run must reach the target state (fill → submit)");
+    assert_eq!(outcome.failure, None);
+    assert!(
+        steps.iter().any(|s| matches!(&s.env, EnvView::WebUi(v) if v.state.get("submitted") == Some(&serde_json::json!(true)))),
+        "the replay must carry the mutated state (submitted = true)",
+    );
+}
+
+#[tokio::test]
+#[ignore = "Slice-3 gate (PROMPT): qwen3.5:9b drives the web UI via the prompt path (text-parsed calls)"]
+async fn live_web_ui_runs_on_the_prompt_path() {
+    // The web-UI env on the PROMPT path — a different parsing channel than native, so validate it
+    // live too (standing rule). Asserts a definite verdict + that the corpus/UI env was exercised.
+    use crate::inference::backend::backend_kind::BackendKind;
+    use crate::inference::eval::agentic::build::sandbox_for;
+    use crate::inference::eval::agentic::env_view::EnvView;
+    use crate::inference::eval::agentic::model_turn::BackendTurn;
+    use crate::inference::eval::agentic::v2::collection::load_v2_collection;
+    use crate::inference::eval::agentic::v2::scenarios::v2_json;
+    let task = load_v2_collection(v2_json("easy-webui-tasks").unwrap())
+        .unwrap()
+        .into_iter()
+        .find(|t| t.id == "es_wu_apply_coupon")
+        .unwrap();
+    let (sandbox, cfg) = sandbox_for(&task).unwrap();
+    let model = BackendTurn {
+        backend: BackendKind::Ollama,
+        endpoint: "http://localhost:11434".into(),
+        model: "qwen3.5:9b".into(),
+        cancel: CancellationToken::new(),
+        options: None,
+        keep_alive: None,
+        is_thinking: false,
+        max_tokens: 1024,
+        stop_cache: Default::default(),
+    };
+    let (tx, mut rx) = unbounded_channel();
+    let outcome = run_once(&model, &sandbox, cfg.max_steps, cfg.max_recovery, 0, &tx).await.unwrap();
+    drop(tx);
+    let steps = drain(&mut rx);
+    for s in &steps {
+        eprintln!("turn {} kind={:?} raw={} env={:?}", s.step_index, s.kind, s.raw_output.trim(), s.env);
+    }
+    eprintln!("WEBUI-PROMPT: reached_end={} failure={:?}", outcome.reached_end, outcome.failure);
+    assert!(outcome.reached_end || outcome.failure.is_some(), "prompt web-UI run produced no verdict");
+    assert!(
+        steps.iter().any(|s| matches!(&s.env, EnvView::WebUi(_))),
+        "the prompt path must exercise the web-UI env (a web_ui EnvView)",
+    );
+}

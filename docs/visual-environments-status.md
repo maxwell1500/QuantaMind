@@ -88,13 +88,28 @@ frontend ~217 green; live-verified on `qwen2.5-coder`.
   search→"No matching document was found."→PASS). **Lesson: never grade free-text / abstain on one
   exact phrase — the matcher can't OR, and an unreachable reply checkpoint loops to the cap.**
 
-## ⬜ Slice 3 — Web-UI environment (schematic SVG, state-diff) — NOT STARTED
-- `v2/env_webui.rs`: per-**run** `WebUiState` machine (click/navigate/fill mutate it — held in run
-  scope, NEVER in the immutable `ResponderKind`). `EnvView::WebUi`.
-- New grader `EndStateRule::RequireEndState(target)` = exact state match, no partial credit; needs
-  an oracle + trivial-agent-fails test; **forbidden-call terminality must still dominate** (a
-  forbidden action fails even if the final state is correct — pin with a test).
-- UI `replay/WebUiReplay.tsx` = **schematic SVG** (boxes/labels/state badges), not real HTML.
+## ✅ Slice 3 — Web-UI environment (schematic SVG, state-diff) — DONE (live-validated)
+The FIRST stateful env. `fill`/`toggle`/`navigate`/`click`/`submit` MUTATE a JSON UI state machine;
+graded on the final state matching a target. Architecture keeps the shared-sandbox determinism:
+- `v2/env_webui.rs`: `WebUiSpec` (immutable initial state, in `ResponderKind::WebUi`) + per-**run**
+  mutable `WebUiState` (`apply` mutates; `matches(target)` exact partial-match). The mutable state
+  is constructed fresh per run in `run_steps` (like the per-run fault `SandboxState`), **NEVER** in
+  the shared sandbox. The runner branches: WebUi → `apply` (mutate) then `complete = matches`;
+  stateless → checkpoint-advance first, `respond` only if not complete (preserves the unknown count).
+  The WebUi `EnvView` is rebuilt from the POST-action state.
+- `EndStateRule::RequireEndState(target)`: success the instant the UI matches the target, evaluated
+  AFTER the forbidden pre-scan → **ForbiddenCall dominates** (pinned by a unit test: a turn batching
+  the winning `submit` with a forbidden `delete_account` fails as ForbiddenCall). Reuses
+  InfiniteLoop / Hallucinated; no new FailureKind. Authored via `target_state` in v2 JSON →
+  transpile; `expected_calls` then serve only as the oracle's drive script.
+- `replay/WebUiReplay.tsx` = a **schematic SVG** browser window (route address-bar, fields as input
+  boxes, toggles as switches, submit badge; touched control highlighted). `EnvViewSchema` gains
+  `web_ui`; `EndStateRuleSchema` gains `require_end_state` (round-trip-pinned, else the grader breaks).
+- Bundled `easy-webui-tasks.json` (3 tasks: apply-coupon+submit, navigate+toggle, fill-form+submit;
+  destructive must-not-call decoys). 348 backend + 234 frontend tests green (oracle reaches each
+  target; trivial agent fails; ForbiddenCall dominates). **Live gate PASSED** — qwen3.5:9b drove the
+  UI to the target on BOTH native (`tool_calls`) and prompt (JSON-in-text) channels, `failure=None`,
+  EnvView carried the mutated state (`live_web_ui_passes_on_the_native_path` + `..._runs_on_the_prompt_path`).
 
 ## ⬜ Slice 4 — Custom environments (imported + edited) — NOT STARTED
 - 4a: runtime load of a user JSON/dir via `load_v2_collection`; `collection_hash = None` → excluded

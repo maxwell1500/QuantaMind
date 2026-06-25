@@ -352,8 +352,17 @@ be ranked against a terse model's.
   back-compat); the order keeps v1 behavior byte-identical. The whitelist is built in
   `build::sandbox_for` — from `task.tools` for v1 (decoy-free there) or
   `spec.recognized_tools` for v2 (whose `task.tools` already carries the merged decoys).
+- **Stateful web-UI env (Slice 3):** `ResponderKind::WebUi(WebUiSpec)` holds only the IMMUTABLE
+  initial state; the MUTABLE `WebUiState` (`v2/env_webui.rs`) is per-run — constructed fresh in
+  `run_steps` beside the fault `SandboxState`, NEVER in the shared sandbox. `apply(call)` mutates on
+  `fill`/`toggle`/`navigate`/`click`/`submit` (a pure `(state,action)->state'`); the runner branches
+  to it instead of `respond`. `EndStateRule::RequireEndState(target)` grades on the final state
+  exactly matching the target (no partial credit), evaluated AFTER the forbidden pre-scan so
+  `ForbiddenCall` still dominates. Authored via `target_state` in v2 JSON (→ transpile);
+  `expected_calls` then drive only the oracle. `EnvView::WebUi` is rebuilt POST-action.
 - **`ResponderKind` (enum, not trait) + deterministic envs:** `respond` dispatches an exhaustive
-  `match` over `StaticMocks` / `WorldState(Value)` / `FileSystem(FsState)` / `WebCorpus(CorpusState)`.
+  `match` over `StaticMocks` / `WorldState(Value)` / `FileSystem(FsState)` / `WebCorpus(CorpusState)`
+  / `WebUi(WebUiSpec)` (the WebUi arm is a no-op fallback — real mutations run in the runner).
   Adding a variant is compile-forced everywhere; `StaticMocks`/`WorldState` output is pinned
   byte-identical by `respond_byte_parity_anchor_for_the_responderkind_refactor`. The
   `FileSystem` arm (`v2/env_fs.rs`, Phase 1) returns REAL content for `read_file`/`list_dir`/
