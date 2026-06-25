@@ -10,7 +10,7 @@
 
 use crate::inference::eval::agentic::env_view::WebUiView;
 use crate::inference::eval::toolcall::tasks::Call;
-use serde_json::Value;
+use serde_json::{json, Value};
 use std::collections::HashSet;
 
 /// UI-action tool names. Each MUTATES the state; aliases cover the natural names a model emits.
@@ -56,18 +56,33 @@ impl WebUiState {
     pub fn apply(&mut self, call: &Call, recognized: &HashSet<String>) -> Option<String> {
         let name = call.name.as_str();
         if FILL.contains(&name) {
+            // Only DECLARED fields can be filled — naming a non-existent field returns an honest
+            // error listing the available ones (never silently creates a phantom field that would
+            // make the target unreachable while looking like success).
             let field = arg(call, &["field", "name", "target", "id"]);
             let value = call.args.get("value").or_else(|| call.args.get("text")).cloned().unwrap_or(Value::Null);
-            self.set_section("fields", &field, value);
-            Some(self.snapshot())
+            if self.has_control("fields", &field) {
+                self.set_section("fields", &field, value);
+                Some(self.snapshot())
+            } else {
+                Some(self.unknown_control("field", "fields", &field))
+            }
         } else if TOGGLE.contains(&name) {
+            // Same contract as fill: only DECLARED toggles flip; an unknown name errors with the
+            // available list (the fix for the phantom-`email_notifications` false-success).
             let nm = arg(call, &["name", "field", "target", "id"]);
-            let cur = self.state.get("toggles").and_then(|t| t.get(&nm)).and_then(Value::as_bool).unwrap_or(false);
-            self.set_section("toggles", &nm, Value::Bool(!cur));
-            Some(self.snapshot())
+            if self.has_control("toggles", &nm) {
+                let cur = self.state.get("toggles").and_then(|t| t.get(&nm)).and_then(Value::as_bool).unwrap_or(false);
+                self.set_section("toggles", &nm, Value::Bool(!cur));
+                Some(self.snapshot())
+            } else {
+                Some(self.unknown_control("toggle", "toggles", &nm))
+            }
         } else if NAVIGATE.contains(&name) {
+            // Canonicalize to a leading-slash route so `navigate("settings")` and
+            // `navigate("/settings")` are the same state (slash-pedantry isn't the skill).
             let route = arg(call, &["route", "to", "target", "url", "path"]);
-            self.set_top("route", Value::String(route));
+            self.set_top("route", Value::String(canonical_route(&route)));
             Some(self.snapshot())
         } else if SUBMIT.contains(&name) {
             self.set_top("submitted", Value::Bool(true));
@@ -113,6 +128,19 @@ impl WebUiState {
         serde_json::to_string(&self.state).unwrap_or_else(|_| "{}".to_string())
     }
 
+    /// Does the control `key` exist under `section` (fields/toggles) in the current state?
+    fn has_control(&self, section: &str, key: &str) -> bool {
+        self.state.get(section).and_then(|s| s.get(key)).is_some()
+    }
+
+    /// An honest error for an unknown control: names it and lists the available ones, so the model
+    /// can self-correct instead of silently "succeeding" on a phantom key.
+    fn unknown_control(&self, label: &str, section: &str, key: &str) -> String {
+        let available: Vec<&String> =
+            self.state.get(section).and_then(Value::as_object).map(|o| o.keys().collect()).unwrap_or_default();
+        json!({ "error": format!("unknown {label} '{key}'"), "available": available }).to_string()
+    }
+
     fn set_top(&mut self, key: &str, v: Value) {
         if !self.state.is_object() {
             self.state = Value::Object(Default::default());
@@ -150,6 +178,16 @@ fn value_matches(target: &Value, actual: &Value) -> bool {
 
 fn is_ui_action(name: &str) -> bool {
     FILL.contains(&name) || TOGGLE.contains(&name) || NAVIGATE.contains(&name) || CLICK.contains(&name) || SUBMIT.contains(&name) || GET.contains(&name)
+}
+
+/// Canonicalize a route to a single leading slash so `settings` and `/settings` are one state.
+fn canonical_route(route: &str) -> String {
+    let trimmed = route.trim();
+    if trimmed.is_empty() {
+        "/".to_string()
+    } else {
+        format!("/{}", trimmed.trim_start_matches('/'))
+    }
 }
 
 fn is_submitish(target: &str) -> bool {
@@ -213,6 +251,32 @@ mod tests {
         assert_eq!(s.state["route"], json!("/checkout"));
         s.apply(&call("submit", json!({})), &recognized());
         assert_eq!(s.state["submitted"], json!(true));
+    }
+
+    #[test]
+    fn navigate_canonicalizes_the_route_slash() {
+        let mut s = st();
+        s.apply(&call("navigate", json!({ "route": "checkout" })), &recognized());
+        assert_eq!(s.state["route"], json!("/checkout")); // leading slash added
+        let mut s2 = st();
+        s2.apply(&call("navigate", json!({ "route": "/checkout" })), &recognized());
+        assert_eq!(s2.state["route"], json!("/checkout")); // already-slashed unchanged → same state
+    }
+
+    #[test]
+    fn unknown_field_or_toggle_errors_with_available_and_creates_no_phantom() {
+        // The phantom-key fix: filling/toggling a non-existent control returns an honest error +
+        // the available list, and does NOT create the key (which would look like success while the
+        // real target stays unreachable — the `email_notifications` false-DONE bug).
+        let mut s = st();
+        let err = s.apply(&call("toggle", json!({ "name": "email_notifications" })), &recognized()).unwrap();
+        assert!(err.contains("unknown toggle") && err.contains("gift"), "got: {err}");
+        assert!(s.state["toggles"].get("email_notifications").is_none(), "must NOT create a phantom toggle");
+        assert_eq!(s.state["toggles"]["gift"], json!(false)); // real toggle untouched
+        // fill an undeclared field → same contract
+        let ferr = s.apply(&call("fill", json!({ "field": "promo", "value": "X" })), &recognized()).unwrap();
+        assert!(ferr.contains("unknown field") && ferr.contains("coupon"), "got: {ferr}");
+        assert!(s.state["fields"].get("promo").is_none());
     }
 
     #[test]

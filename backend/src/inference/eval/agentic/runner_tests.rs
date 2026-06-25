@@ -1921,3 +1921,69 @@ async fn live_web_ui_runs_on_the_prompt_path() {
         "the prompt path must exercise the web-UI env (a web_ui EnvView)",
     );
 }
+
+#[tokio::test]
+#[ignore = "Slice-3 regression (NATIVE): navigate+toggle reaches target despite slash/name variation"]
+async fn live_web_ui_enable_setting_native() {
+    // Regression for the FAKE-DONE failures: native navigated to "settings" (no slash) → route
+    // canonicalization makes it "/settings"; the model toggles the declared "notifications".
+    use crate::inference::eval::agentic::build::sandbox_for;
+    use crate::inference::eval::agentic::difficulty::passk::max_tokens_for;
+    use crate::inference::eval::agentic::model_turn::NativeOllamaTurn;
+    use crate::inference::eval::agentic::v2::collection::load_v2_collection;
+    use crate::inference::eval::agentic::v2::scenarios::v2_json;
+    use crate::inference::eval::toolcall::prompt::TerminalGuidance;
+    let task = load_v2_collection(v2_json("easy-webui-tasks").unwrap()).unwrap().into_iter().find(|t| t.id == "es_wu_enable_setting").unwrap();
+    let tier = task.agentic.as_ref().map(|s| s.tier).unwrap_or_default();
+    let (sandbox, cfg) = sandbox_for(&task).unwrap();
+    let model = NativeOllamaTurn {
+        endpoint: "http://localhost:11434".into(),
+        model: "qwen3.5:9b".into(),
+        tools: task.tools.clone(),
+        options: None,
+        terminal: TerminalGuidance::MustUseTools,
+        max_tokens: max_tokens_for(tier, true),
+        is_thinking: false,
+    };
+    let (tx, mut rx) = unbounded_channel();
+    let outcome = run_once(&model, &sandbox, cfg.max_steps, cfg.max_recovery, 0, &tx).await.unwrap();
+    drop(tx);
+    for s in drain(&mut rx) {
+        eprintln!("turn {} kind={:?} raw={}", s.step_index, s.kind, s.raw_output.trim());
+    }
+    eprintln!("ENABLE-SETTING-NATIVE: reached_end={} failure={:?}", outcome.reached_end, outcome.failure);
+    assert!(outcome.reached_end, "native navigate+toggle must reach the target after the slash fix");
+    assert_eq!(outcome.failure, None);
+}
+
+#[tokio::test]
+#[ignore = "Slice-3 regression (PROMPT): unknown-control feedback + clear prompt → reaches target"]
+async fn live_web_ui_enable_setting_prompt() {
+    use crate::inference::backend::backend_kind::BackendKind;
+    use crate::inference::eval::agentic::build::sandbox_for;
+    use crate::inference::eval::agentic::model_turn::BackendTurn;
+    use crate::inference::eval::agentic::v2::collection::load_v2_collection;
+    use crate::inference::eval::agentic::v2::scenarios::v2_json;
+    let task = load_v2_collection(v2_json("easy-webui-tasks").unwrap()).unwrap().into_iter().find(|t| t.id == "es_wu_enable_setting").unwrap();
+    let (sandbox, cfg) = sandbox_for(&task).unwrap();
+    let model = BackendTurn {
+        backend: BackendKind::Ollama,
+        endpoint: "http://localhost:11434".into(),
+        model: "qwen3.5:9b".into(),
+        cancel: CancellationToken::new(),
+        options: None,
+        keep_alive: None,
+        is_thinking: false,
+        max_tokens: 1024,
+        stop_cache: Default::default(),
+    };
+    let (tx, mut rx) = unbounded_channel();
+    let outcome = run_once(&model, &sandbox, cfg.max_steps, cfg.max_recovery, 0, &tx).await.unwrap();
+    drop(tx);
+    for s in drain(&mut rx) {
+        eprintln!("turn {} kind={:?} raw={}", s.step_index, s.kind, s.raw_output.trim());
+    }
+    eprintln!("ENABLE-SETTING-PROMPT: reached_end={} failure={:?}", outcome.reached_end, outcome.failure);
+    assert!(outcome.reached_end, "prompt navigate+toggle must reach the target after the fix");
+    assert_eq!(outcome.failure, None);
+}
