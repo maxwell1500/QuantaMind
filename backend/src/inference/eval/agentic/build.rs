@@ -4,6 +4,7 @@ use crate::inference::eval::agentic::difficulty::passk::{max_steps_for, pass_k_f
 use crate::inference::eval::agentic::runner::AgenticConfig;
 use crate::inference::eval::agentic::sandbox::{DeterministicSandbox, EndStateRule};
 use crate::inference::eval::agentic::spec::EnvKind;
+use crate::inference::eval::agentic::v2::env_corpus::CorpusState;
 use crate::inference::eval::agentic::v2::env_fs::FsState;
 use crate::inference::eval::toolcall::tasks::ToolTask;
 
@@ -79,6 +80,7 @@ pub fn sandbox_for(task: &ToolTask) -> AppResult<(DeterministicSandbox, AgenticC
     if let Some(ws) = &spec.world_state {
         sandbox = match spec.environment {
             EnvKind::Filesystem => sandbox.with_filesystem(FsState::from_world_state(ws)),
+            EnvKind::WebCorpus => sandbox.with_web_corpus(CorpusState::from_world_state(ws)),
             EnvKind::Entity => sandbox.with_world_state(ws.clone()).with_entity_tools(spec.entity_tools.clone()),
         };
     }

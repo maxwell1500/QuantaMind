@@ -85,6 +85,8 @@ pub enum EnvKind {
     #[default]
     Entity,
     Filesystem,
+    /// Phase 2: the frozen web-search corpus — `search`/`fetch` over bundled docs.
+    WebCorpus,
 }
 
 impl EnvKind {

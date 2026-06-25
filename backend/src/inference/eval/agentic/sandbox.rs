@@ -1,4 +1,5 @@
 use crate::inference::eval::agentic::spec::{FaultInjection, FaultRule};
+use crate::inference::eval::agentic::v2::env_corpus::CorpusState;
 use crate::inference::eval::agentic::v2::env_fs::FsState;
 use crate::inference::eval::agentic::v2::r#match::MustNotCall;
 use crate::inference::eval::toolcall::tasks::{Call, ToolSchema};
@@ -55,6 +56,9 @@ pub enum ResponderKind {
     /// Phase 1: a simulated filesystem the agent browses with `read_file`/`list_dir`/
     /// `search_files`/`grep`. Getters return REAL content (never an empty ack).
     FileSystem(FsState),
+    /// Phase 2: a frozen web-search corpus the agent browses with `search`/`fetch`. Getters
+    /// return deterministically-ranked snippets / real document text (never an empty ack).
+    WebCorpus(CorpusState),
 }
 
 #[derive(Clone, Debug)]
@@ -161,6 +165,13 @@ impl DeterministicSandbox {
         self
     }
 
+    /// Switch to the Phase-2 web-search-corpus responder (builder form). `search`/`fetch` then
+    /// return ranked snippets / real document text from `corpus`.
+    pub fn with_web_corpus(mut self, corpus: CorpusState) -> Self {
+        self.responder = ResponderKind::WebCorpus(corpus);
+        self
+    }
+
     /// The deterministic result for a parsed call. `StaticMocks`: `Some(mock)` or
     /// `None` for an unknown/hallucinated tool or wrong args (matched via `canonical`).
     /// `WorldState`: three-way — a GETTER surfaces the entity blob, a recognized ACTION
@@ -181,6 +192,7 @@ impl DeterministicSandbox {
                 }
             }
             ResponderKind::FileSystem(fs) => fs.respond(call, &self.recognized_tools),
+            ResponderKind::WebCorpus(c) => c.respond(call, &self.recognized_tools),
         }
     }
 }
