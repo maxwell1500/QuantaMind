@@ -137,7 +137,7 @@ All 8 steps green → development environment ready. Day 1 starts with Phase 1
 | React component file | `PascalCase.tsx` | `PromptEditor.tsx` |
 | TS non-component file | `kebab-case.ts` | `use-streaming-run.ts` |
 | Rust file | `snake_case.rs` | `ollama.rs` |
-| Branch | `phase-N/feature-name` | `phase-1/streaming-output` |
+| Branch | `<type>/<short-description>` | `feature/streaming-output`, `fix/native-budget`, `bug/empty-output` |
 
 ### Commits — Conventional Commits
 
