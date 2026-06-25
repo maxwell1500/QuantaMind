@@ -30,6 +30,7 @@ impl InferenceBackend for OllamaBackend {
             spec.system.as_deref(),
             spec.options.clone(),
             spec.keep_alive,
+            spec.images.as_deref(),
             cancel,
             on_token,
         )

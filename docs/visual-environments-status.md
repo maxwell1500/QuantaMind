@@ -137,15 +137,27 @@ graded on the final state matching a target. Architecture keeps the shared-sandb
 - **Slice 4.5 (follow-up):** a structured per-env editor (editable file tree / corpus rows / UI
   fields) reusing `worldStateShape` — deferred, not in this slice.
 
-## ⬜ Slice 5 — Vision OCR-as-capability — NOT STARTED
-- Separate eval family (NOT a sandbox tool loop; own module `inference/eval/vision/`, NOT Pass^k).
-- Model does image→text itself (**not RAG**); scored vs bundled ground truth (char/word WER, table
-  preservation, **HallucinatedContent** verdict). Live → **decoupled from the leaderboard**.
-- **Modality gate:** `probe_supports_vision`; a text-only model → "N/A" / "Cannot process", never a
-  zero; an uncertain probe fails toward N/A. Never average a vision score with the tool-calling tiers.
-- Byte-parity: the optional image field must not change the text-path request. The text-document
-  variant's "frozen text" is bundled-at-authoring, never OCR'd live. UI = image | extracted-text diff
-  (`diff-match-patch`) + an explicit "Cannot process — text-only model".
+## ✅ Slice 5 — Vision OCR-as-capability — DONE (live-validated) — ROADMAP COMPLETE
+A SEPARATE eval family (`inference/eval/vision/`), not a tool loop / not Pass^k. The model does
+image→text itself (not RAG), scored vs bundled ground truth. **Decoupled from the leaderboard by
+construction** — produces a `VisionReport`, NEVER a `ModelVerdict` (publish only takes `ModelVerdict`;
+code-read confirms no bridge).
+- **Plumbing:** `GenerateSpec`/Ollama `GenerateRequest` gain `images` (`skip_serializing_if` →
+  byte-parity for text); `probe_supports_vision` (capability `"vision"`). Vision is **Ollama-only**
+  (MLX/llama text-only → CannotProcess).
+- **Scorer** (`ocr_score.rs`): CER + WER (Levenshtein, lean plain-text) + critical-token accuracy.
+  **HallucinatedContent** = high insertion rate (named const) AND aligned-portion-faithful → flags
+  invented PLAUSIBLE content, distinct from mere inaccuracy (typos → high WER) AND garbage/noise.
+- **Modality gate / honest statuses:** `VisionStatus {Scored, CannotProcess, EmptyOutput,
+  Hallucinated}` — text-only/non-Ollama → CannotProcess (never a 0); empty → EmptyOutput.
+- **Assets:** FIRST `include_bytes!` precedent — 3 tiny synthetic text PNGs (6–8 KB) + ground-truth
+  JSON (bundled-at-authoring, never OCR'd live). UI: `VisionOCRPanel` = image | extracted↔ground-truth
+  diff (reuses `diff-match-patch`/`DiffView`) + CER/WER + "Cannot process" badge.
+- **Tests:** 362 backend (scorer golden CER 1/11, garble-not-hallucinated, invented→Hallucinated,
+  image base64 round-trip + size budget) + 250 frontend; image round-trip + decoupling code-read.
+  **Live gate PASSED:** qwen3.5:9b OCR'd the bundled receipt EXACTLY ("INVOICE / Total: $42.00 /
+  Date: 2026-06-25"), CER=WER=0, critical_token_accuracy=1.0 (`live_vision_model_extracts_bundled_image_text`).
+- **Deferred (Slice 5.5):** table-structure preservation (needs structured fixtures + a layout metric).
 
 ## Cross-cutting (fold into the slice that needs it)
 - [ ] Native role-shaped tool results — NATIVE PATH ONLY (prompt path keeps `Tool result:` text).

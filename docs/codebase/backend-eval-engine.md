@@ -34,7 +34,15 @@ estimate or a 0 substituted for missing data.
 | **Matrix** | `run_collection_matrix` | Same collection across N models (sequential) | per-column `ToolCallReport` + mean composite |
 | **Agentic** | inside `run_batch_eval` (tasks `category == "agentic"`) | Multi-step sandboxed tool loop, Pass^k reliability | `agentic::report::AgenticReport` |
 | **Context-cliff** | `run_context_cliff` | Largest verified prompt-token depth before accuracy collapses | per-rung composite vs baseline |
+| **Vision OCR** | `run_vision_eval` | A vision model extracts text from a bundled image; scored vs ground truth | `vision::ocr_score` (CER/WER + HallucinatedContent) |
 | **Readiness** | `assess_readiness` | A measured batch report + cliff + VRAM fit vs a use-case profile → Ready/Conditional/NotReady | `readiness::verdict::assess` |
+
+**Vision OCR is a SEPARATE, decoupled family** (`inference/eval/vision/`, mirroring the STT eval's
+structure): live image→text (not RAG, not Pass^k), modality-gated (`probe_supports_vision`,
+Ollama-only → text-only models get `CannotProcess`, never a 0). It produces a `VisionReport`, NEVER
+a `ModelVerdict` — so it is OFF the leaderboard by type (publish only accepts `ModelVerdict`).
+`images` rides on `GenerateSpec` (`skip_serializing_if` → byte-parity for text). `HallucinatedContent`
+= high insertion rate AND aligned-portion-faithful (invented content, not inaccuracy or noise).
 
 The **batch** mode (`run_batch_eval`) is the umbrella runner: it mixes single-turn
 and agentic tasks across multiple models, isolates VRAM between models, streams
