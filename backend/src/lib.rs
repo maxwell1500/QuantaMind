@@ -161,6 +161,7 @@ pub fn run() {
             commands::eval::matrix_cmd::load_collection_history,
             commands::eval::batch_cmd::run_batch_eval,
             commands::eval::batch_cmd::stop_batch_eval,
+            commands::eval::vision_cmd::run_vision_eval,
             commands::eval::batch_cmd::check_unfinished_run,
             commands::eval::batch_cmd::resume_batch_eval,
             commands::eval::batch_cmd::discard_run,
