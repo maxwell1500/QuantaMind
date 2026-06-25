@@ -317,9 +317,27 @@ function targetToolFor(t: ToolTask): string {
   if (t.expected.type === "call") return t.expected.name;
   if (t.expected.type === "parallel") return t.expected.calls.map((c) => c.name).join(", ");
   const es = t.agentic?.end_state;
+  // A state-diff (web-UI) task is graded on the final state, not tool checkpoints, so there's no
+  // checkpoint tool to name. Show the action tools the model drives the UI with: the declared
+  // tools minus the must-not-call decoys (so the trap isn't listed as a target).
+  if (es && typeof es === "object" && "require_end_state" in es) {
+    const forbidden = new Set((t.agentic?.must_not_call ?? []).map(mustNotCallName).filter((n): n is string => n != null));
+    const actions = t.tools.map((tool) => tool.name).filter((n) => !forbidden.has(n));
+    return actions.length ? actions.join(", ") : "—";
+  }
   const cps = es && typeof es === "object" ? ("require_all" in es ? es.require_all : "require_sequence" in es ? es.require_sequence : []) : [];
   const names = Array.from(new Set(cps.map((c) => c.tool)));
   return names.length ? names.join(", ") : "—";
+}
+
+/// A `must_not_call` entry is a bare tool name or a `{ name, args }` pair (opaque `unknown` to the
+/// frontend) — pull the tool name out of either form.
+function mustNotCallName(m: unknown): string | null {
+  if (typeof m === "string") return m;
+  if (m && typeof m === "object" && "name" in m && typeof (m as { name: unknown }).name === "string") {
+    return (m as { name: string }).name;
+  }
+  return null;
 }
 
 /// Avg steps for ONE pass's outcome (single = 1 turn; agentic = avg over the K runs). `—` until
