@@ -208,8 +208,8 @@ export function PerformanceMatrix({
     "Model",
     "Quant",
     "Pass^k",
-    ...(showNative ? ["Native FC"] : []),
-    "Avg Steps",
+    ...(showNative ? ["Native FC", "TC Steps"] : []),
+    ...(showNative ? ["PB Steps"] : ["Avg Steps"]),
     "Effort",
     "Schema Resil.",
     "Cliff Depth",
@@ -325,6 +325,15 @@ export function PerformanceMatrix({
                         }
                       >
                         {getPassKBadge(r.passKNative)}
+                      </td>
+                    )}
+                    {showNative && (
+                      <td
+                        style={{ ...td, color: r.avgStepsNative === "—" || r.avgStepsNative === "N/A" ? "#94a3b8" : "#334155" }}
+                        data-testid={`matrix-native-steps-${r.model}`}
+                        title="Avg steps of the Tool-Calling (native) run — comparable to PB Steps (the prompt run)."
+                      >
+                        {r.avgStepsNative}
                       </td>
                     )}
                     <td style={{ ...td, color: r.avgSteps === "—" ? "#94a3b8" : "#334155" }}>{r.avgSteps}</td>

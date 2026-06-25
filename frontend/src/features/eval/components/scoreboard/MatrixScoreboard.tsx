@@ -4,6 +4,7 @@ import { useInstalledModelsStore } from "../../../models/state/installedModelsSt
 import { useBatchStore, cellKey } from "../../state/batchStore";
 import { modelLabel } from "../../../../shared/models/modelLabel";
 import { isStrictPass, dialectLabel, type TaskOutcome } from "../../../../shared/ipc/eval/batch";
+import type { ToolTask } from "../../../../shared/ipc/eval/registry";
 import { InfoButton } from "../../../../shared/ui/InfoButton";
 import { Spinner } from "../../../../shared/ui/Spinner";
 import { RunProgress } from "./RunProgress";
@@ -185,9 +186,10 @@ export function MatrixScoreboard({
                   <th style={thStyle}>Task ID</th>
                   <th style={thStyle}>Category</th>
                   <th style={thStyle}>Target Tool</th>
-                  <th style={thStyle}>Steps</th>
                   {hasNative && <th style={thStyle}>Tool-Calling</th>}
+                  {hasNative && <th style={thStyle} title="Avg steps of the Tool-Calling (native) run">TC Steps</th>}
                   <th style={thStyle}>Prompt-based</th>
+                  <th style={thStyle} title="Avg steps of the Prompt-based run">PB Steps</th>
                 </tr>
               </thead>
               <tbody>
@@ -203,28 +205,11 @@ export function MatrixScoreboard({
                   else if (t.category === "select") categoryLabel = "Select";
                   else if (t.category === "abstain") categoryLabel = "Abstain";
 
-                  // Extract expected target tool(s)
-                  let targetTool = "—";
-                  if (t.expected.type === "call") {
-                    targetTool = t.expected.name;
-                  } else if (t.expected.type === "parallel") {
-                    targetTool = t.expected.calls.map((c) => c.name).join(", ");
-                  }
-
-                  // Determine steps taken
-                  let stepsStr = "—";
-                  if (outcome) {
-                    if (outcome.kind === "single") {
-                      stepsStr = "1";
-                    } else if (outcome.kind === "agentic") {
-                      stepsStr = outcome.report.avg_steps != null ? (Math.round(outcome.report.avg_steps * 10) / 10).toString() : "—";
-                    }
-                  }
-
                   // Per-task PROMPT and NATIVE outcomes — each rendered in its own clickable
-                  // column so the user can open the trace for the pass they care about.
+                  // result + steps columns so the user sees (and opens) each pass independently.
                   const nativeOutcome = nativeOutcomeByKey[key];
                   const isActive = focusedTaskId === t.id;
+                  const targetTool = targetToolFor(t);
 
                   return (
                     <tr
@@ -245,23 +230,31 @@ export function MatrixScoreboard({
                       <td style={{ ...tdStyle, fontFamily: "'JetBrains Mono', monospace", color: "#64748b", fontSize: 12 }}>
                         {targetTool}
                       </td>
-                      <td style={tdStyle}>{stepsStr}</td>
-                      {/* TOOL-CALLING (native) result — only once measured; runs first, so it
-                          sits before Prompt-based. Click opens the native trace. */}
+                      {/* TOOL-CALLING (native) result + its OWN steps — only once measured; runs
+                          first, so it sits before Prompt-based. Clicking opens the native trace. */}
                       {hasNative && (
-                        <td
-                          style={{ ...tdStyle, cursor: "pointer" }}
-                          onClick={(e) => { e.stopPropagation(); openTrace(t.id, "native"); }}
-                          data-testid={`native-cell-${t.id}`}
-                          title="Open the Tool-Calling (native) trace in the Evaluator"
-                        >
-                          <div style={{ display: "inline-flex", alignItems: "center", gap: 6 }}>
-                            {resultBadge(nativeOutcome, `result-native-${t.id}`)}
-                            {isActive && focusedPass === "native" && <span style={{ color: "#2563eb", fontSize: 14 }}>◄</span>}
-                          </div>
-                        </td>
+                        <>
+                          <td
+                            style={{ ...tdStyle, cursor: "pointer" }}
+                            onClick={(e) => { e.stopPropagation(); openTrace(t.id, "native"); }}
+                            data-testid={`native-cell-${t.id}`}
+                            title="Open the Tool-Calling (native) trace in the Evaluator"
+                          >
+                            <div style={{ display: "inline-flex", alignItems: "center", gap: 6 }}>
+                              {resultBadge(nativeOutcome, `result-native-${t.id}`)}
+                              {isActive && focusedPass === "native" && <span style={{ color: "#2563eb", fontSize: 14 }}>◄</span>}
+                            </div>
+                          </td>
+                          <td
+                            style={{ ...tdStyle, cursor: "pointer" }}
+                            onClick={(e) => { e.stopPropagation(); openTrace(t.id, "native"); }}
+                            data-testid={`native-steps-${t.id}`}
+                          >
+                            {stepsOf(nativeOutcome)}
+                          </td>
+                        </>
                       )}
-                      {/* PROMPT-BASED result — click opens the prompt-based trace. */}
+                      {/* PROMPT-BASED result + its OWN steps — clicking opens the prompt trace. */}
                       <td
                         style={{ ...tdStyle, cursor: "pointer" }}
                         onClick={(e) => { e.stopPropagation(); openTrace(t.id, "prompt"); }}
@@ -273,6 +266,13 @@ export function MatrixScoreboard({
                           {isActive && focusedPass === "prompt" && <span style={{ color: "#2563eb", fontSize: 14 }}>◄</span>}
                         </div>
                       </td>
+                      <td
+                        style={{ ...tdStyle, cursor: "pointer" }}
+                        onClick={(e) => { e.stopPropagation(); openTrace(t.id, "prompt"); }}
+                        data-testid={`prompt-steps-${t.id}`}
+                      >
+                        {stepsOf(outcome)}
+                      </td>
                     </tr>
                   );
                 })}
@@ -281,14 +281,36 @@ export function MatrixScoreboard({
           </div>
         )}
         <div style={{ fontSize: 11, color: "#475569", fontFamily: "Inter, sans-serif", marginTop: 10 }}>
-          Steps: single-turn tasks are 1 turn; Multi-Step (agentic) tasks show avg steps across the
-          K runs. Set the Task Type to “Multi-Step Agent” in the configurator to test a sandbox loop.
+          <strong>TC Steps</strong> / <strong>PB Steps</strong> = avg steps of the Tool-Calling (native)
+          vs Prompt-based run (single-turn = 1; Multi-Step = avg across the K runs). Target Tool is the
+          task's expected call, or — for a Multi-Step task — the tools its end-state requires.
         </div>
       </div>
       </>
       )}
     </div>
   );
+}
+
+/// The task's "target tool": the expected call for single/parallel tasks, or — for an agentic
+/// task (whose `expected` is `no_call`) — the tools its end-state actually requires, so the
+/// column isn't a blank "—" for every multi-step task.
+function targetToolFor(t: ToolTask): string {
+  if (t.expected.type === "call") return t.expected.name;
+  if (t.expected.type === "parallel") return t.expected.calls.map((c) => c.name).join(", ");
+  const es = t.agentic?.end_state;
+  const cps = es && typeof es === "object" ? ("require_all" in es ? es.require_all : "require_sequence" in es ? es.require_sequence : []) : [];
+  const names = Array.from(new Set(cps.map((c) => c.tool)));
+  return names.length ? names.join(", ") : "—";
+}
+
+/// Avg steps for ONE pass's outcome (single = 1 turn; agentic = avg over the K runs). `—` until
+/// that pass produces this task's outcome — so Tool-Calling and Prompt-based each show their own.
+function stepsOf(outcome: TaskOutcome | undefined): string {
+  if (!outcome) return "—";
+  if (outcome.kind === "single") return "1";
+  if (outcome.kind === "agentic") return outcome.report.avg_steps != null ? (Math.round(outcome.report.avg_steps * 10) / 10).toString() : "—";
+  return "—";
 }
 
 /// The pass/fail badge (+ dialect chip) for one task outcome — shared by the Prompt and Native

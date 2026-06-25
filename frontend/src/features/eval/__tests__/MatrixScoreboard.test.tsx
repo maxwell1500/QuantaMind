@@ -140,6 +140,42 @@ describe("MatrixScoreboard (Simulator) data flow", () => {
     expect(setPass).toHaveBeenCalledWith("native");
   });
 
+  it("derives Target Tool from an agentic end-state and shows TC Steps from the native run", () => {
+    const agenticTask: ToolTask = {
+      id: "pr_task",
+      category: "agentic",
+      prompt: "Open a PR.",
+      tools: [{ name: "open_pr", description: "", parameters: { type: "object", properties: {} } }],
+      expected: { type: "no_call" },
+      agentic: { mocks: [], end_state: { require_all: [{ tool: "open_pr", args: {} }] } },
+    };
+    useEvalRegistryStore.setState({ tasks: [agenticTask] });
+    const s = useBatchStore.getState();
+    s.startRun();
+    s.ingestProgress({
+      phase: "done",
+      model: MODEL,
+      task_id: "pr_task",
+      is_native: true,
+      outcome: {
+        kind: "agentic",
+        report: {
+          passes: 1, total_runs: 1, avg_steps: 1.5, avg_output_tokens_success: 40, schema_resilience: null,
+          top_error: "none",
+          failures: { infinite_loop_hits: 0, hallucinated_completions: 0, malformed_json_calls: 0, schema_unrecovered_calls: 0 },
+        },
+      },
+    } as BatchProgress);
+    flushBatchBufferForTests();
+
+    render(<MatrixScoreboard model={MODEL} k={1} maxSteps={8} focusedTaskId={null} setFocusedTaskId={() => {}} focusedPass="prompt" setFocusedPass={() => {}} />);
+    // Target Tool is no longer a blank "—" for an agentic task — it names the end-state tool.
+    expect(screen.getByTestId("scoreboard-row-pr_task")).toHaveTextContent("open_pr");
+    // TC Steps shows the native run's avg steps; PB Steps is still "—" (prompt pass not run).
+    expect(screen.getByTestId("native-steps-pr_task")).toHaveTextContent("1.5");
+    expect(screen.getByTestId("prompt-steps-pr_task")).toHaveTextContent("—");
+  });
+
   it("the Action column is gone — the result cells themselves open the trace", () => {
     render(<MatrixScoreboard model={MODEL} k={1} maxSteps={8} focusedTaskId={null} setFocusedTaskId={() => {}} focusedPass="prompt" setFocusedPass={() => {}} />);
     expect(screen.getByTestId("scoreboard-table")).not.toHaveTextContent("View Trace");

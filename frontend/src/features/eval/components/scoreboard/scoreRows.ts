@@ -27,6 +27,9 @@ export interface ScoreRow {
   /// "N/A" when native wasn't measured for this model. Shown behind a toggle.
   passKNative: string;
   avgSteps: string;
+  /// Avg steps of the NATIVE (Tool-Calling) run, "N/A" when native wasn't measured — shown next
+  /// to the native Pass^k so the two passes' step costs are comparable, not conflated.
+  avgStepsNative: string;
   effort: string;
   schemaResil: string;
   topError: string;
@@ -66,6 +69,7 @@ export function toScoreRows(report: BatchReport | null, models: InstalledModelIn
       passK: pass,
       passKNative,
       avgSteps: ag ? fmtNum(ag.avg_steps) : "—",
+      avgStepsNative: c.error ? "Error" : nat ? fmtNum(nat.avg_steps) : "N/A",
       effort: ag ? fmtTokens(ag.avg_output_tokens_success) : "—",
       // Schema resilience is agentic-only; null (no run hit a schema error) → "—".
       schemaResil: ag ? fmtPct(ag.schema_resilience) : "—",
