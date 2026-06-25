@@ -7,11 +7,25 @@ vi.mock("../../../shared/ipc/ocr/ocr", () => ({
   EVENT_OCR_DONE: "ocr-done",
   EVENT_OCR_CANNOT_PROCESS: "ocr-cannot-process",
 }));
+// Mock the PDF lib so vitest never loads pdfjs (worker ?url import / canvas).
+vi.mock("../lib/pdf", () => ({
+  openPdf: vi.fn(async () => ({ doc: {}, destroy: vi.fn(async () => {}) })),
+  renderPage: vi.fn(async () => "PAGEB64"),
+  pdfPageCount: vi.fn(async () => 1),
+  base64ToBytes: vi.fn(() => new Uint8Array()),
+}));
 
 import { useOcrStore, joinedText, type OcrDoc } from "../state/ocrStore";
-import { readFileBase64 } from "../../../shared/ipc/ocr/ocr";
+import { readFileBase64, runOcrLive } from "../../../shared/ipc/ocr/ocr";
+import { useSelectedModelStore } from "../../../shared/state/selectedModelStore";
 
-beforeEach(() => useOcrStore.setState({ docs: [], selectedId: null, model: "", running: false }));
+beforeEach(() => {
+  useOcrStore.setState({ docs: [], selectedId: null, running: false });
+  useSelectedModelStore.setState({ selectedModels: [{ name: "qwen3.5:9b", backend: "ollama", size_bytes: 0 }] });
+  vi.mocked(runOcrLive).mockClear();
+});
+
+const imageDoc = (): OcrDoc => ({ id: "I", name: "a.png", kind: "image", sourceB64: "B64", error: null, pages: [{ page: 1, text: "", status: "pending" }] });
 
 const pdfDoc = (): OcrDoc => ({
   id: "D",
@@ -59,6 +73,30 @@ describe("ocrStore", () => {
     expect(joinedText(single)).toBe("only");
     const multi: OcrDoc = { id: "b", name: "b", kind: "pdf", sourceB64: "", error: null, pages: [{ page: 1, text: "one", status: "done" }, { page: 2, text: "two", status: "done" }] };
     expect(joinedText(multi)).toBe("--- Page 1 ---\none\n\n--- Page 2 ---\ntwo");
+  });
+
+  it("runSelected uses the GLOBAL header model (not a local copy)", async () => {
+    useSelectedModelStore.setState({ selectedModels: [{ name: "header-model", backend: "ollama", size_bytes: 0 }] });
+    useOcrStore.setState({ docs: [imageDoc()], selectedId: "I" });
+    await useOcrStore.getState().runSelected();
+    expect(runOcrLive).toHaveBeenCalledWith("header-model", "B64", "I#1");
+  });
+
+  it("does not run when no global model is selected", async () => {
+    useSelectedModelStore.setState({ selectedModels: [] });
+    useOcrStore.setState({ docs: [imageDoc()], selectedId: "I" });
+    await useOcrStore.getState().runSelected();
+    expect(runOcrLive).not.toHaveBeenCalled();
+    expect(useOcrStore.getState().docs[0].pages[0].status).toBe("pending");
+  });
+
+  it("surfaces an OCR run failure on the page instead of leaving it blank", async () => {
+    useOcrStore.setState({ docs: [imageDoc()], selectedId: "I" });
+    vi.mocked(runOcrLive).mockRejectedValueOnce(new Error("Ollama unreachable"));
+    await useOcrStore.getState().runSelected();
+    const p = useOcrStore.getState().docs[0].pages[0];
+    expect(p.status).toBe("error");
+    expect(p.text).toMatch(/Ollama unreachable/);
   });
 
   it("a page never retains a rendered image — only text/status (no image field)", () => {

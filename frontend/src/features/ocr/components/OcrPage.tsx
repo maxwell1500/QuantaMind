@@ -1,4 +1,3 @@
-import { useEffect } from "react";
 import { open, save } from "@tauri-apps/plugin-dialog";
 import { useOcrStore, joinedText } from "../state/ocrStore";
 import { useOcrStream } from "../hooks/useOcrStream";
@@ -13,13 +12,11 @@ const basename = (p: string) => p.split(/[\\/]/).pop() ?? p;
 /// against source" note keeps the output honest. Copy / Export the text.
 export function OcrPage() {
   useOcrStream();
-  const { docs, selectedId, model, running, addDocuments, select, setModel, runSelected } = useOcrStore();
-  // The model follows the global header selection (the first selected model); kept in the OCR store
-  // so `runSelected` reads it. A text-only global model → the run reports "Cannot process".
-  const globalModel = useSelectedModelStore((s) => s.selectedModels[0]?.name ?? "");
-  useEffect(() => {
-    setModel(globalModel);
-  }, [globalModel, setModel]);
+  const { docs, selectedId, running, addDocuments, select, runSelected } = useOcrStore();
+  // The model is ALWAYS the global header selection (the first selected model). Read directly from
+  // the global store — no per-page picker, no local copy that could drift. A text-only model → the
+  // run reports "Cannot process".
+  const model = useSelectedModelStore((s) => s.selectedModels[0]?.name ?? "");
 
   const doc = docs.find((d) => d.id === selectedId) ?? null;
 
@@ -101,12 +98,16 @@ export function OcrPage() {
                   {doc.pages.length > 1 && <div className="text-xs font-semibold text-slate-400 mb-1">Page {p.page}</div>}
                   {p.status === "cannot_process" ? (
                     <div className="text-xs text-slate-500 bg-slate-50 border border-slate-200 rounded px-2 py-1" data-testid={`ocr-cannot-${p.page}`}>
-                      Cannot process — “{model}” is a text-only model. Pick a vision model.
+                      Cannot process — “{model}” is a text-only model. Pick a vision model in the header.
                     </div>
                   ) : p.status === "error" ? (
-                    <div className="text-xs text-red-700" data-testid={`ocr-page-error-${p.page}`}>Render failed — {p.text}</div>
+                    <div className="text-xs text-red-700 bg-red-50 border border-red-200 rounded px-2 py-1" data-testid={`ocr-page-error-${p.page}`}>{p.text}</div>
+                  ) : p.status === "running" && !p.text ? (
+                    <div className="text-xs text-slate-400" data-testid={`ocr-running-${p.page}`}>Extracting…</div>
+                  ) : p.status === "done" && !p.text ? (
+                    <div className="text-xs text-slate-400" data-testid={`ocr-empty-${p.page}`}>(no text found on this page)</div>
                   ) : (
-                    <pre className="whitespace-pre-wrap break-words text-sm text-slate-900 font-mono">{p.text || (p.status === "running" ? "…" : "")}</pre>
+                    <pre className="whitespace-pre-wrap break-words text-sm text-slate-900 font-mono">{p.text}{p.status === "running" ? " …" : ""}</pre>
                   )}
                 </section>
               ))}
