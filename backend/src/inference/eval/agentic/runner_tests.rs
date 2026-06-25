@@ -546,7 +546,7 @@ async fn live_native_path_runs_across_medium_hard_extreme_tiers() {
             tools: task.tools.clone(),
             options: None,
             terminal: TerminalGuidance::MustUseTools,
-            max_tokens: max_tokens_for(tier, false),
+            max_tokens: max_tokens_for(tier, true),
             is_thinking: false,
         };
         let (tx, mut rx) = unbounded_channel();
@@ -555,7 +555,7 @@ async fn live_native_path_runs_across_medium_hard_extreme_tiers() {
         let steps = drain(&mut rx);
         eprintln!(
             "[{collection}/{task_id}] tier={tier:?} budget={} turns={} reached_end={} failure={:?}",
-            max_tokens_for(tier, false), steps.len(), outcome.reached_end, outcome.failure,
+            max_tokens_for(tier, true), steps.len(), outcome.reached_end, outcome.failure,
         );
         // A definite scored verdict: either it reached the end state, or it hit a real failure
         // kind. Both are valid measurements; the run must NOT silently produce nothing.

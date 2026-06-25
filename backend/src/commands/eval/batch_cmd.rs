@@ -274,8 +274,11 @@ pub(crate) async fn run_passes(
                     }
                     _ => TerminalGuidance::PlainTextOk,
                 };
-                // Tier-scaled per-turn budget, matching the prompt path — a thinking model gets
-                // the raised budget so its native turn isn't truncated on hard/extreme.
+                // Native turns emit STRUCTURED tool_calls — often several parallel calls per turn
+                // (plus any reasoning) — so the prompt path's terse 256-token cap truncates them
+                // (→ EmptyOutput on hard/extreme). Give native the GENEROUS tier budget
+                // (`max_tokens_for(tier, true)` = 1536–4096): tier-scaled, ample headroom, still
+                // bounded (anti-runaway) and capped by the per-turn wall-clock timeout.
                 let is_thinking = config.targets.iter().find(|t| t.model == model).is_some_and(|t| t.is_thinking);
                 NativeOllamaTurn {
                     endpoint: endpoint.clone(),
@@ -283,7 +286,7 @@ pub(crate) async fn run_passes(
                     tools: task.tools.clone(),
                     options: native_options.clone(),
                     terminal,
-                    max_tokens: max_tokens_for(tier, is_thinking),
+                    max_tokens: max_tokens_for(tier, true),
                     is_thinking,
                 }
             },
