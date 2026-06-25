@@ -59,7 +59,7 @@ export function RunProgress({ done, total, live, k, maxSteps }: RunProgressProps
   const parts: string[] = [];
   // Name the pass — the native (tool-calling) pass runs first and is the slow one, so saying
   // so turns a long silent stretch into "Native pass, 45s elapsed" instead of a mystery.
-  parts.push(live.native ? "Native (Ollama tools) pass" : "Prompt pass");
+  parts.push(live.native ? "Tool-Calling pass" : "Prompt-based pass");
   parts.push(live.taskId ? `Task ${live.taskId}` : "Preparing…");
   if (total > 0) parts.push(`${done}/${total} tasks`);
   if (live.runIndex != null) parts.push(`Run ${live.runIndex + 1}/${k}`);

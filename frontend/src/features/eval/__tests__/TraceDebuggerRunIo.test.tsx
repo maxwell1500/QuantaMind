@@ -152,3 +152,22 @@ describe("TraceDebugger — per-run Input/Output drill-down", () => {
     expect(screen.queryByTestId("run-io-modal")).toBeNull();
   });
 });
+
+describe("TraceDebugger — live Tool-Calling (native) trace, native-first", () => {
+  it("shows the streaming native trace even before any prompt outcome lands", () => {
+    useEvalRegistryStore.setState({ tasks: [agenticTask] });
+    const s = useBatchStore.getState();
+    s.startRun();
+    // The native pass runs FIRST: a native step streams, but NO prompt task_done has fired yet.
+    s.ingestStep({
+      model: MODEL, task_id: "book", run_index: 0, step_index: 0,
+      raw_output: "NATIVE-CALL-XYZ", injection: "Tool result: ok", kind: "tool_call", is_native: true,
+    });
+    flushBatchBufferForTests();
+
+    render(<TraceDebugger model={MODEL} taskId="book" setTaskId={() => {}} tracePass="native" />);
+    // The bug: it used to show "No trace recorded" because it gated on the prompt outcome.
+    expect(screen.queryByText(/No trace recorded/i)).toBeNull();
+    expect(screen.getByTestId("trace-pass-label")).toHaveTextContent("Tool-Calling");
+  });
+});

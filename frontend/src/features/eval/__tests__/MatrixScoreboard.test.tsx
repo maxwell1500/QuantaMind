@@ -131,10 +131,10 @@ describe("MatrixScoreboard (Simulator) data flow", () => {
     render(
       <MatrixScoreboard model={MODEL} k={1} maxSteps={8} focusedTaskId={"weather"} setFocusedTaskId={() => {}} focusedPass="prompt" setFocusedPass={setPass} />,
     );
-    // The Native column + its pass/fail cell appear (separate from Prompt).
+    // The Tool-Calling (native) column + its pass/fail cell appear (separate from Prompt-based).
     const nativeCell = screen.getByTestId("native-cell-weather");
     expect(nativeCell).toHaveTextContent("Pass");
-    expect(screen.getByTestId("matrix-scoreboard")).toHaveTextContent("Native");
+    expect(screen.getByTestId("scoreboard-table")).toHaveTextContent("Tool-Calling");
     // Clicking the native result opens the NATIVE trace in the Evaluator.
     fireEvent.click(nativeCell);
     expect(setPass).toHaveBeenCalledWith("native");

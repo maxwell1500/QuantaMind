@@ -293,6 +293,7 @@ export function TraceDebugger({
 }: TraceDebuggerProps) {
   const { tasks } = useEvalRegistryStore();
   const outcomeByKey = useBatchStore((s) => s.outcomeByKey);
+  const nativeOutcomeByKey = useBatchStore((s) => s.nativeOutcomeByKey);
   const stepsByKey = useBatchStore((s) => s.stepsByKey);
   const nativeStepsByKey = useBatchStore((s) => s.nativeStepsByKey);
   const running = useBatchStore((s) => s.running);
@@ -336,12 +337,14 @@ export function TraceDebugger({
   }
 
   const key = cellKey(model, taskId);
-  const outcome = outcomeByKey[key];
   const nativeSteps = nativeStepsByKey[key] || [];
   const hasNative = nativeSteps.length > 0;
-  // Show the selected pass's trajectory. Native is only selectable once it has streamed
-  // (it runs after the whole prompt pass), so fall back to prompt until then.
-  const steps = (tracePass === "native" && hasNative ? nativeSteps : stepsByKey[key]) || [];
+  // Everything below renders the SELECTED pass: its steps AND its terminal outcome. Gating on
+  // the prompt outcome was the bug — with native-first the prompt pass hasn't run, so a live
+  // native trace was hidden behind "No trace recorded".
+  const onNative = tracePass === "native" && hasNative;
+  const steps = (onNative ? nativeSteps : stepsByKey[key]) || [];
+  const outcome = onNative ? nativeOutcomeByKey[key] : outcomeByKey[key];
 
   // Split the flat trajectory into per-run sections. Runs execute sequentially, so
   // every group but the last is complete; while `running`, the last group may still
@@ -505,15 +508,15 @@ export function TraceDebugger({
                     color: "#6d28d9",
                   }}
                 >
-                  Native (Ollama tools) trace
+                  Tool-Calling (native) trace
                 </span>
               </div>
             )}
-            {!outcome ? (
+            {!outcome && steps.length === 0 ? (
               <div style={{ color: "#64748b", fontSize: 13, fontFamily: "Inter, sans-serif", textAlign: "center", padding: 24 }}>
                 No trace recorded for this task yet. Run the batch to simulate.
               </div>
-            ) : outcome.kind === "single" ? (
+            ) : outcome?.kind === "single" ? (
               <div style={{ display: "flex", flexDirection: "column", gap: 16 }}>
                 {/* Single turn trace */}
                 <div style={{ ...getCardStyle("tool_call", false) }}>
@@ -558,9 +561,10 @@ export function TraceDebugger({
                   )}
                 </div>
               </div>
-            ) : outcome.kind === "agentic" ? (
+            ) : outcome?.kind === "agentic" || (!outcome && steps.length > 0) ? (
               <div style={{ display: "flex", flexDirection: "column", gap: 20 }}>
-                {/* Chronological agentic turns */}
+                {/* Chronological agentic turns (renders live from streaming steps even before
+                    the terminal outcome lands — the native-first live-trace fix). */}
                 {steps.length === 0 ? (
                   <div style={{ color: "#64748b", fontSize: 13, fontFamily: "Inter, sans-serif", textAlign: "center" }}>
                     No steps recorded for this multi-turn run yet.
@@ -662,9 +666,10 @@ export function TraceDebugger({
                   </div>
                 )}
 
-                {/* Final Verdict — prompt pass only; `outcome.report` is the prompt result, so
-                    the native trace shows its own per-run PASS/FAIL chips instead of this. */}
-                {tracePass === "prompt" && steps.length > 0 && (
+                {/* Final Verdict — prompt pass only, and only once the outcome has LANDED (a
+                    still-streaming prompt task has steps but no `outcome.report` yet). The native
+                    trace shows its own per-run PASS/FAIL chips instead of this. */}
+                {tracePass === "prompt" && outcome?.kind === "agentic" && (
                   <div
                      style={verdictStyle(
                        isStrictPass(outcome.report)

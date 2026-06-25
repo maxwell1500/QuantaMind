@@ -186,8 +186,8 @@ export function MatrixScoreboard({
                   <th style={thStyle}>Category</th>
                   <th style={thStyle}>Target Tool</th>
                   <th style={thStyle}>Steps</th>
-                  <th style={thStyle}>Prompt</th>
-                  {hasNative && <th style={thStyle}>Native</th>}
+                  {hasNative && <th style={thStyle}>Tool-Calling</th>}
+                  <th style={thStyle}>Prompt-based</th>
                 </tr>
               </thead>
               <tbody>
@@ -246,7 +246,22 @@ export function MatrixScoreboard({
                         {targetTool}
                       </td>
                       <td style={tdStyle}>{stepsStr}</td>
-                      {/* PROMPT result — click opens the prompt-based trace. */}
+                      {/* TOOL-CALLING (native) result — only once measured; runs first, so it
+                          sits before Prompt-based. Click opens the native trace. */}
+                      {hasNative && (
+                        <td
+                          style={{ ...tdStyle, cursor: "pointer" }}
+                          onClick={(e) => { e.stopPropagation(); openTrace(t.id, "native"); }}
+                          data-testid={`native-cell-${t.id}`}
+                          title="Open the Tool-Calling (native) trace in the Evaluator"
+                        >
+                          <div style={{ display: "inline-flex", alignItems: "center", gap: 6 }}>
+                            {resultBadge(nativeOutcome, `result-native-${t.id}`)}
+                            {isActive && focusedPass === "native" && <span style={{ color: "#2563eb", fontSize: 14 }}>◄</span>}
+                          </div>
+                        </td>
+                      )}
+                      {/* PROMPT-BASED result — click opens the prompt-based trace. */}
                       <td
                         style={{ ...tdStyle, cursor: "pointer" }}
                         onClick={(e) => { e.stopPropagation(); openTrace(t.id, "prompt"); }}
@@ -258,20 +273,6 @@ export function MatrixScoreboard({
                           {isActive && focusedPass === "prompt" && <span style={{ color: "#2563eb", fontSize: 14 }}>◄</span>}
                         </div>
                       </td>
-                      {/* NATIVE result — only once measured; click opens the native trace. */}
-                      {hasNative && (
-                        <td
-                          style={{ ...tdStyle, cursor: "pointer" }}
-                          onClick={(e) => { e.stopPropagation(); openTrace(t.id, "native"); }}
-                          data-testid={`native-cell-${t.id}`}
-                          title="Open the native (Ollama tools) trace in the Evaluator"
-                        >
-                          <div style={{ display: "inline-flex", alignItems: "center", gap: 6 }}>
-                            {resultBadge(nativeOutcome, `result-native-${t.id}`)}
-                            {isActive && focusedPass === "native" && <span style={{ color: "#2563eb", fontSize: 14 }}>◄</span>}
-                          </div>
-                        </td>
-                      )}
                     </tr>
                   );
                 })}

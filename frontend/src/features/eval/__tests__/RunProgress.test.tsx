@@ -35,7 +35,7 @@ describe("RunProgress (live run line)", () => {
   it("names the native (tool-calling) pass so a slow native run isn't a silent mystery", () => {
     render(<RunProgress done={0} total={1} live={live({ native: true })} k={1} maxSteps={10} />);
     const line = screen.getByTestId("scoreboard-progress-detail").textContent ?? "";
-    expect(line).toContain("Native (Ollama tools) pass");
+    expect(line).toContain("Tool-Calling pass");
   });
 
   it("shows an ETA from the average per-task time once a task has completed", () => {
