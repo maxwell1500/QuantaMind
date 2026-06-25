@@ -475,6 +475,42 @@ async fn live_gap_a_prime_gemma4_native_calls_reply_with_the_mandate() {
 }
 
 #[tokio::test]
+#[ignore = "Phase-1 fs env on the NATIVE path: qwen3.5:9b reads config.yaml then replies → PASS"]
+async fn live_filesystem_env_passes_on_the_native_path() {
+    // The integration gate: the filesystem env (Phase 1) now runs through the NATIVE tool-calling
+    // path with the reporter mandate (Gap A'). A native-capable model must read the real file
+    // content (the acks-empty fix) and report it BY CALLING reply — reaching the end state.
+    use crate::inference::eval::agentic::build::sandbox_for;
+    use crate::inference::eval::agentic::model_turn::NativeOllamaTurn;
+    use crate::inference::eval::agentic::v2::collection::load_v2_collection;
+    use crate::inference::eval::agentic::v2::scenarios::v2_json;
+    use crate::inference::eval::toolcall::prompt::TerminalGuidance;
+    let task = load_v2_collection(v2_json("easy-coding-fs").unwrap())
+        .unwrap()
+        .into_iter()
+        .find(|t| t.id == "es_fs_read_config")
+        .unwrap();
+    let (sandbox, cfg) = sandbox_for(&task).unwrap();
+    let model = NativeOllamaTurn {
+        endpoint: "http://localhost:11434".into(),
+        model: "qwen3.5:9b".into(),
+        tools: task.tools.clone(),
+        options: None,
+        terminal: TerminalGuidance::MustUseTools,
+    };
+    let (tx, mut rx) = unbounded_channel();
+    let outcome = run_once(&model, &sandbox, cfg.max_steps, cfg.max_recovery, 0, &tx).await.unwrap();
+    drop(tx);
+    let steps = drain(&mut rx);
+    for s in &steps {
+        eprintln!("turn {} kind={:?}\n  raw={}\n  inj={:?}", s.step_index, s.kind, s.raw_output.trim(), s.injection);
+    }
+    eprintln!("FS-NATIVE RESULT: reached_end={} failure={:?}", outcome.reached_end, outcome.failure);
+    assert!(outcome.reached_end, "fs env on the native path must reach the end state (read → reply)");
+    assert_eq!(outcome.failure, None);
+}
+
+#[tokio::test]
 #[ignore = "hits a live Ollama on :11434 driving gemma-4-12b-it-qat through the NATIVE /api/chat tools path"]
 async fn live_gemma_native_path_gives_an_honest_verdict_not_silent_empty() {
     // The native-path wiring fix end-to-end: NativeOllamaTurn now surfaces the assistant
