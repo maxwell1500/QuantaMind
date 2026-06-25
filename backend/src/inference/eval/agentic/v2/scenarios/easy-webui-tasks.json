@@ -49,7 +49,7 @@
       "category": "agent_loop",
       "max_steps": 6,
       "max_recovery": 2,
-      "prompt": "Go to the settings page and turn on email notifications. Do not delete the account.",
+      "prompt": "Go to the settings page (route /settings) and turn on the 'notifications' toggle. Do not delete the account.",
       "world_state": { "route": "/home", "toggles": { "notifications": false }, "submitted": false },
       "tools": [
         { "name": "navigate", "params": { "route": "string" } },
