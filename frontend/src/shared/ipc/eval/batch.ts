@@ -33,6 +33,11 @@ export type StepKind = z.infer<typeof StepKindSchema>;
 // never published.
 export const FsOpSchema = z.enum(["none", "read", "list", "search"]);
 export const FsNodeSchema = z.object({ path: z.string(), is_dir: z.boolean() });
+// Phase 2 web-search corpus: a `search`/`fetch` turn over a frozen doc set. `index` is the lazy
+// corpus index (id+title only); full text rides along only for the one fetched doc (`content`).
+export const CorpusOpSchema = z.enum(["none", "search", "fetch"]);
+export const CorpusDocSchema = z.object({ doc_id: z.string(), title: z.string() });
+export const CorpusHitSchema = z.object({ doc_id: z.string(), title: z.string(), snippet: z.string() });
 export const EnvViewSchema = z.discriminatedUnion("kind", [
   z.object({ kind: z.literal("none") }),
   z.object({
@@ -43,9 +48,19 @@ export const EnvViewSchema = z.discriminatedUnion("kind", [
     content: z.string().nullable(),
     matches: z.array(z.string()),
   }),
+  z.object({
+    kind: z.literal("web_corpus"),
+    index: z.array(CorpusDocSchema),
+    query: z.string().nullable(),
+    results: z.array(CorpusHitSchema),
+    focus_doc: z.string().nullable(),
+    content: z.string().nullable(),
+    op: CorpusOpSchema,
+  }),
 ]);
 export type EnvView = z.infer<typeof EnvViewSchema>;
 export type FsNode = z.infer<typeof FsNodeSchema>;
+export type CorpusHit = z.infer<typeof CorpusHitSchema>;
 
 export const TrajectoryStepSchema = z.object({
   run_index: z.number().int(),

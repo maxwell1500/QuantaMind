@@ -12,6 +12,7 @@ pub fn env_view(responder: &ResponderKind, calls: &[Call]) -> EnvView {
     match responder {
         ResponderKind::StaticMocks | ResponderKind::WorldState(_) => EnvView::None,
         ResponderKind::FileSystem(fs) => EnvView::FileSystem(fs.view(calls)),
+        ResponderKind::WebCorpus(c) => EnvView::WebCorpus(c.view(calls)),
     }
 }
 
@@ -33,6 +34,54 @@ pub enum EnvView {
     None,
     /// A simulated-filesystem turn (Phase 1).
     FileSystem(FsView),
+    /// A frozen web-search-corpus turn (Phase 2): a `search` or `fetch` over a bundled corpus.
+    WebCorpus(CorpusView),
+}
+
+/// What the frozen search corpus looked like and what the agent did this turn. Lazy by design:
+/// `index` carries only `doc_id`+`title` for every doc (the corpus can be large); the full text
+/// rides along ONLY for the one doc the agent `fetch`ed this turn (`content`). A PURE function of
+/// (immutable corpus, calls).
+#[derive(Serialize, Deserialize, Clone, Debug, PartialEq)]
+pub struct CorpusView {
+    /// The corpus index — every doc's id + title, sorted by id (NOT full bodies — lazy load).
+    pub index: Vec<CorpusDoc>,
+    /// The search query this turn, if the agent searched.
+    pub query: Option<String>,
+    /// Ranked search hits for `query` (deterministic), each with a snippet.
+    pub results: Vec<CorpusHit>,
+    /// The doc the agent `fetch`ed this turn — highlighted in the reader. `None` if it searched.
+    pub focus_doc: Option<String>,
+    /// For a `fetch`: the returned full document text (the real content — never an empty ack).
+    pub content: Option<String>,
+    /// Which corpus operation the agent performed this turn.
+    pub op: CorpusOp,
+}
+
+/// One entry in the corpus index (id + title only — the lazy index).
+#[derive(Serialize, Deserialize, Clone, Debug, PartialEq)]
+pub struct CorpusDoc {
+    pub doc_id: String,
+    pub title: String,
+}
+
+/// One ranked search hit: the doc + a deterministic snippet (first query-term line, else head).
+#[derive(Serialize, Deserialize, Clone, Debug, PartialEq)]
+pub struct CorpusHit {
+    pub doc_id: String,
+    pub title: String,
+    pub snippet: String,
+}
+
+/// The corpus operation a turn performed (drives the panel's highlight + which detail to show).
+/// `None` = a recognized call that didn't map to a corpus op (e.g. `reply`).
+#[derive(Serialize, Deserialize, Clone, Copy, Debug, PartialEq, Default)]
+#[serde(rename_all = "snake_case")]
+pub enum CorpusOp {
+    #[default]
+    None,
+    Search,
+    Fetch,
 }
 
 /// What the simulated filesystem looked like and what the agent did to it this turn. The
@@ -104,6 +153,32 @@ mod tests {
                 "op": "read",
                 "content": "timeout: 30",
                 "matches": []
+            })
+        );
+    }
+
+    #[test]
+    fn web_corpus_flattens_corpusview_next_to_the_kind_tag() {
+        // Internally-tagged newtype variant flattens CorpusView beside "kind", which the Zod
+        // web_corpus branch (index/query/results/focus_doc/content/op) parses.
+        let v = EnvView::WebCorpus(CorpusView {
+            index: vec![CorpusDoc { doc_id: "d1".into(), title: "Photosynthesis".into() }],
+            query: Some("light".into()),
+            results: vec![CorpusHit { doc_id: "d1".into(), title: "Photosynthesis".into(), snippet: "uses light".into() }],
+            focus_doc: None,
+            content: None,
+            op: CorpusOp::Search,
+        });
+        assert_eq!(
+            serde_json::to_value(v).unwrap(),
+            json!({
+                "kind": "web_corpus",
+                "index": [{ "doc_id": "d1", "title": "Photosynthesis" }],
+                "query": "light",
+                "results": [{ "doc_id": "d1", "title": "Photosynthesis", "snippet": "uses light" }],
+                "focus_doc": null,
+                "content": null,
+                "op": "search"
             })
         );
     }

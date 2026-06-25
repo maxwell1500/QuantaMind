@@ -564,6 +564,98 @@ async fn live_native_path_runs_across_medium_hard_extreme_tiers() {
 }
 
 #[tokio::test]
+#[ignore = "Slice-2 gate (NATIVE): qwen3.5:9b searches the corpus then replies → PASS, EnvView carries results"]
+async fn live_web_corpus_passes_on_the_native_path() {
+    // The corpus env on the NATIVE path: a native-capable model `search`es and reports the fact
+    // from the top snippet → reaches the end state, and the streamed EnvView carries the ranked
+    // results (the watchable replay). Confirm `ollama show qwen3.5:9b` lists `tools` first — if
+    // not, swap in a confirmed-native model so this exercises native FC, not the prompt fallback.
+    use crate::inference::eval::agentic::build::sandbox_for;
+    use crate::inference::eval::agentic::difficulty::passk::max_tokens_for;
+    use crate::inference::eval::agentic::env_view::{CorpusOp, EnvView};
+    use crate::inference::eval::agentic::model_turn::NativeOllamaTurn;
+    use crate::inference::eval::agentic::v2::collection::load_v2_collection;
+    use crate::inference::eval::agentic::v2::scenarios::v2_json;
+    use crate::inference::eval::toolcall::prompt::TerminalGuidance;
+    let task = load_v2_collection(v2_json("easy-research-search").unwrap())
+        .unwrap()
+        .into_iter()
+        .find(|t| t.id == "es_rs_search_fact")
+        .unwrap();
+    let tier = task.agentic.as_ref().map(|s| s.tier).unwrap_or_default();
+    let (sandbox, cfg) = sandbox_for(&task).unwrap();
+    let model = NativeOllamaTurn {
+        endpoint: "http://localhost:11434".into(),
+        model: "qwen3.5:9b".into(),
+        tools: task.tools.clone(),
+        options: None,
+        terminal: TerminalGuidance::MustUseTools,
+        max_tokens: max_tokens_for(tier, true),
+        is_thinking: false,
+    };
+    let (tx, mut rx) = unbounded_channel();
+    let outcome = run_once(&model, &sandbox, cfg.max_steps, cfg.max_recovery, 0, &tx).await.unwrap();
+    drop(tx);
+    let steps = drain(&mut rx);
+    for s in &steps {
+        eprintln!("turn {} kind={:?} raw={} env={:?}", s.step_index, s.kind, s.raw_output.trim(), s.env);
+    }
+    eprintln!("CORPUS-NATIVE: reached_end={} failure={:?}", outcome.reached_end, outcome.failure);
+    assert!(outcome.reached_end, "native corpus run must reach the end state (search → reply)");
+    assert_eq!(outcome.failure, None);
+    // The replay carries the real ranked results (a search EnvView with hits).
+    assert!(
+        steps.iter().any(|s| matches!(&s.env, EnvView::WebCorpus(c) if c.op == CorpusOp::Search && !c.results.is_empty())),
+        "a search turn's EnvView must carry ranked results for the replay",
+    );
+}
+
+#[tokio::test]
+#[ignore = "Slice-2 gate (PROMPT): qwen3.5:9b drives the corpus via the prompt path (text-parsed calls)"]
+async fn live_web_corpus_runs_on_the_prompt_path() {
+    // The corpus env on the PROMPT path — a DIFFERENT channel than native (tool calls parsed from
+    // text). Native passing does not prove this works, so validate it live too (standing rule).
+    use crate::inference::backend::backend_kind::BackendKind;
+    use crate::inference::eval::agentic::build::sandbox_for;
+    use crate::inference::eval::agentic::env_view::EnvView;
+    use crate::inference::eval::agentic::model_turn::BackendTurn;
+    use crate::inference::eval::agentic::v2::collection::load_v2_collection;
+    use crate::inference::eval::agentic::v2::scenarios::v2_json;
+    let task = load_v2_collection(v2_json("easy-research-search").unwrap())
+        .unwrap()
+        .into_iter()
+        .find(|t| t.id == "es_rs_search_fact")
+        .unwrap();
+    let (sandbox, cfg) = sandbox_for(&task).unwrap();
+    let model = BackendTurn {
+        backend: BackendKind::Ollama,
+        endpoint: "http://localhost:11434".into(),
+        model: "qwen3.5:9b".into(),
+        cancel: CancellationToken::new(),
+        options: None,
+        keep_alive: None,
+        is_thinking: false,
+        max_tokens: 1024,
+        stop_cache: Default::default(),
+    };
+    let (tx, mut rx) = unbounded_channel();
+    let outcome = run_once(&model, &sandbox, cfg.max_steps, cfg.max_recovery, 0, &tx).await.unwrap();
+    drop(tx);
+    let steps = drain(&mut rx);
+    for s in &steps {
+        eprintln!("turn {} kind={:?} raw={} env={:?}", s.step_index, s.kind, s.raw_output.trim(), s.env);
+    }
+    eprintln!("CORPUS-PROMPT: reached_end={} failure={:?}", outcome.reached_end, outcome.failure);
+    // The prompt channel must produce a definite verdict AND drive the corpus env (a corpus op in
+    // some EnvView) — proving search→reply works through text parsing, not just native tool_calls.
+    assert!(outcome.reached_end || outcome.failure.is_some(), "prompt corpus run produced no verdict");
+    assert!(
+        steps.iter().any(|s| matches!(&s.env, EnvView::WebCorpus(_))),
+        "the prompt path must exercise the corpus env (a web_corpus EnvView)",
+    );
+}
+
+#[tokio::test]
 #[ignore = "hits a live Ollama on :11434 driving gemma-4-12b-it-qat through the NATIVE /api/chat tools path"]
 async fn live_gemma_native_path_gives_an_honest_verdict_not_silent_empty() {
     // The native-path wiring fix end-to-end: NativeOllamaTurn now surfaces the assistant

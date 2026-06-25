@@ -63,13 +63,22 @@ frontend ~217 green; live-verified on `qwen2.5-coder`.
 
 ---
 
-## ⬜ Slice 2 — Frozen web-search corpus — NOT STARTED
-- `v2/env_corpus.rs`: `CorpusState` (bundled frozen docs); `search(query)` → deterministic ranked
-  snippets, `fetch(doc)` → full text. `ResponderKind::WebCorpus`; `EnvView::WebCorpus`.
-- Bundled `*-search.json` collections (wiki / arXiv / science-math snapshots).
-- UI `replay/CorpusReplay.tsx` (search box + ranked results + doc reader). **Lazy doc loading** —
-  ship the index only, fetch full text on open (a corpus can be large).
-- Reminder: add any new `AgenticSpec` field to `registry.ts`.
+## ✅ Slice 2 — Frozen web-search corpus — DONE (live-validated)
+- `v2/env_corpus.rs`: `CorpusState` (frozen `doc_id→{title,text}`); `search(query)` → COMPUTED
+  deterministic ranked snippets (distinct-term match, ties by `doc_id`), `fetch(doc)` → full text.
+  `ResponderKind::WebCorpus`; `EnvView::WebCorpus(CorpusView)` (lazy: index id+title, plus this
+  turn's results / fetched content). `EnvKind::WebCorpus`; wired in `build.rs`. Snippet = first
+  query-term line top-to-bottom else head — pure, on the replay-vs-score surface.
+- Bundled `easy-research-search.json` (3 tasks: search→reply, search→fetch→reply, abstain-when
+  -absent; `edit_doc` must-not-call decoy). Registered in `V2_SCENARIOS`.
+- UI `replay/CorpusReplay.tsx` (corpus index + ranked results w/ snippets + fetched-doc reader),
+  wired into `EnvironmentReplayPanel`. **Lazy:** only the index ships per turn; full text rides
+  along only for the fetched doc. Zod `EnvViewSchema` gains the `web_corpus` variant.
+- **Status:** 337 backend + 232 frontend tests green (incl. the oracle solving all 3 corpus tasks
+  end-to-end + a trivial agent failing). **Live gate PASSED** — qwen3.5:9b (confirmed `tools`-capable)
+  on `es_rs_search_fact` reached the end state on BOTH the native path (`tool_calls`) and the prompt
+  path (JSON-in-text), `failure=None`, and the EnvView carried the real deterministic ranked
+  results (`live_web_corpus_passes_on_the_native_path` + `..._runs_on_the_prompt_path`).
 
 ## ⬜ Slice 3 — Web-UI environment (schematic SVG, state-diff) — NOT STARTED
 - `v2/env_webui.rs`: per-**run** `WebUiState` machine (click/navigate/fill mutate it — held in run
