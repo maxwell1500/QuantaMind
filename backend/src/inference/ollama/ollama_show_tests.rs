@@ -9,6 +9,13 @@ fn supports_tools_reads_the_capability_list() {
 }
 
 #[test]
+fn supports_vision_reads_the_capability_list() {
+    assert!(supports_vision(&["completion".into(), "vision".into()]));
+    assert!(!supports_vision(&["completion".into(), "tools".into()]));
+    assert!(!supports_vision(&[]));
+}
+
+#[test]
 fn parse_version_reads_the_version_string() {
     assert_eq!(parse_version(r#"{"version":"0.11.10"}"#).as_deref(), Some("0.11.10"));
     assert_eq!(parse_version(r#"{}"#), None); // no version key → None, never a fabricated value

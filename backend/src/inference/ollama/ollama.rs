@@ -18,12 +18,13 @@ pub async fn stream_generate(
     system: Option<&str>,
     options: Option<GenerateOptions>,
     keep_alive: Option<i32>,
+    images: Option<&[String]>,
     cancel: CancellationToken,
     mut on_token: impl FnMut(&str),
 ) -> AppResult<GenerateStats> {
     let client = streaming_client()?;
     let options = options.filter(|o| !o.is_empty());
-    let body = GenerateRequest { model, prompt, system, options, keep_alive, stream: true };
+    let body = GenerateRequest { model, prompt, system, options, keep_alive, images, stream: true };
     let resp = client
         .post(format!("{endpoint}/api/generate"))
         .json(&body)

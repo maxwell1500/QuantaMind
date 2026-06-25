@@ -333,6 +333,7 @@ async fn run_steps<M: ModelTurn>(
                 ..Default::default()
             }),
             keep_alive: None,
+            images: None,
         };
         let (raw, stats) = match tokio::time::timeout(step_timeout, turn.run(&spec)).await {
             Ok(r) => r?, // backend returned; an Err propagates (infra fault → run skipped upstream)
