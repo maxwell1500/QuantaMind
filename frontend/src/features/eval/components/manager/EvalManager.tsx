@@ -83,10 +83,11 @@ export function EvalManager({
   const [error, setError] = useState<string | null>(null);
   const [deleteTarget, setDeleteTarget] = useState<string | null>(null);
   const [csvOpen, setCsvOpen] = useState(false);
-  // Phase 7.2: also measure each Ollama model's NATIVE tool-calling path. Pre-selected so every
-  // run (built-in OR custom/uploaded collections) measures native tool-calling by default; the
-  // user can still untick it. Native is N/A for non-Ollama / no-`tools` models regardless.
-  const [nativeFc, setNativeFc] = useState(true);
+  // Calling method(s) to measure — pick either or both (at least one). Tool-Calling (native
+  // Ollama /api/chat tool_calls) is the DEFAULT; Prompt-based (JSON-in-text proxy) is opt-in.
+  // Native is N/A for non-Ollama / no-`tools` models regardless.
+  const [nativeFc, setNativeFc] = useState(true); // Tool-Calling (native)
+  const [promptBased, setPromptBased] = useState(false); // Prompt-based proxy
 
   const handleCsvImport = async (name: string, csvTasks: ToolTask[]) => {
     await save(name, csvTasks);
@@ -180,10 +181,11 @@ export function EvalManager({
       nativeFc,
       effectiveTier,
       decoyEnabled ? decoyCount : undefined,
+      promptBased,
     );
   };
 
-  const runDisabled = !model || tasks.length === 0;
+  const runDisabled = !model || tasks.length === 0 || (!nativeFc && !promptBased);
   // Explain WHY RUN BATCH is disabled instead of leaving a greyed-out dead button.
   const runDisabledReason =
     !model && tasks.length === 0
@@ -192,7 +194,9 @@ export function EvalManager({
         ? "Select a model at the top"
         : tasks.length === 0
           ? "This collection has no tasks"
-          : undefined;
+          : !nativeFc && !promptBased
+            ? "Pick at least one calling method (Tool-Calling and/or Prompt-based)"
+            : undefined;
 
   // The selected collection's individual tasks, indented beneath it — each reveals
   // Edit + Delete on hover (the authoring entry points live here, not the scoreboard).
@@ -331,6 +335,27 @@ export function EvalManager({
             {hwTier && (
               <span style={{ fontSize: 11, color: "#94a3b8", fontFamily: "Inter, sans-serif" }} data-testid="eval-hw-hint">
                 HW: {gbLabel(hwTier.total_memory_bytes)} · {hwTier.class} · {cap(hwTier.recommended_tier)} recommended
+              </span>
+            )}
+          </div>
+
+          {/* Calling method — pick either or both (at least one). Tool-Calling (native) is the
+              default; Prompt-based is the JSON-in-text proxy. */}
+          <div style={{ display: "flex", flexDirection: "column", gap: 6 }} data-testid="eval-calling-method">
+            <span style={controlLabelStyle}>Calling method:</span>
+            <label style={{ display: "flex", alignItems: "center", gap: 8, cursor: "pointer", fontSize: 12, color: "#334155", fontFamily: "Inter, sans-serif" }}
+              title="Run each Ollama model through its NATIVE /api/chat tool_calls API. N/A for llama.cpp / MLX / no-`tools` models.">
+              <input type="checkbox" checked={nativeFc} onChange={(e) => setNativeFc(e.target.checked)} data-testid="eval-method-native" />
+              Tool-Calling (native) <span style={{ color: "#94a3b8" }}>· default</span>
+            </label>
+            <label style={{ display: "flex", alignItems: "center", gap: 8, cursor: "pointer", fontSize: 12, color: "#334155", fontFamily: "Inter, sans-serif" }}
+              title="Run the prompt-based proxy: tools described in the system prompt, the model emits JSON-in-text the harness parses.">
+              <input type="checkbox" checked={promptBased} onChange={(e) => setPromptBased(e.target.checked)} data-testid="eval-method-prompt" />
+              Prompt-based
+            </label>
+            {!nativeFc && !promptBased && (
+              <span data-testid="eval-method-none-hint" style={{ fontSize: 11, color: "#b45309", fontFamily: "Inter, sans-serif" }}>
+                Pick at least one calling method to run.
               </span>
             )}
           </div>
@@ -508,40 +533,8 @@ export function EvalManager({
           </div>
         </div>
 
-        {/* 4. ACTIONS — native-FC, RUN BATCH, Export. */}
+        {/* 4. ACTIONS — RUN BATCH, Export. (Calling method moved up under Difficulty.) */}
         <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
-          <label
-            style={{ ...controlLabelStyle, display: "flex", alignItems: "center", gap: 8, cursor: "pointer" }}
-            title="Also run each Ollama model through its native /api/chat tool_calls API and compare. llama.cpp / MLX show N/A."
-          >
-            <input
-              type="checkbox"
-              checked={nativeFc}
-              onChange={(e) => setNativeFc(e.target.checked)}
-              data-testid="eval-native-fc"
-            />
-            Measure native tool-calling (Ollama)
-          </label>
-
-          {!nativeFc && (
-            <div
-              data-testid="native-fc-hint"
-              style={{
-                fontSize: 11,
-                lineHeight: 1.5,
-                color: "#64748b",
-                background: "#f8fafc",
-                border: "1px solid #e2e8f0",
-                borderRadius: 6,
-                padding: "7px 9px",
-                fontFamily: "Inter, sans-serif",
-              }}
-            >
-              Prompt-based results may underrepresent native tool-calling capability. Enable{" "}
-              <strong style={{ color: "#475569" }}>Measure native tool-calling</strong> for strict API fidelity.
-            </div>
-          )}
-
           <button
             type="button"
             onClick={() => void handleRunBatch()}

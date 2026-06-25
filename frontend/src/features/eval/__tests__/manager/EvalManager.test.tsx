@@ -117,16 +117,21 @@ describe("EvalManager Sidebar Controls", () => {
     expect(screen.getByTestId("eval-run-all")).toHaveAttribute("title", "This collection has no tasks");
   });
 
-  it("native tool-calling is PRE-SELECTED; toggling it off shows the nudge, on hides it", () => {
+  it("calling method: Tool-Calling is default-on, Prompt-based off; unticking both blocks the run", () => {
     render(<EvalManager {...props()} />);
-    // Pre-selected by default → no nudge to enable it.
-    expect(screen.queryByTestId("native-fc-hint")).toBeNull();
-    // Untick → the nudge to re-enable appears.
-    fireEvent.click(screen.getByTestId("eval-native-fc"));
-    expect(screen.getByTestId("native-fc-hint")).toHaveTextContent(/underrepresent native tool-calling/i);
-    // Re-tick → hidden again.
-    fireEvent.click(screen.getByTestId("eval-native-fc"));
-    expect(screen.queryByTestId("native-fc-hint")).toBeNull();
+    const native = screen.getByTestId("eval-method-native") as HTMLInputElement;
+    const prompt = screen.getByTestId("eval-method-prompt") as HTMLInputElement;
+    // Tool-Calling default-on, Prompt-based default-off.
+    expect(native.checked).toBe(true);
+    expect(prompt.checked).toBe(false);
+    // Untick the only selected method → "pick at least one" hint + RUN disabled.
+    fireEvent.click(native);
+    expect(screen.getByTestId("eval-method-none-hint")).toBeInTheDocument();
+    expect(screen.getByTestId("eval-run-all")).toBeDisabled();
+    // Pick Prompt-based → hint gone, RUN enabled again.
+    fireEvent.click(prompt);
+    expect(screen.queryByTestId("eval-method-none-hint")).toBeNull();
+    expect(screen.getByTestId("eval-run-all")).not.toBeDisabled();
   });
 
   it("renders the headers and Data Source radio controls", () => {
@@ -273,6 +278,7 @@ describe("EvalManager Sidebar Controls", () => {
         true, // runNativeFc — PRE-SELECTED by default
         "medium", // tier still flows (for spec.tier)
         undefined, // decoyTools — off by default
+        false, // runPromptBased — off by default (Tool-Calling is the default method)
       );
     });
   });
@@ -322,6 +328,7 @@ describe("EvalManager Sidebar Controls", () => {
         true, // runNativeFc — PRE-SELECTED by default
         "easy",
         4, // decoyTools
+        false, // runPromptBased — off by default
       );
     });
   });

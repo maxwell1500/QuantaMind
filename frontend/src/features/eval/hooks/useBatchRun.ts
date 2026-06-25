@@ -87,6 +87,7 @@ export function useBatchRun() {
       runNativeFc?: boolean,
       tier?: Tier,
       decoyTools?: number,
+      runPromptBased?: boolean,
     ) => {
       // Pre-flight: actively probe EVERY backend this run uses (a run can mix
       // backends), so a down server fails fast with a clear message instead of
@@ -128,6 +129,7 @@ export function useBatchRun() {
           runNativeFc,
           tier,
           decoyTools,
+          runPromptBased,
         );
       } catch (e) {
         useBatchStore.getState().setError(formatIpcError(e));

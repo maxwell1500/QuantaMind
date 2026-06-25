@@ -249,6 +249,23 @@ describe("PerformanceMatrix", () => {
     expect(screen.queryByTestId("matrix-native-tinyllama.gguf")).toBeNull();
   });
 
+  it("gives only the Tool-Calling row for a NATIVE-ONLY run (no empty Prompt-based row)", () => {
+    // The user picked Tool-Calling only → the column has native data but no prompt agentic/toolcall.
+    const nativeOnly: BatchReport = {
+      collection_id: "c",
+      columns: [
+        { model: "qwen", backend: "ollama", toolcall: null, agentic: null, error: null,
+          agentic_native_fc: { tasks_passed: 2, tasks_total: 2, passes: 2, total_runs: 2, avg_steps: 1.5, avg_output_tokens_success: 60, schema_resilience: null, top_error: "none", failures } },
+      ],
+    };
+    useBatchStore.setState({ report: nativeOnly });
+    render(<PerformanceMatrix focusedModel="qwen" onFocusModel={() => {}} />);
+    expect(screen.getByTestId("matrix-native-row-qwen")).toHaveTextContent("Tool-Calling");
+    expect(screen.getByTestId("matrix-native-qwen")).toHaveTextContent("2/2");
+    // No empty Prompt-based row for a native-only run.
+    expect(screen.queryByTestId("matrix-model-row-qwen")).toBeNull();
+  });
+
   it("shows only Prompt-based rows + a hint when native was not measured for any model", () => {
     useBatchStore.setState({ report }); // no agentic_native_fc on any column
     render(<PerformanceMatrix focusedModel="qwen" onFocusModel={() => {}} />);

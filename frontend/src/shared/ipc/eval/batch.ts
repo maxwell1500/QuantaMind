@@ -251,6 +251,7 @@ export async function runBatchEval(
   runNativeFc?: boolean,
   tier?: Tier,
   decoyTools?: number,
+  runPromptBased?: boolean,
 ): Promise<BatchReport> {
   return BatchReportSchema.parse(
     await invoke("run_batch_eval", {
@@ -264,6 +265,7 @@ export async function runBatchEval(
       runNativeFc,
       tier,
       decoyTools,
+      runPromptBased,
     }),
   );
 }
