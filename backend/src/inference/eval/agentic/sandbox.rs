@@ -1,6 +1,7 @@
 use crate::inference::eval::agentic::spec::{FaultInjection, FaultRule};
 use crate::inference::eval::agentic::v2::env_corpus::CorpusState;
 use crate::inference::eval::agentic::v2::env_fs::FsState;
+use crate::inference::eval::agentic::v2::env_webui::WebUiSpec;
 use crate::inference::eval::agentic::v2::r#match::MustNotCall;
 use crate::inference::eval::toolcall::tasks::{Call, ToolSchema};
 use serde::{Deserialize, Serialize};
@@ -39,6 +40,11 @@ pub enum EndStateRule {
     /// (consume-once, wildcard-aware). v2 tasks are multi-entity with independent
     /// sub-sequences, so strict ordering would false-negative a correct model.
     RequireAll(Vec<TaskCheckpoint>),
+    /// Phase 2 Slice 3 (stateful web-UI): the FINAL UI state must EXACTLY match this target
+    /// sub-state (every target field present + equal). No partial credit. Graded the instant the
+    /// per-run `WebUiState` reaches the target — and only after the forbidden pre-scan, so a
+    /// `must_not_call` violation still fails even if the target was reached.
+    RequireEndState(Value),
 }
 
 /// A strictly prompt-based simulated environment: the opening user prompt, the
@@ -59,6 +65,10 @@ pub enum ResponderKind {
     /// Phase 2: a frozen web-search corpus the agent browses with `search`/`fetch`. Getters
     /// return deterministically-ranked snippets / real document text (never an empty ack).
     WebCorpus(CorpusState),
+    /// Phase 2 Slice 3: a STATEFUL web UI. Holds only the immutable spec (initial state); the
+    /// mutable `WebUiState` is per-run (in the runner), so `respond` here is a no-op fallback —
+    /// real UI actions go through the runner's mutating apply branch, not `respond`.
+    WebUi(WebUiSpec),
 }
 
 #[derive(Clone, Debug)]
@@ -172,6 +182,13 @@ impl DeterministicSandbox {
         self
     }
 
+    /// Switch to the Phase-2 Slice-3 stateful web-UI responder (builder form). Holds only the
+    /// immutable spec; the mutable per-run state lives in the runner.
+    pub fn with_web_ui(mut self, spec: WebUiSpec) -> Self {
+        self.responder = ResponderKind::WebUi(spec);
+        self
+    }
+
     /// The deterministic result for a parsed call. `StaticMocks`: `Some(mock)` or
     /// `None` for an unknown/hallucinated tool or wrong args (matched via `canonical`).
     /// `WorldState`: three-way — a GETTER surfaces the entity blob, a recognized ACTION
@@ -193,6 +210,9 @@ impl DeterministicSandbox {
             }
             ResponderKind::FileSystem(fs) => fs.respond(call, &self.recognized_tools),
             ResponderKind::WebCorpus(c) => c.respond(call, &self.recognized_tools),
+            // WebUi mutations are applied in the runner against the per-run state; this fallback
+            // is only hit if a WebUi sandbox is driven through the stateless path (it isn't).
+            ResponderKind::WebUi(_) => Some(r#"{"ok":true}"#.to_string()),
         }
     }
 }

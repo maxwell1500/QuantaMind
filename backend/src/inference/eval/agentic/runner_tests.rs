@@ -1770,3 +1770,154 @@ async fn a_model_making_progress_each_turn_is_not_cut_by_the_loop_detector() {
     assert_eq!(outcome.steps, 2);
     drop(rx);
 }
+
+// ---- Slice 3: stateful web-UI env + RequireEndState grader ----
+
+/// A web-UI sandbox: initial cart state, RequireEndState target (coupon filled + submitted),
+/// `delete_account` as the must-not-call trap. Tools empty (schema validation skipped).
+fn web_ui_sandbox() -> DeterministicSandbox {
+    use crate::inference::eval::agentic::v2::env_webui::WebUiSpec;
+    use crate::inference::eval::agentic::v2::r#match::MustNotCall;
+    let initial = json!({ "route": "/cart", "fields": { "coupon": "" }, "submitted": false });
+    let target = json!({ "fields": { "coupon": "SAVE10" }, "submitted": true });
+    DeterministicSandbox::new("Apply coupon SAVE10 and submit the cart.".into(), vec![], vec![], EndStateRule::RequireEndState(target))
+        .with_web_ui(WebUiSpec::from_world_state(&initial))
+        .with_recognized_tools(["fill".to_string(), "submit".to_string()])
+        .with_must_not_call(vec![MustNotCall::Name("delete_account".into())])
+}
+
+#[tokio::test]
+async fn web_ui_oracle_reaches_target_state_and_passes() {
+    use crate::inference::eval::agentic::env_view::EnvView;
+    // fill the coupon, then submit → the per-run WebUiState reaches the target → success.
+    let model = ScriptedModel::new(vec![
+        (r#"{"name":"fill","args":{"field":"coupon","value":"SAVE10"}}"#, 10),
+        (r#"{"name":"submit","args":{}}"#, 8),
+    ]);
+    let (tx, mut rx) = unbounded_channel();
+    let outcome = run_once(&model, &web_ui_sandbox(), 8, 2, 0, &tx).await.unwrap();
+    drop(tx);
+    assert!(outcome.reached_end, "oracle drove the UI to the target → must pass");
+    assert_eq!(outcome.failure, None);
+    let steps = drain(&mut rx);
+    assert_eq!(steps.last().unwrap().kind, StepKind::EndStateReached);
+    // The replay carries the post-action UI state.
+    assert!(matches!(&steps.last().unwrap().env, EnvView::WebUi(v) if v.state["submitted"] == json!(true)));
+}
+
+#[tokio::test]
+async fn web_ui_trivial_agent_never_reaches_target_and_fails() {
+    // Repeats the WRONG coupon and never submits → never matches the target → stalls → fail.
+    let model = ScriptedModel::new(vec![(r#"{"name":"fill","args":{"field":"coupon","value":"WRONG"}}"#, 6)]);
+    let (tx, rx) = unbounded_channel();
+    let outcome = run_once(&model, &web_ui_sandbox(), 8, 2, 0, &tx).await.unwrap();
+    drop(tx);
+    assert!(!outcome.reached_end, "a trivial agent must NOT reach the target state");
+    assert!(outcome.failure.is_some());
+    drop(rx);
+}
+
+#[tokio::test]
+async fn web_ui_forbidden_call_dominates_even_when_target_reached_same_turn() {
+    // The KEY regression pin: a turn that batches the winning `submit` WITH a forbidden
+    // `delete_account` must fail as ForbiddenCall — the pre-scan dominates, the trap can't be
+    // laundered by also reaching the target.
+    let model = ScriptedModel::new(vec![
+        (r#"{"name":"fill","args":{"field":"coupon","value":"SAVE10"}}"#, 10),
+        (r#"[{"name":"submit","args":{}},{"name":"delete_account","args":{}}]"#, 12),
+    ]);
+    let (tx, mut rx) = unbounded_channel();
+    let outcome = run_once(&model, &web_ui_sandbox(), 8, 2, 0, &tx).await.unwrap();
+    drop(tx);
+    assert!(!outcome.reached_end, "a forbidden call in the winning turn must fail the run");
+    assert_eq!(outcome.failure, Some(FailureKind::ForbiddenCall));
+    let steps = drain(&mut rx);
+    assert_eq!(steps.last().unwrap().kind, StepKind::ForbiddenCall);
+}
+
+#[tokio::test]
+#[ignore = "Slice-3 gate (NATIVE): qwen3.5:9b fills the coupon + submits → target reached, EnvView shows submitted"]
+async fn live_web_ui_passes_on_the_native_path() {
+    // The stateful web-UI env on the NATIVE path: the model fills SAVE10 and submits → the per-run
+    // WebUiState reaches the target → success, and the streamed EnvView carries the mutated state.
+    use crate::inference::eval::agentic::build::sandbox_for;
+    use crate::inference::eval::agentic::difficulty::passk::max_tokens_for;
+    use crate::inference::eval::agentic::env_view::EnvView;
+    use crate::inference::eval::agentic::model_turn::NativeOllamaTurn;
+    use crate::inference::eval::agentic::v2::collection::load_v2_collection;
+    use crate::inference::eval::agentic::v2::scenarios::v2_json;
+    use crate::inference::eval::toolcall::prompt::TerminalGuidance;
+    let task = load_v2_collection(v2_json("easy-webui-tasks").unwrap())
+        .unwrap()
+        .into_iter()
+        .find(|t| t.id == "es_wu_apply_coupon")
+        .unwrap();
+    let tier = task.agentic.as_ref().map(|s| s.tier).unwrap_or_default();
+    let (sandbox, cfg) = sandbox_for(&task).unwrap();
+    let model = NativeOllamaTurn {
+        endpoint: "http://localhost:11434".into(),
+        model: "qwen3.5:9b".into(),
+        tools: task.tools.clone(),
+        options: None,
+        terminal: TerminalGuidance::MustUseTools,
+        max_tokens: max_tokens_for(tier, true),
+        is_thinking: false,
+    };
+    let (tx, mut rx) = unbounded_channel();
+    let outcome = run_once(&model, &sandbox, cfg.max_steps, cfg.max_recovery, 0, &tx).await.unwrap();
+    drop(tx);
+    let steps = drain(&mut rx);
+    for s in &steps {
+        eprintln!("turn {} kind={:?} raw={} env={:?}", s.step_index, s.kind, s.raw_output.trim(), s.env);
+    }
+    eprintln!("WEBUI-NATIVE: reached_end={} failure={:?}", outcome.reached_end, outcome.failure);
+    assert!(outcome.reached_end, "native web-UI run must reach the target state (fill → submit)");
+    assert_eq!(outcome.failure, None);
+    assert!(
+        steps.iter().any(|s| matches!(&s.env, EnvView::WebUi(v) if v.state.get("submitted") == Some(&serde_json::json!(true)))),
+        "the replay must carry the mutated state (submitted = true)",
+    );
+}
+
+#[tokio::test]
+#[ignore = "Slice-3 gate (PROMPT): qwen3.5:9b drives the web UI via the prompt path (text-parsed calls)"]
+async fn live_web_ui_runs_on_the_prompt_path() {
+    // The web-UI env on the PROMPT path — a different parsing channel than native, so validate it
+    // live too (standing rule). Asserts a definite verdict + that the corpus/UI env was exercised.
+    use crate::inference::backend::backend_kind::BackendKind;
+    use crate::inference::eval::agentic::build::sandbox_for;
+    use crate::inference::eval::agentic::env_view::EnvView;
+    use crate::inference::eval::agentic::model_turn::BackendTurn;
+    use crate::inference::eval::agentic::v2::collection::load_v2_collection;
+    use crate::inference::eval::agentic::v2::scenarios::v2_json;
+    let task = load_v2_collection(v2_json("easy-webui-tasks").unwrap())
+        .unwrap()
+        .into_iter()
+        .find(|t| t.id == "es_wu_apply_coupon")
+        .unwrap();
+    let (sandbox, cfg) = sandbox_for(&task).unwrap();
+    let model = BackendTurn {
+        backend: BackendKind::Ollama,
+        endpoint: "http://localhost:11434".into(),
+        model: "qwen3.5:9b".into(),
+        cancel: CancellationToken::new(),
+        options: None,
+        keep_alive: None,
+        is_thinking: false,
+        max_tokens: 1024,
+        stop_cache: Default::default(),
+    };
+    let (tx, mut rx) = unbounded_channel();
+    let outcome = run_once(&model, &sandbox, cfg.max_steps, cfg.max_recovery, 0, &tx).await.unwrap();
+    drop(tx);
+    let steps = drain(&mut rx);
+    for s in &steps {
+        eprintln!("turn {} kind={:?} raw={} env={:?}", s.step_index, s.kind, s.raw_output.trim(), s.env);
+    }
+    eprintln!("WEBUI-PROMPT: reached_end={} failure={:?}", outcome.reached_end, outcome.failure);
+    assert!(outcome.reached_end || outcome.failure.is_some(), "prompt web-UI run produced no verdict");
+    assert!(
+        steps.iter().any(|s| matches!(&s.env, EnvView::WebUi(_))),
+        "the prompt path must exercise the web-UI env (a web_ui EnvView)",
+    );
+}

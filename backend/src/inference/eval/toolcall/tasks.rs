@@ -168,6 +168,13 @@ fn validate_agentic(id: &str, tools: &[ToolSchema], spec: &AgenticSpec) -> AppRe
                 }
             }
         }
+        // RequireEndState grades on the final UI state, not tool checkpoints — the target must be
+        // a JSON object (the goal sub-state), and there's nothing tool-named to validate here.
+        EndStateRule::RequireEndState(target) => {
+            if !target.is_object() {
+                return Err(bad(id, "agentic", "require_end_state target must be a JSON object"));
+            }
+        }
         EndStateRule::ExpectAbstainingText => {}
     }
     for m in &spec.mocks {

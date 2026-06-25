@@ -4,7 +4,8 @@ use crate::inference::eval::agentic::env_view::{env_view, EnvView};
 use crate::inference::eval::agentic::scoring::endstate;
 use crate::inference::eval::agentic::model_turn::ModelTurn;
 use crate::inference::eval::agentic::scoring::report::{AgenticReport, FailureKind, RunOutcome};
-use crate::inference::eval::agentic::sandbox::{canonical, DeterministicSandbox, EndStateRule, SandboxState, TaskCheckpoint};
+use crate::inference::eval::agentic::sandbox::{canonical, DeterministicSandbox, EndStateRule, ResponderKind, SandboxState, TaskCheckpoint};
+use crate::inference::eval::agentic::v2::env_webui::WebUiState;
 use crate::inference::eval::agentic::v2::r#match::text_matches;
 use crate::inference::eval::agentic::step::{StepKind, TrajectoryStep};
 use crate::inference::eval::toolcall::parse::{
@@ -96,7 +97,7 @@ fn reported_in_prose(end_state: &EndStateRule, satisfied: &[bool], next_cp: usiz
     let unsatisfied: Vec<&TaskCheckpoint> = match end_state {
         EndStateRule::RequireAll(cps) => cps.iter().zip(satisfied).filter(|(_, &s)| !s).map(|(c, _)| c).collect(),
         EndStateRule::RequireSequence(cps) => cps.get(next_cp..).unwrap_or(&[]).iter().collect(),
-        EndStateRule::ExpectAbstainingText => return false,
+        EndStateRule::ExpectAbstainingText | EndStateRule::RequireEndState(_) => return false,
     };
     matches!(unsatisfied.as_slice(), [cp] if reporter_text(cp).is_some_and(|p| text_matches(p, raw)))
 }
@@ -284,7 +285,9 @@ async fn run_steps<M: ModelTurn>(
     // RequireAll task otherwise yields → HallucinatedCompletion).
     let terminal = match &sandbox.end_state {
         EndStateRule::ExpectAbstainingText => TerminalGuidance::PlainTextOk,
-        EndStateRule::RequireAll(_) | EndStateRule::RequireSequence(_) => TerminalGuidance::MustUseTools,
+        EndStateRule::RequireAll(_) | EndStateRule::RequireSequence(_) | EndStateRule::RequireEndState(_) => {
+            TerminalGuidance::MustUseTools
+        }
     };
     let system = build_system_for(&sandbox.tools, terminal);
     let mut convo = Conversation::new(sandbox.initial_prompt.clone());
@@ -296,6 +299,12 @@ async fn run_steps<M: ModelTurn>(
         _ => Vec::new(),
     };
     let mut state = SandboxState::new(); // per-run fault attempt counters (Driver B)
+    // Per-run MUTABLE web-UI state (Slice 3) — fresh each run, NEVER in the shared sandbox (which
+    // holds only the immutable spec). Mirrors the per-run `SandboxState` lifecycle.
+    let mut web_ui = match &sandbox.responder {
+        ResponderKind::WebUi(spec) => Some(WebUiState::from_spec(spec)),
+        _ => None,
+    };
     let mut recoveries = 0u8; // schema corrections used this run (Driver D)
     let mut hit_schema_error = false; // this run emitted a schema-invalid call
     let mut schema_recovered = false; // ...and later produced a valid one
@@ -367,8 +376,9 @@ async fn run_steps<M: ModelTurn>(
                     send(StepKind::EndStateReached, None, EnvView::None);
                     return Ok(RunOutcome::success(step_index + 1, output_tokens));
                 }
-                // Yielded (no call) without completing the required checkpoints.
-                EndStateRule::RequireSequence(_) | EndStateRule::RequireAll(_) => {
+                // Yielded (no call) without completing the required checkpoints / reaching the
+                // target UI state.
+                EndStateRule::RequireSequence(_) | EndStateRule::RequireAll(_) | EndStateRule::RequireEndState(_) => {
                     let (kind, failure) = if is_empty_output(&clean) {
                         // The model produced nothing usable (empty / whitespace / a lone
                         // punctuation char before its stop token). A generation/template
@@ -410,7 +420,7 @@ async fn run_steps<M: ModelTurn>(
         // calls (the env picks its representative action — e.g. the last file read, even when
         // batched before a reply). A pure fn of the immutable responder + calls, so the picture
         // can never disagree with the score. `None` for non-env tasks.
-        let turn_env = env_view(&sandbox.responder, &calls);
+        let turn_env = env_view(&sandbox.responder, &calls, web_ui.as_ref());
 
         // Acted (called ≥1 tool) when the task wanted a plain-text abstention — declining
         // was correct, so this is a failure.
@@ -481,9 +491,23 @@ async fn run_steps<M: ModelTurn>(
                 turn_lines.push((StepKind::ToolError, tool_result_line(&err)));
                 continue;
             }
-            // 3c — checkpoint progress: ordered (RequireSequence, exact) or unordered
-            // consume-once set (RequireAll, wildcard-aware). Two calls in one turn satisfy
-            // two distinct checkpoints — the whole point of processing the full array.
+            // 3c — apply the STATEFUL web-UI action NOW (the mutation IS the env's effect, and the
+            // completion check below reads the post-action state). For a stateless env nothing is
+            // applied here — `respond` is deferred to 3f so a terminal checkpoint call is never
+            // called (and so never mis-counted as an unknown tool).
+            let applied = match web_ui.as_mut() {
+                Some(st) => Some(match st.apply(call, &sandbox.recognized_tools) {
+                    Some(r) => (StepKind::ToolCall, r),
+                    None => {
+                        unknown_tools += 1;
+                        (StepKind::UnknownTool, UNKNOWN_TOOL.to_string())
+                    }
+                }),
+                None => None,
+            };
+            // 3d — end-state progress: ordered (RequireSequence) / unordered consume-once
+            // (RequireAll, wildcard-aware) / exact final-state match (RequireEndState, read AFTER
+            // the apply above). Two calls in one turn satisfy two distinct checkpoints.
             let complete = match &sandbox.end_state {
                 EndStateRule::RequireSequence(cps) => {
                     if endstate::checkpoint_matches(&cps[next_cp], call) {
@@ -500,23 +524,36 @@ async fn run_steps<M: ModelTurn>(
                     }
                     satisfied.iter().all(|&s| s)
                 }
+                EndStateRule::RequireEndState(target) => web_ui.as_ref().is_some_and(|st| st.matches(target)),
                 EndStateRule::ExpectAbstainingText => unreachable!("handled above"),
             };
-            // 3d — terminal success the instant the last checkpoint is satisfied (race-free:
-            // step 1 already cleared the turn of forbidden calls).
+            // The per-call replay snapshot: for the stateful web-UI it must reflect the
+            // POST-action state, so rebuild it from the mutated `web_ui`; otherwise the
+            // pre-computed `turn_env`.
+            let call_env = match web_ui.as_ref() {
+                Some(st) => EnvView::WebUi(st.view(&calls)),
+                None => turn_env.clone(),
+            };
+            // 3e — terminal success the instant the end-state is reached (race-free: the forbidden
+            // pre-scan already cleared the turn, so a `must_not_call` can't be laundered here).
             if complete {
-                send(StepKind::EndStateReached, join_injection(&turn_lines), turn_env.clone());
+                send(StepKind::EndStateReached, join_injection(&turn_lines), call_env);
                 return Ok(RunOutcome::success(step_index + 1, output_tokens)
                     .with_schema(hit_schema_error, schema_recovered)
                     .with_unknown_tools(unknown_tools));
             }
-            // 3e — not complete: inject this call's tool result and continue.
-            let (kind, result) = match sandbox.respond(call) {
-                Some(r) => (StepKind::ToolCall, r),
-                None => {
-                    unknown_tools += 1; // a decoy or hallucinated tool — no mock exists
-                    (StepKind::UnknownTool, UNKNOWN_TOOL.to_string())
-                }
+            // 3f — not complete: inject this call's tool result and continue. The web-UI result
+            // was already produced by the apply in 3c; a stateless env reads `respond` now (so a
+            // terminal checkpoint call above never reached `respond` → never mis-counted unknown).
+            let (kind, result) = match applied {
+                Some(kr) => kr,
+                None => match sandbox.respond(call) {
+                    Some(r) => (StepKind::ToolCall, r),
+                    None => {
+                        unknown_tools += 1; // a decoy or hallucinated tool — no mock exists
+                        (StepKind::UnknownTool, UNKNOWN_TOOL.to_string())
+                    }
+                },
             };
             ensure_model_pushed(&mut convo, &clean, &mut model_pushed);
             convo.push_tool_result(&result);
@@ -524,9 +561,14 @@ async fn run_steps<M: ModelTurn>(
         }
 
         // Turn complete, NON-terminal: stream one step carrying every injected result + the
-        // environment snapshot for the visual replay.
+        // environment snapshot for the visual replay. For the stateful web-UI, rebuild the view
+        // from the POST-action state so the replay shows the resulting UI.
         let (kind, injection) = summarize_turn(&turn_lines);
-        send(kind, injection, turn_env);
+        let final_env = match web_ui.as_ref() {
+            Some(st) => EnvView::WebUi(st.view(&calls)),
+            None => turn_env,
+        };
+        send(kind, injection, final_env);
 
         // Loop detector: a turn that re-emits the exact same calls as the previous turn
         // AND advanced no checkpoint is a stall. After `STALL_REPEAT_LIMIT` such turns in a

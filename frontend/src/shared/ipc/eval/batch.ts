@@ -57,6 +57,15 @@ export const EnvViewSchema = z.discriminatedUnion("kind", [
     content: z.string().nullable(),
     op: CorpusOpSchema,
   }),
+  // Slice 3 stateful web-UI: the CURRENT (post-action) UI state machine + the action the agent
+  // took this turn. `state` is an opaque JSON object (routes/fields/toggles/submitted) the replay
+  // renders as a schematic; it MUTATES across turns.
+  z.object({
+    kind: z.literal("web_ui"),
+    state: z.record(z.string(), z.unknown()),
+    action: z.string().nullable(),
+    focus: z.string().nullable(),
+  }),
 ]);
 export type EnvView = z.infer<typeof EnvViewSchema>;
 export type FsNode = z.infer<typeof FsNodeSchema>;

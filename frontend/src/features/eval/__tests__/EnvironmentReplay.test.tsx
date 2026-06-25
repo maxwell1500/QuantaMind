@@ -3,8 +3,17 @@ import { render, screen, fireEvent } from "@testing-library/react";
 
 import { FileTreeReplay } from "../components/replay/FileTreeReplay";
 import { CorpusReplay } from "../components/replay/CorpusReplay";
+import { WebUiReplay } from "../components/replay/WebUiReplay";
 import { EnvironmentReplayPanel, hasEnvReplay } from "../components/replay/EnvironmentReplayPanel";
 import type { EnvView, TrajectoryStep } from "../../../shared/ipc/eval/batch";
+
+const webUiView = (over: Partial<Extract<EnvView, { kind: "web_ui" }>> = {}): Extract<EnvView, { kind: "web_ui" }> => ({
+  kind: "web_ui",
+  state: { route: "/cart", fields: { coupon: "SAVE10" }, toggles: { gift: true }, submitted: true },
+  action: "submit",
+  focus: "coupon",
+  ...over,
+});
 
 const corpusView = (over: Partial<Extract<EnvView, { kind: "web_corpus" }>> = {}): Extract<EnvView, { kind: "web_corpus" }> => ({
   kind: "web_corpus",
@@ -76,6 +85,24 @@ describe("CorpusReplay", () => {
     );
     expect(screen.getByTestId("corpus-doc-d_photo")).toHaveAttribute("data-focused", "true");
     expect(screen.getByTestId("corpus-content")).toHaveTextContent("converts light energy into glucose");
+  });
+});
+
+describe("WebUiReplay", () => {
+  it("renders the route, field values, toggle state, and a submitted badge", () => {
+    render(<WebUiReplay view={webUiView()} />);
+    expect(screen.getByTestId("webui-replay")).toBeInTheDocument();
+    expect(screen.getByTestId("webui-route")).toHaveTextContent("/cart");
+    expect(screen.getByTestId("webui-field-coupon")).toHaveTextContent("SAVE10");
+    // The touched control is highlighted.
+    expect(screen.getByTestId("webui-field-coupon")).toHaveAttribute("data-focused", "true");
+    expect(screen.getByTestId("webui-toggle-gift")).toHaveAttribute("data-on", "true");
+    expect(screen.getByTestId("webui-submit")).toHaveAttribute("data-submitted", "true");
+  });
+
+  it("shows the un-submitted state", () => {
+    render(<WebUiReplay view={webUiView({ state: { route: "/cart", fields: { coupon: "" }, submitted: false }, action: "fill", focus: "coupon" })} />);
+    expect(screen.getByTestId("webui-submit")).toHaveAttribute("data-submitted", "false");
   });
 });
 

@@ -38,6 +38,11 @@ export const EndStateRuleSchema = z.union([
   z.object({ require_sequence: z.array(TaskCheckpointSchema).min(1) }),
   z.object({ require_all: z.array(TaskCheckpointSchema).min(1) }),
   z.literal("expect_abstaining_text"),
+  // Slice 3 (stateful web-UI): `{ "require_end_state": <target sub-state> }`. MUST be here or
+  // `z.object` strips it on the task round-trip → the backend re-receives a different end_state
+  // and the state-diff grader breaks (same bug class as the `environment` field below). The
+  // target is opaque to the frontend; preserved verbatim.
+  z.object({ require_end_state: z.unknown() }),
 ]);
 
 /// Mirrors the externally-tagged Rust `FaultInjection` (Driver B): a transient

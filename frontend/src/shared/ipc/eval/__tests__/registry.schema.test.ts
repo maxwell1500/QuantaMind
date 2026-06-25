@@ -59,4 +59,18 @@ describe("ToolTaskSchema — bundled v2 (agent_loop) scenarios", () => {
     const parsed = ToolTaskSchema.parse(fsTask);
     expect(parsed.agentic?.environment).toBe("filesystem");
   });
+
+  it("PRESERVES a `require_end_state` end_state so a web-UI task's state-diff grader round-trips", () => {
+    // Same bug class as `environment`: if EndStateRuleSchema lacks the require_end_state variant,
+    // z.union strips it on the round-trip → the backend re-receives a different end_state and the
+    // grader breaks. The target must survive verbatim.
+    const target = { fields: { coupon: "SAVE10" }, submitted: true };
+    const webUiTask = {
+      ...EASY_CODING_TASK,
+      id: "es_wu_apply_coupon",
+      agentic: { ...EASY_CODING_TASK.agentic, environment: "web_ui", end_state: { require_end_state: target } },
+    };
+    const parsed = ToolTaskSchema.parse(webUiTask);
+    expect(parsed.agentic?.end_state).toEqual({ require_end_state: target });
+  });
 });
