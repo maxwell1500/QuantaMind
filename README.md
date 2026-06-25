@@ -752,7 +752,7 @@ The mandatory loop:
 | React component file | `PascalCase.tsx` | `PromptEditor.tsx` |
 | TS non-component file | `kebab-case.ts` | `use-streaming-run.ts` |
 | Rust file | `snake_case.rs` | `ollama.rs` |
-| Git branch | `phase-N/feature-name` | `phase-1/streaming-output` |
+| Git branch | `<type>/<short-description>` | `feature/streaming-output`, `fix/native-budget` |
 
 ### Commits — Conventional Commits
 
@@ -818,7 +818,10 @@ Contributions welcome. Before you open a PR:
 5. **Tests pass AND outputs are verified.** A green CI run is necessary, not sufficient.
 
 ### Branch naming
-`phase-N/feature-name` — e.g. `phase-2/persistent-settings`.
+`<type>/<short-description>` (kebab-case), where `<type>` names the change:
+`feature/` (new behavior), `fix/` (correctness fix), `bug/` (a reported bug), or
+`docs/` · `chore/` · `refactor/` for non-code changes. E.g. `feature/persistent-settings`,
+`fix/streaming-cancel`, `bug/empty-output-verdict`.
 
 ### Pull request checklist
 - [ ] Single concern (one feature, one bug, one refactor)

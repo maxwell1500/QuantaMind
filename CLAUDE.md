@@ -49,7 +49,9 @@ If step 5 or 6 fails, do not "fix" by loosening the assertion. Fix the code.
   `backend/src/` (Rust commands + inference) + `backend/tauri.conf.json`,
   plus `docs/`. Full tree in `docs/architecture.md#folder-structure`.
 - **Naming:** Rust `snake_case`, TS `camelCase`, components `PascalCase`,
-  branches `phase-N/feature-name`. Full list in `docs/process.md#conventions`.
+  branches `<type>/<short-description>` (`feature/`, `fix/`, `bug/`, `docs/`,
+  `chore/`, `refactor/`) — name the change, not a phase. Full list in
+  `docs/process.md#conventions`.
 - **Setup:** Day-zero install + verification steps in `docs/process.md#setup`.
 - **Phases:** Current roadmap and phase boundaries in
   `docs/process.md#phase-roadmap`.

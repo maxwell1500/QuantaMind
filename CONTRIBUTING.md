@@ -136,8 +136,11 @@ If step 5 fails, **fix the code — never loosen the assertion.**
 ## Branching
 
 - Branch off the latest `main`.
-- Name branches `phase-N/feature-name` (kebab-case), e.g.
-  `phase-8/in-app-help`. For standalone fixes, `fix/<short-name>` is fine.
+- Name branches `<type>/<short-description>` (kebab-case), where `<type>` names the
+  change: **`feature/`** (new behavior), **`fix/`** (correctness fix), **`bug/`** (a
+  reported bug). For non-code changes use `docs/`, `chore/`, or `refactor/` (matching
+  the commit types). Examples: `feature/streaming-output`,
+  `fix/native-budget-truncation`, `bug/empty-output-verdict`.
 - One branch = one PR = one logical change.
 - Delete the branch after the PR merges.
 
@@ -180,7 +183,7 @@ Full table in [`docs/process.md#conventions`](./docs/process.md#conventions).
 | React component file | `PascalCase.tsx` | `PromptEditor.tsx` |
 | TS non-component file | `kebab-case.ts` | `use-streaming-run.ts` |
 | Rust file | `snake_case.rs` | `ollama.rs` |
-| Branch | `phase-N/feature-name` | `phase-1/streaming-output` |
+| Branch | `<type>/<short-description>` | `feature/streaming-output`, `fix/native-budget` |
 
 - **Comments:** default to none — naming and structure carry meaning. Write a
   one-line comment only when the *why* is non-obvious (a workaround, an invariant,
@@ -227,7 +230,7 @@ If it fails, **fix the code, not the assertion.**
 1. **Sync `main`** and branch:
    ```bash
    git switch main && git pull
-   git switch -c phase-N/your-feature
+   git switch -c feature/your-change   # or fix/… , bug/… , docs/… , chore/…
    ```
 2. **Make the change** following the [workflow loop](#the-workflow-loop) — small,
    focused, tested, docs updated.
@@ -235,7 +238,7 @@ If it fails, **fix the code, not the assertion.**
    [Project setup](#project-setup). Green locally before you push.
 4. **Push** and open the PR against `main`:
    ```bash
-   git push -u origin phase-N/your-feature
+   git push -u origin feature/your-change
    gh pr create --base main --fill   # or open it in the GitHub UI
    ```
 5. **Write a useful PR description:** what changed, why, how you verified it
