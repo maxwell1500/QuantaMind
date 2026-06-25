@@ -27,8 +27,9 @@ pub const EVENT_OCR_CANNOT_PROCESS: &str = "ocr-cannot-process";
 const OCR_SYSTEM: &str = "You are an OCR engine. Transcribe ALL visible text in the image exactly, preserving reading order. Output ONLY the transcribed text — no commentary, no markdown.";
 const OCR_PROMPT: &str = "Extract all text from this image.";
 /// Hard per-page cap so a repetition-collapse (greedy decoding latching onto a highly repetitive
-/// page) stops after a generous page's worth of tokens instead of looping forever.
-const OCR_MAX_TOKENS: u32 = 4096;
+/// page) stops instead of looping forever — but generous enough that a genuinely dense page (e.g. a
+/// full-page table) isn't truncated mid-content.
+const OCR_MAX_TOKENS: u32 = 8192;
 
 /// Holds the in-flight OCR run's cancel token (one at a time; a new run cancels the previous).
 #[derive(Default)]

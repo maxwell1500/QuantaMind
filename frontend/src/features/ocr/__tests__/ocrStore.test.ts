@@ -71,11 +71,11 @@ describe("ocrStore", () => {
     expect(useOcrStore.getState().docs[0].pages[1].status).toBe("cannot_process");
   });
 
-  it("joinedText delimits multi-page with --- Page N ---; a single page has no delimiter", () => {
+  it("joinedText joins all pages continuously (no page headers); empties are skipped", () => {
     const single: OcrDoc = { id: "a", name: "a", kind: "image", sourceB64: "", error: null, pages: [{ page: 1, text: "only", status: "done" }] };
     expect(joinedText(single)).toBe("only");
-    const multi: OcrDoc = { id: "b", name: "b", kind: "pdf", sourceB64: "", error: null, pages: [{ page: 1, text: "one", status: "done" }, { page: 2, text: "two", status: "done" }] };
-    expect(joinedText(multi)).toBe("--- Page 1 ---\none\n\n--- Page 2 ---\ntwo");
+    const multi: OcrDoc = { id: "b", name: "b", kind: "pdf", sourceB64: "", error: null, pages: [{ page: 1, text: "one", status: "done" }, { page: 2, text: "", status: "done" }, { page: 3, text: "three", status: "done" }] };
+    expect(joinedText(multi)).toBe("one\n\nthree");
   });
 
   it("runSelected uses the GLOBAL header model (not a local copy)", async () => {
