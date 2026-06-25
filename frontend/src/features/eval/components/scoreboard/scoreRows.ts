@@ -33,6 +33,14 @@ export interface ScoreRow {
   effort: string;
   schemaResil: string;
   topError: string;
+  /// `true` when the NATIVE (Tool-Calling) pass was measured for this model — the matrix renders
+  /// a second (Tool-Calling) row only then; otherwise just the Prompt-based row.
+  hasNative: boolean;
+  /// Native-pass counterparts, used for the Tool-Calling row. `null`/N-A when native wasn't run.
+  effortNative: string;
+  schemaResilNative: string;
+  topErrorNative: string;
+  failuresNative: FailureTracker | null;
   /// The full agentic failure breakdown (all 4 counts) behind `topError`, so the UI
   /// can surface the two it hides (Fake Done / Bad Schema). `null` for single-turn
   /// or errored columns (no agentic run).
@@ -75,6 +83,11 @@ export function toScoreRows(report: BatchReport | null, models: InstalledModelIn
       schemaResil: ag ? fmtPct(ag.schema_resilience) : "—",
       topError: c.error ? "Error" : ag ? TOP_ERROR_LABEL[ag.top_error] : "—",
       failures: ag?.failures ?? null,
+      hasNative: nat != null,
+      effortNative: nat ? fmtTokens(nat.avg_output_tokens_success) : "N/A",
+      schemaResilNative: nat ? fmtPct(nat.schema_resilience) : "—",
+      topErrorNative: c.error ? "Error" : nat ? TOP_ERROR_LABEL[nat.top_error] : "—",
+      failuresNative: nat?.failures ?? null,
       composite: fmtPct(c.toolcall?.composite),
     };
   });
