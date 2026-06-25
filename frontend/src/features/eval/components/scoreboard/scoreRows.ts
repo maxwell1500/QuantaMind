@@ -12,6 +12,7 @@ const TOP_ERROR_LABEL: Record<TopError, string> = {
   turn_timeout: "Timeout",
   reported_in_prose: "Wrong Channel",
   foreign_dialect: "Bad Dialect",
+  empty_output: "No Output",
 };
 
 /// One per-model row of the Matrix Scoreboard. Every metric is a display string;
@@ -26,9 +27,20 @@ export interface ScoreRow {
   /// "N/A" when native wasn't measured for this model. Shown behind a toggle.
   passKNative: string;
   avgSteps: string;
+  /// Avg steps of the NATIVE (Tool-Calling) run, "N/A" when native wasn't measured — shown next
+  /// to the native Pass^k so the two passes' step costs are comparable, not conflated.
+  avgStepsNative: string;
   effort: string;
   schemaResil: string;
   topError: string;
+  /// `true` when the NATIVE (Tool-Calling) pass was measured for this model — the matrix renders
+  /// a second (Tool-Calling) row only then; otherwise just the Prompt-based row.
+  hasNative: boolean;
+  /// Native-pass counterparts, used for the Tool-Calling row. `null`/N-A when native wasn't run.
+  effortNative: string;
+  schemaResilNative: string;
+  topErrorNative: string;
+  failuresNative: FailureTracker | null;
   /// The full agentic failure breakdown (all 4 counts) behind `topError`, so the UI
   /// can surface the two it hides (Fake Done / Bad Schema). `null` for single-turn
   /// or errored columns (no agentic run).
@@ -65,11 +77,17 @@ export function toScoreRows(report: BatchReport | null, models: InstalledModelIn
       passK: pass,
       passKNative,
       avgSteps: ag ? fmtNum(ag.avg_steps) : "—",
+      avgStepsNative: c.error ? "Error" : nat ? fmtNum(nat.avg_steps) : "N/A",
       effort: ag ? fmtTokens(ag.avg_output_tokens_success) : "—",
       // Schema resilience is agentic-only; null (no run hit a schema error) → "—".
       schemaResil: ag ? fmtPct(ag.schema_resilience) : "—",
       topError: c.error ? "Error" : ag ? TOP_ERROR_LABEL[ag.top_error] : "—",
       failures: ag?.failures ?? null,
+      hasNative: nat != null,
+      effortNative: nat ? fmtTokens(nat.avg_output_tokens_success) : "N/A",
+      schemaResilNative: nat ? fmtPct(nat.schema_resilience) : "—",
+      topErrorNative: c.error ? "Error" : nat ? TOP_ERROR_LABEL[nat.top_error] : "—",
+      failuresNative: nat?.failures ?? null,
       composite: fmtPct(c.toolcall?.composite),
     };
   });

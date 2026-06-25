@@ -8,7 +8,8 @@ use crate::inference::eval::agentic::sandbox::{canonical, DeterministicSandbox, 
 use crate::inference::eval::agentic::v2::r#match::text_matches;
 use crate::inference::eval::agentic::step::{StepKind, TrajectoryStep};
 use crate::inference::eval::toolcall::parse::{
-    extract_calls_dialect, looks_like_broken_json, looks_like_foreign_dialect, strip_think, ToolCallDialect,
+    extract_calls_dialect, is_empty_output, looks_like_broken_json, looks_like_foreign_dialect, strip_think,
+    ToolCallDialect,
 };
 use crate::inference::eval::toolcall::prompt::{build_system_for, TerminalGuidance};
 use crate::inference::generate::generate_options::{GenerateOptions, EVAL_REPEAT_PENALTY};
@@ -368,10 +369,17 @@ async fn run_steps<M: ModelTurn>(
                 }
                 // Yielded (no call) without completing the required checkpoints.
                 EndStateRule::RequireSequence(_) | EndStateRule::RequireAll(_) => {
-                    let (kind, failure) = if looks_like_foreign_dialect(&clean) {
+                    let (kind, failure) = if is_empty_output(&clean) {
+                        // The model produced nothing usable (empty / whitespace / a lone
+                        // punctuation char before its stop token). A generation/template
+                        // artifact, NOT a claimed-but-false completion. Checked first: an
+                        // empty string trivially matches none of the others, and labeling it
+                        // `Hallucinated` reads as "the model lied about finishing".
+                        (StepKind::EmptyOutput, FailureKind::EmptyOutput)
+                    } else if looks_like_foreign_dialect(&clean) {
                         // The model spoke a non-JSON tool dialect the parser (and a real
                         // deployment) can't read — a template/dialect artifact, NOT a
-                        // hallucination or broken JSON. Checked first so it wins over the
+                        // hallucination or broken JSON. Checked before the
                         // braces-but-no-object `Malformed` heuristic.
                         (StepKind::ForeignDialect, FailureKind::ForeignDialect)
                     } else if looks_like_broken_json(&clean) {

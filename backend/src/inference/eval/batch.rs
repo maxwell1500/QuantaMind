@@ -99,8 +99,13 @@ fn fold_completed(
 /// agentic per-turn pump can forward from a spawned task.
 pub trait BatchSink: Send + Sync {
     fn task_started(&self, model: &str, task_id: &str, index: usize, total: usize, category: &str);
-    fn agentic_turn(&self, model: &str, task_id: &str, step: &TrajectoryStep);
-    fn task_done(&self, model: &str, task_id: &str, outcome: &TaskOutcome);
+    /// A live agentic turn. `is_native` distinguishes the NATIVE function-calling pass from
+    /// the prompt pass so the UI can render the two trajectories separately (both stream to
+    /// the same (model, task) cell).
+    fn agentic_turn(&self, model: &str, task_id: &str, step: &TrajectoryStep, is_native: bool);
+    /// A task's terminal outcome. `is_native` tags the NATIVE pass's per-task result so the UI
+    /// can show native pass/fail in its own column, streamed as each native task finishes.
+    fn task_done(&self, model: &str, task_id: &str, outcome: &TaskOutcome, is_native: bool);
 }
 
 /// Phase 9: a model's strict Pass^k within ONE difficulty tier. `by_tier` carries
@@ -257,6 +262,12 @@ pub struct BatchReport {
     /// before Phase 7.4 (and the engine, which doesn't know the param) still load.
     #[serde(default)]
     pub num_ctx: Option<u32>,
+    /// The running Ollama server version (`/api/version`) when this batch ran. Stamped so a
+    /// NATIVE tool-calling regression on a version bump is diagnosable — the honest
+    /// garbled/foreign verdict reads as "at Ollama vX", not a silent zero. `None` if not probed
+    /// / Ollama down. `#[serde(default)]` so older reports load.
+    #[serde(default)]
+    pub ollama_version: Option<String>,
 }
 
 fn mean_f64(xs: &[f64]) -> Option<f64> {
@@ -363,7 +374,7 @@ async fn run_one_agentic<M: ModelTurn + Send + Sync>(
     let (s2, model2, task2) = (sink.clone(), model.to_string(), task.id.clone());
     let pump = tokio::spawn(async move {
         while let Some(step) = rx.recv().await {
-            s2.agentic_turn(&model2, &task2, &step);
+            s2.agentic_turn(&model2, &task2, &step, false); // prompt pass
         }
     });
     let result = run_agentic_for(turn, task, model, &sandbox, cfg, cancel, &tx).await;
@@ -486,13 +497,13 @@ where
                     Ok(report) => {
                         let outcome = TaskOutcome::Agentic { report: report.clone() };
                         record(&unit_of(target, task, outcome.clone(), false));
-                        sink.task_done(&target.model, &task.id, &outcome);
+                        sink.task_done(&target.model, &task.id, &outcome, false);
                         agentic_reports.push(report);
                     }
                     Err(e) => {
                         // Errors are NOT recorded → they re-run on resume (the backend may be back).
                         let msg = e.to_string();
-                        sink.task_done(&target.model, &task.id, &TaskOutcome::Error { message: msg.clone() });
+                        sink.task_done(&target.model, &task.id, &TaskOutcome::Error { message: msg.clone() }, false);
                         col_error = Some(msg);
                     }
                 }
@@ -509,11 +520,11 @@ where
                         });
                         let outcome = TaskOutcome::Single { passed, trace };
                         record(&unit_of(target, task, outcome.clone(), false));
-                        sink.task_done(&target.model, &task.id, &outcome);
+                        sink.task_done(&target.model, &task.id, &outcome, false);
                     }
                     Err(e) => {
                         let msg = e.to_string();
-                        sink.task_done(&target.model, &task.id, &TaskOutcome::Error { message: msg.clone() });
+                        sink.task_done(&target.model, &task.id, &TaskOutcome::Error { message: msg.clone() }, false);
                         col_error = Some(msg);
                     }
                 }
@@ -533,8 +544,8 @@ where
         });
         prev = Some((target.model.clone(), target.backend));
     }
-    // The engine is param-agnostic; the command layer stamps `num_ctx` afterwards.
-    Ok(BatchReport { collection_id: collection_id.to_string(), columns, num_ctx: None })
+    // The engine is param-agnostic; the command layer stamps `num_ctx`/`ollama_version` after.
+    Ok(BatchReport { collection_id: collection_id.to_string(), columns, num_ctx: None, ollama_version: None })
 }
 
 /// Build a partial `BatchReport` from already-completed units ONLY — no execution.
@@ -580,7 +591,7 @@ pub fn fold_report(
             }
         })
         .collect();
-    BatchReport { collection_id: collection_id.to_string(), columns, num_ctx: None }
+    BatchReport { collection_id: collection_id.to_string(), columns, num_ctx: None, ollama_version: None }
 }
 
 fn unit_of(target: &ModelTarget, task: &ToolTask, outcome: TaskOutcome, is_native: bool) -> CompletedUnit {
@@ -598,9 +609,9 @@ fn unit_of(target: &ModelTarget, task: &ToolTask, outcome: TaskOutcome, is_nativ
 /// same sandbox/scoring, but driven by `make_native` (Ollama `/api/chat` tools in
 /// production, a scripted turn in tests). Only Ollama columns whose model is in
 /// `supported` (the capability probe ran upstream) get a native run; others stay
-/// `None` (N/A). Native steps aren't streamed to the UI sink in this slice — they
-/// drain to a throwaway channel. Best-effort: a native run that errors leaves the
-/// column `None` rather than failing the report.
+/// `None` (N/A). Native steps ARE streamed to the UI sink (tagged `is_native`) so the user can
+/// watch the native trajectory in the Evaluator. Best-effort: a native run that errors leaves
+/// the column `None` rather than failing the report.
 #[allow(clippy::too_many_arguments)]
 pub async fn run_native_fc_pass<M, F, G>(
     report: &mut BatchReport,
@@ -611,6 +622,7 @@ pub async fn run_native_fc_pass<M, F, G>(
     prior: &[CompletedUnit],
     record: &(dyn Fn(&CompletedUnit) + Sync),
     gate: &G,
+    sink: Arc<dyn BatchSink>,
 ) -> AppResult<()>
 where
     M: ModelTurn + Send + Sync,
@@ -658,20 +670,31 @@ where
             let turn = make_native(&col.model, task);
             let (sandbox, cfg) = sandbox_for(task)?;
             let (tx, mut rx) = unbounded_channel::<TrajectoryStep>();
-            let drain = tokio::spawn(async move { while rx.recv().await.is_some() {} });
+            // Forward native steps to the UI sink (tagged is_native) so the user can WATCH the
+            // native run in the Evaluator — not the old throwaway drain that hid it.
+            let (s2, model2, task2) = (sink.clone(), col.model.clone(), task.id.clone());
+            let pump = tokio::spawn(async move {
+                while let Some(step) = rx.recv().await {
+                    s2.agentic_turn(&model2, &task2, &step, true); // native pass
+                }
+            });
             let result = run_agentic_for(&turn, task, &col.model, &sandbox, cfg, &cancel, &tx).await;
             drop(tx);
-            let _ = drain.await;
+            let _ = pump.await;
             match result {
                 Ok(report) => {
                     let report = report.with_tier(task_tier(task));
+                    let outcome = TaskOutcome::Agentic { report: report.clone() };
                     record(&CompletedUnit {
                         model: col.model.clone(),
                         task_id: task.id.clone(),
                         category: task.category.clone(),
-                        outcome: TaskOutcome::Agentic { report: report.clone() },
+                        outcome: outcome.clone(),
                         is_native: true,
                     });
+                    // Stream this task's NATIVE result so the UI fills its native column as each
+                    // task finishes — progressive, not only at batch-complete.
+                    sink.task_done(&col.model, &task.id, &outcome, true);
                     reports.push(report);
                 }
                 // Every run of this task errored — a backend `Err`, NOT a scored failure (a
@@ -679,8 +702,13 @@ where
                 // a host/infra crash is never read as model incapability. The dropped task is
                 // why the native denominator silently shrank before this fix.
                 Err(e) => {
+                    let msg = e.to_string();
                     errored += 1;
-                    error_class = merge_error_class(error_class, classify_native_error(&e.to_string()));
+                    error_class = merge_error_class(error_class, classify_native_error(&msg));
+                    // Stream the per-task native ERROR too (the prompt pass does on its Err arm),
+                    // so the Simulator's Tool-Calling cell shows "Error" for this task, not a
+                    // stale "—" until the batch finishes.
+                    sink.task_done(&col.model, &task.id, &TaskOutcome::Error { message: msg }, true);
                 }
             }
         }

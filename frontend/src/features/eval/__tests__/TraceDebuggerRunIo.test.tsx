@@ -46,7 +46,7 @@ describe("TraceDebugger — per-run Input/Output drill-down", () => {
     } as BatchProgress);
     flushBatchBufferForTests();
 
-    render(<TraceDebugger model={MODEL} taskId="weather" setTaskId={() => {}} />);
+    render(<TraceDebugger model={MODEL} taskId="weather" setTaskId={() => {}} tracePass="prompt" />);
     fireEvent.click(screen.getByTestId("trace-io-input"));
     const modal = screen.getByTestId("run-io-modal");
     expect(screen.getByTestId("run-io-title")).toHaveTextContent("Single-turn run");
@@ -70,7 +70,7 @@ describe("TraceDebugger — per-run Input/Output drill-down", () => {
     } as BatchProgress);
     flushBatchBufferForTests();
 
-    render(<TraceDebugger model={MODEL} taskId="weather" setTaskId={() => {}} />);
+    render(<TraceDebugger model={MODEL} taskId="weather" setTaskId={() => {}} tracePass="prompt" />);
     fireEvent.click(screen.getByTestId("trace-io-output"));
     expect(screen.getByTestId("run-io-empty")).toHaveTextContent("no output");
   });
@@ -89,7 +89,7 @@ describe("TraceDebugger — per-run Input/Output drill-down", () => {
     s.complete({ collection_id: "c", columns: [] } as never); // running=false → deterministic run status
     flushBatchBufferForTests();
 
-    render(<TraceDebugger model={MODEL} taskId="book" setTaskId={() => {}} />);
+    render(<TraceDebugger model={MODEL} taskId="book" setTaskId={() => {}} tracePass="prompt" />);
 
     // Open RUN 2's Output — must show only run 1's turn, titled "RUN 2 OF 2".
     fireEvent.click(screen.getByTestId("trace-io-output-1"));
@@ -117,7 +117,7 @@ describe("TraceDebugger — per-run Input/Output drill-down", () => {
     s.ingestProgress({ phase: "done", model: MODEL, task_id: "book", outcome: { kind: "agentic", report: agenticReport } } as BatchProgress);
     flushBatchBufferForTests();
 
-    render(<TraceDebugger model={MODEL} taskId="book" setTaskId={() => {}} decoys={3} />);
+    render(<TraceDebugger model={MODEL} taskId="book" setTaskId={() => {}} tracePass="prompt" decoys={3} />);
     fireEvent.click(screen.getByTestId("trace-io-input-0"));
     expect(screen.getByTestId("run-io-input")).toHaveTextContent("Constructed agentic prompt package");
     expect(screen.getByTestId("run-io-input")).toHaveTextContent("search_flights");
@@ -135,7 +135,7 @@ describe("TraceDebugger — per-run Input/Output drill-down", () => {
     } as BatchProgress);
     flushBatchBufferForTests();
 
-    render(<TraceDebugger model={MODEL} taskId="weather" setTaskId={() => {}} />);
+    render(<TraceDebugger model={MODEL} taskId="weather" setTaskId={() => {}} tracePass="prompt" />);
 
     fireEvent.click(screen.getByTestId("trace-io-input"));
     fireEvent.click(screen.getByTestId("run-io-close"));
@@ -150,5 +150,24 @@ describe("TraceDebugger — per-run Input/Output drill-down", () => {
     expect(screen.getByTestId("run-io-modal")).toBeTruthy();
     fireEvent.click(screen.getByTestId("run-io-modal")); // backdrop — closes
     expect(screen.queryByTestId("run-io-modal")).toBeNull();
+  });
+});
+
+describe("TraceDebugger — live Tool-Calling (native) trace, native-first", () => {
+  it("shows the streaming native trace even before any prompt outcome lands", () => {
+    useEvalRegistryStore.setState({ tasks: [agenticTask] });
+    const s = useBatchStore.getState();
+    s.startRun();
+    // The native pass runs FIRST: a native step streams, but NO prompt task_done has fired yet.
+    s.ingestStep({
+      model: MODEL, task_id: "book", run_index: 0, step_index: 0,
+      raw_output: "NATIVE-CALL-XYZ", injection: "Tool result: ok", kind: "tool_call", is_native: true,
+    });
+    flushBatchBufferForTests();
+
+    render(<TraceDebugger model={MODEL} taskId="book" setTaskId={() => {}} tracePass="native" />);
+    // The bug: it used to show "No trace recorded" because it gated on the prompt outcome.
+    expect(screen.queryByText(/No trace recorded/i)).toBeNull();
+    expect(screen.getByTestId("trace-pass-label")).toHaveTextContent("Tool-Calling");
   });
 });

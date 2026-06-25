@@ -117,9 +117,14 @@ describe("EvalManager Sidebar Controls", () => {
     expect(screen.getByTestId("eval-run-all")).toHaveAttribute("title", "This collection has no tasks");
   });
 
-  it("nudges to enable native tool-calling while it's off, and hides the nudge once enabled", () => {
+  it("native tool-calling is PRE-SELECTED; toggling it off shows the nudge, on hides it", () => {
     render(<EvalManager {...props()} />);
+    // Pre-selected by default → no nudge to enable it.
+    expect(screen.queryByTestId("native-fc-hint")).toBeNull();
+    // Untick → the nudge to re-enable appears.
+    fireEvent.click(screen.getByTestId("eval-native-fc"));
     expect(screen.getByTestId("native-fc-hint")).toHaveTextContent(/underrepresent native tool-calling/i);
+    // Re-tick → hidden again.
     fireEvent.click(screen.getByTestId("eval-native-fc"));
     expect(screen.queryByTestId("native-fc-hint")).toBeNull();
   });
@@ -265,7 +270,7 @@ describe("EvalManager Sidebar Controls", () => {
         8,
         { temperature: 0.2 },
         undefined,
-        false, // runNativeFc — off by default
+        true, // runNativeFc — PRE-SELECTED by default
         "medium", // tier still flows (for spec.tier)
         undefined, // decoyTools — off by default
       );
@@ -314,7 +319,7 @@ describe("EvalManager Sidebar Controls", () => {
         8,
         {},
         undefined,
-        false,
+        true, // runNativeFc — PRE-SELECTED by default
         "easy",
         4, // decoyTools
       );

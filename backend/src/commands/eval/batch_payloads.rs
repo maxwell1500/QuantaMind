@@ -13,7 +13,9 @@ pub const EVENT_BATCH_COMPLETE: &str = "batch-complete";
 #[serde(tag = "phase", rename_all = "snake_case")]
 pub enum BatchProgress {
     Started { model: String, task_id: String, index: usize, total: usize, category: String },
-    Done { model: String, task_id: String, outcome: TaskOutcome },
+    /// `is_native` tags the NATIVE pass's per-task result so the UI fills its native column
+    /// separately, streamed as each native task finishes (the prompt pass uses `false`).
+    Done { model: String, task_id: String, outcome: TaskOutcome, is_native: bool },
 }
 
 /// A live agentic turn, tagged so the trace debugger routes it to the right
@@ -22,6 +24,9 @@ pub enum BatchProgress {
 pub struct AgenticStepPayload {
     pub model: String,
     pub task_id: String,
+    /// Which pass produced this turn — the native function-calling pass (`true`) or the prompt
+    /// pass (`false`). The UI renders the two trajectories as separate sections.
+    pub is_native: bool,
     #[serde(flatten)]
     pub step: TrajectoryStep,
 }
@@ -29,6 +34,10 @@ pub struct AgenticStepPayload {
 #[derive(Serialize, Clone)]
 pub struct BatchCompletePayload {
     pub report: BatchReport,
+    /// `false` for an INTERMEDIATE complete (the native pass's result before the prompt pass,
+    /// or a resume's partial replay) — the run is still going, so the UI keeps "running" true
+    /// and shows pending cells as "Running…". `true` only on the last complete of the run.
+    pub r#final: bool,
 }
 
 #[cfg(test)]
@@ -45,6 +54,7 @@ mod tests {
         let payload = AgenticStepPayload {
             model: "m".into(),
             task_id: "t".into(),
+            is_native: false,
             step: TrajectoryStep {
                 run_index: 0,
                 step_index: 1,

@@ -24,6 +24,7 @@ export const StepKindSchema = z.enum([
   "turn_timeout",
   "reported_in_prose",
   "foreign_dialect",
+  "empty_output",
 ]);
 export type StepKind = z.infer<typeof StepKindSchema>;
 
@@ -68,6 +69,7 @@ export const TopErrorSchema = z.enum([
   "turn_timeout",
   "reported_in_prose",
   "foreign_dialect",
+  "empty_output",
 ]);
 export type TopError = z.infer<typeof TopErrorSchema>;
 
@@ -87,6 +89,9 @@ export const FailureTrackerSchema = z.object({
   // Unparseable foreign tool-call dialect (a mis-built model emitting channel-token soup).
   // A template/dialect artifact, not a capability failure — labeled, never salvaged.
   foreign_dialect_calls: z.number().int().optional(),
+  // Empty / whitespace / punctuation-only output (the model produced nothing usable) — a
+  // generation/template artifact, distinct from a hallucinated completion.
+  empty_output_calls: z.number().int().optional(),
 });
 export type FailureTracker = z.infer<typeof FailureTrackerSchema>;
 
@@ -174,6 +179,9 @@ export const BatchReportSchema = z.object({
   // The run's context length, when set — basis for the readiness VRAM-fit KV-cache
   // estimate. Nullish so reports saved before Phase 7.4 still parse.
   num_ctx: z.number().int().nullish(),
+  // The running Ollama version (`/api/version`) when the batch ran — so a native tool-calling
+  // regression on a version bump is diagnosable. Nullish: older reports / non-Ollama runs omit it.
+  ollama_version: z.string().nullish(),
 });
 export type BatchReport = z.infer<typeof BatchReportSchema>;
 
@@ -196,18 +204,35 @@ export const BatchProgressSchema = z.discriminatedUnion("phase", [
     total: z.number().int(),
     category: z.string(),
   }),
-  z.object({ phase: z.literal("done"), model: z.string(), task_id: z.string(), outcome: TaskOutcomeSchema }),
+  z.object({
+    phase: z.literal("done"),
+    model: z.string(),
+    task_id: z.string(),
+    outcome: TaskOutcomeSchema,
+    // The NATIVE pass's per-task result, routed to its own column. Absent ⇒ prompt pass.
+    is_native: z.boolean().optional(),
+  }),
 ]);
 export type BatchProgress = z.infer<typeof BatchProgressSchema>;
 
-/// The `agentic-step` event: a live turn tagged with its (model, task).
+/// The `agentic-step` event: a live turn tagged with its (model, task) and which pass produced
+/// it — the native function-calling pass (`is_native`) or the prompt pass. The Evaluator shows
+/// the two trajectories separately. `default(false)` so pre-native-streaming events parse.
 export const AgenticStepPayloadSchema = TrajectoryStepSchema.extend({
   model: z.string(),
   task_id: z.string(),
+  // Optional so pre-native-streaming events + test fixtures parse; absent ⇒ prompt pass.
+  is_native: z.boolean().optional(),
 });
 export type AgenticStepPayload = z.infer<typeof AgenticStepPayloadSchema>;
 
-export const BatchCompletePayloadSchema = z.object({ report: BatchReportSchema });
+/// `final` is false for an intermediate complete (native pass before the prompt pass, or a
+/// resume's partial replay) — the run is still going. Defaults true so pre-flag events still
+/// read as terminal.
+export const BatchCompletePayloadSchema = z.object({
+  report: BatchReportSchema,
+  final: z.boolean().optional().default(true),
+});
 
 /// The one streaming eval command. Returns the final report (also delivered via
 /// the `batch-complete` event); progress arrives on `batch-progress` /

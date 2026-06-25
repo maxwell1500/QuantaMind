@@ -20,6 +20,9 @@ interface TraceDebuggerProps {
   /// The active run's decoy-tool budget — passed through to the per-run Input drill-down
   /// so a reconstructed agentic prompt admits the decoy tools the model also saw.
   decoys?: number;
+  /// Which pass's trajectory to show — controlled by the parent (the Simulator click), so the
+  /// Evaluator has no toggle of its own.
+  tracePass: "prompt" | "native";
 }
 
 type TabType = "config" | "prompt" | "trace" | "matcher";
@@ -72,7 +75,7 @@ const FlagIcon = () => (
 
 const getStepIcon = (kind: string, isError: boolean): React.ReactNode => {
   if (kind === "tool_call") return <GearIcon />;
-  if (kind === "tool_error" || kind === "schema_error" || kind === "malformed_json" || kind === "turn_timeout" || kind === "foreign_dialect") return <ErrorIcon />;
+  if (kind === "tool_error" || kind === "schema_error" || kind === "malformed_json" || kind === "turn_timeout" || kind === "foreign_dialect" || kind === "empty_output") return <ErrorIcon />;
   if (kind === "infinite_loop") return <LoopIcon />;
   if (kind === "hallucinated_completion" || kind === "forbidden_call" || kind === "reported_in_prose") return <StopIcon />;
   if (kind === "end_state_reached") return <FlagIcon />;
@@ -92,7 +95,8 @@ export const isErrorKind = (kind: string): boolean =>
   kind === "forbidden_call" ||
   kind === "turn_timeout" ||
   kind === "reported_in_prose" ||
-  kind === "foreign_dialect";
+  kind === "foreign_dialect" ||
+  kind === "empty_output";
 
 export const getStepTitle = (kind: string, isError: boolean) => {
   if (kind === "tool_call") return "Model Outputs Tool Call";
@@ -106,6 +110,7 @@ export const getStepTitle = (kind: string, isError: boolean) => {
   if (kind === "turn_timeout") return "Turn Timeout (Stalled Model)";
   if (kind === "reported_in_prose") return "Reported In Prose (Wrong Channel)";
   if (kind === "foreign_dialect") return "Foreign Tool Dialect (Unparseable)";
+  if (kind === "empty_output") return "Empty Output (No Usable Response)";
   if (kind === "end_state_reached") return "End State Verification";
   return isError ? "Execution Failure" : "Model Output Success";
 };
@@ -133,6 +138,12 @@ export const verdictLabel = (topError: string): { title: string; detail: string 
         title: "FOREIGN TOOL DIALECT",
         detail:
           "The model emitted an unparseable non-JSON tool dialect (a mis-built model's channel-token soup) — a template/dialect artifact, not a capability failure. Not salvaged: a real deployment couldn't read it either.",
+      };
+    case "empty_output":
+      return {
+        title: "EMPTY OUTPUT",
+        detail:
+          "The model produced no usable output (empty / whitespace / a lone punctuation char before its stop token) — a generation/template artifact, not a hallucinated completion. Often a model that doesn't engage the prompt-based tool format; try Measure native tool-calling.",
       };
     case "reported_in_prose":
       return {
@@ -166,7 +177,7 @@ const getStepNodeStyle = (kind: string, isError: boolean): React.CSSProperties =
     bg = "#f0fdfa";
     border = "1px solid #ccfbf1";
     color = "#0f766e"; // teal — mildest failure, distinct from amber/red
-  } else if (kind === "schema_error" || kind === "hallucinated_completion" || kind === "malformed_json" || kind === "foreign_dialect") {
+  } else if (kind === "schema_error" || kind === "hallucinated_completion" || kind === "malformed_json" || kind === "foreign_dialect" || kind === "empty_output") {
     bg = "#fffbeb";
     border = "1px solid #fef3c7";
     color = "#b45309";
@@ -210,7 +221,7 @@ const getCardStyle = (kind: string, isError: boolean): React.CSSProperties => {
     bg = "#f0fdfa";
     border = "1px solid #ccfbf1";
     borderLeft = "3px solid #14b8a6"; // teal — mildest failure, distinct from amber/red
-  } else if (kind === "schema_error" || kind === "hallucinated_completion" || kind === "malformed_json" || kind === "foreign_dialect") {
+  } else if (kind === "schema_error" || kind === "hallucinated_completion" || kind === "malformed_json" || kind === "foreign_dialect" || kind === "empty_output") {
     bg = "#fffbeb";
     border = "1px solid #fef3c7";
     borderLeft = "3px solid #f59e0b";
@@ -279,10 +290,13 @@ export function TraceDebugger({
   taskId,
   setTaskId,
   decoys,
+  tracePass,
 }: TraceDebuggerProps) {
   const { tasks } = useEvalRegistryStore();
   const outcomeByKey = useBatchStore((s) => s.outcomeByKey);
+  const nativeOutcomeByKey = useBatchStore((s) => s.nativeOutcomeByKey);
   const stepsByKey = useBatchStore((s) => s.stepsByKey);
+  const nativeStepsByKey = useBatchStore((s) => s.nativeStepsByKey);
   const running = useBatchStore((s) => s.running);
 
   const [activeTab, setActiveTab] = useState<TabType>("trace");
@@ -324,8 +338,14 @@ export function TraceDebugger({
   }
 
   const key = cellKey(model, taskId);
-  const outcome = outcomeByKey[key];
-  const steps = stepsByKey[key] || [];
+  const nativeSteps = nativeStepsByKey[key] || [];
+  const hasNative = nativeSteps.length > 0;
+  // Everything below renders the SELECTED pass: its steps AND its terminal outcome. Gating on
+  // the prompt outcome was the bug — with native-first the prompt pass hasn't run, so a live
+  // native trace was hidden behind "No trace recorded".
+  const onNative = tracePass === "native" && hasNative;
+  const steps = (onNative ? nativeSteps : stepsByKey[key]) || [];
+  const outcome = onNative ? nativeOutcomeByKey[key] : outcomeByKey[key];
 
   // Split the flat trajectory into per-run sections. Runs execute sequentially, so
   // every group but the last is complete; while `running`, the last group may still
@@ -474,11 +494,30 @@ export function TraceDebugger({
 
         {activeTab === "trace" && (
           <div style={{ display: "flex", flexDirection: "column", gap: 14 }}>
-            {!outcome ? (
+            {/* Which pass this trace is — read-only. The pass is chosen by clicking a Prompt or
+                Native result in the Simulator (no in-Evaluator toggle). */}
+            {tracePass === "native" && (
+              <div data-testid="trace-pass-label" style={{ alignSelf: "flex-start" }}>
+                <span
+                  style={{
+                    fontSize: 11,
+                    fontWeight: 700,
+                    padding: "3px 10px",
+                    borderRadius: 6,
+                    border: "1px solid #c4b5fd",
+                    background: "#f5f3ff",
+                    color: "#6d28d9",
+                  }}
+                >
+                  Tool-Calling (native) trace
+                </span>
+              </div>
+            )}
+            {!outcome && steps.length === 0 ? (
               <div style={{ color: "#64748b", fontSize: 13, fontFamily: "Inter, sans-serif", textAlign: "center", padding: 24 }}>
                 No trace recorded for this task yet. Run the batch to simulate.
               </div>
-            ) : outcome.kind === "single" ? (
+            ) : outcome?.kind === "single" ? (
               <div style={{ display: "flex", flexDirection: "column", gap: 16 }}>
                 {/* Single turn trace */}
                 <div style={{ ...getCardStyle("tool_call", false) }}>
@@ -523,9 +562,10 @@ export function TraceDebugger({
                   )}
                 </div>
               </div>
-            ) : outcome.kind === "agentic" ? (
+            ) : outcome?.kind === "agentic" || (!outcome && steps.length > 0) ? (
               <div style={{ display: "flex", flexDirection: "column", gap: 20 }}>
-                {/* Chronological agentic turns */}
+                {/* Chronological agentic turns (renders live from streaming steps even before
+                    the terminal outcome lands — the native-first live-trace fix). */}
                 {steps.length === 0 ? (
                   <div style={{ color: "#64748b", fontSize: 13, fontFamily: "Inter, sans-serif", textAlign: "center" }}>
                     No steps recorded for this multi-turn run yet.
@@ -634,8 +674,10 @@ export function TraceDebugger({
                   </div>
                 )}
 
-                {/* Final Verdict */}
-                {steps.length > 0 && (
+                {/* Final Verdict — prompt pass only, and only once the outcome has LANDED (a
+                    still-streaming prompt task has steps but no `outcome.report` yet). The native
+                    trace shows its own per-run PASS/FAIL chips instead of this. */}
+                {tracePass === "prompt" && outcome?.kind === "agentic" && (
                   <div
                      style={verdictStyle(
                        isStrictPass(outcome.report)

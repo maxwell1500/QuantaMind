@@ -3,6 +3,7 @@ use crate::inference::backend::backend::InferenceBackend;
 use crate::inference::backend::backend_kind::BackendKind;
 use crate::inference::chat::chat_templates::detect_template;
 use crate::inference::eval::agentic::difficulty::passk::NON_THINKING_MAX_TOKENS;
+use crate::inference::eval::toolcall::prompt::{terminal_closing, TerminalGuidance};
 use crate::inference::eval::toolcall::tasks::ToolSchema;
 use crate::inference::generate::generate_options::GenerateOptions;
 use crate::inference::generate::generate_spec::GenerateSpec;
@@ -206,21 +207,28 @@ impl ModelTurn for BackendTurn {
     }
 }
 
-/// Tools are provided natively, so the native path uses a neutral system instead
-/// of the prompt path's "respond with JSON" instructions.
-const NATIVE_SYSTEM: &str =
-    "You complete the task using the available tools. Call a tool when one applies; otherwise reply in plain text.";
+/// The native path's system prompt. Tools are provided natively (no "respond with JSON"
+/// instructions), but it carries the SAME act-vs-abstain reporter-tool mandate the prompt path
+/// uses (`terminal_closing`) — without it, the old fixed "...otherwise reply in plain text"
+/// nudged capable native models (gemma4) OFF the `reply` tool into prose → an unfair
+/// `ReportedInProse` the prompt path doesn't suffer. Path-fairness, one source of truth.
+fn native_system(tools: &[ToolSchema], terminal: TerminalGuidance) -> String {
+    format!("You complete the task using the available tools. {}", terminal_closing(tools, terminal))
+}
 
 /// Native path (Ollama only): call `/api/chat` with a real `tools` array and
 /// translate the structured `tool_calls` back into the canonical `{"name","args"}`
 /// JSON the runner's `extract_calls` already parses — so the sandbox, scoring, and
 /// `TrajectoryStep` stay byte-identical to the prompt path. Built per task (it
-/// carries that task's tool schemas).
+/// carries that task's tool schemas + the act/abstain terminal guidance).
 pub struct NativeOllamaTurn {
     pub endpoint: String,
     pub model: String,
     pub tools: Vec<ToolSchema>,
     pub options: Option<GenerateOptions>,
+    /// Act-vs-abstain mandate for this task (from its end_state), so the native system tells the
+    /// model to use the reporter tool on an ACT task instead of inviting prose.
+    pub terminal: TerminalGuidance,
 }
 
 /// Shape the tool schemas into Ollama's `tools` array (OpenAI-style function specs).
@@ -262,8 +270,9 @@ fn native_turn_text(calls: &[NativeToolCall], content: String) -> String {
 impl ModelTurn for NativeOllamaTurn {
     async fn run(&self, spec: &GenerateSpec) -> AppResult<(String, GenerateStats)> {
         let tools = build_tools_value(&self.tools);
+        let system = native_system(&self.tools, self.terminal);
         let result =
-            chat_with_tools(&self.endpoint, &self.model, NATIVE_SYSTEM, &spec.prompt, &tools, self.options.clone())
+            chat_with_tools(&self.endpoint, &self.model, &system, &spec.prompt, &tools, self.options.clone())
                 .await?;
         // When Ollama's native parser returned tool calls, hand the runner the canonical
         // JSON. When it returned NONE, surface the raw assistant `content` instead of an
@@ -281,10 +290,37 @@ impl ModelTurn for NativeOllamaTurn {
 
 #[cfg(test)]
 mod tests {
-    use super::{merge_eval_options, native_turn_text, synthesize_calls, NativeToolCall};
+    use super::{merge_eval_options, native_system, native_turn_text, synthesize_calls, NativeToolCall};
     use crate::inference::eval::toolcall::parse::{extract_calls, extract_calls_dialect, looks_like_broken_json, looks_like_foreign_dialect, ToolCallDialect};
+    use crate::inference::eval::toolcall::prompt::TerminalGuidance;
+    use crate::inference::eval::toolcall::tasks::ToolSchema;
     use crate::inference::generate::generate_options::{GenerateOptions, EVAL_REPEAT_PENALTY};
     use serde_json::json;
+
+    fn tool(name: &str, props: serde_json::Value) -> ToolSchema {
+        ToolSchema { name: name.into(), description: format!("tool {name}"), parameters: json!({ "type": "object", "properties": props }) }
+    }
+
+    #[test]
+    fn native_system_mandates_the_reporter_tool_on_an_act_task() {
+        // The Gap A' fix: an ACT task with a `reply` tool must tell the native model to CALL
+        // reply, not "answer in plain text" (the old fixed prompt's prose nudge → ReportedInProse).
+        let tools = vec![tool("read_file", json!({ "path": { "type": "string" } })), tool("reply", json!({ "text": { "type": "string" } }))];
+        let sys = native_system(&tools, TerminalGuidance::MustUseTools);
+        assert!(sys.contains("call the `reply` tool"), "{sys}");
+        assert!(sys.contains("Do not answer in plain text"), "{sys}");
+        // Native uses real tools — never the prompt path's JSON-format instructions.
+        assert!(!sys.contains("respond with ONLY a JSON object"), "{sys}");
+        assert!(!sys.to_lowercase().contains("json array of such objects"), "{sys}");
+    }
+
+    #[test]
+    fn native_system_keeps_plain_text_for_an_abstain_task() {
+        let tools = vec![tool("search", json!({ "q": { "type": "string" } }))];
+        let sys = native_system(&tools, TerminalGuidance::PlainTextOk);
+        assert!(sys.contains("just answer the user in plain text"), "{sys}");
+        assert!(!sys.contains("Do not answer in plain text"), "{sys}");
+    }
 
     #[test]
     fn a_header_without_max_tokens_cannot_strip_the_harness_token_cap() {
