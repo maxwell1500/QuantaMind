@@ -1,7 +1,6 @@
 pub mod eval_history;
 pub mod eval_trace_store;
 pub mod evals;
-pub mod files;
 pub mod jobs;
 pub mod model_settings;
 pub mod prompts;

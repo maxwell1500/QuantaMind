@@ -9,7 +9,6 @@ pub mod hf;
 pub mod llama;
 pub mod mlx;
 pub mod models;
-pub mod ocr;
 pub mod ollama;
 pub mod prompt;
 pub mod prompt_templates;
