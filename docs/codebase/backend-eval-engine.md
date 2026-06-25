@@ -830,6 +830,14 @@ crash-resume.
   every run errors is COUNTED into `tasks_errored` + classified, never silently dropped;
   an all-errored pass still emits a column, which `inputs.rs` filters on `total_runs>0`
   so it never pollutes the verdict), `batch_summaries`, `agg_agentic`.
+- **Pass order (`run_passes`, batch_cmd):** the NATIVE pass runs FIRST (into a `skeleton_report`
+  column shell), emits an intermediate `batch-complete` (`final:false`) so its column shows
+  immediately, then the PROMPT pass runs and its report is merged with the native aggregates by
+  model; the terminal `batch-complete` carries `final:true`. Native steps stream to the sink
+  tagged `is_native` (so the UI shows the native trajectory as a separate trace). Rationale: a
+  slow native model (e.g. gemma4-qat, which times out ~half its turns at the 180s STEP_TIMEOUT)
+  is watchable up front instead of after the whole prompt pass; the UI keeps `running` true
+  until `final` so a still-empty cell reads "Running…", not a misleading "N/A".
 
 **Pass^k is strict** — a task is credited only when *all k runs* succeed:
 
