@@ -552,3 +552,71 @@ fn ollama_version_makes_a_native_garble_diagnosable_on_the_report() {
     assert_eq!(native.top_error, TopError::ForeignDialect);
     assert_eq!(native.failures.foreign_dialect_calls, 1);
 }
+
+#[tokio::test]
+#[ignore = "DIAG: replicate the app's native pass for gemma4 — probe + run_native_fc_pass + streaming"]
+async fn live_diag_app_native_pass_for_gemma4() {
+    use crate::inference::eval::agentic::model_turn::NativeOllamaTurn;
+    use crate::inference::eval::agentic::sandbox::EndStateRule as ESR;
+    use crate::inference::eval::agentic::v2::collection::load_v2_collection;
+    use crate::inference::eval::agentic::v2::scenarios::v2_json;
+    use crate::inference::eval::toolcall::prompt::TerminalGuidance;
+    use crate::inference::ollama::ollama_show::probe_supports_tools;
+
+    const GEMMA: &str = "gemma-4-12b-it-qat:q4_0";
+    let endpoint = "http://localhost:11434";
+
+    // 1) Probe — exactly what batch_cmd does to build the `supported` set.
+    let supports = probe_supports_tools(endpoint, GEMMA).await;
+    eprintln!("STEP probe_supports_tools({GEMMA}) = {supports}");
+    let supported: std::collections::HashSet<String> =
+        if supports { [GEMMA.to_string()].into_iter().collect() } else { Default::default() };
+
+    // One fast reporter-tool task.
+    let tasks: Vec<ToolTask> = load_v2_collection(v2_json("easy-coding").unwrap())
+        .unwrap()
+        .into_iter()
+        .filter(|t| t.id == "es_co_run_failing_test")
+        .collect();
+
+    // A report with a gemma4 Ollama column (as the prompt pass would leave it).
+    let mut report = BatchReport {
+        collection_id: "easy-coding".into(),
+        num_ctx: None,
+        ollama_version: None,
+        columns: vec![BatchColumn {
+            model: GEMMA.into(),
+            backend: BackendKind::Ollama,
+            toolcall: None,
+            agentic: None,
+            agentic_native_fc: None,
+            error: None,
+            is_thinking: false,
+        }],
+    };
+    let sink = Arc::new(CountingSink::default());
+    run_native_fc_pass(
+        &mut report,
+        &tasks,
+        &supported,
+        CancellationToken::new(),
+        |model, task| {
+            let terminal = match task.agentic.as_ref().map(|s| &s.end_state) {
+                Some(ESR::RequireAll(_)) | Some(ESR::RequireSequence(_)) => TerminalGuidance::MustUseTools,
+                _ => TerminalGuidance::PlainTextOk,
+            };
+            NativeOllamaTurn { endpoint: endpoint.to_string(), model: model.to_string(), tools: task.tools.clone(), options: None, terminal }
+        },
+        &[],
+        &|_| {},
+        &NoVramGate,
+        sink.clone(),
+    )
+    .await
+    .unwrap();
+
+    let col = &report.columns[0];
+    eprintln!("STEP agentic_native_fc = {:?}", col.agentic_native_fc);
+    eprintln!("STEP native_turns streamed = {}", *sink.native_turns.lock().unwrap());
+    eprintln!("(N/A in the matrix means agentic_native_fc is None or total_runs==0 → all errored)");
+}
