@@ -94,4 +94,32 @@ mod tests {
         assert!(r.metrics.is_none());
         assert!(r.extracted.is_empty());
     }
+
+    #[tokio::test]
+    #[ignore = "Slice-5 live gate: qwen3.5:9b (vision) OCRs a bundled image and reads its text"]
+    async fn live_vision_model_extracts_bundled_image_text() {
+        use crate::inference::backend::backend_kind::BackendKind;
+        use crate::inference::eval::agentic::model_turn::BackendTurn;
+        use crate::inference::eval::vision::scenarios::{image_base64, vision_collection};
+        use tokio_util::sync::CancellationToken;
+        let collection = vision_collection("easy-ocr").unwrap();
+        let t = collection.tasks.iter().find(|t| t.id == "receipt").unwrap();
+        let image_b64 = image_base64(&t.image).unwrap();
+        let turn = BackendTurn {
+            backend: BackendKind::Ollama,
+            endpoint: "http://localhost:11434".into(),
+            model: "qwen3.5:9b".into(),
+            cancel: CancellationToken::new(),
+            options: None,
+            keep_alive: None,
+            is_thinking: false,
+            max_tokens: 1024,
+            stop_cache: Default::default(),
+        };
+        let row = score_one(&turn, "qwen3.5:9b", t, image_b64).await.unwrap();
+        eprintln!("VISION-LIVE: status={:?} extracted={:?} metrics={:?}", row.status, row.extracted, row.metrics);
+        // It actually ran (not gated) and read the image — the $42.00 total is in the extraction.
+        assert!(matches!(row.status, VisionStatus::Scored | VisionStatus::Hallucinated), "ran + produced text");
+        assert!(row.extracted.to_lowercase().contains("42"), "must read the $42.00 total; got {:?}", row.extracted);
+    }
 }
