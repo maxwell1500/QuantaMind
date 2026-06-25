@@ -14,11 +14,12 @@ vi.mock("../../../shared/ipc/ocr/ocr", () => ({
 
 import { OcrPage } from "../components/OcrPage";
 import { useOcrStore, type OcrDoc } from "../state/ocrStore";
-import { useInstalledModelsStore } from "../../models/state/installedModelsStore";
+import { useSelectedModelStore } from "../../../shared/state/selectedModelStore";
 
 beforeEach(() => {
   useOcrStore.setState({ docs: [], selectedId: null, model: "qwen3.5:9b", running: false });
-  useInstalledModelsStore.setState({ list: [{ name: "qwen3.5:9b", backend: "ollama" } as never], refresh: async () => {} } as never);
+  // OCR uses the GLOBAL header model (no per-page picker).
+  useSelectedModelStore.setState({ selectedModels: [{ name: "qwen3.5:9b", backend: "ollama", size_bytes: 0 }] });
 });
 
 const doc = (over: Partial<OcrDoc> = {}): OcrDoc => ({
@@ -47,6 +48,15 @@ describe("OcrPage", () => {
     expect(screen.getByTestId("ocr-verify-note")).toHaveTextContent("verify important text against the source");
     expect(screen.getByTestId("ocr-verify-note")).toHaveTextContent("qwen3.5:9b");
     expect(screen.getByTestId("ocr-page-1")).toHaveTextContent("Invoice total $42");
+  });
+
+  it("uses the global header model and has no per-page model picker", () => {
+    useOcrStore.setState({ docs: [doc()], selectedId: "D" });
+    render(<OcrPage />);
+    expect(screen.getByTestId("ocr-model")).toHaveTextContent("qwen3.5:9b");
+    expect(screen.queryByTestId("ocr-model-select")).toBeNull();
+    // …and the verify note reflects that same global model.
+    expect(screen.getByTestId("ocr-verify-note")).toHaveTextContent("qwen3.5:9b");
   });
 
   it("shows a Cannot process notice for a gated page (no fabricated text)", () => {

@@ -2,27 +2,24 @@ import { useEffect } from "react";
 import { open, save } from "@tauri-apps/plugin-dialog";
 import { useOcrStore, joinedText } from "../state/ocrStore";
 import { useOcrStream } from "../hooks/useOcrStream";
-import { useInstalledModelsStore } from "../../models/state/installedModelsStore";
+import { useSelectedModelStore } from "../../../shared/state/selectedModelStore";
 import { writeTextFile } from "../../../shared/ipc/ocr/ocr";
 
 const basename = (p: string) => p.split(/[\\/]/).pop() ?? p;
 
-/// The OCR tool: upload images/PDFs (left), pick a vision model, Run OCR, and watch the extracted
-/// text stream into the main area per page. No image/PDF preview — the source isn't shown, so a
-/// sticky "verify against source" note keeps the output honest. Copy / Export the text.
+/// The OCR tool: upload images/PDFs (left), Run OCR, and watch the extracted text stream into the
+/// main area per page. The model is ALWAYS the global header selection (architecture rule 7 — no
+/// per-page model picker). No image/PDF preview — the source isn't shown, so a sticky "verify
+/// against source" note keeps the output honest. Copy / Export the text.
 export function OcrPage() {
   useOcrStream();
   const { docs, selectedId, model, running, addDocuments, select, setModel, runSelected } = useOcrStore();
-  const models = useInstalledModelsStore((s) => s.list);
-  const refresh = useInstalledModelsStore((s) => s.refresh);
-  const ollama = models.filter((m) => m.backend === "ollama");
-
+  // The model follows the global header selection (the first selected model); kept in the OCR store
+  // so `runSelected` reads it. A text-only global model → the run reports "Cannot process".
+  const globalModel = useSelectedModelStore((s) => s.selectedModels[0]?.name ?? "");
   useEffect(() => {
-    void refresh();
-  }, [refresh]);
-  useEffect(() => {
-    if (!model && ollama.length) setModel(ollama[0].name);
-  }, [model, ollama, setModel]);
+    setModel(globalModel);
+  }, [globalModel, setModel]);
 
   const doc = docs.find((d) => d.id === selectedId) ?? null;
 
@@ -52,18 +49,12 @@ export function OcrPage() {
         <button type="button" onClick={onUpload} data-testid="ocr-upload" className="bg-slate-950 hover:bg-slate-900 text-white rounded-lg text-sm font-semibold py-2 px-3">
           ⬆ Upload images / PDF
         </button>
-        <label className="text-xs text-slate-500">Vision model</label>
-        <select
-          data-testid="ocr-model-select"
-          value={model}
-          onChange={(e) => setModel(e.target.value)}
-          className="border border-slate-200 rounded-lg text-sm py-1.5 px-2"
-        >
-          {ollama.length === 0 && <option value="">No Ollama models</option>}
-          {ollama.map((m) => (
-            <option key={m.name} value={m.name}>{m.name}</option>
-          ))}
-        </select>
+        <div className="text-xs text-slate-500">
+          Model (from header):{" "}
+          <span className="font-semibold text-slate-700" data-testid="ocr-model">
+            {model || "— select a model in the header"}
+          </span>
+        </div>
         <div className="flex gap-2">
           <button type="button" onClick={() => void runSelected()} disabled={!doc || !model || running || !!doc?.error} data-testid="ocr-run" className="flex-1 bg-blue-600 disabled:bg-slate-200 disabled:text-slate-400 text-white rounded-lg text-sm font-semibold py-2">
             {running ? "Running…" : "Run OCR"}

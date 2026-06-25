@@ -125,3 +125,35 @@ pub fn stop_ocr(state: tauri::State<'_, OcrRunState>) -> Result<(), AppError> {
     }
     Ok(())
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[tokio::test]
+    #[ignore = "Live: streaming OCR of a bundled image via the vision model (the run_ocr_live core)"]
+    async fn live_streaming_ocr_extracts_image_text() {
+        use crate::inference::eval::vision::scenarios::image_base64;
+        let b64 = image_base64("receipt").unwrap();
+        let spec = GenerateSpec {
+            model: "qwen3.5:9b".into(),
+            prompt: OCR_PROMPT.into(),
+            system: Some(OCR_SYSTEM.into()),
+            options: Some(GenerateOptions { temperature: Some(0.0), ..Default::default() }),
+            keep_alive: None,
+            images: Some(vec![b64]),
+        };
+        let mut chunks = 0usize;
+        let mut out = String::new();
+        OllamaBackend::new(endpoint::default_for(BackendKind::Ollama).to_string())
+            .generate(&spec, CancellationToken::new(), |t| {
+                chunks += 1;
+                out.push_str(t);
+            })
+            .await
+            .unwrap();
+        eprintln!("OCR-STREAM: chunks={chunks} out={out:?}");
+        assert!(chunks >= 1, "the OCR output must arrive as ≥1 streamed chunk");
+        assert!(out.to_lowercase().contains("42"), "must read the $42.00 total; got {out:?}");
+    }
+}

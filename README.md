@@ -6,7 +6,7 @@
 
 Built with Tauri, Rust, React, and Ollama. Local-first. No telemetry. No cloud.
 
-<sub>Workspace · Voice (STT) · Analysis · Inspector · Models · Eval · Quant · Agent Readiness · one ~30 MB binary</sub>
+<sub>Workspace · Voice (STT) · Analysis · Inspector · Models · Eval · OCR · Quant · Agent Readiness · one ~30 MB binary</sub>
 
 <br/>
 
@@ -64,6 +64,7 @@ Built with Tauri, Rust, React, and Ollama. Local-first. No telemetry. No cloud.
 | **Inspector** | Per-token timing forensics for a run — TTFT phase breakdown, a per-token latency timeline, and an inter-token latency histogram. |
 | **Model Management** | Install, inspect, and uninstall models from three sources — Ollama library, Hugging Face GGUF, local files — without touching a terminal. |
 | **Eval** | Score models on graduated **tiered agentic scenarios** (Easy→Extreme across coding, finance, medical, legal, ops…) — world-state discovery, `must_not_call` traps, tier-scaled Pass^k — plus schema resilience and the context-cliff probe; custom collections + JSON/CSV import. |
+| **OCR** | Drop in images or **multi-page PDFs**, pick a vision model, and watch the extracted text **stream live** page-by-page — copy or export to `.txt`. A model that can't see images says "Cannot process" (never a fake result); a "verify against the source" note keeps the output honest. Fully local. |
 | **Quant** | Compare quantizations of one model family — size vs quality vs whether it fits in memory. |
 | **Agent Report** | Turn the measurements into a per-model **Ready / Conditional / Not Ready** verdict against a chosen readiness profile and your hardware. |
 
