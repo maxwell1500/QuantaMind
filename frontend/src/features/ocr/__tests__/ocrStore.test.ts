@@ -3,6 +3,8 @@ import { describe, it, expect, beforeEach, vi } from "vitest";
 vi.mock("../../../shared/ipc/ocr/ocr", () => ({
   readFileBase64: vi.fn(async () => "B64DATA"),
   runOcrLive: vi.fn(async () => {}),
+  ocrModelSupportsVision: vi.fn(async () => true),
+  stopOcr: vi.fn(async () => {}),
   EVENT_OCR_TOKEN: "ocr-token",
   EVENT_OCR_DONE: "ocr-done",
   EVENT_OCR_CANNOT_PROCESS: "ocr-cannot-process",
@@ -16,13 +18,14 @@ vi.mock("../lib/pdf", () => ({
 }));
 
 import { useOcrStore, joinedText, type OcrDoc } from "../state/ocrStore";
-import { readFileBase64, runOcrLive } from "../../../shared/ipc/ocr/ocr";
+import { readFileBase64, runOcrLive, ocrModelSupportsVision } from "../../../shared/ipc/ocr/ocr";
 import { useSelectedModelStore } from "../../../shared/state/selectedModelStore";
 
 beforeEach(() => {
-  useOcrStore.setState({ docs: [], selectedId: null, running: false });
+  useOcrStore.setState({ docs: [], selectedId: null, running: false, activePage: null, cancelRequested: false });
   useSelectedModelStore.setState({ selectedModels: [{ name: "qwen3.5:9b", backend: "ollama", size_bytes: 0 }] });
   vi.mocked(runOcrLive).mockClear();
+  vi.mocked(ocrModelSupportsVision).mockReset().mockResolvedValue(true);
 });
 
 const imageDoc = (): OcrDoc => ({ id: "I", name: "a.png", kind: "image", sourceB64: "B64", error: null, pages: [{ page: 1, text: "", status: "pending" }] });
@@ -80,6 +83,21 @@ describe("ocrStore", () => {
     useOcrStore.setState({ docs: [imageDoc()], selectedId: "I" });
     await useOcrStore.getState().runSelected();
     expect(runOcrLive).toHaveBeenCalledWith("header-model", "B64", "I#1");
+  });
+
+  it("probes vision ONCE up front (not per page) and runs all pages when supported", async () => {
+    useOcrStore.setState({ docs: [{ id: "P", name: "d.pdf", kind: "pdf", sourceB64: "B64", error: null, pages: [{ page: 1, text: "", status: "pending" }, { page: 2, text: "", status: "pending" }] }], selectedId: "P" });
+    await useOcrStore.getState().runSelected();
+    expect(ocrModelSupportsVision).toHaveBeenCalledTimes(1); // once, not per-page
+    expect(runOcrLive).toHaveBeenCalledTimes(2);
+  });
+
+  it("a non-vision model marks every page cannot_process and runs nothing", async () => {
+    vi.mocked(ocrModelSupportsVision).mockResolvedValue(false);
+    useOcrStore.setState({ docs: [imageDoc()], selectedId: "I" });
+    await useOcrStore.getState().runSelected();
+    expect(runOcrLive).not.toHaveBeenCalled();
+    expect(useOcrStore.getState().docs[0].pages[0].status).toBe("cannot_process");
   });
 
   it("does not run when no global model is selected", async () => {

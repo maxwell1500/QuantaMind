@@ -7,6 +7,8 @@ vi.mock("../../../shared/ipc/ocr/ocr", () => ({
   writeTextFile: vi.fn(),
   readFileBase64: vi.fn(),
   runOcrLive: vi.fn(),
+  ocrModelSupportsVision: vi.fn(async () => true),
+  stopOcr: vi.fn(),
   EVENT_OCR_TOKEN: "ocr-token",
   EVENT_OCR_DONE: "ocr-done",
   EVENT_OCR_CANNOT_PROCESS: "ocr-cannot-process",
@@ -63,6 +65,14 @@ describe("OcrPage", () => {
     useOcrStore.setState({ docs: [doc()], selectedId: "D" });
     render(<OcrPage />);
     expect(screen.getByTestId("ocr-cannot-2")).toHaveTextContent("Cannot process");
+  });
+
+  it("shows Stop + a live progress indicator while running (never feels stuck)", () => {
+    useOcrStore.setState({ docs: [doc()], selectedId: "D", running: true, activePage: 1 });
+    render(<OcrPage />);
+    expect(screen.getByTestId("ocr-stop")).toBeInTheDocument();
+    expect(screen.queryByTestId("ocr-run")).toBeNull();
+    expect(screen.getByTestId("ocr-progress")).toHaveTextContent("Extracting page 1");
   });
 
   it("surfaces an honest per-document error for an unreadable file", () => {

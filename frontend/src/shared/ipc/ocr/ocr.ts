@@ -14,6 +14,12 @@ export interface OcrRequestPayload {
   model: string;
 }
 
+/// Whether the model can read images. Probed ONCE per run (gate the whole document up front), never
+/// per page — a per-page probe false-negatives while Ollama is busy with the previous page.
+export async function ocrModelSupportsVision(model: string): Promise<boolean> {
+  return invoke<boolean>("ocr_model_supports_vision", { model });
+}
+
 /// Read a user-selected image/PDF (by path) → base64. File I/O happens in Rust.
 export async function readFileBase64(sourcePath: string): Promise<string> {
   return invoke<string>("read_file_base64", { sourcePath });
