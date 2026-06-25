@@ -15,7 +15,7 @@ import type { HardwareTier } from "../../../../shared/ipc/compare/hardware";
 import { batchToCsv, download } from "../../exportBatch";
 import { ConfirmDialog } from "./ConfirmDialog";
 import { CsvImportModal } from "./CsvImportModal";
-import { WorldStateEditor } from "../../env/WorldStateEditor";
+import { WorldStateEditor } from "./WorldStateEditor";
 import { KebabMenu } from "./KebabMenu";
 import { Spinner } from "../../../../shared/ui/Spinner";
 
