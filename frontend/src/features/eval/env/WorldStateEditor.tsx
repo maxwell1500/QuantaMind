@@ -1,6 +1,6 @@
 import { useState } from "react";
-import type { ToolTask } from "../../../../shared/ipc/eval/registry";
-import { validateWorldStateShape } from "../../env/worldStateShape";
+import type { ToolTask } from "../../../shared/ipc/eval/registry";
+import { validateWorldStateShape } from "./worldStateShape";
 
 /// Edit a task's environment snapshot (`agentic.world_state`) as JSON. The textarea is trivial; the
 /// VALIDATION is the point — Save is disabled until the text both (1) parses as JSON and (2) matches
