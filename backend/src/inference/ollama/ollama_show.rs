@@ -69,17 +69,6 @@ pub async fn probe_supports_tools(endpoint: &str, model: &str) -> bool {
     show_model(endpoint, model).await.map(|r| supports_tools(&r.capabilities)).unwrap_or(false)
 }
 
-/// Whether a model's reported `/api/show` capabilities include vision (image input).
-pub fn supports_vision(caps: &[String]) -> bool {
-    caps.iter().any(|c| c == "vision")
-}
-
-/// Best-effort probe: does this Ollama model support vision? Any error (model gone, Ollama down,
-/// uncertain) → `false`, so the vision eval renders "Cannot process" rather than fabricating a 0.
-pub async fn probe_supports_vision(endpoint: &str, model: &str) -> bool {
-    show_model(endpoint, model).await.map(|r| supports_vision(&r.capabilities)).unwrap_or(false)
-}
-
 /// Extract the version string from a `/api/version` body (`{"version":"0.11.10"}`).
 /// Split out so it's unit-tested without a live server.
 pub fn parse_version(body: &str) -> Option<String> {

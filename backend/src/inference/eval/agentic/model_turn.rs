@@ -195,7 +195,6 @@ impl ModelTurn for BackendTurn {
             system: None,
             options: Some(GenerateOptions { num_predict: Some(1), temperature: Some(0.0), ..Default::default() }),
             keep_alive: self.keep_alive,
-            images: None,
         };
         let cancel = self.cancel.clone();
         let sink = |_: &str| {};

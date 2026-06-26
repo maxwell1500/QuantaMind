@@ -14,9 +14,6 @@ pub(crate) struct GenerateRequest<'a> {
     pub options: Option<GenerateOptions>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub keep_alive: Option<i32>,
-    /// Base64 images for a vision call. Omitted (byte-parity) for every text request.
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub images: Option<&'a [String]>,
     pub stream: bool,
 }
 
@@ -62,26 +59,15 @@ mod tests {
     fn keep_alive_serializes_when_set_and_is_omitted_when_none() {
         let with = GenerateRequest {
             model: "m", prompt: "p", system: None, options: None,
-            keep_alive: Some(-1), images: None, stream: true,
+            keep_alive: Some(-1), stream: true,
         };
         let json = serde_json::to_string(&with).unwrap();
         assert!(json.contains("\"keep_alive\":-1"), "{json}");
 
         let without = GenerateRequest {
             model: "m", prompt: "p", system: None, options: None,
-            keep_alive: None, images: None, stream: true,
+            keep_alive: None, stream: true,
         };
         assert!(!serde_json::to_string(&without).unwrap().contains("keep_alive"));
-    }
-
-    #[test]
-    fn images_byte_parity_text_request_omits_the_field_and_vision_includes_it() {
-        // A text call (images None) must serialize with NO `images` key — the text-path bytes are
-        // unchanged. A vision call includes the base64 array.
-        let text = GenerateRequest { model: "m", prompt: "p", system: None, options: None, keep_alive: None, images: None, stream: true };
-        assert!(!serde_json::to_string(&text).unwrap().contains("images"));
-        let imgs = vec!["BASE64DATA".to_string()];
-        let vision = GenerateRequest { model: "m", prompt: "p", system: None, options: None, keep_alive: None, images: Some(&imgs), stream: true };
-        assert!(serde_json::to_string(&vision).unwrap().contains("\"images\":[\"BASE64DATA\"]"));
     }
 }

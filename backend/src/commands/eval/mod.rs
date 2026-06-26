@@ -6,4 +6,3 @@ pub mod evals_load;
 pub mod matrix_cmd;
 pub mod readiness_cmd;
 pub mod toolcall_cmd;
-pub mod vision_cmd;

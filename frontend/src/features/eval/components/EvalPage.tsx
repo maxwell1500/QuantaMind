@@ -13,7 +13,6 @@ import { ConfirmDialog } from "./manager/ConfirmDialog";
 import { MatrixScoreboard } from "./scoreboard/MatrixScoreboard";
 import { PerformanceMatrix } from "./scoreboard/PerformanceMatrix";
 import { TraceDebugger } from "./TraceDebugger";
-import { VisionOCRPanel } from "./vision/VisionOCRPanel";
 import { RunRecoveryDialog } from "./RunRecoveryDialog";
 import { useRunRecovery } from "../hooks/useRunRecovery";
 import { useToast } from "../../../shared/ui/Toast";
@@ -313,7 +312,6 @@ export function EvalPage() {
               tracePass={focusedPass}
             />
             <PerformanceMatrix focusedModel={focusedModel} onFocusModel={focusModel} />
-            <VisionOCRPanel model={focusedModel} />
           </>
         )}
       </div>
