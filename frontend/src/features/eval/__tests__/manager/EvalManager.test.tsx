@@ -106,6 +106,16 @@ describe("EvalManager Sidebar Controls", () => {
     expect(screen.getByTestId("info-popup-iterations")).toHaveTextContent(/Pass\^k/);
   });
 
+  it("shows the llama.cpp jinja note under native tool-calling, hidden for Ollama", () => {
+    // Ollama (set in beforeEach): the Ollama view is unchanged — no llama note.
+    const { rerender } = render(<EvalManager {...props()} />);
+    expect(screen.queryByTestId("eval-method-llama-jinja-note")).toBeNull();
+    // Switch the running backend to llama.cpp → the jinja/template note appears.
+    useBackendStore.setState({ selectedBackend: "llama_cpp" });
+    rerender(<EvalManager {...props()} />);
+    expect(screen.getByTestId("eval-method-llama-jinja-note")).toHaveTextContent(/jinja/i);
+  });
+
   it("explains WHY the RUN BATCH button is disabled (no model vs no tasks)", () => {
     useSelectedModelStore.setState({ selectedModels: [] });
     const { rerender } = render(<EvalManager {...props({ model: "" })} />);

@@ -7,6 +7,7 @@ import { InfoButton } from "../../../../shared/ui/InfoButton";
 import { TOOL_HELP } from "../../help";
 import { useBatchStore } from "../../state/batchStore";
 import { useBatchRun } from "../../hooks/useBatchRun";
+import { useBackendStore } from "../../../../shared/state/backendStore";
 import { formatIpcError } from "../../../../shared/ipc/core/error";
 import { useToast } from "../../../../shared/ui/Toast";
 import type { ToolTask } from "../../../../shared/ipc/eval/registry";
@@ -85,11 +86,15 @@ export function EvalManager({
   const [error, setError] = useState<string | null>(null);
   const [deleteTarget, setDeleteTarget] = useState<string | null>(null);
   const [csvOpen, setCsvOpen] = useState(false);
-  // Calling method(s) to measure — pick either or both (at least one). Tool-Calling (native
-  // Ollama /api/chat tool_calls) is the DEFAULT; Prompt-based (JSON-in-text proxy) is opt-in.
-  // Native is N/A for non-Ollama / no-`tools` models regardless.
+  // Calling method(s) to measure — pick either or both (at least one). Tool-Calling (native)
+  // is the DEFAULT; Prompt-based (JSON-in-text proxy) is opt-in. Native follows the running
+  // backend (Ollama /api/chat, llama.cpp /v1/chat/completions with --jinja); N/A for MLX /
+  // no-`tools` models.
   const [nativeFc, setNativeFc] = useState(true); // Tool-Calling (native)
   const [promptBased, setPromptBased] = useState(false); // Prompt-based proxy
+  // The running backend drives which native tool API is used; the UI says so for
+  // llama.cpp (jinja templating) while leaving the Ollama view unchanged.
+  const selectedBackend = useBackendStore((s) => s.selectedBackend);
 
   const handleCsvImport = async (name: string, csvTasks: ToolTask[]) => {
     await save(name, csvTasks);
@@ -355,10 +360,15 @@ export function EvalManager({
           <div style={{ display: "flex", flexDirection: "column", gap: 6 }} data-testid="eval-calling-method">
             <span style={controlLabelStyle}>Calling method:</span>
             <label style={{ display: "flex", alignItems: "center", gap: 8, cursor: "pointer", fontSize: 12, color: "#334155", fontFamily: "Inter, sans-serif" }}
-              title="Run each Ollama model through its NATIVE /api/chat tool_calls API. N/A for llama.cpp / MLX / no-`tools` models.">
+              title="Run the model through its backend's NATIVE tool_calls API — Ollama /api/chat or llama.cpp /v1/chat/completions (with --jinja). N/A for MLX / no-`tools` models.">
               <input type="checkbox" checked={nativeFc} onChange={(e) => setNativeFc(e.target.checked)} data-testid="eval-method-native" />
               Tool-Calling (native) <span style={{ color: "#94a3b8" }}>· default</span>
             </label>
+            {selectedBackend === "llama_cpp" && (
+              <span data-testid="eval-method-llama-jinja-note" style={{ fontSize: 11, color: "#64748b", fontFamily: "Inter, sans-serif", paddingLeft: 24 }}>
+                llama.cpp applies the model's Jinja template (<code>--jinja</code>) for native tool-calling. If a model's embedded template is broken, drop a <code>&lt;model&gt;.jinja</code> override in the <code>chat_templates</code> folder.
+              </span>
+            )}
             <label style={{ display: "flex", alignItems: "center", gap: 8, cursor: "pointer", fontSize: 12, color: "#334155", fontFamily: "Inter, sans-serif" }}
               title="Run the prompt-based proxy: tools described in the system prompt, the model emits JSON-in-text the harness parses.">
               <input type="checkbox" checked={promptBased} onChange={(e) => setPromptBased(e.target.checked)} data-testid="eval-method-prompt" />
