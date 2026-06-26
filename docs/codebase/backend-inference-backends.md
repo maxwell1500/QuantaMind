@@ -606,7 +606,7 @@ stderr-aware launcher where loading is slow.
 
 | File | Role |
 |---|---|
-| `llama_start.rs` | `start_llama_server` / `stop_llama_server` commands. |
+| `llama_start.rs` | `start_llama_server` / `stop_llama_server` / `llama_server_info` (one-time spawn readout) commands. |
 | `llama_runtime.rs` | spawn/probe/ready primitives + `check_llama_health`. |
 | `llama_server_types.rs` | `LlamaServerState` (one `Child`) + `LlamaStartResult`. |
 | `llama_discover.rs` | scan dirs for `*.gguf` → `InstalledModelInfo{backend=LlamaCpp}`. |
@@ -626,13 +626,20 @@ stderr-aware launcher where loading is slow.
   `wait_until_ready()`** (poll `/health` every 500ms ≤30s). If readiness fails,
   kill and diagnose: a drained stderr tail naming a rejected `--jinja`
   (`jinja_unsupported`) → `JINJA_UNSUPPORTED_MSG` (stale bundled binary), else
-  the generic timeout message.
+  the generic timeout message. On the **ready** path it records a one-time
+  `SpawnReadout { model_bytes, load_ms }`: `model_bytes` = the GGUF's on-disk size
+  (`fs::metadata`, the dominant resident-memory term), `load_ms` = the spawn→ready
+  wall-clock (model-load window; coarse, bounded by the 500ms poll). A
+  failed/never-ready start records nothing (no fabricated number). `llama_server_info`
+  exposes it — surfaced as a **spawn-time** readout in the Inspector (NOT a
+  per-request phase, since llama loads once at spawn and stays resident).
 - **`spawn_server`** (`llama_runtime.rs`): sets `current_dir(dir)` +
   `DYLD_FALLBACK_LIBRARY_PATH=dir` so `@rpath` dylibs resolve; **pipes stderr**
   (drained on a thread into a bounded tail for the death diagnosis — an undrained
   pipe would wedge the child); kills by `Child` handle (portable, unlike Ollama's
   macOS `pkill`).
-- **`LlamaServerState`**: one server per GGUF; a new model `stop()`s the prior.
+- **`LlamaServerState`**: one server per GGUF; a new model `stop()`s the prior;
+  holds the `SpawnReadout` (set on ready, cleared on stop).
 
 ```rust
 // llama_start.rs — HEALTH-gated readiness; on failure, diagnose stderr then reap

@@ -9,6 +9,7 @@ import { pickLoaded } from "../format/vram";
 import { ModelTimeline } from "./ModelTimeline";
 import { LeakBanner } from "./LeakBanner";
 import { ExportReportButton } from "../report/ExportReportButton";
+import { LlamaServerReadout } from "./LlamaServerReadout";
 import { SttInspectorSection } from "../../sttInspector/components/SttInspectorSection";
 import { useSttResultStore } from "../../sttInspector/state/sttResultStore";
 
@@ -50,14 +51,18 @@ export function InspectorPage() {
 
   if (charted.length === 0 && !hasStt) {
     return (
-      <div className="text-sm text-gray-500 border rounded p-6 text-center" data-testid="inspector-empty" ref={ref}>
-        Run a prompt — or transcribe audio — in the Workspace to inspect timing.
+      <div className="space-y-3" data-testid="inspector-empty" ref={ref}>
+        <LlamaServerReadout />
+        <div className="text-sm text-gray-500 border rounded p-6 text-center">
+          Run a prompt — or transcribe audio — in the Workspace to inspect timing.
+        </div>
       </div>
     );
   }
 
   return (
     <div className="space-y-4" data-testid="inspector" ref={ref}>
+      <LlamaServerReadout />
       <LeakBanner />
       {charted.length > 0 && (
         <>
