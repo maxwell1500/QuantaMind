@@ -8,7 +8,7 @@ use crate::commands::prompt::prompt_options::{to_generate_options, validate_para
 use crate::errors::AppError;
 use crate::inference::backend::backend_kind::BackendKind;
 use crate::inference::eval::agentic::difficulty::passk::{max_tokens_for, pass_k_for};
-use crate::inference::eval::agentic::model_turn::{BackendTurn, NativeOllamaTurn};
+use crate::inference::eval::agentic::model_turn::{BackendTurn, NativeToolTurn};
 use crate::inference::eval::agentic::sandbox::EndStateRule;
 use crate::inference::eval::agentic::spec::Tier;
 use crate::inference::eval::toolcall::prompt::TerminalGuidance;
@@ -272,20 +272,25 @@ pub(crate) async fn run_passes(
     // instead of waiting out the whole prompt pass. It fills `agentic_native_fc` on a column
     // skeleton; the prompt pass runs next and we merge the native aggregates into its report.
     let native_aggs: HashMap<String, AggAgentic> = if config.native {
-        let endpoint = endpoint_for(BackendKind::Ollama);
+        // Native FC follows the running server: probe each target on ITS backend
+        // (Ollama via /api/show tools; llama.cpp with --jinja is tool-capable; MLX
+        // has no native tool API). A batch is single-backend (UI), so this just
+        // selects whichever server the user is on.
         let mut supported = HashSet::new();
         for t in &config.targets {
-            if t.backend == BackendKind::Ollama && probe_supports_tools(&endpoint, &t.model).await {
+            if probe_native_tools(t.backend, &endpoint_for(t.backend), &t.model).await {
                 supported.insert(t.model.clone());
             }
         }
         let mut skeleton = skeleton_report(&config.collection_id, &config.targets);
+        let targets = config.targets.clone();
         run_native_fc_pass(
             &mut skeleton,
             &tasks,
             &supported,
             native_cancel,
             |model, task| {
+                let backend = targets.iter().find(|t| t.model == model).map(|t| t.backend).unwrap_or_default();
                 // Gate the native system's answer-delivery mandate on act-vs-abstain, exactly
                 // like the prompt path (runner.rs) — so a native model on an ACT task is told to
                 // call the reporter tool, not nudged into prose (an unfair ReportedInProse).
@@ -300,9 +305,10 @@ pub(crate) async fn run_passes(
                 // (→ EmptyOutput on hard/extreme). Give native the GENEROUS tier budget
                 // (`max_tokens_for(tier, true)` = 1536–4096): tier-scaled, ample headroom, still
                 // bounded (anti-runaway) and capped by the per-turn wall-clock timeout.
-                let is_thinking = config.targets.iter().find(|t| t.model == model).is_some_and(|t| t.is_thinking);
-                NativeOllamaTurn {
-                    endpoint: endpoint.clone(),
+                let is_thinking = targets.iter().find(|t| t.model == model).is_some_and(|t| t.is_thinking);
+                NativeToolTurn {
+                    backend,
+                    endpoint: endpoint_for(backend),
                     model: model.to_string(),
                     tools: task.tools.clone(),
                     options: native_options.clone(),
@@ -408,14 +414,31 @@ pub struct UnfinishedRun {
     pub total: usize,
 }
 
+/// Does this backend+model support a NATIVE tool-calling API? Ollama answers via
+/// `/api/show`'s `tools` capability; llama.cpp launched with `--jinja` applies the
+/// model's embedded tool grammar (treated as capable — a template lacking tool
+/// support simply yields no `tool_calls`, which the harness labels honestly); MLX
+/// has no native tool API. Mirrors the prompt path's backend dispatch so native
+/// FC follows whichever server is running.
+async fn probe_native_tools(backend: BackendKind, endpoint: &str, model: &str) -> bool {
+    match backend {
+        BackendKind::Ollama => probe_supports_tools(endpoint, model).await,
+        BackendKind::LlamaCpp => true,
+        BackendKind::Mlx => false,
+    }
+}
+
 /// Upper bound on a run's units — prompt (targets × tasks) plus, when native is
-/// on, the agentic tasks on each Ollama target (the only ones that get a native run).
+/// on, the agentic tasks on each native-capable target. MLX has no native tool API
+/// so it's excluded; an Ollama model without the `tools` capability is also a
+/// no-native case, so this stays an upper bound (the actual native pass runs only
+/// for probe-confirmed `supported` models).
 fn total_units(c: &RunConfig) -> usize {
     let prompt = c.targets.len() * c.tasks.len();
     let native = if c.native {
-        let ollama = c.targets.iter().filter(|t| t.backend == BackendKind::Ollama).count();
+        let native_capable = c.targets.iter().filter(|t| t.backend != BackendKind::Mlx).count();
         let agentic = c.tasks.iter().filter(|t| t.category == "agentic").count();
-        ollama * agentic
+        native_capable * agentic
     } else {
         0
     };

@@ -471,7 +471,7 @@ async fn live_gap_a_prime_gemma4_native_calls_reply_with_the_mandate() {
     // system said "...otherwise reply in plain text". With the reporter mandate, it should now
     // CALL the reply tool. Drives the real native path on a reporter-tool act task.
     use crate::inference::eval::agentic::build::sandbox_for;
-    use crate::inference::eval::agentic::model_turn::NativeOllamaTurn;
+    use crate::inference::eval::agentic::model_turn::NativeToolTurn;
     use crate::inference::eval::agentic::v2::collection::load_v2_collection;
     use crate::inference::eval::agentic::v2::scenarios::v2_json;
     use crate::inference::eval::toolcall::prompt::TerminalGuidance;
@@ -481,7 +481,8 @@ async fn live_gap_a_prime_gemma4_native_calls_reply_with_the_mandate() {
         .find(|t| t.id == "es_co_run_failing_test")
         .unwrap();
     let (sandbox, cfg) = sandbox_for(&task).unwrap();
-    let model = NativeOllamaTurn {
+    let model = NativeToolTurn {
+        backend: crate::inference::backend::backend_kind::BackendKind::Ollama,
         endpoint: "http://localhost:11434".into(),
         model: "gemma-4-12b-it-qat:q4_0".into(),
         tools: task.tools.clone(),
@@ -512,7 +513,7 @@ async fn live_filesystem_env_passes_on_the_native_path() {
     // path with the reporter mandate (Gap A'). A native-capable model must read the real file
     // content (the acks-empty fix) and report it BY CALLING reply — reaching the end state.
     use crate::inference::eval::agentic::build::sandbox_for;
-    use crate::inference::eval::agentic::model_turn::NativeOllamaTurn;
+    use crate::inference::eval::agentic::model_turn::NativeToolTurn;
     use crate::inference::eval::agentic::v2::collection::load_v2_collection;
     use crate::inference::eval::agentic::v2::scenarios::v2_json;
     use crate::inference::eval::toolcall::prompt::TerminalGuidance;
@@ -522,7 +523,8 @@ async fn live_filesystem_env_passes_on_the_native_path() {
         .find(|t| t.id == "es_fs_read_config")
         .unwrap();
     let (sandbox, cfg) = sandbox_for(&task).unwrap();
-    let model = NativeOllamaTurn {
+    let model = NativeToolTurn {
+        backend: crate::inference::backend::backend_kind::BackendKind::Ollama,
         endpoint: "http://localhost:11434".into(),
         model: "qwen3.5:9b".into(),
         tools: task.tools.clone(),
@@ -552,7 +554,7 @@ async fn live_native_path_runs_across_medium_hard_extreme_tiers() {
     // task — that's a capability measurement, not a harness bug; we only assert it ran + scored.
     use crate::inference::eval::agentic::build::sandbox_for;
     use crate::inference::eval::agentic::difficulty::passk::max_tokens_for;
-    use crate::inference::eval::agentic::model_turn::NativeOllamaTurn;
+    use crate::inference::eval::agentic::model_turn::NativeToolTurn;
     use crate::inference::eval::agentic::v2::collection::load_v2_collection;
     use crate::inference::eval::agentic::v2::scenarios::v2_json;
     use crate::inference::eval::toolcall::prompt::TerminalGuidance;
@@ -569,7 +571,8 @@ async fn live_native_path_runs_across_medium_hard_extreme_tiers() {
             .unwrap();
         let tier = task.agentic.as_ref().map(|s| s.tier).unwrap_or_default();
         let (sandbox, cfg) = sandbox_for(&task).unwrap();
-        let model = NativeOllamaTurn {
+        let model = NativeToolTurn {
+        backend: crate::inference::backend::backend_kind::BackendKind::Ollama,
             endpoint: "http://localhost:11434".into(),
             model: "qwen3.5:9b".into(),
             tools: task.tools.clone(),
@@ -602,7 +605,7 @@ async fn live_web_corpus_passes_on_the_native_path() {
     use crate::inference::eval::agentic::build::sandbox_for;
     use crate::inference::eval::agentic::difficulty::passk::max_tokens_for;
     use crate::inference::eval::agentic::env_view::{CorpusOp, EnvView};
-    use crate::inference::eval::agentic::model_turn::NativeOllamaTurn;
+    use crate::inference::eval::agentic::model_turn::NativeToolTurn;
     use crate::inference::eval::agentic::v2::collection::load_v2_collection;
     use crate::inference::eval::agentic::v2::scenarios::v2_json;
     use crate::inference::eval::toolcall::prompt::TerminalGuidance;
@@ -613,7 +616,8 @@ async fn live_web_corpus_passes_on_the_native_path() {
         .unwrap();
     let tier = task.agentic.as_ref().map(|s| s.tier).unwrap_or_default();
     let (sandbox, cfg) = sandbox_for(&task).unwrap();
-    let model = NativeOllamaTurn {
+    let model = NativeToolTurn {
+        backend: crate::inference::backend::backend_kind::BackendKind::Ollama,
         endpoint: "http://localhost:11434".into(),
         model: "qwen3.5:9b".into(),
         tools: task.tools.clone(),
@@ -694,7 +698,7 @@ async fn live_web_corpus_abstains_when_doc_absent_native() {
     // end state on the native path. NOT a fabrication test — it asserts the abstain is ACCEPTED.
     use crate::inference::eval::agentic::build::sandbox_for;
     use crate::inference::eval::agentic::difficulty::passk::max_tokens_for;
-    use crate::inference::eval::agentic::model_turn::NativeOllamaTurn;
+    use crate::inference::eval::agentic::model_turn::NativeToolTurn;
     use crate::inference::eval::agentic::v2::collection::load_v2_collection;
     use crate::inference::eval::agentic::v2::scenarios::v2_json;
     use crate::inference::eval::toolcall::prompt::TerminalGuidance;
@@ -705,7 +709,8 @@ async fn live_web_corpus_abstains_when_doc_absent_native() {
         .unwrap();
     let tier = task.agentic.as_ref().map(|s| s.tier).unwrap_or_default();
     let (sandbox, cfg) = sandbox_for(&task).unwrap();
-    let model = NativeOllamaTurn {
+    let model = NativeToolTurn {
+        backend: crate::inference::backend::backend_kind::BackendKind::Ollama,
         endpoint: "http://localhost:11434".into(),
         model: "qwen3.5:9b".into(),
         tools: task.tools.clone(),
@@ -729,7 +734,7 @@ async fn live_web_corpus_abstains_when_doc_absent_native() {
 #[tokio::test]
 #[ignore = "hits a live Ollama on :11434 driving gemma-4-12b-it-qat through the NATIVE /api/chat tools path"]
 async fn live_gemma_native_path_gives_an_honest_verdict_not_silent_empty() {
-    // The native-path wiring fix end-to-end: NativeOllamaTurn now surfaces the assistant
+    // The native-path wiring fix end-to-end: NativeToolTurn now surfaces the assistant
     // `content` when Ollama parses zero tool_calls, so a mis-built model's output is given a
     // real verdict instead of collapsing to a silent empty → Hallucinated. Drives the REAL
     // /api/chat tools path. gemma-qat is nondeterministic, so we assert the INVARIANT: the run
@@ -761,7 +766,8 @@ async fn live_gemma_native_path_gives_an_honest_verdict_not_silent_empty() {
             args: json!({ "module": "cart" }),
         }]),
     );
-    let model = crate::inference::eval::agentic::model_turn::NativeOllamaTurn {
+    let model = crate::inference::eval::agentic::model_turn::NativeToolTurn {
+        backend: crate::inference::backend::backend_kind::BackendKind::Ollama,
         endpoint: "http://localhost:11434".into(),
         model: "gemma-4-12b-it-qat:q4_0".into(),
         tools,
@@ -1872,7 +1878,7 @@ async fn live_web_ui_passes_on_the_native_path() {
     use crate::inference::eval::agentic::build::sandbox_for;
     use crate::inference::eval::agentic::difficulty::passk::max_tokens_for;
     use crate::inference::eval::agentic::env_view::EnvView;
-    use crate::inference::eval::agentic::model_turn::NativeOllamaTurn;
+    use crate::inference::eval::agentic::model_turn::NativeToolTurn;
     use crate::inference::eval::agentic::v2::collection::load_v2_collection;
     use crate::inference::eval::agentic::v2::scenarios::v2_json;
     use crate::inference::eval::toolcall::prompt::TerminalGuidance;
@@ -1883,7 +1889,8 @@ async fn live_web_ui_passes_on_the_native_path() {
         .unwrap();
     let tier = task.agentic.as_ref().map(|s| s.tier).unwrap_or_default();
     let (sandbox, cfg) = sandbox_for(&task).unwrap();
-    let model = NativeOllamaTurn {
+    let model = NativeToolTurn {
+        backend: crate::inference::backend::backend_kind::BackendKind::Ollama,
         endpoint: "http://localhost:11434".into(),
         model: "qwen3.5:9b".into(),
         tools: task.tools.clone(),
@@ -1958,14 +1965,15 @@ async fn live_web_ui_enable_setting_native() {
     // canonicalization makes it "/settings"; the model toggles the declared "notifications".
     use crate::inference::eval::agentic::build::sandbox_for;
     use crate::inference::eval::agentic::difficulty::passk::max_tokens_for;
-    use crate::inference::eval::agentic::model_turn::NativeOllamaTurn;
+    use crate::inference::eval::agentic::model_turn::NativeToolTurn;
     use crate::inference::eval::agentic::v2::collection::load_v2_collection;
     use crate::inference::eval::agentic::v2::scenarios::v2_json;
     use crate::inference::eval::toolcall::prompt::TerminalGuidance;
     let task = load_v2_collection(v2_json("easy-webui-tasks").unwrap()).unwrap().into_iter().find(|t| t.id == "es_wu_enable_setting").unwrap();
     let tier = task.agentic.as_ref().map(|s| s.tier).unwrap_or_default();
     let (sandbox, cfg) = sandbox_for(&task).unwrap();
-    let model = NativeOllamaTurn {
+    let model = NativeToolTurn {
+        backend: crate::inference::backend::backend_kind::BackendKind::Ollama,
         endpoint: "http://localhost:11434".into(),
         model: "qwen3.5:9b".into(),
         tools: task.tools.clone(),
@@ -2025,7 +2033,7 @@ async fn live_edited_world_state_reaches_the_model() {
     // edit also makes this run non-pristine → collection_hash None — the fork-on-edit guard, unit-pinned.)
     use crate::inference::eval::agentic::build::sandbox_for;
     use crate::inference::eval::agentic::difficulty::passk::max_tokens_for;
-    use crate::inference::eval::agentic::model_turn::NativeOllamaTurn;
+    use crate::inference::eval::agentic::model_turn::NativeToolTurn;
     use crate::inference::eval::agentic::v2::collection::load_v2_collection;
     use crate::inference::eval::agentic::v2::scenarios::v2_json;
     use crate::inference::eval::toolcall::prompt::TerminalGuidance;
@@ -2044,7 +2052,8 @@ async fn live_edited_world_state_reaches_the_model() {
     }
     let tier = task.agentic.as_ref().map(|s| s.tier).unwrap_or_default();
     let (sandbox, cfg) = sandbox_for(&task).unwrap();
-    let model = NativeOllamaTurn {
+    let model = NativeToolTurn {
+        backend: crate::inference::backend::backend_kind::BackendKind::Ollama,
         endpoint: "http://localhost:11434".into(),
         model: "qwen3.5:9b".into(),
         tools: task.tools.clone(),

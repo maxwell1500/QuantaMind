@@ -649,12 +649,15 @@ where
         .filter(|u| u.is_native)
         .map(|u| ((u.model.as_str(), u.task_id.as_str()), u))
         .collect();
-    let mut prev: Option<String> = None; // native is Ollama-only
+    let mut prev: Option<String> = None;
     for col in report.columns.iter_mut() {
         if cancel.is_cancelled() {
             break;
         }
-        if col.backend != BackendKind::Ollama || !supported.contains(&col.model) {
+        // `supported` already holds only native-capable models for THIS run's backend
+        // (resolved by `probe_native_tools`), so membership is the whole gate — native
+        // FC follows the running server, not a hardcoded Ollama check.
+        if !supported.contains(&col.model) {
             continue;
         }
         // Same VRAM-isolation gate between native model runs (assert-and-fail).

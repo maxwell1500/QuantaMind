@@ -93,7 +93,9 @@ impl ChatResponse {
 /// Normalize a tool-call `arguments` value: some models return it as a JSON
 /// *string* rather than an object — parse it back so the canonical args are a
 /// real object (checkpoint/arg matching compares objects, not quoted strings).
-fn normalize_args(v: Value) -> Value {
+/// Shared by every native backend (Ollama `/api/chat` and llama.cpp's OpenAI
+/// `/v1/chat/completions`, whose builds disagree on string-vs-object args).
+pub fn normalize_args(v: Value) -> Value {
     match v {
         Value::String(s) => serde_json::from_str(&s).unwrap_or(Value::String(s)),
         other => other,
