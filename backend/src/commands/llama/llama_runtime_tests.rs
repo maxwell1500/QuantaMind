@@ -43,6 +43,17 @@ fn spawn_args_append_chat_template_file_only_when_present() {
     assert!(!without.iter().any(|a| a == "--chat-template-file"));
 }
 
+/// The `-c` value must be CAPPED: a GGUF's declared context is the model MAX
+/// (gemma4 = 262144), and `-c 262144` OOMs the KV cache → llama-server "Compute
+/// error". Cap to MAX_CONTEXT; never exceed the model's own value; floor when absent.
+#[test]
+fn context_is_capped_to_avoid_kv_oom() {
+    assert_eq!(cap_context(Some(262_144)), MAX_CONTEXT, "256K must cap, not OOM");
+    assert_eq!(cap_context(Some(2048)), 2048, "a small model context is kept as-is");
+    assert_eq!(cap_context(None), DEFAULT_CONTEXT, "missing header → floor");
+    assert!(MAX_CONTEXT >= DEFAULT_CONTEXT, "cap gives headroom above the old default");
+}
+
 #[test]
 fn jinja_unsupported_detects_rejected_flag_signature() {
     let mut tail = std::collections::VecDeque::new();
