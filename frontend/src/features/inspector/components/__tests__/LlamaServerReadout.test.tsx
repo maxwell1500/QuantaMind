@@ -5,7 +5,7 @@ vi.mock("../../../../shared/ipc/models/llama_start", () => ({
   llamaServerInfo: vi.fn(),
 }));
 
-import { LlamaServerReadout } from "../LlamaServerReadout";
+import { LlamaServerReadout } from "../server/LlamaServerReadout";
 import { llamaServerInfo } from "../../../../shared/ipc/models/llama_start";
 import { useBackendStore } from "../../../../shared/state/backendStore";
 

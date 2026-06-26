@@ -12,10 +12,14 @@ import { useTranscription } from "../hooks/useTranscription";
 import { SttWorkspace } from "../components/SttWorkspace";
 import { VoiceAssistant } from "../components/VoiceAssistant";
 import { useSelectedModelStore } from "../../../shared/state/selectedModelStore";
+import { useBackendStore } from "../../../shared/state/backendStore";
 
 beforeEach(() => {
   invokeMock.mockReset();
   useTranscriptStore.setState({ reference: null, segments: [], status: "idle", error: null });
+  // These STT scenarios run an Ollama model; pin the global backend to match
+  // (the app's default backend is llama.cpp, independent of these cases).
+  useBackendStore.setState({ selectedBackend: "ollama" });
 });
 
 describe("transcriptStore", () => {

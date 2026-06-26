@@ -9,7 +9,7 @@ import { pickLoaded } from "../format/vram";
 import { ModelTimeline } from "./ModelTimeline";
 import { LeakBanner } from "./LeakBanner";
 import { ExportReportButton } from "../report/ExportReportButton";
-import { LlamaServerReadout } from "./LlamaServerReadout";
+import { LlamaServerReadout } from "./server/LlamaServerReadout";
 import { SttInspectorSection } from "../../sttInspector/components/SttInspectorSection";
 import { useSttResultStore } from "../../sttInspector/state/sttResultStore";
 
