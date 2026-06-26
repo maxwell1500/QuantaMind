@@ -1,7 +1,7 @@
 import { useEffect, useState } from "react";
-import { llamaServerInfo, type LlamaServerInfo } from "../../../shared/ipc/models/llama_start";
-import { useBackendStore } from "../../../shared/state/backendStore";
-import { formatBytes } from "../../../shared/format/bytes";
+import { llamaServerInfo, type LlamaServerInfo } from "../../../../shared/ipc/models/llama_start";
+import { useBackendStore } from "../../../../shared/state/backendStore";
+import { formatBytes } from "../../../../shared/format/bytes";
 
 /// A one-time **spawn** readout for llama.cpp, shown only when it's the active
 /// backend. Unlike Ollama (which loads per-request and surfaces load as a phase),
