@@ -4,10 +4,8 @@ use crate::inference::generate::generate_stats::GenerateStats;
 use crate::inference::http::http::{body_or_note, streaming_client};
 use crate::inference::http::ndjson::next_line;
 use crate::inference::llama::llama_wire::{
-    strip_sse, ChatRequest, CompletionChunk, CompletionRequest,
+    strip_sse, ChatRequest, ChatStreamChunk, CompletionChunk, CompletionRequest,
 };
-use crate::inference::mlx::mlx_chunk::ChatChunk;
-use crate::inference::mlx::mlx_stats::from_usage;
 use futures_util::StreamExt;
 use tokio_util::sync::CancellationToken;
 
@@ -97,7 +95,10 @@ async fn stream_chat(
 
     let mut bytes = resp.bytes_stream();
     let mut buf: Vec<u8> = Vec::new();
-    let mut usage = None;
+    // llama-server reports per-phase ms in a `timings` extension on the final
+    // chunk — keep the latest so prefill/predict ms reach GenerateStats (and the
+    // Inspector's TTFT breakdown), which token-count-only `usage` can't give.
+    let mut timings = None;
     loop {
         tokio::select! {
             _ = cancel.cancelled() => return Ok(Some(GenerateStats::default())),
@@ -108,23 +109,29 @@ async fn stream_chat(
                 while let Some(line) = next_line(&mut buf) {
                     let payload = strip_sse(&line);
                     if payload.is_empty() { continue; }
-                    if payload == b"[DONE]" { return Ok(Some(from_usage(usage))); }
+                    if payload == b"[DONE]" { return Ok(Some(chat_stats(timings))); }
                     if payload.first() != Some(&b'{') { continue; }
-                    let chunk: ChatChunk = serde_json::from_slice(payload)
+                    let chunk: ChatStreamChunk = serde_json::from_slice(payload)
                         .map_err(|e| AppError::Inference(format!("bad chunk: {e}")))?;
-                    if chunk.usage.is_some() { usage = chunk.usage; }
+                    if chunk.timings.is_some() { timings = chunk.timings; }
                     if let Some(choice) = chunk.choices.into_iter().next() {
                         if let Some(text) = choice.delta.content.filter(|t| !t.is_empty()) {
                             on_token(&text);
                         }
                         if cancel.is_cancelled() { return Ok(Some(GenerateStats::default())); }
-                        if choice.finish_reason.is_some() { return Ok(Some(from_usage(usage))); }
+                        if choice.finish_reason.is_some() { return Ok(Some(chat_stats(timings))); }
                     }
                 }
             }
         }
     }
-    Ok(Some(from_usage(usage)))
+    Ok(Some(chat_stats(timings)))
+}
+
+/// Stats for a chat-endpoint run: llama-server's `timings` (prompt/predict ms)
+/// when present, else the all-`None` default — never fabricated.
+fn chat_stats(timings: Option<crate::inference::llama::llama_timings::Timings>) -> GenerateStats {
+    timings.map(|t| t.stats()).unwrap_or_default()
 }
 
 /// Legacy `/completion` fallback (raw prompt, no chat template). `Ok(None)` means
@@ -223,6 +230,26 @@ mod tests {
         .unwrap();
         assert_eq!(out, "hi");
         _completion.assert_async().await;
+    }
+
+    /// The chat endpoint's `timings` extension on the final chunk must populate
+    /// per-phase stats (prefill ms) — the regression that blanked the Inspector's
+    /// TTFT breakdown for llama.cpp when the chat endpoint became primary.
+    #[tokio::test]
+    async fn chat_stream_timings_populate_prefill_stats() {
+        let mut s = Server::new_async().await;
+        let _chat = s
+            .mock("POST", "/v1/chat/completions")
+            .with_status(200)
+            .with_body("data: {\"choices\":[{\"delta\":{\"content\":\"hi\"},\"finish_reason\":null}]}\n\ndata: {\"choices\":[{\"delta\":{},\"finish_reason\":\"stop\"}],\"timings\":{\"prompt_n\":12,\"prompt_ms\":210.7,\"predicted_n\":5,\"predicted_ms\":99.0}}\n\ndata: [DONE]\n\n")
+            .create_async()
+            .await;
+        let stats = stream_generate(&s.url(), "m", "p", None, None, CancellationToken::new(), |_| {})
+            .await
+            .unwrap();
+        assert_eq!(stats.prompt_eval_ms, Some(211), "prefill ms from timings (rounded)");
+        assert_eq!(stats.prompt_eval_count, Some(12));
+        assert_eq!(stats.eval_count, Some(5));
     }
 
     /// When the chat route 404s (older build), fall back to legacy /completion so

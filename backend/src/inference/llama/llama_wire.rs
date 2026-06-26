@@ -49,6 +49,32 @@ pub struct CompletionChunk {
     pub timings: Option<Timings>,
 }
 
+/// One streamed `/v1/chat/completions` chunk (OpenAI SSE). llama-server adds a
+/// `timings` extension on the final chunk — the SAME prompt/predict ms the
+/// `/completion` path reports — so per-phase stats (and the Inspector's TTFT
+/// breakdown) survive the chat endpoint instead of collapsing to token-counts.
+#[derive(Deserialize, Default)]
+pub struct ChatStreamChunk {
+    #[serde(default)]
+    pub choices: Vec<ChatChoice>,
+    #[serde(default)]
+    pub timings: Option<Timings>,
+}
+
+#[derive(Deserialize, Default)]
+pub struct ChatChoice {
+    #[serde(default)]
+    pub delta: ChatDelta,
+    #[serde(default)]
+    pub finish_reason: Option<String>,
+}
+
+#[derive(Deserialize, Default)]
+pub struct ChatDelta {
+    #[serde(default)]
+    pub content: Option<String>,
+}
+
 /// llama-server `/v1/chat/completions` request (OpenAI-compatible). This is the
 /// PRIMARY path: with `--jinja` at spawn the server applies the GGUF's embedded
 /// chat template, giving the model its trained turn structure so it emits EOS

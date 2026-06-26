@@ -415,9 +415,13 @@ spawn, so the request carries no model name).
   hit the same process — never a cross-`BackendKind` jump.
 - **What:** `stream_generate(...)` orchestrates two helpers. `stream_chat` POSTs
   a llama-owned `ChatRequest` (`messages:[{system},{user}]`, keeps `seed` +
-  `stop` — unlike mlx's request, which drops `seed`) and parses the OpenAI SSE
-  via the shared `mlx_chunk::ChatChunk`. `stream_completion` is the legacy raw
-  path. Each returns `Ok(None)` on a 404 so the orchestrator can fall through.
+  `stop` — unlike mlx's request, which drops `seed`) and parses a llama-owned
+  `ChatStreamChunk { choices, timings }`. It keeps the latest `timings` (llama's
+  per-phase ms extension on the final chunk) → `Timings::stats()`, so
+  `prompt_eval_ms` survives the chat endpoint (the Inspector's TTFT breakdown
+  needs it — token-count-only `usage` can't give it). `stream_completion` is the
+  legacy raw path. Each returns `Ok(None)` on a 404 so the orchestrator falls
+  through.
 
 ```rust
 // chat endpoint is PRIMARY (templated via --jinja); /completion is the fallback.
@@ -436,9 +440,10 @@ Err(AppError::Inference("neither /v1/chat/completions nor /completion is availab
   `max_tokens`, and crucially `seed` + `stop` so llama.cpp runs stay
   seed-reproducible) + `ChatMessage`; `CompletionRequest` (legacy `/completion`:
   `prompt`, `n_predict` — not Ollama's `num_predict`, no `model`);
-  `CompletionChunk { content, stop, timings }`; `strip_sse(line)` removes a
-  `data: ` prefix if present (bare JSON also OK). The chat response reuses the
-  shared `mlx_chunk::ChatChunk`.
+  `CompletionChunk { content, stop, timings }`; the chat-stream
+  `ChatStreamChunk { choices, timings }` (+ `ChatChoice`/`ChatDelta`) — own type,
+  not mlx's, because it must read llama's `timings` ms extension; `strip_sse(line)`
+  removes a `data: ` prefix if present (bare JSON also OK).
 
 #### File: `inference/llama/llama_timings.rs`
 - **What:** `Timings { prompt_n, prompt_ms, predicted_n, predicted_ms }` (already
@@ -723,10 +728,12 @@ ms/count fields (ns→ms). Cancel mid-stream returns the all-`None` default.
 `llama::stream_generate`: PRIMARY POST `ChatRequest{messages:[{system},{user}],
 seed, stop, stream:true}` to `/v1/chat/completions` — with `--jinja` at spawn the
 server applies the GGUF's embedded template, so the model emits EOS and stops
-(a raw `/completion` prompt has no template and loops). Stream via the shared
-`mlx_chunk::ChatChunk`: `on_token(delta.content)`; stop on `finish_reason`. If the
-chat route 404s (older build) → fall back to legacy `/completion`
-(`CompletionChunk`, `stop:true`); if *that* 404s too → port-collision error.
+(a raw `/completion` prompt has no template and loops). Stream via
+`ChatStreamChunk`: `on_token(delta.content)`; stop on `finish_reason`; the final
+chunk's `timings` → `Timings::stats()` so `prompt_eval_ms` (the Inspector TTFT
+breakdown's prefill) survives. If the chat route 404s (older build) → fall back to
+legacy `/completion` (`CompletionChunk`, `stop:true`); if *that* 404s too →
+port-collision error.
 
 **MLX** — endpoint = `mlx_endpoint()` (the managed dynamic port).
 `MlxBackend::generate` → `mlx::stream_generate`: the `.send()` of
