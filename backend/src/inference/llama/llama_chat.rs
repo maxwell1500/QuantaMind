@@ -2,6 +2,7 @@ use crate::errors::{AppError, AppResult};
 use crate::inference::generate::generate_options::GenerateOptions;
 use crate::inference::generate::generate_stats::GenerateStats;
 use crate::inference::http::http::{body_or_note, streaming_client};
+use crate::inference::llama::llama_timings::Timings;
 use crate::inference::mlx::mlx_chunk::Usage;
 use crate::inference::mlx::mlx_stats::from_usage;
 use crate::inference::ollama::ollama_chat::{normalize_args, ChatResult, NativeToolCall};
@@ -47,6 +48,10 @@ struct ChatResponse {
     choices: Vec<Choice>,
     #[serde(default)]
     usage: Option<Usage>,
+    /// llama-server's per-phase ms extension — preferred over `usage` (which is
+    /// token counts only) so prefill/predict ms reach `GenerateStats`.
+    #[serde(default)]
+    timings: Option<Timings>,
 }
 
 #[derive(Deserialize, Default)]
@@ -82,7 +87,9 @@ struct ResponseToolFn {
 pub(crate) fn parse_chat(json: &str) -> AppResult<ChatResult> {
     let parsed: ChatResponse = serde_json::from_str(json)
         .map_err(|e| AppError::Inference(format!("bad chat response: {e}")))?;
-    let stats: GenerateStats = from_usage(parsed.usage);
+    // Prefer llama-server's `timings` (prompt/predict ms); fall back to token-count
+    // `usage` when absent. Never fabricate a missing duration.
+    let stats: GenerateStats = parsed.timings.map(|t| t.stats()).unwrap_or_else(|| from_usage(parsed.usage));
     let msg = parsed.choices.into_iter().next().map(|c| c.message).unwrap_or_default();
     let tool_calls = msg
         .tool_calls
