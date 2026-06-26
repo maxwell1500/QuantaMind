@@ -196,7 +196,11 @@ templated `/v1/chat/completions` precisely to prevent this. If you still see it:
   the bundled binary predates `--jinja` and rejected it. Rebuild/update the
   bundled `llama-server`; QuantaMind needs a build new enough to support `--jinja`.
 - A model whose *embedded* chat template is broken (some DeepSeek-R1 / Qwen3
-  quants) can still misbehave — a per-model template override is planned.
+  quants) can still misbehave. Drop a corrected `<model>.jinja` or
+  `<architecture>.jinja` into the `chat_templates/` folder (user config dir, or
+  the bundled defaults) — QuantaMind auto-passes it as `--chat-template-file` at
+  launch. Remove the file to revert to the embedded template. No rebuild needed;
+  `list_chat_templates` shows what's available. See `docs/chat_templates/README.md`.
 
 ### Backend server down — batch pre-flight {#batch-preflight}
 

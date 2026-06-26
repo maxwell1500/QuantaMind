@@ -2,7 +2,7 @@ use super::*;
 
 #[test]
 fn spawn_args_pass_model_path_host_port_jinja_and_context() {
-    let args = build_spawn_args("/models/foo.gguf", 8081, 8192);
+    let args = build_spawn_args("/models/foo.gguf", 8081, 8192, None);
     assert_eq!(
         args,
         vec![
@@ -21,7 +21,7 @@ fn spawn_args_pass_model_path_host_port_jinja_and_context() {
 
 #[test]
 fn spawn_args_reflect_a_custom_port() {
-    let args = build_spawn_args("/m/x.gguf", 9090, 4096);
+    let args = build_spawn_args("/m/x.gguf", 9090, 4096, None);
     assert!(args.windows(2).any(|w| w == ["--port", "9090"]));
 }
 
@@ -29,8 +29,18 @@ fn spawn_args_reflect_a_custom_port() {
 /// template; its absence is the loop bug, so guard it explicitly.
 #[test]
 fn spawn_args_always_include_jinja() {
-    let args = build_spawn_args("/m/x.gguf", 8081, 4096);
+    let args = build_spawn_args("/m/x.gguf", 8081, 4096, None);
     assert!(args.iter().any(|a| a == "--jinja"));
+}
+
+/// A resolved override file is appended as `--chat-template-file <path>`; absent,
+/// no such flag (the embedded template via `--jinja` is the default).
+#[test]
+fn spawn_args_append_chat_template_file_only_when_present() {
+    let with = build_spawn_args("/m/x.gguf", 8081, 4096, Some("/cfg/chat_templates/gemma.jinja"));
+    assert!(with.windows(2).any(|w| w == ["--chat-template-file", "/cfg/chat_templates/gemma.jinja"]));
+    let without = build_spawn_args("/m/x.gguf", 8081, 4096, None);
+    assert!(!without.iter().any(|a| a == "--chat-template-file"));
 }
 
 #[test]

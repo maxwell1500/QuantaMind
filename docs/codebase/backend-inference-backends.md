@@ -606,13 +606,16 @@ stderr-aware launcher where loading is slow.
 | `llama_server_types.rs` | `LlamaServerState` (one `Child`) + `LlamaStartResult`. |
 | `llama_discover.rs` | scan dirs for `*.gguf` → `InstalledModelInfo{backend=LlamaCpp}`. |
 | `llama_models.rs` | `list_llama_models` / `delete_llama_model` (symlink-safe). |
+| `llama_templates.rs` | user/bundled `.jinja` override store; `resolve_template_file` (by model stem → arch), `list_chat_templates` IPC. |
 
 - **`start_llama_server`** (`llama_start.rs`): if already reachable *and* serving
   this model → `AlreadyRunning`; else `state.stop()` the previous, resolve the
   binary **directory** (`QUANTAMIND_LLAMA_DIR` → bundled `resources/binaries` →
   dev tree — the dir, not a lone binary, because `@loader_path` dylibs must stay
-  colocated), spawn with `build_spawn_args(path, PORT, ctx)` (ctx from the GGUF
-  header via `context_for`/`inspect_gguf`, `--jinja` always on), then **block on
+  colocated), spawn with `build_spawn_args(path, PORT, ctx, template)` (ctx + arch
+  from one `spawn_meta`/`inspect_gguf` read, `--jinja` always on; `template` is an
+  optional `--chat-template-file` override resolved by `llama_templates` — `None`
+  ⇒ the embedded template), then **block on
   `wait_until_ready()`** (poll `/health` every 500ms ≤30s). If readiness fails,
   kill and diagnose: a drained stderr tail naming a rejected `--jinja`
   (`jinja_unsupported`) → `JINJA_UNSUPPORTED_MSG` (stale bundled binary), else
