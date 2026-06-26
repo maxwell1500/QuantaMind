@@ -4,8 +4,8 @@ import { useMlxBackend } from "./features/workspace/hooks/useMlxBackend";
 import { useLlamaBackend } from "./features/workspace/hooks/useLlamaBackend";
 
 const BASE_BACKENDS: { id: BackendKind; label: string }[] = [
-  { id: "ollama", label: "Ollama" },
   { id: "llama_cpp", label: "llama.cpp" },
+  { id: "ollama", label: "Ollama" },
 ];
 
 function dotClass(healthy: boolean | null): string {
@@ -13,7 +13,7 @@ function dotClass(healthy: boolean | null): string {
   return `inline-block h-2 w-2 rounded-full ${color}`;
 }
 
-/// The global LLM-backend picker in the header — a dropdown (Ollama / llama.cpp,
+/// The global LLM-backend picker in the header — a dropdown (llama.cpp / Ollama,
 /// plus MLX on Apple Silicon where mlx_lm.server can run). The whole app scopes
 /// its model list and runs to the selected backend (architecture.md rule 7). The
 /// dot reflects the selected backend's server: green = running. useMlxBackend /
