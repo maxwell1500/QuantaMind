@@ -201,6 +201,12 @@ templated `/v1/chat/completions` precisely to prevent this. If you still see it:
   the bundled defaults) — QuantaMind auto-passes it as `--chat-template-file` at
   launch. Remove the file to revert to the embedded template. No rebuild needed;
   `list_chat_templates` shows what's available. See `docs/chat_templates/README.md`.
+- **Running your own `llama-server`** (e.g. it isn't bundled for your platform)?
+  QuantaMind talks to it on port 8081, but it only adds `--jinja` when *it* spawns
+  the bundled server. A server you launch must carry the flag itself — the in-app
+  Setup Guide shows the exact command:
+  `llama-server -m your-model.gguf --host 127.0.0.1 --port 8081 --jinja -c 8192`.
+  Without `--jinja`, generations loop on builds where it isn't the default.
 
 ### Backend server down — batch pre-flight {#batch-preflight}
 
