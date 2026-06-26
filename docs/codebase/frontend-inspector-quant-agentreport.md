@@ -330,10 +330,14 @@ cap_bytes, context_length, fits, pressure, estimated? }, avg_steps?, effort?,
 pass_k?, quantization?, cliff?: NotProbed|NoCliff|Collapsed|Broken, by_tier?:
 TierStat[], failures? }`. Hard gate failed → `not_ready`; soft target exceeded →
 `conditional`; nothing failing → `ready`. **A required-but-unmeasured metric blocks
-— it never guesses.** Backend returns verdicts already ranked best-first. Phase 9B
+— it never guesses.** Backend returns verdicts already ranked best-first. A model
+measured on both tool-calling paths yields **two** `ModelVerdict`s — one `native_fc`,
+one `prompt_based` — rendered as separate rows (the VerdictTable keys on
+`model+backend+path`; the **Show Native-FC Path** toggle hides the native rows). Phase 9B
 adds `by_tier` (per-tier strict Pass^k + avg-steps + failures) and `failures`
-(overall tally), both from the **native-first** source the verdict gated on — they
-feed the deep-dive below.
+(overall tally), both from the **same-path** source that path's verdict gated on — they
+feed the deep-dive below, which targets a specific *(model, path)* via the composite-key
+selector (`focusedModel` + `focusedPath`, reset-guarded so focus never orphans).
 
 **Per-domain tier accumulation + quant fallback (backend `assess_readiness`).**
 Built-in tiers are *separate single-tier collections* (`easy-coding`,

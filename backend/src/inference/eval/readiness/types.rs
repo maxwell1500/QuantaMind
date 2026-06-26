@@ -31,9 +31,11 @@ pub enum CliffStatus {
 
 /// Which measurement path produced the verdict — stated explicitly so a "Ready"
 /// on the prompt-based proxy is never mistaken for the native tool-calling path.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+/// `PromptBased` is the default: the conservative path that works on any backend.
+#[derive(Debug, Default, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case")]
 pub enum AgentPath {
+    #[default]
     PromptBased,
     NativeFc,
 }
@@ -60,7 +62,18 @@ pub struct ReadinessInputs {
     pub vram_pressure: bool,
     pub loops: u32,
     pub hallucinated: u32,
+    /// The MODEL-LEVEL native function-calling capability — `Tested` when the column's
+    /// native pass actually ran, else `NotSupported`. Identical for BOTH of a column's
+    /// per-path rows (native availability is a property of the model, not of the row's
+    /// path), so the `require_native_fc` gate reads the same value whether this row is
+    /// the native or the prompt-based path. Decoupled from `path` below.
     pub native_fc: NativeFcStatus,
+    /// Which path THIS row represents — set explicitly, NOT derived from `native_fc`.
+    /// A native-capable model's prompt-based row carries `native_fc = Tested` (so the
+    /// gate doesn't falsely block it) but `path = PromptBased` (so the label is honest).
+    /// `#[serde(default)]` → pre-existing inputs deserialize as `PromptBased`.
+    #[serde(default)]
+    pub path: AgentPath,
     /// Phase 9: strict Pass^k per difficulty tier that was actually exercised
     /// (sorted ascending by tier). `assess` derives the cleared tier from this and
     /// compares it to the profile's `required_tier`. Empty for a collection with no

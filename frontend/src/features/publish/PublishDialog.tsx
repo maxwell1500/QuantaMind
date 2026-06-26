@@ -95,7 +95,9 @@ export function PublishDialog({ verdicts, collectionId, collectionHash, onClose,
           <>
             <WhatsSharedPanel />
             <p className="text-xs text-slate-500">
-              Publishing <b>{preview.rows.length}</b> model{preview.rows.length === 1 ? "" : "s"} in cohort{" "}
+              {/* One row PER MEASURED PATH — a model evaluated on both native + prompt-based
+                  publishes two results, so this counts results (rows), not distinct models. */}
+              Publishing <b>{preview.rows.length}</b> result{preview.rows.length === 1 ? "" : "s"} in cohort{" "}
               <code className="text-slate-700">{preview.cohort_key}</code>
               {preview.excluded_count > 0 && <> · {preview.excluded_count} excluded (no measured Pass^k)</>}.
             </p>

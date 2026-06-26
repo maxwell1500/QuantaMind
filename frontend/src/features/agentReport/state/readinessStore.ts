@@ -3,6 +3,7 @@ import {
   assessReadiness,
   listReadinessProfiles,
   saveReadinessProfile,
+  type AgentPath,
   type ModelVerdict,
   type ReadinessProfile,
 } from "../../../shared/ipc/eval/readiness";
@@ -26,6 +27,7 @@ interface ReadinessStore {
   /// The model the deep-dive (Executive Verdict / Tier Matrix / Failure Taxonomy) targets.
   /// Defaults to the recommended verdict; a table-row click reassigns it.
   focusedModel: string;
+  focusedPath: AgentPath;
   capBytes: number | null;
   /// True once an assess has completed — distinguishes "not run yet" from a
   /// genuinely empty result (no persisted report) so the page shows the right state.
@@ -35,7 +37,7 @@ interface ReadinessStore {
   loadProfiles: () => Promise<void>;
   loadHardware: () => Promise<void>;
   loadHardwareTier: () => Promise<void>;
-  setFocusedModel: (model: string) => void;
+  setFocus: (model: string, path: AgentPath) => void;
   selectProfile: (id: string) => void;
   setCap: (bytes: number) => void;
   assess: (collectionId: string) => Promise<void>;
@@ -54,6 +56,7 @@ export const useReadinessStore = create<ReadinessStore>((set, get) => ({
   hardware: null,
   hardwareTier: null,
   focusedModel: "",
+  focusedPath: "prompt_based",
   capBytes: null,
   assessed: false,
   loading: false,
@@ -83,7 +86,7 @@ export const useReadinessStore = create<ReadinessStore>((set, get) => ({
       /* no hardware tier — the advisory context is simply hidden */
     }
   },
-  setFocusedModel: (model) => set({ focusedModel: model }),
+  setFocus: (model, path) => set({ focusedModel: model, focusedPath: path }),
   selectProfile: (id) => set({ selectedProfileId: id, assessed: false, verdicts: [] }),
   setCap: (bytes) => set({ capBytes: bytes }),
   assess: async (collectionId) => {

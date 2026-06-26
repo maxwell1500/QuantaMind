@@ -76,44 +76,57 @@ export function MatrixScoreboard({
     ? `${modelLabel(mInfo)}${mInfo.quantization ? ` (${mInfo.quantization})` : ""}`
     : model || "None";
 
-  // Calculate dynamic aggregate statistics across tasks for the selected model
-  let totalPasses = 0;
-  let totalRuns = 0;
-  let totalSteps = 0;
-  let stepsCount = 0;
-  let totalTokens = 0;
-  let tokensCount = 0;
-
-  for (const t of tasks) {
-    const key = cellKey(model, t.id);
-    const outcome = outcomeByKey[key];
-    if (!outcome) continue;
-    if (outcome.kind === "single") {
-      totalPasses += outcome.passed ? 1 : 0;
-      totalRuns += 1;
-      totalSteps += 1;
-      stepsCount += 1;
-      if (outcome.trace.prompt_tokens != null) {
-        totalTokens += outcome.trace.prompt_tokens;
-        tokensCount += 1;
-      }
-    } else if (outcome.kind === "agentic") {
-      totalPasses += outcome.report.passes;
-      totalRuns += outcome.report.total_runs;
-      if (outcome.report.avg_steps != null) {
-        totalSteps += outcome.report.avg_steps * outcome.report.total_runs;
-        stepsCount += outcome.report.total_runs;
-      }
-      if (outcome.report.avg_output_tokens_success != null) {
-        totalTokens += outcome.report.avg_output_tokens_success * outcome.report.passes;
-        tokensCount += outcome.report.passes;
+  // Aggregate stats for ONE pass's outcomes (native OR prompt), computed per-pass and
+  // never blended: native FC and the prompt-based proxy are measured differently, so a
+  // single combined average would be uninterpretable (eval-metric comparability).
+  const aggregate = (byKey: Record<string, TaskOutcome>) => {
+    let totalPasses = 0;
+    let totalRuns = 0;
+    let totalSteps = 0;
+    let stepsCount = 0;
+    let totalTokens = 0;
+    let tokensCount = 0;
+    for (const t of tasks) {
+      const outcome = byKey[cellKey(model, t.id)];
+      if (!outcome) continue;
+      if (outcome.kind === "single") {
+        totalPasses += outcome.passed ? 1 : 0;
+        totalRuns += 1;
+        totalSteps += 1;
+        stepsCount += 1;
+        if (outcome.trace.prompt_tokens != null) {
+          totalTokens += outcome.trace.prompt_tokens;
+          tokensCount += 1;
+        }
+      } else if (outcome.kind === "agentic") {
+        totalPasses += outcome.report.passes;
+        totalRuns += outcome.report.total_runs;
+        if (outcome.report.avg_steps != null) {
+          totalSteps += outcome.report.avg_steps * outcome.report.total_runs;
+          stepsCount += outcome.report.total_runs;
+        }
+        if (outcome.report.avg_output_tokens_success != null) {
+          totalTokens += outcome.report.avg_output_tokens_success * outcome.report.passes;
+          tokensCount += outcome.report.passes;
+        }
       }
     }
-  }
+    return {
+      totalPasses,
+      totalRuns,
+      passRate: totalRuns > 0 ? Math.round((totalPasses / totalRuns) * 100) : 0,
+      avgStepsVal: stepsCount > 0 ? (totalSteps / stepsCount).toFixed(1) : "—",
+      effortVal: tokensCount > 0 ? Math.round(totalTokens / tokensCount).toLocaleString() : "—",
+    };
+  };
 
-  const passRate = totalRuns > 0 ? Math.round((totalPasses / totalRuns) * 100) : 0;
-  const avgStepsVal = stepsCount > 0 ? (totalSteps / stepsCount).toFixed(1) : "—";
-  const effortVal = tokensCount > 0 ? Math.round(totalTokens / tokensCount).toLocaleString() : "—";
+  // One aggregate per pass — the Tool-Calling (native) AGGREGATE was previously blind to
+  // native outcomes (the loop read only `outcomeByKey`), so a native-only run showed "—".
+  const nativeAgg = aggregate(nativeOutcomeByKey);
+  const promptAgg = aggregate(outcomeByKey);
+  const anyRuns = nativeAgg.totalRuns > 0 || promptAgg.totalRuns > 0;
+  // The collapsed-summary chip reads whichever pass ran (native first, else prompt).
+  const summaryAgg = nativeAgg.totalRuns > 0 ? nativeAgg : promptAgg;
 
   return (
     <div
@@ -145,7 +158,7 @@ export function MatrixScoreboard({
         </span>
         {collapsed && (
           <span data-testid="simulator-collapsed-summary" style={{ marginLeft: 10, fontSize: 12, color: "#64748b", fontFamily: "Inter, sans-serif" }}>
-            · {totalRuns > 0 ? `${passRate}% pass` : "no run yet"} · click to expand
+            · {summaryAgg.totalRuns > 0 ? `${summaryAgg.passRate}% pass` : "no run yet"} · click to expand
           </span>
         )}
         {running && (
@@ -173,16 +186,30 @@ export function MatrixScoreboard({
 
       {/* Inner Box Content */}
       <div style={{ padding: 16 }}>
-        {/* Aggregate Stats */}
+        {/* Aggregate Stats — one labeled line per measured pass (native + prompt are kept
+            separate, never averaged together). A single-pass run shows a single line; the
+            "AGGREGATE" heading stays so a no-run state still reads as the aggregate box. */}
         <div style={aggregateBoxStyle}>
-          {totalRuns > 0 ? (
-            <span>
-              AGGREGATE: <strong style={{ color: "#166534" }} title={metricTitle("passRate")}>{passRate}% Pass Rate</strong> ({totalPasses}/{totalRuns}) | <span title={metricTitle("avgSteps")}>Avg Steps:</span> <strong>{avgStepsVal}</strong> | <span title={metricTitle("effort")}>Effort:</span> <strong>{effortVal}</strong> tokens
-            </span>
+          <div style={{ fontWeight: 800, color: "#0f172a", marginBottom: anyRuns ? 5 : 0, letterSpacing: "0.04em" }}>
+            AGGREGATE
+          </div>
+          {anyRuns ? (
+            <div style={{ display: "flex", flexDirection: "column", gap: 4 }}>
+              {nativeAgg.totalRuns > 0 && (
+                <span data-testid="aggregate-native">
+                  <strong style={{ color: "#0f172a" }}>Tool-Calling (native):</strong>{" "}
+                  <strong style={{ color: "#166534" }} title={metricTitle("passRate")}>{nativeAgg.passRate}% Pass Rate</strong> ({nativeAgg.totalPasses}/{nativeAgg.totalRuns}) | <span title={metricTitle("avgSteps")}>Avg Steps:</span> <strong>{nativeAgg.avgStepsVal}</strong> | <span title={metricTitle("effort")}>Effort:</span> <strong>{nativeAgg.effortVal}</strong> tokens
+                </span>
+              )}
+              {promptAgg.totalRuns > 0 && (
+                <span data-testid="aggregate-prompt">
+                  <strong style={{ color: "#0f172a" }}>Prompt-based:</strong>{" "}
+                  <strong style={{ color: "#166534" }} title={metricTitle("passRate")}>{promptAgg.passRate}% Pass Rate</strong> ({promptAgg.totalPasses}/{promptAgg.totalRuns}) | <span title={metricTitle("avgSteps")}>Avg Steps:</span> <strong>{promptAgg.avgStepsVal}</strong> | <span title={metricTitle("effort")}>Effort:</span> <strong>{promptAgg.effortVal}</strong> tokens
+                </span>
+              )}
+            </div>
           ) : (
-            <span style={{ color: "#64748b" }}>
-              AGGREGATE: — Pass Rate | Avg Steps: — | Effort: —
-            </span>
+            <span style={{ color: "#64748b" }}>— Pass Rate | Avg Steps: — | Effort: —</span>
           )}
         </div>
 

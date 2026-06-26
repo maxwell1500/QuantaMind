@@ -1,5 +1,5 @@
 use super::super::profile::{builtins, ReadinessProfile};
-use super::super::types::{CliffStatus, NativeFcStatus, Readiness, ReadinessInputs};
+use super::super::types::{AgentPath, CliffStatus, NativeFcStatus, Readiness, ReadinessInputs};
 use super::assess;
 use crate::inference::eval::agentic::spec::Tier;
 
@@ -32,6 +32,7 @@ fn clean_inputs() -> ReadinessInputs {
         loops: 0,
         hallucinated: 0,
         native_fc: NativeFcStatus::NotSupported,
+        path: AgentPath::PromptBased,
         tier_pass_k: vec![],
     }
 }
@@ -258,6 +259,47 @@ fn tier_gate_passes_when_the_required_tier_is_cleared() {
     let v = assess(&i, &p);
     assert_eq!(v.status, Readiness::Ready);
     assert_eq!(v.cleared_tier, Some(Tier::Hard)); // highest tier cleared at the bar
+}
+
+#[test]
+fn path_is_taken_from_inputs_not_derived_from_native_fc() {
+    // A native-capable model's PROMPT row: native_fc=Tested (model-level capability) but
+    // path=PromptBased (the row's own path). The label must follow `path`, not native_fc.
+    let i = ReadinessInputs {
+        native_fc: NativeFcStatus::Tested { pass_k: 0.9 },
+        path: AgentPath::PromptBased,
+        ..clean_inputs()
+    };
+    assert_eq!(assess(&i, &lenient()).path, AgentPath::PromptBased);
+}
+
+#[test]
+fn require_native_fc_does_not_block_a_native_capable_models_prompt_row() {
+    // The prompt-based row of a model that DOES support native (native_fc=Tested) must NOT
+    // be blocked under require_native_fc — native is available on the model, this row just
+    // measured the prompt path. The gate reads the model-level native_fc, not the path.
+    let mut p = lenient();
+    p.require_native_fc = true;
+    let i = ReadinessInputs {
+        native_fc: NativeFcStatus::Tested { pass_k: 0.9 },
+        path: AgentPath::PromptBased,
+        ..clean_inputs()
+    };
+    let v = assess(&i, &p);
+    assert_eq!(v.status, Readiness::Ready, "{:?}", v.blocking);
+    assert_eq!(v.path, AgentPath::PromptBased); // honest label: this row is the prompt path
+}
+
+#[test]
+fn require_native_fc_still_blocks_a_native_incapable_models_prompt_row() {
+    // A model with no native support: native_fc=NotSupported. Its single prompt row is
+    // correctly blocked under require_native_fc (native genuinely unavailable).
+    let mut p = lenient();
+    p.require_native_fc = true;
+    let i = ReadinessInputs { native_fc: NativeFcStatus::NotSupported, path: AgentPath::PromptBased, ..clean_inputs() };
+    let v = assess(&i, &p);
+    assert_eq!(v.status, Readiness::NotReady);
+    assert!(v.blocking.iter().any(|b| b.contains("native")), "{:?}", v.blocking);
 }
 
 #[test]

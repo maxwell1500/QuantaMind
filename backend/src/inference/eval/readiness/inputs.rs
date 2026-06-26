@@ -1,6 +1,7 @@
 use super::profile::ReadinessProfile;
 use super::types::{AgentPath, CliffStatus, ModelVerdict, NativeFcStatus, Readiness, ReadinessInputs, ReadinessVerdict};
 use super::verdict::assess;
+use super::vram_fit::MemoryProfile;
 use crate::inference::backend::backend_kind::BackendKind;
 use crate::inference::eval::batch::{AggAgentic, BatchColumn, BatchReport, TierStat};
 use crate::inference::gguf::gguf_quant::quant_from_filename;
@@ -32,6 +33,12 @@ pub fn from_column(
         Some(n) => NativeFcStatus::Tested { pass_k: n.pass_k().unwrap_or(0.0) },
         None => NativeFcStatus::NotSupported,
     };
+    // Single-verdict (native-first) path label: NativeFc when native ran, else PromptBased —
+    // mirrors the old `assess` derivation so this legacy builder's verdict is unchanged.
+    let path = match native_fc {
+        NativeFcStatus::Tested { .. } => AgentPath::NativeFc,
+        NativeFcStatus::NotSupported => AgentPath::PromptBased,
+    };
     let source = native_first_source(col);
     let pass_k = source.and_then(|a| a.pass_k());
     let (loops, hallucinated) = source
@@ -51,8 +58,168 @@ pub fn from_column(
         loops,
         hallucinated,
         native_fc,
+        path,
         tier_pass_k,
     }
+}
+
+/// The MODEL-LEVEL native function-calling capability: `Tested` when the column's native
+/// pass actually ran (`total_runs > 0`), else `NotSupported`. Shared by BOTH of a column's
+/// per-path rows so the `require_native_fc` gate reads native availability as a property of
+/// the model, not of the row's path (a native-capable model's prompt row isn't falsely blocked).
+pub fn col_native_status(col: &BatchColumn) -> NativeFcStatus {
+    match col.agentic_native_fc.as_ref().filter(|a| a.total_runs > 0) {
+        Some(n) => NativeFcStatus::Tested { pass_k: n.pass_k().unwrap_or(0.0) },
+        None => NativeFcStatus::NotSupported,
+    }
+}
+
+/// STRICT same-path aggregate for a column — the native pass for `NativeFc` (only when it
+/// actually ran), the prompt pass for `PromptBased`. NO `native_first_source` fallback: a
+/// row's metrics + tier ladder must come from its OWN path, never the other's.
+pub fn source_for_path(col: &BatchColumn, path: AgentPath) -> Option<&AggAgentic> {
+    match path {
+        AgentPath::NativeFc => col.agentic_native_fc.as_ref().filter(|a| a.total_runs > 0),
+        AgentPath::PromptBased => col.agentic.as_ref(),
+    }
+}
+
+/// The measurement paths this column actually ran, in display order (native first, then
+/// prompt). An errored/unmeasured column still yields ONE `(PromptBased, None)` entry so it
+/// produces a single row (preserving the legacy single-verdict behaviour) rather than vanishing.
+pub fn measured_paths(col: &BatchColumn) -> Vec<(AgentPath, Option<&AggAgentic>)> {
+    let mut out = Vec::new();
+    if let Some(n) = col.agentic_native_fc.as_ref().filter(|a| a.total_runs > 0) {
+        out.push((AgentPath::NativeFc, Some(n)));
+    }
+    if let Some(p) = col.agentic.as_ref() {
+        out.push((AgentPath::PromptBased, Some(p)));
+    }
+    if out.is_empty() {
+        out.push((AgentPath::PromptBased, None));
+    }
+    out
+}
+
+/// Build the measured inputs for ONE path from its own aggregate `source`. Metrics
+/// (`pass_k`, `avg_steps`, `loops`, `hallucinated`, `tier_pass_k`) come from `source`; the
+/// model-level `native_fc` capability + the row's `path` are passed in explicitly (decoupled,
+/// per `verdict.rs`). `source = None` (the unmeasured fallback) leaves the gated metrics
+/// `None`/0 so the verdict blocks exactly as the legacy `from_column` does.
+pub fn from_source(
+    source: Option<&AggAgentic>,
+    path: AgentPath,
+    native_fc: NativeFcStatus,
+    fits_in_vram: Option<bool>,
+    vram_pressure: bool,
+    cliff: CliffStatus,
+) -> ReadinessInputs {
+    let (loops, hallucinated) = source
+        .map(|a| (a.failures.infinite_loop_hits, a.failures.hallucinated_completions))
+        .unwrap_or((0, 0));
+    let tier_pass_k =
+        source.map(|a| a.by_tier.iter().filter_map(|s| s.pass_k().map(|pk| (s.tier, pk))).collect()).unwrap_or_default();
+    ReadinessInputs {
+        pass_k: source.and_then(|a| a.pass_k()),
+        avg_steps: source.and_then(|a| a.avg_steps),
+        ms_per_step: None,
+        cliff,
+        fits_in_vram,
+        vram_pressure,
+        loops,
+        hallucinated,
+        native_fc,
+        path,
+        tier_pass_k,
+    }
+}
+
+/// A path's per-tier ladder merged across the same domain's tier-sibling reports — the
+/// path-aware twin of `merged_by_tier_for`. Each sibling contributes ONLY its same-path
+/// aggregate (`source_for_path`); a sibling that lacks this path contributes nothing, an
+/// HONEST GAP in the ladder — the other path's data never bleeds in.
+pub fn merged_by_tier_for_path(
+    model: &str,
+    backend: BackendKind,
+    path: AgentPath,
+    primary: &[TierStat],
+    siblings: &[&BatchReport],
+) -> Vec<TierStat> {
+    let mut lists: Vec<&[TierStat]> = Vec::with_capacity(siblings.len() + 1);
+    lists.push(primary);
+    for r in siblings {
+        if let Some(a) =
+            r.columns.iter().find(|c| c.model == model && c.backend == backend).and_then(|c| source_for_path(c, path))
+        {
+            lists.push(a.by_tier.as_slice());
+        }
+    }
+    merge_by_tier(&lists)
+}
+
+/// Every measured path's verdict for one column — the per-path emission shared by
+/// `assess_readiness` (hardware-aware, with tier siblings) and `assess_report` (no
+/// hardware). An errored column short-circuits to a SINGLE NotReady row carrying the real
+/// run error; otherwise one `ModelVerdict` per `measured_paths` entry, each sourced strictly
+/// from its own path. The model-level facts (`memory`, `cliff`, `quantization`) are computed
+/// once by the caller and shared across the column's rows.
+#[allow(clippy::too_many_arguments)]
+pub fn verdicts_for_column(
+    col: &BatchColumn,
+    fits_in_vram: Option<bool>,
+    vram_pressure: bool,
+    cliff: CliffStatus,
+    memory: Option<MemoryProfile>,
+    quantization: Option<String>,
+    profile: &ReadinessProfile,
+    siblings: &[&BatchReport],
+) -> Vec<ModelVerdict> {
+    if let Some(err) = &col.error {
+        return vec![ModelVerdict {
+            model: col.model.clone(),
+            backend: col.backend,
+            verdict: ReadinessVerdict {
+                status: Readiness::NotReady,
+                blocking: vec![format!("run error: {err}")],
+                conditions: Vec::new(),
+                path: AgentPath::PromptBased,
+                required_tier: profile.required_tier,
+                cleared_tier: None,
+            },
+            memory,
+            avg_steps: None,
+            effort: None,
+            pass_k: None,
+            quantization,
+            cliff,
+            by_tier: Vec::new(),
+            failures: Default::default(),
+        }];
+    }
+    let native = col_native_status(col);
+    measured_paths(col)
+        .into_iter()
+        .map(|(path, source)| {
+            let verdict = assess(&from_source(source, path, native, fits_in_vram, vram_pressure, cliff), profile);
+            let (avg_steps, effort) =
+                source.map(|a| (a.avg_steps, a.avg_output_tokens_success)).unwrap_or((None, None));
+            let primary = source.map(|a| a.by_tier.clone()).unwrap_or_default();
+            let by_tier = merged_by_tier_for_path(&col.model, col.backend, path, &primary, siblings);
+            ModelVerdict {
+                model: col.model.clone(),
+                backend: col.backend,
+                verdict,
+                memory: memory.clone(),
+                avg_steps,
+                effort,
+                pass_k: source.and_then(|a| a.pass_k()),
+                quantization: quantization.clone(),
+                cliff,
+                by_tier,
+                failures: source.map(|a| a.failures.clone()).unwrap_or_default(),
+            }
+        })
+        .collect()
 }
 
 /// One column's verdict against a profile, with the hardware facts + measured cliff
@@ -151,30 +318,16 @@ pub fn merged_by_tier_for(
 }
 
 /// Assess every model in a persisted batch report against a profile, with no
-/// hardware facts (VRAM unmeasured). The CLI-without-cap and pure-test path.
+/// hardware facts (VRAM unmeasured). The CLI-without-cap and pure-test path. Emits one
+/// verdict PER MEASURED PATH (native + prompt) per column, like the hardware-aware command —
+/// no hardware/cliff/quant and no tier siblings on this path.
 pub fn assess_report(report: &BatchReport, profile: &ReadinessProfile) -> Vec<ModelVerdict> {
     report
         .columns
         .iter()
-        .map(|col| {
-            let (avg_steps, effort) = agentic_metrics(col);
-            // Per-tier breakdown + failures from the SAME native-first source the verdict
-            // gated on (so the Agent Report's Matrix/Taxonomy can't drift from the gate).
-            let (by_tier, failures) =
-                native_first_source(col).map(|a| (a.by_tier.clone(), a.failures.clone())).unwrap_or_default();
-            ModelVerdict {
-                model: col.model.clone(),
-                backend: col.backend,
-                verdict: verdict_for(col, None, false, CliffStatus::NotProbed, profile),
-                memory: None,
-                avg_steps,
-                effort,
-                pass_k: pass_k_of(col),
-                quantization: None, // the no-hardware path has no registry to read the real quant
-                cliff: CliffStatus::NotProbed, // the no-hardware/CLI path has no cliff store to read
-                by_tier,
-                failures,
-            }
+        .flat_map(|col| {
+            // No hardware path: VRAM unmeasured, cliff NotProbed, no quant registry, no siblings.
+            verdicts_for_column(col, None, false, CliffStatus::NotProbed, None, None, profile, &[])
         })
         .collect()
 }

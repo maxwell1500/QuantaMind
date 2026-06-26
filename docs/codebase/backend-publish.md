@@ -25,6 +25,15 @@ community can compare which models pass on which hardware. No prompt, no task co
 no completion text ever leaves the machine — only ranked aggregates.
 
 ### What is shared — the canonical row
+One `PublishRow` is sent **per measured tool-calling path**: a model evaluated on both
+native and prompt-based publishes **two** rows, distinguished by `eval_method`
+(`native_fc` / `prompt_based`) — `build_preview` projects each `ModelVerdict`, and the
+Agent Report now emits one verdict per path. ⚠ The hosted server's dedup key must therefore
+be `UNIQUE(user, model, quant, cohort_key, eval_method)` (not `…, cohort_key`) or the
+second path 422s and the publish silently half-succeeds — this server change is **coupled**
+and must land with/before the client. `pre_validate` does **not** dedup by model, so both
+rows pass locally (pinned by a test).
+
 The wire shape is `PublishRow` (`persistence/publish/row.rs`): `model`, `quant`,
 `cohort_key` (derived hardware bucket), `tool_version`, a metrics bag (`pass_k`
 required; `effort`/`avg_steps` optional), and — since the Phase 9 extension — the

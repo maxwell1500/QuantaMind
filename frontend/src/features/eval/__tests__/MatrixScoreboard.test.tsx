@@ -140,6 +140,41 @@ describe("MatrixScoreboard (Simulator) data flow", () => {
     expect(setPass).toHaveBeenCalledWith("native");
   });
 
+  it("populates the Tool-Calling (native) AGGREGATE line from a native-only run (was a blank '—')", () => {
+    const s = useBatchStore.getState();
+    s.startRun();
+    // A NATIVE-ONLY run: the outcome lands in nativeOutcomeByKey, NOT outcomeByKey. The
+    // AGGREGATE used to read only the prompt pass, so it showed "—"; it now reads per-pass.
+    s.ingestProgress({
+      phase: "done",
+      model: MODEL,
+      task_id: "weather",
+      is_native: true,
+      outcome: {
+        kind: "agentic",
+        report: {
+          passes: 4,
+          total_runs: 5,
+          avg_steps: 2.5,
+          avg_output_tokens_success: 40,
+          schema_resilience: null,
+          top_error: "none",
+          failures: { infinite_loop_hits: 0, hallucinated_completions: 0, malformed_json_calls: 0, schema_unrecovered_calls: 0 },
+        },
+      },
+    } as BatchProgress);
+    flushBatchBufferForTests();
+
+    render(<MatrixScoreboard model={MODEL} k={5} maxSteps={8} focusedTaskId={null} setFocusedTaskId={() => {}} focusedPass="native" setFocusedPass={() => {}} />);
+    // The native AGGREGATE line shows real numbers (4/5 = 80%, avg steps 2.5) — not "—".
+    const native = screen.getByTestId("aggregate-native");
+    expect(native).toHaveTextContent("Tool-Calling (native):");
+    expect(native).toHaveTextContent("80% Pass Rate");
+    expect(native).toHaveTextContent("2.5");
+    // A native-only run shows no Prompt-based aggregate line.
+    expect(screen.queryByTestId("aggregate-prompt")).toBeNull();
+  });
+
   it("derives Target Tool from an agentic end-state and shows TC Steps from the native run", () => {
     const agenticTask: ToolTask = {
       id: "pr_task",
