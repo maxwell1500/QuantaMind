@@ -310,6 +310,7 @@ export function EvalPage() {
               setTaskId={setFocusedTaskId}
               decoys={decoys}
               tracePass={focusedPass}
+              k={iterationsK}
             />
             <PerformanceMatrix focusedModel={focusedModel} onFocusModel={focusModel} />
           </>

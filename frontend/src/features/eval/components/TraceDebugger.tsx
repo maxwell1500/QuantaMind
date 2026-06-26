@@ -11,7 +11,7 @@ import { TOOL_HELP } from "../help";
 import { agenticSystemPreview } from "../agenticPrompt";
 import { RunIoModal, type RunIoMode } from "./RunIoModal";
 import { EnvironmentReplayPanel, hasEnvReplay } from "./replay/EnvironmentReplayPanel";
-import { isStrictPass, type TrajectoryStep } from "../../../shared/ipc/eval/batch";
+import { isStrictPass, type TrajectoryStep, type AgenticReport } from "../../../shared/ipc/eval/batch";
 
 interface TraceDebuggerProps {
   model: string;
@@ -23,6 +23,9 @@ interface TraceDebuggerProps {
   /// Which pass's trajectory to show — controlled by the parent (the Simulator click), so the
   /// Evaluator has no toggle of its own.
   tracePass: "prompt" | "native";
+  /// The run's configured Pass^k — the denominator for the "RUN n OF N" headers while the
+  /// batch is still streaming (before the terminal report lands carries the intended total).
+  k?: number;
 }
 
 type TabType = "config" | "prompt" | "trace" | "matcher";
@@ -279,6 +282,21 @@ export function groupStepsByRun(steps: TrajectoryStep[]): RunGroup[] {
   return groups;
 }
 
+/// The "RUN n OF N" denominator: the CONFIGURED Pass^k, not the runs streamed so far —
+/// otherwise a live batch reads "RUN 3 OF 3" then "RUN 4 OF 4" as each rep lands. A
+/// completed report carries the intended total (`requested_runs` when the batch was
+/// budget-truncated, else `total_runs`); before the terminal outcome lands we fall back to
+/// the run's configured `k`. Never drop below the runs actually present, so a stray rep
+/// can't read as "RUN 6 OF 5".
+export function expectedRunCount(
+  report: Pick<AgenticReport, "total_runs" | "requested_runs"> | undefined,
+  k: number | undefined,
+  groupCount: number,
+): number {
+  const intended = report ? report.requested_runs ?? report.total_runs : k ?? groupCount;
+  return Math.max(intended, groupCount);
+}
+
 /// A run passed iff its terminal (last) step reached the end-state. Any other terminal
 /// kind — or a run still streaming — is not a pass.
 export function runPassed(group: RunGroup): boolean {
@@ -291,6 +309,7 @@ export function TraceDebugger({
   setTaskId,
   decoys,
   tracePass,
+  k,
 }: TraceDebuggerProps) {
   const { tasks } = useEvalRegistryStore();
   const outcomeByKey = useBatchStore((s) => s.outcomeByKey);
@@ -351,6 +370,7 @@ export function TraceDebugger({
   // every group but the last is complete; while `running`, the last group may still
   // be streaming (shown as RUNNING rather than a premature FAIL).
   const groups = groupStepsByRun(steps);
+  const totalRuns = expectedRunCount(outcome?.kind === "agentic" ? outcome.report : undefined, k, groups.length);
   const isRunComplete = (gi: number) => !running || gi < groups.length - 1;
   // Default-expanded run: the first completed-and-failed run, else the first run.
   const defaultRunIndex =
@@ -591,7 +611,7 @@ export function TraceDebugger({
                             >
                               <span style={runCaretStyle}>{expanded ? "▼" : "▶"}</span>
                               <span style={runTitleStyle}>
-                                RUN {gi + 1} OF {groups.length}
+                                RUN {gi + 1} OF {totalRuns}
                               </span>
                               <span style={runChipStyle(status)}>{status.toUpperCase()}</span>
                               <span style={runStepCountStyle}>

@@ -1,5 +1,5 @@
 import { describe, it, expect } from "vitest";
-import { isErrorKind, getStepTitle, verdictLabel, verdictColor, groupStepsByRun, runPassed } from "../components/TraceDebugger";
+import { isErrorKind, getStepTitle, verdictLabel, verdictColor, groupStepsByRun, runPassed, expectedRunCount } from "../components/TraceDebugger";
 import type { TrajectoryStep } from "../../../shared/ipc/eval/batch";
 
 const step = (run_index: number, step_index: number, kind: TrajectoryStep["kind"]): TrajectoryStep => ({
@@ -90,6 +90,33 @@ describe("groupStepsByRun", () => {
 
   it("returns no groups for an empty trajectory", () => {
     expect(groupStepsByRun([])).toEqual([]);
+  });
+});
+
+describe("expectedRunCount", () => {
+  it("uses the configured k as the denominator while the batch streams (no report yet)", () => {
+    // The bug: mid-stream only 3 of an easy-tier's 5 reps had arrived, so the header read
+    // "RUN 3 OF 3" then "RUN 4 OF 4" instead of holding at the configured 5.
+    expect(expectedRunCount(undefined, 5, 3)).toBe(5);
+    expect(expectedRunCount(undefined, 5, 4)).toBe(5);
+  });
+
+  it("uses the report's total_runs once the (untruncated) batch completes", () => {
+    expect(expectedRunCount({ total_runs: 5, requested_runs: null }, 5, 5)).toBe(5);
+  });
+
+  it("uses requested_runs when the batch was budget-truncated", () => {
+    // Ran 3 of an intended 5 — the header must still say OF 5, not OF 3.
+    expect(expectedRunCount({ total_runs: 3, requested_runs: 5 }, 5, 3)).toBe(5);
+  });
+
+  it("never drops below the runs actually present", () => {
+    // A stray extra rep must not read as "RUN 6 OF 5".
+    expect(expectedRunCount(undefined, 5, 6)).toBe(6);
+  });
+
+  it("falls back to the group count when neither a report nor k is available", () => {
+    expect(expectedRunCount(undefined, undefined, 3)).toBe(3);
   });
 });
 
