@@ -80,6 +80,9 @@ export const TrajectoryStepSchema = z.object({
   // Back-compat: events/reports before the visual-replay work have no `env`. Optional so old
   // payloads + test fixtures parse; consumers treat a missing env as "no replay" (`env?.kind`).
   env: EnvViewSchema.optional(),
+  // Per-turn prompt-cache reuse (llama.cpp `timings.cache_n`); null/absent for backends
+  // that don't report it (Ollama/MLX) or non-model turns. High → prefix reused (prefill ≈ 0).
+  cache_n: z.number().int().nonnegative().nullable().optional(),
 });
 export type TrajectoryStep = z.infer<typeof TrajectoryStepSchema>;
 

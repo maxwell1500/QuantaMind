@@ -367,6 +367,7 @@ async fn run_steps<M: ModelTurn>(
                     injection: None,
                     kind: StepKind::TurnTimeout,
                     env: EnvView::None,
+                    cache_n: None, // no model response on a timeout
                 });
                 return Ok(RunOutcome::failure(step_index + 1, output_tokens, FailureKind::TurnTimeout)
                     .with_schema(hit_schema_error, schema_recovered)
@@ -374,8 +375,11 @@ async fn run_steps<M: ModelTurn>(
             }
         };
         output_tokens += stats.eval_count.unwrap_or(0);
+        // Per-turn prompt-cache reuse (llama.cpp `timings.cache_n`); None for other
+        // backends. Captured here so each streamed step carries its own turn's value.
+        let cache_n = stats.cache_n;
         let send = |kind: StepKind, injection: Option<String>, env: EnvView| {
-            let _ = tx.send(TrajectoryStep { run_index, step_index, raw_output: raw.clone(), injection, kind, env });
+            let _ = tx.send(TrajectoryStep { run_index, step_index, raw_output: raw.clone(), injection, kind, env, cache_n });
         };
 
         // For a reasoning model, parse and persist the `<think>`-stripped output: its inner
@@ -610,6 +614,7 @@ async fn run_steps<M: ModelTurn>(
                 injection: None,
                 kind: StepKind::InfiniteLoop,
                 env: EnvView::None,
+                cache_n: None, // synthetic terminal step, no model response
             });
             return Ok(RunOutcome::failure(step_index + 1, output_tokens, FailureKind::InfiniteLoop)
                 .with_schema(hit_schema_error, schema_recovered)
@@ -624,6 +629,7 @@ async fn run_steps<M: ModelTurn>(
         injection: None,
         kind: StepKind::InfiniteLoop,
         env: EnvView::None,
+        cache_n: None, // synthetic terminal step, no model response
     });
     Ok(RunOutcome::failure(max_steps, output_tokens, FailureKind::InfiniteLoop)
         .with_schema(hit_schema_error, schema_recovered)

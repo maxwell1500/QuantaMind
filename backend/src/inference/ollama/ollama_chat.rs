@@ -86,6 +86,7 @@ impl ChatResponse {
             eval_ms: self.eval_duration.map(ns_to_ms),
             load_ms: self.load_duration.map(ns_to_ms),
             total_ms: self.total_duration.map(ns_to_ms),
+            cache_n: None, // Ollama's /api/chat reports no prompt-cache count
         }
     }
 }

@@ -14,6 +14,10 @@ pub struct Timings {
     pub predicted_n: Option<u32>,
     #[serde(default)]
     pub predicted_ms: Option<f64>,
+    /// Prompt tokens served from cache (prefix reuse). High on a multi-turn
+    /// agentic run whose transcript prefix was reused (prefill ≈ 0).
+    #[serde(default)]
+    pub cache_n: Option<u32>,
 }
 
 impl Timings {
@@ -25,6 +29,7 @@ impl Timings {
             eval_ms: self.predicted_ms.map(|m| m.round() as u64),
             load_ms: None,
             total_ms: None,
+            cache_n: self.cache_n,
         }
     }
 }
@@ -38,11 +43,13 @@ mod tests {
         let t = Timings {
             prompt_n: Some(128), prompt_ms: Some(210.7),
             predicted_n: Some(42), predicted_ms: Some(900.2),
+            cache_n: Some(64),
         };
         let stats = t.stats();
         assert_eq!(stats.prompt_eval_count, Some(128));
         assert_eq!(stats.prompt_eval_ms, Some(211)); // rounded
         assert_eq!(stats.eval_count, Some(42));
         assert_eq!(stats.load_ms, None);
+        assert_eq!(stats.cache_n, Some(64)); // prompt-cache reuse carried through
     }
 }

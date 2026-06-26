@@ -13,6 +13,11 @@ pub struct GenerateStats {
     pub eval_ms: Option<u64>,
     pub load_ms: Option<u64>,
     pub total_ms: Option<u64>,
+    /// Prompt tokens served from the server's prompt cache (prefix reuse) rather
+    /// than recomputed — llama.cpp's `timings.cache_n`. `None` for backends that
+    /// don't report it (Ollama, MLX). On an agentic turn whose transcript prefix
+    /// was reused, this is high and `prompt_eval_ms` ≈ 0.
+    pub cache_n: Option<u32>,
 }
 
 /// Nanoseconds → whole milliseconds (Ollama reports ns durations).

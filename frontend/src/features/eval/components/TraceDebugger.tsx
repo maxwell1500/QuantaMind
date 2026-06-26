@@ -659,6 +659,14 @@ export function TraceDebugger({
                                             FAULT INTERCEPTED
                                           </span>
                                         )}
+                                        {/* llama.cpp-only: prompt tokens this turn served from the prefix
+                                            cache (not recomputed) — the agentic transcript prefix was reused.
+                                            null for Ollama/MLX (no cache count); 0 → no badge (fresh prefill). */}
+                                        {s.cache_n != null && s.cache_n > 0 && (
+                                          <span title="Prompt tokens served from llama.cpp's prefix cache this turn — the transcript prefix was reused rather than re-prefilled (prefill ≈ 0)." style={{ fontSize: 10, fontWeight: 700, padding: "2px 6px", borderRadius: 4, background: "#f0fdf4", color: "#15803d", border: "1px solid #dcfce7", marginLeft: "auto" }}>
+                                            PREFIX CACHE: {s.cache_n} reused
+                                          </span>
+                                        )}
                                       </div>
 
                                       <pre style={codeBlockStyle}>
