@@ -62,4 +62,11 @@ pub struct TrajectoryStep {
     /// panel. `EnvView::None` for entity/static tasks (no replay). Streamed, never published.
     #[serde(default)]
     pub env: EnvView,
+    /// Prompt tokens this turn served from the server's prompt cache (prefix reuse)
+    /// vs recomputed — llama.cpp's `timings.cache_n`. `None` when the backend doesn't
+    /// report it (Ollama/MLX) or the turn produced no model response (timeout/terminal).
+    /// Surfaces per-turn prefix-reuse in the trace: a high value means the transcript
+    /// prefix was reused (prefill ≈ 0) rather than re-prefilled.
+    #[serde(default)]
+    pub cache_n: Option<u32>,
 }

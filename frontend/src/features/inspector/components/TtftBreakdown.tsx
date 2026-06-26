@@ -42,6 +42,16 @@ export function TtftBreakdown({
   const totalDuration = maxTime || Math.max(stats?.total_ms ?? 0, ttftMs ?? 0) || 1;
   const remainderMs = Math.max(0, totalDuration - loadMs - prefillMs);
 
+  // Derived prefill throughput. Guard the 0/0 case: a full prefix-cache hit yields
+  // prompt_eval_ms ≈ 0 AND prompt_eval_count ≈ 0 — render "cache hit, no prefill"
+  // rather than NaN/∞. Otherwise tokens ÷ seconds. `null` when counts are unknown.
+  const prefillTps =
+    promptTokens == null
+      ? null
+      : promptTokens === 0 || prefillMs === 0
+        ? "cache hit — no prefill"
+        : `${Math.round(promptTokens / (prefillMs / 1000)).toLocaleString()} tok/s prefill`;
+
   const loadPct = (loadMs / totalDuration) * 100;
   const prefillPct = (prefillMs / totalDuration) * 100;
   const remainderPct = (remainderMs / totalDuration) * 100;
@@ -116,7 +126,7 @@ export function TtftBreakdown({
           className="text-[10px] text-gray-500 font-semibold"
           style={{ marginLeft: `${marginLeft}px` }}
         >
-          · {promptTokens} prompt tokens
+          · {promptTokens} prompt tokens{prefillTps ? ` · ${prefillTps}` : ""}
         </div>
       )}
     </div>

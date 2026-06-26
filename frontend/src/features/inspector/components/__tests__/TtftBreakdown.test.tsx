@@ -23,4 +23,16 @@ describe("TtftBreakdown", () => {
     expect(screen.queryByTestId("ttft-seg-load")).toBeNull();
     expect(screen.getByTestId("ttft-seg-prefill")).toBeInTheDocument();
   });
+
+  it("derives prefill tok/s, and renders the 0/0 full-cache-hit case as 'cache hit'", () => {
+    // Normal prefill → a throughput number.
+    const { rerender } = render(
+      <TtftBreakdown ttftMs={820} stats={{ prompt_eval_ms: 200, prompt_eval_count: 100 }} />,
+    );
+    expect(screen.getByText(/tok\/s prefill/)).toBeInTheDocument();
+    // Full prefix-cache hit: 0 tokens in ~0 ms → no NaN/∞, render "cache hit — no prefill".
+    rerender(<TtftBreakdown ttftMs={50} stats={{ prompt_eval_ms: 0, prompt_eval_count: 0 }} />);
+    expect(screen.getByText(/cache hit — no prefill/)).toBeInTheDocument();
+    expect(screen.queryByText(/NaN|Infinity/)).toBeNull();
+  });
 });

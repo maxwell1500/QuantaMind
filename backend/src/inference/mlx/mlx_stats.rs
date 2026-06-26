@@ -14,6 +14,7 @@ pub fn from_usage(usage: Option<Usage>) -> GenerateStats {
         eval_ms: None,
         load_ms: None,
         total_ms: None,
+        cache_n: None,
     }
 }
 
