@@ -266,9 +266,11 @@ move |t| match emit(t) {
 ## `inference/chat/` — chat-template detection (Ollama Modelfile path)
 
 Used when importing a bare GGUF into Ollama: a `/completion`-style raw model
-needs a chat template baked into its Modelfile. (llama-server `/completion`
-prepends system text raw; MLX applies its own template server-side — so this is
-chiefly an Ollama-create concern.)
+needs a chat template baked into its Modelfile. (llama-server now drives the
+templated `/v1/chat/completions` with `--jinja`, so it uses the GGUF's *embedded*
+template rather than these Go-template strings; only the legacy `/completion`
+fallback prepends system text raw. MLX applies its own template server-side. So
+these Go templates remain chiefly an Ollama-create concern.)
 
 #### File: `inference/chat/chat_template_data.rs`
 - **What:** `struct ChatTemplate { family, template_string, stop_tokens }` plus
@@ -386,32 +388,28 @@ The bundled `llama-server` sidecar; **single-model** (the GGUF is fixed at
 spawn, so the request carries no model name).
 
 #### File: `inference/llama/llama.rs`
-- **Responsibility:** Stream `llama-server`'s native `/completion`.
-- **Why / robustness:** If `/completion` 404s (a newer build, or some other
-  OpenAI-compatible server squatting on the port), fall back to
-  `/v1/chat/completions` by delegating to **MLX's** `stream_generate` (same SSE
-  shape). If *that* also fails, the error names the likely port collision and
-  tells the user to stop the conflicting server (e.g. `mlx_lm.server` on 8080)
-  and restart llama.cpp. This fallback is *within* the llama backend (an
-  alternate route to the same process), never a cross-`BackendKind` jump.
-- **What:** `stream_generate(endpoint, model, prompt, system, options, cancel,
-  on_token)`. System text is prepended to the prompt (`/completion` applies no
-  chat template).
+- **Responsibility:** Stream from `llama-server`, **chat endpoint first**.
+- **Why this ordering:** The PRIMARY path is the templated
+  `/v1/chat/completions`. Combined with `--jinja` at spawn (see
+  `commands/llama/llama_runtime.rs`), the server applies the GGUF's *embedded*
+  chat template, so the model gets its trained turn structure, emits EOS, and
+  stops. Posting a raw prompt to `/completion` (the old primary) applies **no**
+  template — the model never emits EOS and loops to `n_predict`. That endpoint
+  is now only a **404 fallback** for older builds; if it 404s too, the error
+  names the likely port collision (e.g. `mlx_lm.server` on 8080). Both routes
+  hit the same process — never a cross-`BackendKind` jump.
+- **What:** `stream_generate(...)` orchestrates two helpers. `stream_chat` POSTs
+  a llama-owned `ChatRequest` (`messages:[{system},{user}]`, keeps `seed` +
+  `stop` — unlike mlx's request, which drops `seed`) and parses the OpenAI SSE
+  via the shared `mlx_chunk::ChatChunk`. `stream_completion` is the legacy raw
+  path. Each returns `Ok(None)` on a 404 so the orchestrator can fall through.
 
 ```rust
-if status == reqwest::StatusCode::NOT_FOUND {
-    return crate::inference::mlx::mlx::stream_generate(/* OpenAI fallback */)
-        .await
-        .map_err(|e| AppError::Inference(format!(
-            "...neither /completion nor /v1/chat/completions ({e})... \
-             Another server is likely on this port — e.g. mlx_lm.server (default 8080)...")));
-}
-// stream loop:
-let payload = strip_sse(&line);
-if payload.is_empty() || payload == b"[DONE]" { continue; }
-let chunk: CompletionChunk = serde_json::from_slice(payload)?;
-if !chunk.content.is_empty() { on_token(&chunk.content); }
-if chunk.stop { return Ok(chunk.timings.unwrap_or_default().stats()); }
+// chat endpoint is PRIMARY (templated via --jinja); /completion is the fallback.
+if let Some(stats) = stream_chat(/* /v1/chat/completions */).await? { return Ok(stats); }
+if let Some(stats) = stream_completion(/* legacy /completion */).await? { return Ok(stats); }
+Err(AppError::Inference("neither /v1/chat/completions nor /completion is available …"))
+// chat stream loop (shared OpenAI chunk): on_token(delta.content); stop on finish_reason.
 ```
 
 #### File: `inference/llama/llama_backend.rs`
@@ -419,9 +417,13 @@ if chunk.stop { return Ok(chunk.timings.unwrap_or_default().stats()); }
   `spec.model` + `spec.keep_alive` are *not* sent (single-model server).
 
 #### File: `inference/llama/llama_wire.rs`
-- **What:** `CompletionRequest` (`prompt`, `stream:true`, `n_predict` — not
-  Ollama's `num_predict`, no `model`); `CompletionChunk { content, stop, timings
-  }`; `strip_sse(line)` removes a `data: ` prefix if present (bare JSON also OK).
+- **What:** `ChatRequest` (the primary path — `messages`, `stream:true`,
+  `max_tokens`, and crucially `seed` + `stop` so llama.cpp runs stay
+  seed-reproducible) + `ChatMessage`; `CompletionRequest` (legacy `/completion`:
+  `prompt`, `n_predict` — not Ollama's `num_predict`, no `model`);
+  `CompletionChunk { content, stop, timings }`; `strip_sse(line)` removes a
+  `data: ` prefix if present (bare JSON also OK). The chat response reuses the
+  shared `mlx_chunk::ChatChunk`.
 
 #### File: `inference/llama/llama_timings.rs`
 - **What:** `Timings { prompt_n, prompt_ms, predicted_n, predicted_ms }` (already
@@ -559,10 +561,10 @@ pub fn mlx_endpoint() -> String {
 | Process | user's `ollama serve` daemon | bundled `llama-server` sidecar | `mlx_lm.server` (Python) |
 | Port model | fixed `11434` | fixed `8081` | **dynamic** 8082+ via `find_available_port`; `:8082` default for manual |
 | Multi-model? | yes (`model` in body) | **no** (GGUF fixed at spawn) | yes (`model` in body) |
-| Endpoint | `/api/generate` | `/completion` (→ `/v1/chat/completions` fallback) | `/v1/chat/completions` |
-| Wire format | NDJSON | SSE-ish `data: {json}` lines | OpenAI SSE |
-| Request struct | `GenerateRequest` (`num_predict`, `keep_alive`) | `CompletionRequest` (`n_predict`, no model) | `ChatRequest` (`max_tokens`, no seed) |
-| Stop signal | `done:true` | `stop:true` | `finish_reason` / `[DONE]` |
+| Endpoint | `/api/generate` | `/v1/chat/completions` (templated via `--jinja`; → `/completion` fallback) | `/v1/chat/completions` |
+| Wire format | NDJSON | OpenAI SSE (fallback: SSE-ish `data: {json}`) | OpenAI SSE |
+| Request struct | `GenerateRequest` (`num_predict`, `keep_alive`) | `ChatRequest` (`max_tokens`, **keeps seed + stop**); fallback `CompletionRequest` (`n_predict`, no model) | `ChatRequest` (`max_tokens`, no seed) |
+| Stop signal | `done:true` | `finish_reason` / `[DONE]` (fallback: `stop:true`) | `finish_reason` / `[DONE]` |
 | System text | native `system` field | prepended to prompt | `system` message (template applied server-side) |
 | Stats source | final chunk: ns durations + counts | `timings` object (ms) | `usage` (counts only) |
 | `GenerateStats` filled | **all 6** (incl. `load_ms`, `total_ms`) | 4 (`load_ms`/`total_ms` = None) | 2 counts only (all `*_ms` = None) |
@@ -594,19 +596,30 @@ stderr-aware launcher where loading is slow.
   this model → `AlreadyRunning`; else `state.stop()` the previous, resolve the
   binary **directory** (`QUANTAMIND_LLAMA_DIR` → bundled `resources/binaries` →
   dev tree — the dir, not a lone binary, because `@loader_path` dylibs must stay
-  colocated), spawn, then **block on `wait_until_ready()`** (poll `/health` every
-  500ms ≤30s). If readiness fails, kill and return `StartFailed`.
+  colocated), spawn with `build_spawn_args(path, PORT, ctx)` (ctx from the GGUF
+  header via `context_for`/`inspect_gguf`, `--jinja` always on), then **block on
+  `wait_until_ready()`** (poll `/health` every 500ms ≤30s). If readiness fails,
+  kill and diagnose: a drained stderr tail naming a rejected `--jinja`
+  (`jinja_unsupported`) → `JINJA_UNSUPPORTED_MSG` (stale bundled binary), else
+  the generic timeout message.
 - **`spawn_server`** (`llama_runtime.rs`): sets `current_dir(dir)` +
-  `DYLD_FALLBACK_LIBRARY_PATH=dir` so `@rpath` dylibs resolve; kills by `Child`
-  handle (portable, unlike Ollama's macOS `pkill`).
+  `DYLD_FALLBACK_LIBRARY_PATH=dir` so `@rpath` dylibs resolve; **pipes stderr**
+  (drained on a thread into a bounded tail for the death diagnosis — an undrained
+  pipe would wedge the child); kills by `Child` handle (portable, unlike Ollama's
+  macOS `pkill`).
 - **`LlamaServerState`**: one server per GGUF; a new model `stop()`s the prior.
 
 ```rust
-// llama_start.rs — readiness is HEALTH-gated, then reaped on failure
-let child = spawn_server(&dir, &build_spawn_args(&model_path, PORT))?;
+// llama_start.rs — HEALTH-gated readiness; on failure, diagnose stderr then reap
+let mut child = spawn_server(&dir, &build_spawn_args(&model_path, PORT, ctx))?;
+let tail = child.stderr.take().map(spawn_stderr_tail);
 state.store(child, model_path);
 if wait_until_ready().await { Ok(Started { pid, port: PORT }) }
-else { let _ = state.stop(); Ok(StartFailed { error: READY_TIMEOUT_MSG.into() }) }
+else {
+    let _ = state.stop();
+    let stale = tail.map(|t| jinja_unsupported(&t.lock()...)).unwrap_or(false);
+    Ok(StartFailed { error: if stale { JINJA_UNSUPPORTED_MSG } else { READY_TIMEOUT_MSG }.into() })
+}
 ```
 
 ### `commands/mlx/`
@@ -687,12 +700,13 @@ the read loop splits NDJSON lines, deserializes `GenerateChunk`, calls
 ms/count fields (ns→ms). Cancel mid-stream returns the all-`None` default.
 
 **llama.cpp** — endpoint `:8081`. `LlamaCppBackend::generate` →
-`llama::stream_generate`: POST `CompletionRequest{prompt: system+prompt,
-n_predict, stream:true}` to `/completion`. If 404 → delegate to MLX's SSE
-`stream_generate` (`/v1/chat/completions`); if that 404s too → port-collision
-error. Otherwise: `next_line` → `strip_sse` → `CompletionChunk`;
-`on_token(content)`; on `stop:true` return `timings.stats()` (4 fields,
-`load_ms`/`total_ms` = None).
+`llama::stream_generate`: PRIMARY POST `ChatRequest{messages:[{system},{user}],
+seed, stop, stream:true}` to `/v1/chat/completions` — with `--jinja` at spawn the
+server applies the GGUF's embedded template, so the model emits EOS and stops
+(a raw `/completion` prompt has no template and loops). Stream via the shared
+`mlx_chunk::ChatChunk`: `on_token(delta.content)`; stop on `finish_reason`. If the
+chat route 404s (older build) → fall back to legacy `/completion`
+(`CompletionChunk`, `stop:true`); if *that* 404s too → port-collision error.
 
 **MLX** — endpoint = `mlx_endpoint()` (the managed dynamic port).
 `MlxBackend::generate` → `mlx::stream_generate`: the `.send()` of

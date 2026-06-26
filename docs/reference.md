@@ -138,10 +138,13 @@ always clear what you're running and how:
   Context-Cliff probe runs one global model (a dropdown picks which when 2+
   Ollama models are selected).
 
-The llama.cpp path posts to the native `/completion`; if that route 404s (a build
-that lacks it, or another OpenAI-style server answering on the same port — e.g.
-`mlx_lm.server`, whose default port is also 8080), it falls back to the
-OpenAI-compatible `/v1/chat/completions` so the run still works.
+The llama.cpp path posts to the templated `/v1/chat/completions` (the server is
+launched with `--jinja`, so it applies the model's embedded chat template — this
+is what makes the model stop instead of looping). If that route 404s (an older
+build, or another OpenAI-style server answering on the same port — e.g.
+`mlx_lm.server`, whose default port is also 8080), it falls back to the legacy
+`/completion`; if neither route exists, the error points at the likely port
+collision. See [llama.cpp won't stop / loops](#llama-loops).
 - **Inference params** (`paramsStore`) — temperature, top_p, top_k, max_tokens,
   repeat_penalty, seed. **The single source of truth for every run** — Workspace,
   Analysis compare, Eval batch, and the Context-Cliff probe all read
@@ -181,6 +184,19 @@ running you'll see "Ollama isn't running".
 - Confirm it's up: `curl http://localhost:11434/api/tags` should return JSON.
 - On Windows/Linux, launch the Ollama app/service manually — in-app start is
   macOS-only in this release.
+
+### llama.cpp won't stop / repeats forever {#llama-loops}
+
+If a llama.cpp run repeats the prompt or rambles until it hits the token limit
+(while the *same* GGUF answers correctly under Ollama), the chat template wasn't
+applied. QuantaMind launches `llama-server` with `--jinja` and drives the
+templated `/v1/chat/completions` precisely to prevent this. If you still see it:
+
+- **"The bundled llama-server is too old for the --jinja flag…"** on start means
+  the bundled binary predates `--jinja` and rejected it. Rebuild/update the
+  bundled `llama-server`; QuantaMind needs a build new enough to support `--jinja`.
+- A model whose *embedded* chat template is broken (some DeepSeek-R1 / Qwen3
+  quants) can still misbehave — a per-model template override is planned.
 
 ### Backend server down — batch pre-flight {#batch-preflight}
 
