@@ -4,7 +4,7 @@ import type { BackendKind } from "../../../shared/ipc/models/storage";
 import { StatusBadge } from "./StatusBadge";
 import { parseQuant } from "../../models/parse_quant";
 
-const PATH_LABEL: Record<AgentPath, string> = {
+export const PATH_LABEL: Record<AgentPath, string> = {
   prompt_based: "Prompt-Based",
   native_fc: "Native FC",
 };
@@ -249,7 +249,7 @@ export function VerdictTable({
             const status = m.verdict.status;
             return (
               <tr
-                key={`${m.model}-${m.backend}`}
+                key={`${m.model}-${m.backend}-${m.verdict.path}`}
                 data-testid={`readiness-row-${m.model}`}
                 className="hover:bg-slate-50/30 transition-colors duration-150"
               >

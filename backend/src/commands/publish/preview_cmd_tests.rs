@@ -45,6 +45,27 @@ fn projects_measured_rows_and_counts_excluded() {
 }
 
 #[test]
+fn projects_both_paths_of_a_dual_measured_model_as_two_rows() {
+    // The Agent Report emits one verdict per measured path; build_preview projects each, so a
+    // dual-measured model becomes TWO publish rows distinguished by `eval_method`. This is how
+    // both native + prompt-based results reach the leaderboard from the Deploy button.
+    let mut native = verdict("qwen", Some(0.82), Some("Q4_K_M"));
+    native.verdict.path = AgentPath::NativeFc;
+    let mut prompt = verdict("qwen", Some(0.74), Some("Q4_K_M"));
+    prompt.verdict.path = AgentPath::PromptBased;
+    let p = build_preview(&[native, prompt], &PublishContext::test_ctx(COHORT, "0.2.0")).unwrap();
+    assert_eq!(p.rows.len(), 2);
+    assert!(p.invalid.is_none()); // both survive pre-validation (no model dedup)
+    let methods: Vec<AgentPath> = p.rows.iter().map(|r| r.eval_method).collect();
+    assert!(methods.contains(&AgentPath::NativeFc) && methods.contains(&AgentPath::PromptBased));
+    // Each row carries its OWN path's pass_k — not blended.
+    let nat = p.rows.iter().find(|r| r.eval_method == AgentPath::NativeFc).unwrap();
+    let pr = p.rows.iter().find(|r| r.eval_method == AgentPath::PromptBased).unwrap();
+    assert_eq!(nat.metrics.pass_k, 0.82);
+    assert_eq!(pr.metrics.pass_k, 0.74);
+}
+
+#[test]
 fn hash_matches_the_canonical_hash_of_the_rows() {
     let verdicts = vec![verdict("qwen", Some(0.9), Some("Q4_K_M"))];
     let p = build_preview(&verdicts, &PublishContext::test_ctx(COHORT, "0.2.0")).unwrap();

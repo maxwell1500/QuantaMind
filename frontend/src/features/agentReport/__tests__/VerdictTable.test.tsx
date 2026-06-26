@@ -237,4 +237,31 @@ describe("VerdictTable", () => {
     render(<VerdictTable verdicts={VERDICTS} />); // these verdicts carry no required_tier
     expect(screen.queryByTestId("tier-line")).toBeNull();
   });
+
+  it("renders BOTH paths of a dual-measured model as two rows, and the toggle hides the native one", () => {
+    // One model measured on both paths → two ModelVerdicts sharing model+backend, distinct path.
+    const dual: ModelVerdict[] = [
+      {
+        model: "qwen2.5-coder",
+        backend: "ollama",
+        verdict: { status: "ready", blocking: [], conditions: [], path: "native_fc" },
+        pass_k: 0.82,
+      },
+      {
+        model: "qwen2.5-coder",
+        backend: "ollama",
+        verdict: { status: "ready", blocking: [], conditions: [], path: "prompt_based" },
+        pass_k: 0.74,
+      },
+    ];
+    const { rerender } = render(<VerdictTable verdicts={dual} showNativeFc={true} />);
+    // Both path labels appear (two rows for the same model, keyed by path so they don't collide).
+    expect(screen.getByText(/Native FC/)).toBeInTheDocument();
+    expect(screen.getByText(/Prompt-Based/)).toBeInTheDocument();
+
+    // Toggle OFF → the native row is filtered out, the prompt-based row remains.
+    rerender(<VerdictTable verdicts={dual} showNativeFc={false} />);
+    expect(screen.queryByText(/Native FC/)).toBeNull();
+    expect(screen.getByText(/Prompt-Based/)).toBeInTheDocument();
+  });
 });

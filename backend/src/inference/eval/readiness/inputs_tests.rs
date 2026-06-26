@@ -1,6 +1,9 @@
 use super::super::profile::{builtins, ReadinessProfile};
 use super::super::types::{AgentPath, CliffStatus, NativeFcStatus, Readiness};
-use super::{agentic_metrics, assess_report, from_column, merge_by_tier, merged_by_tier_for, pass_k_of, resolve_quant, verdict_for};
+use super::{
+    agentic_metrics, assess_report, from_column, merge_by_tier, merged_by_tier_for, merged_by_tier_for_path,
+    pass_k_of, resolve_quant, verdict_for, verdicts_for_column,
+};
 use crate::inference::eval::batch::BatchReport;
 use crate::inference::backend::backend_kind::BackendKind;
 use crate::inference::eval::agentic::scoring::report::{FailureTracker, TopError};
@@ -313,6 +316,80 @@ fn model_verdict_carries_by_tier_and_failures_from_the_native_first_source() {
     assert_eq!(v.by_tier[0].tier, Tier::Hard); // native, NOT the prompt's Easy
     assert_eq!(v.by_tier[0].avg_steps, Some(7.0));
     assert_eq!(v.failures.forbidden_calls, 3);
+}
+
+#[test]
+fn verdicts_for_column_emits_a_row_per_measured_path() {
+    let general = builtins().into_iter().find(|p| p.id == "general-agent").unwrap();
+    let mut c = col(9, 10, 0, 0, Some(2.0)); // prompt pass^k 0.9
+    c.agentic_native_fc = Some(agg(7, 10, 0)); // native pass^k 0.7
+    let rows = verdicts_for_column(&c, None, false, CliffStatus::NotProbed, None, None, &general, &[]);
+    assert_eq!(rows.len(), 2); // one row per measured path
+    // Native first (display order); each row's pass_k is sourced STRICTLY from its own pass.
+    assert_eq!(rows[0].verdict.path, AgentPath::NativeFc);
+    assert_eq!(rows[0].pass_k, Some(0.7));
+    assert_eq!(rows[1].verdict.path, AgentPath::PromptBased);
+    assert_eq!(rows[1].pass_k, Some(0.9));
+}
+
+#[test]
+fn verdicts_for_column_prompt_only_yields_one_row() {
+    let general = builtins().into_iter().find(|p| p.id == "general-agent").unwrap();
+    let rows =
+        verdicts_for_column(&col(9, 10, 0, 0, Some(2.0)), None, false, CliffStatus::NotProbed, None, None, &general, &[]);
+    assert_eq!(rows.len(), 1);
+    assert_eq!(rows[0].verdict.path, AgentPath::PromptBased);
+}
+
+#[test]
+fn verdicts_for_column_errored_column_is_one_not_ready_row() {
+    let general = builtins().into_iter().find(|p| p.id == "general-agent").unwrap();
+    let c = BatchColumn {
+        model: "boom".into(),
+        backend: BackendKind::Ollama,
+        toolcall: None,
+        agentic: None,
+        agentic_native_fc: None,
+        error: Some("backend offline".into()),
+        is_thinking: false,
+    };
+    let rows = verdicts_for_column(&c, None, false, CliffStatus::NotProbed, None, None, &general, &[]);
+    assert_eq!(rows.len(), 1);
+    assert_eq!(rows[0].verdict.status, Readiness::NotReady);
+    assert!(rows[0].verdict.blocking[0].contains("backend offline"));
+}
+
+#[test]
+fn require_native_fc_does_not_block_the_prompt_row_of_a_native_capable_model() {
+    // require_native_fc forced on. The model ran BOTH passes at high pass^k. The prompt row
+    // must be Ready — native is available at the MODEL level — and never blocked for "native
+    // not supported". This is the honesty fix: path is decoupled from the native_fc gate.
+    let mut p = builtins().into_iter().find(|p| p.id == "general-agent").unwrap();
+    p.require_native_fc = true;
+    let mut c = col(9, 10, 0, 0, Some(2.0)); // prompt 0.9
+    c.agentic_native_fc = Some(agg(9, 10, 0)); // native 0.9 → model-level Tested
+    let rows = verdicts_for_column(&c, None, false, CliffStatus::NotProbed, None, None, &p, &[]);
+    let prompt = rows.iter().find(|r| r.verdict.path == AgentPath::PromptBased).unwrap();
+    assert_eq!(prompt.verdict.status, Readiness::Ready, "{:?}", prompt.verdict.blocking);
+    assert!(!prompt.verdict.blocking.iter().any(|b| b.contains("native")));
+}
+
+#[test]
+fn merged_by_tier_for_path_never_crosses_paths() {
+    use crate::inference::eval::agentic::spec::Tier;
+    // A NATIVE ladder whose primary holds Easy. A tier sibling ran ONLY the prompt path
+    // (no native pass). Merging the NATIVE ladder must NOT pull the sibling's prompt Hard
+    // tier in — an honest gap, never the other path's data.
+    let primary = vec![ts(Tier::Easy, 1, 1)];
+    let prompt_only_sibling = report_with("qwen", BackendKind::Ollama, vec![ts(Tier::Hard, 1, 1)]);
+    let native = merged_by_tier_for_path("qwen", BackendKind::Ollama, AgentPath::NativeFc, &primary, &[&prompt_only_sibling]);
+    assert_eq!(native.len(), 1);
+    assert_eq!(native[0].tier, Tier::Easy); // sibling's prompt Hard is NOT crossed in
+
+    // Sanity: the SAME merge on the PROMPT path DOES pick up the sibling's Hard tier.
+    let prompt =
+        merged_by_tier_for_path("qwen", BackendKind::Ollama, AgentPath::PromptBased, &primary, &[&prompt_only_sibling]);
+    assert_eq!(prompt.len(), 2);
 }
 
 fn ts(tier: crate::inference::eval::agentic::spec::Tier, passed: u32, total: u32) -> crate::inference::eval::batch::TierStat {

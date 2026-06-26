@@ -2,7 +2,7 @@ import { useEffect, useRef, useState } from "react";
 import { useEvalRegistryStore } from "../../eval/state/evalRegistryStore";
 import { useBatchStore } from "../../eval/state/batchStore";
 import { useReadinessStore } from "../state/readinessStore";
-import { VerdictTable } from "./VerdictTable";
+import { VerdictTable, PATH_LABEL } from "./VerdictTable";
 import { RecommendationBanner } from "./RecommendationBanner";
 import { ExecutiveVerdict } from "./ExecutiveVerdict";
 import { TierProgressionMatrix } from "./TierProgressionMatrix";
@@ -18,6 +18,12 @@ import { capOptions, defaultCapBytes, archLabel } from "../capBytes";
 import { EditProfileModal } from "./EditProfileModal";
 import { useToast } from "../../../shared/ui/Toast";
 
+/// Stable composite identity for a deep-dive target — a model now has up to two verdicts
+/// (native + prompt), so the path is part of the key. Pipe-separated: a model name (which
+/// may contain a colon, e.g. `qwen2.5:7b`) never contains a `|`, so it can't collide with
+/// the fixed-enum path segment (`native_fc`/`prompt_based`).
+const focusKey = (model: string, path: string) => `${model}|${path}`;
+
 export function AgentReportPage() {
   const { presets, collections, selected, tasks, select, init } = useEvalRegistryStore();
   const {
@@ -27,6 +33,7 @@ export function AgentReportPage() {
     hardware,
     hardwareTier,
     focusedModel,
+    focusedPath,
     capBytes,
     assessed,
     loading,
@@ -34,7 +41,7 @@ export function AgentReportPage() {
     loadProfiles,
     loadHardware,
     loadHardwareTier,
-    setFocusedModel,
+    setFocus,
     selectProfile,
     setCap,
     assess,
@@ -63,12 +70,15 @@ export function AgentReportPage() {
     void loadHardwareTier();
   }, [presets.length, init, loadProfiles, loadHardware, loadHardwareTier]);
 
-  // The deep-dive targets one model — default to the recommended (first, best-ranked)
-  // verdict; reset if the focused model leaves the current verdict set (re-assess / switch).
+  // The deep-dive targets one (model, path) — default to the recommended (first, best-ranked)
+  // verdict; reset if that exact pair leaves the current verdict set (re-assess / profile
+  // switch / switching to a model that lacks the previously-focused path). Keying on the PAIR
+  // (not model alone) guarantees focus never orphans to a (model, path) with no verdict.
   useEffect(() => {
     if (verdicts.length === 0) return;
-    if (!verdicts.some((v) => v.model === focusedModel)) setFocusedModel(verdicts[0].model);
-  }, [verdicts, focusedModel, setFocusedModel]);
+    const exists = verdicts.some((v) => v.model === focusedModel && v.verdict.path === focusedPath);
+    if (!exists) setFocus(verdicts[0].model, verdicts[0].verdict.path);
+  }, [verdicts, focusedModel, focusedPath, setFocus]);
 
   // Auto-refresh after an eval batch finishes (so a new model / tier shows without a
   // manual Run Validation). Re-assess when the completed batch is the shown collection
@@ -91,13 +101,17 @@ export function AgentReportPage() {
   const activeProfile = profiles.find((p) => p.id === selectedProfileId);
 
   // The deep-dive (Executive Verdict / Tier Matrix / Failure Taxonomy) for the focused model.
-  const focused = verdicts.find((v) => v.model === focusedModel) ?? verdicts[0];
+  // The deep-dive for the focused (model, path). Falls back to the first verdict so it's
+  // never undefined when verdicts exist.
+  const focused =
+    verdicts.find((v) => v.model === focusedModel && v.verdict.path === focusedPath) ?? verdicts[0];
   const tierParams = axesByTier(tasks);
   const minPassK = activeProfile?.min_pass_k ?? 0.8;
   const exportDeepDiveJson = () => {
     if (!focused) return;
     download(
-      `${focused.model.replace(/[^a-z0-9._-]/gi, "_")}-readiness.json`,
+      // Path in the filename so a model's native + prompt deep-dives don't overwrite each other.
+      `${focused.model.replace(/[^a-z0-9._-]/gi, "_")}-${focused.verdict.path}-readiness.json`,
       JSON.stringify(deepDiveJson(focused, selected, activeProfile?.name ?? "this profile"), null, 2),
       "application/json",
     );
@@ -393,13 +407,16 @@ export function AgentReportPage() {
                 <span className="text-xs font-semibold uppercase tracking-wider text-slate-500">Deep Dive:</span>
                 <select
                   data-testid="deepdive-model-select"
-                  value={focused.model}
-                  onChange={(e) => setFocusedModel(e.target.value)}
+                  value={focusKey(focused.model, focused.verdict.path)}
+                  onChange={(e) => {
+                    const v = verdicts.find((x) => focusKey(x.model, x.verdict.path) === e.target.value);
+                    if (v) setFocus(v.model, v.verdict.path);
+                  }}
                   className="bg-white border border-slate-200 hover:border-slate-300 focus:border-slate-400 rounded-lg py-1.5 pl-3 pr-8 text-sm text-slate-800 shadow-sm outline-none cursor-pointer font-mono"
                 >
                   {verdicts.map((v) => (
-                    <option key={v.model} value={v.model}>
-                      {v.model}
+                    <option key={focusKey(v.model, v.verdict.path)} value={focusKey(v.model, v.verdict.path)}>
+                      {v.model} ({PATH_LABEL[v.verdict.path]})
                     </option>
                   ))}
                 </select>

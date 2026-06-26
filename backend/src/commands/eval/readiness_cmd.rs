@@ -14,7 +14,7 @@ use crate::inference::eval::readiness::hardware::hwclass::{classify_bytes, defau
 use crate::inference::eval::cliff::{build_ladder, run_cliff_with, CliffPoint, CliffReport, CliffSource, StepProgress, DEFAULT_DEPTHS};
 use crate::inference::eval::agentic::v2::scenarios::{v2_header, v2_json};
 use crate::inference::eval::batch::BatchReport;
-use crate::inference::eval::readiness::inputs::{agentic_metrics, merged_by_tier_for, native_first_source, pass_k_of, resolve_quant, verdict_for};
+use crate::inference::eval::readiness::inputs::{resolve_quant, verdicts_for_column};
 use crate::inference::eval::readiness::recommend;
 use crate::inference::eval::readiness::profile::ReadinessProfile;
 use crate::inference::eval::readiness::types::{CliffStatus, ModelVerdict};
@@ -390,30 +390,24 @@ pub async fn assess_readiness(
         let fits_in_vram = memory.as_ref().map(|m| m.fits);
         let vram_pressure = memory.as_ref().map(|m| m.pressure).unwrap_or(false);
         let cliff = registry_get(&cliffs, &col.model).copied().unwrap_or_default();
-        let verdict = verdict_for(col, fits_in_vram, vram_pressure, cliff, &profile);
-        let (avg_steps, effort) = agentic_metrics(col);
-        // Per-tier breakdown + failures from the SAME native-first source the verdict gated
-        // on, so the Agent Report's deep-dive can't drift from the gate (issue 5).
-        let (by_tier, failures) =
-            native_first_source(col).map(|a| (a.by_tier.clone(), a.failures.clone())).unwrap_or_default();
-        // Accumulate the ladder across this domain's tier siblings for THIS model
-        // (matched on (model, backend)); the selected collection's own entries win.
-        let by_tier = merged_by_tier_for(&col.model, col.backend, &by_tier, &sibling_refs);
-        out.push(ModelVerdict {
-            model: col.model.clone(),
-            backend: col.backend,
-            verdict,
-            memory,
-            avg_steps,
-            effort,
-            pass_k: pass_k_of(col),
-            // Real quant: the Ollama registry first, else parsed from the model name
-            // (a GGUF/llama.cpp/MLX or offline-Ollama model) so the row can publish.
-            quantization: resolve_quant(registry_get(&quants, &col.model).cloned(), &col.model),
+        // Real quant: the Ollama registry first, else parsed from the model name (a
+        // GGUF/llama.cpp/MLX or offline-Ollama model) so the row can publish. Model-level —
+        // shared across the column's per-path rows.
+        let quantization = resolve_quant(registry_get(&quants, &col.model).cloned(), &col.model);
+        // One verdict PER MEASURED PATH (native + prompt): the per-path emission sources each
+        // row's metrics + tier ladder strictly from its own pass, sharing the model-level
+        // memory/cliff/quant. The tier ladder accumulates across this domain's siblings for
+        // the SAME path (matched on (model, backend)); the selected collection's own entries win.
+        out.extend(verdicts_for_column(
+            col,
+            fits_in_vram,
+            vram_pressure,
             cliff,
-            by_tier,
-            failures,
-        });
+            memory,
+            quantization,
+            &profile,
+            &sibling_refs,
+        ));
     }
     // Phase 7.3: rank best-first (Ready > Conditional > NotReady, ties by effort
     // then steps) so the page's recommendation banner + leaderboard are correct.

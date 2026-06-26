@@ -433,11 +433,16 @@ Malformed). Clicking a row → `onFocusModel` (scrolls the detail panels up).
 
 ### MatrixScoreboard.tsx — the per-task table ("2. The Simulator")
 
-Per the **focused** model: aggregates pass-rate / avg-steps / effort over
-`tasks × outcomeByKey`, a live progress bar (`progress.done/total`), and a task
-table. Each row's Result badge: `single` → Pass/Fail; `agentic` → all-pass
-`Pass`, none `Fail`, **partial → amber `Partial p/total`** ("unreliable, not a
-clean pass"). Row click sets `focusedTaskId` → drives `TraceDebugger`. Collapsible.
+Per the **focused** model: an `aggregate(byKey)` helper computes pass-rate / avg-steps /
+effort over `tasks × byKey`, called **once per pass** — `nativeOutcomeByKey` and
+`outcomeByKey` — and the AGGREGATE box renders **one labeled line per measured pass**
+(`Tool-Calling (native):` / `Prompt-based:`). The two are **never blended** (different
+measurement modes — eval-metric comparability); a native-only run shows the native line
+(previously the AGGREGATE read only the prompt pass and showed `—` for a native run). A
+live progress bar (`progress.done/total`) and a task table follow. Each row's Result badge:
+`single` → Pass/Fail; `agentic` → all-pass `Pass`, none `Fail`, **partial → amber
+`Partial p/total`** ("unreliable, not a clean pass"). Row click sets `focusedTaskId` →
+drives `TraceDebugger`. Collapsible.
 Read-only — per-task Edit/Delete live in the sidebar (`EvalManager`), not here. Header
 chips echo the run shape (`Tier · K · Decoys`).
 
