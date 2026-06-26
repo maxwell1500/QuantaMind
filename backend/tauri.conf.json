@@ -19,7 +19,7 @@
     "active": true,
     "targets": "all",
     "createUpdaterArtifacts": true,
-    "resources": { "binaries/": "binaries/", "../docs/prompts/": "prompts/", "../docs/evals/": "evals/" },
+    "resources": { "binaries/": "binaries/", "../docs/prompts/": "prompts/", "../docs/evals/": "evals/", "../docs/chat_templates/": "chat_templates/" },
     "icon": [
       "icons/32x32.png",
       "icons/128x128.png",

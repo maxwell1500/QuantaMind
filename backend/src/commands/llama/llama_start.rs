@@ -1,8 +1,9 @@
 use crate::commands::llama::llama_runtime::{
-    bin_name, build_spawn_args, context_for, is_reachable, jinja_unsupported, spawn_server,
+    bin_name, build_spawn_args, is_reachable, jinja_unsupported, spawn_meta, spawn_server,
     spawn_stderr_tail, wait_until_ready, JINJA_UNSUPPORTED_MSG, PORT, PROBE_TIMEOUT_MS,
 };
 use crate::commands::llama::llama_server_types::{LlamaServerState, LlamaStartResult};
+use crate::commands::llama::llama_templates::{model_stem, resolve_template_file};
 use crate::errors::AppError;
 use std::path::PathBuf;
 use tauri::Manager;
@@ -56,8 +57,13 @@ pub async fn start_llama_server(
             note: NOT_BUNDLED_MSG.into(),
         });
     };
-    let ctx = context_for(&model_path);
-    let mut child = match spawn_server(&dir, &build_spawn_args(&model_path, PORT, ctx)) {
+    // One GGUF read → context window + architecture; the latter (and the model
+    // name) resolve any user/bundled `.jinja` override for a model whose embedded
+    // template is broken. No override ⇒ the embedded template via `--jinja`.
+    let (ctx, arch) = spawn_meta(&model_path);
+    let template = resolve_template_file(&app, model_stem(&model_path), &arch);
+    let template_arg = template.as_deref().and_then(|p| p.to_str());
+    let mut child = match spawn_server(&dir, &build_spawn_args(&model_path, PORT, ctx, template_arg)) {
         Ok(c) => c,
         Err(error) => return Ok(LlamaStartResult::StartFailed { error }),
     };

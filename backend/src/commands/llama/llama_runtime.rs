@@ -51,8 +51,12 @@ pub async fn is_reachable(timeout_ms: u64) -> bool {
 /// model never sees its trained turn structure, never emits EOS, and loops to
 /// `n_predict`. `-c` pins the context window from the GGUF header so long
 /// agentic transcripts don't silently overflow a too-small default.
-pub fn build_spawn_args(gguf_path: &str, port: u16, ctx: u32) -> Vec<String> {
-    vec![
+///
+/// `template_file` is an OPTIONAL `.jinja` override (`--chat-template-file`), used
+/// only when a model's embedded template is broken (resolved by `llama_templates`).
+/// `None` ⇒ the embedded template via `--jinja` — the default for every model.
+pub fn build_spawn_args(gguf_path: &str, port: u16, ctx: u32, template_file: Option<&str>) -> Vec<String> {
+    let mut args = vec![
         "-m".into(),
         gguf_path.into(),
         "--host".into(),
@@ -62,7 +66,12 @@ pub fn build_spawn_args(gguf_path: &str, port: u16, ctx: u32) -> Vec<String> {
         "--jinja".into(),
         "-c".into(),
         ctx.to_string(),
-    ]
+    ];
+    if let Some(path) = template_file {
+        args.push("--chat-template-file".into());
+        args.push(path.into());
+    }
+    args
 }
 
 /// Context window to launch with: the GGUF's own `context_length`, or a safe
@@ -70,11 +79,14 @@ pub fn build_spawn_args(gguf_path: &str, port: u16, ctx: u32) -> Vec<String> {
 /// arg list stays a pure function of its inputs.
 pub const DEFAULT_CONTEXT: u32 = 4096;
 
-pub fn context_for(gguf_path: &str) -> u32 {
-    crate::inference::gguf::gguf::inspect_gguf(Path::new(gguf_path))
-        .ok()
-        .and_then(|m| m.context_length)
-        .unwrap_or(DEFAULT_CONTEXT)
+/// One GGUF header read → the two values the spawn needs: the context window
+/// (`-c`) and the architecture string (the chat-template override lookup key).
+/// Both degrade safely when the header can't be read (`DEFAULT_CONTEXT`, empty arch).
+pub fn spawn_meta(gguf_path: &str) -> (u32, String) {
+    match crate::inference::gguf::gguf::inspect_gguf(Path::new(gguf_path)) {
+        Ok(m) => (m.context_length.unwrap_or(DEFAULT_CONTEXT), m.architecture),
+        Err(_) => (DEFAULT_CONTEXT, String::new()),
+    }
 }
 
 /// The `llama-server` executable file name for this platform.
