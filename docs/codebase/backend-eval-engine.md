@@ -34,15 +34,7 @@ estimate or a 0 substituted for missing data.
 | **Matrix** | `run_collection_matrix` | Same collection across N models (sequential) | per-column `ToolCallReport` + mean composite |
 | **Agentic** | inside `run_batch_eval` (tasks `category == "agentic"`) | Multi-step sandboxed tool loop, Pass^k reliability | `agentic::report::AgenticReport` |
 | **Context-cliff** | `run_context_cliff` | Largest verified prompt-token depth before accuracy collapses | per-rung composite vs baseline |
-| **Vision OCR** | `run_vision_eval` | A vision model extracts text from a bundled image; scored vs ground truth | `vision::ocr_score` (CER/WER + HallucinatedContent) |
 | **Readiness** | `assess_readiness` | A measured batch report + cliff + VRAM fit vs a use-case profile → Ready/Conditional/NotReady | `readiness::verdict::assess` |
-
-**Vision OCR is a SEPARATE, decoupled family** (`inference/eval/vision/`, mirroring the STT eval's
-structure): live image→text (not RAG, not Pass^k), modality-gated (`probe_supports_vision`,
-Ollama-only → text-only models get `CannotProcess`, never a 0). It produces a `VisionReport`, NEVER
-a `ModelVerdict` — so it is OFF the leaderboard by type (publish only accepts `ModelVerdict`).
-`images` rides on `GenerateSpec` (`skip_serializing_if` → byte-parity for text). `HallucinatedContent`
-= high insertion rate AND aligned-portion-faithful (invented content, not inaccuracy or noise).
 
 The **batch** mode (`run_batch_eval`) is the umbrella runner: it mixes single-turn
 and agentic tasks across multiple models, isolates VRAM between models, streams
@@ -533,9 +525,17 @@ schema_resilience: (schema_hits > 0).then(|| schema_recovered as f64 / schema_hi
   siblings; two calls can satisfy two checkpoints in one turn. The raw turn is pushed once,
   then one tool-result line per call; the turn streams a single `TrajectoryStep` carrying
   every injection. A single-call turn is byte-identical to the pre-multi-call path.
-- **Wall-clock budget (`TASK_BUDGET=480s`):** a Pass^k batch over a slow model (a 12B on a
-  16GB host generates minutes per step) can otherwise grind for hours — `k × max_steps`
-  real multi-minute turns. `run_agentic_within` stops launching NEW runs once the batch
+- **Wall-clock budget (`task_budget(k, is_thinking) = PER_RUN_BUDGET(300s) × (3 if thinking) × k`):**
+  a Pass^k batch over a slow model (a 12B on a 16GB host generates minutes per step) can otherwise
+  grind for hours — `k × max_steps` real multi-minute turns. The budget **scales with `k`**: a flat
+  per-task cap silently broke Pass^k for every tier above the smallest (a slow model takes minutes
+  per run, so a flat 8-min cap let only ~3 runs through whether k was 5 or 16 — truncating the batch
+  and voiding its strict-pass credit before it could finish). Per-run scaling gives each requested
+  repetition a guaranteed slice, so the cap fires only on a pathologically slow batch, never merely
+  because k is large. It **also scales with `is_thinking`** (×3): a reasoning model emits a
+  multi-k-token `<think>` scratchpad each turn (its per-turn token budget is already 6–16× a terse
+  model's), so a run is intrinsically slower and would otherwise truncate while progressing normally;
+  `STEP_TIMEOUT` still caps any single wedged turn. `run_agentic_within` stops launching NEW runs once the batch
   passes the budget, but only BETWEEN whole runs and after sampling at least one, so every
   counted run is complete. The report is stamped `requested_runs = Some(k)` (truncated);
   `total_runs` holds the completed runs and the pass rate stays an honest, unbiased estimate
@@ -557,7 +557,7 @@ pub async fn run_agentic<M: ModelTurn>(turn, sandbox, config, tx) -> AppResult<A
     let start = Instant::now();
     let mut outcomes = Vec::with_capacity(config.k as usize);
     for run_index in 0..config.k {
-        if run_index > 0 && start.elapsed() >= TASK_BUDGET { truncated = true; break; } // whole runs only
+        if run_index > 0 && start.elapsed() >= task_budget(config.k, turn.is_thinking()) { truncated = true; break; } // whole runs only; budget scales with k AND thinking
         outcomes.push(run_once(turn, sandbox, config.max_steps, config.max_recovery, run_index, tx).await?);
     }
     let report = AgenticReport::from_outcomes(&outcomes);

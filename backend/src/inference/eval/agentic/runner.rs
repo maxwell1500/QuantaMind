@@ -157,17 +157,38 @@ where
     M: ModelTurn,
     F: Fn(u32) -> AppResult<(DeterministicSandbox, u32, u8)>,
 {
-    run_agentic_within(turn, k, make, cancel, TASK_BUDGET, tx).await
+    run_agentic_within(turn, k, make, cancel, task_budget(k, turn.is_thinking()), tx).await
 }
 
-/// Per-task wall-clock budget for a whole Pass^k batch. A slow model (a 12B on a 16GB host
-/// generates minutes per step) can otherwise grind for hours: k runs × max_steps real
-/// multi-minute turns. Once a batch passes this budget we stop launching NEW runs and
-/// report the honest pass rate over the COMPLETED runs (flagged via
-/// `AgenticReport::with_truncation`) — an unbiased estimate that makes no claim about the
-/// runs we skipped. Generous (8 min) so it only fires on a pathologically slow batch; a
-/// healthy 7B finishes Hard well under it.
-const TASK_BUDGET: std::time::Duration = std::time::Duration::from_secs(480);
+/// Per-RUN wall-clock allotment, multiplied by `k` to get the whole-batch budget
+/// (`task_budget`). A slow model (a 12B on a 16GB host generates minutes per step) can
+/// otherwise grind for hours: k runs × max_steps real multi-minute turns. Once a batch passes
+/// its budget we stop launching NEW runs and report the honest pass rate over the COMPLETED
+/// runs (flagged via `AgenticReport::with_truncation`).
+///
+/// It MUST scale with `k`: a flat per-task cap silently broke Pass^k for every tier above the
+/// smallest — a slow model takes minutes per run, so a flat 8-min cap let only ~3 runs through
+/// whether k was 5 or 16, truncating the batch (and voiding its strict-pass credit, see
+/// `AgenticReport::is_strict_pass`) before it could ever finish. Per-run scaling gives each
+/// requested repetition a guaranteed slice, so the cap only fires on a pathologically slow batch
+/// (every run blowing its whole allotment), never merely because k is large. 5 min/run is
+/// generous for a terse model — a healthy 7B finishes a run in seconds and never approaches it.
+const PER_RUN_BUDGET: std::time::Duration = std::time::Duration::from_secs(300);
+
+/// A reasoning model emits a 1–2k+ token `<think>` scratchpad BEFORE every tool call — the
+/// per-turn token budget it gets is already 6–16× a terse model's (`max_tokens_for(.., true)` =
+/// 1536–4096 vs 256), so each turn is several times slower in wall-clock, and a run is many turns.
+/// Without this a thinking model on a deep task blows the per-run slice and gets truncated even
+/// though it's progressing normally. 3× (not the full token ratio) because not every turn maxes
+/// its budget and per-turn overhead is partly fixed; `STEP_TIMEOUT` still caps any single wedged turn.
+const THINKING_BUDGET_MULTIPLIER: u32 = 3;
+
+/// The whole-batch wall-clock budget for a `k`-run Pass^k task: a per-run slice (larger for a
+/// thinking model, which is intrinsically slower per turn) times `k`.
+fn task_budget(k: u32, is_thinking: bool) -> std::time::Duration {
+    let per_run = if is_thinking { PER_RUN_BUDGET * THINKING_BUDGET_MULTIPLIER } else { PER_RUN_BUDGET };
+    per_run * k.max(1)
+}
 
 /// `run_agentic_with` with an injectable wall-clock budget (so the truncation path is
 /// testable without a multi-minute wait — a ZERO budget truncates after the first run).
@@ -333,7 +354,6 @@ async fn run_steps<M: ModelTurn>(
                 ..Default::default()
             }),
             keep_alive: None,
-            images: None,
         };
         let (raw, stats) = match tokio::time::timeout(step_timeout, turn.run(&spec)).await {
             Ok(r) => r?, // backend returned; an Err propagates (infra fault → run skipped upstream)

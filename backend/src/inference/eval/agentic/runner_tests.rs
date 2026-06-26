@@ -1,7 +1,7 @@
 use crate::errors::AppResult;
 use crate::inference::eval::agentic::model_turn::ModelTurn;
 use crate::inference::eval::agentic::scoring::report::{FailureKind, TopError};
-use crate::inference::eval::agentic::runner::{run_agentic, run_agentic_within, run_once, run_once_inner, AgenticConfig};
+use crate::inference::eval::agentic::runner::{run_agentic, run_agentic_within, run_once, run_once_inner, task_budget, AgenticConfig};
 use tokio_util::sync::CancellationToken;
 use crate::inference::eval::agentic::sandbox::{DeterministicSandbox, EndStateRule, MockResponse, TaskCheckpoint};
 use crate::inference::eval::agentic::spec::{FaultInjection, FaultRule};
@@ -228,6 +228,35 @@ async fn generous_budget_runs_every_requested_run_and_is_not_flagged() {
     assert_eq!(report.total_runs, 5);
     assert_eq!(report.passes, 5);
     assert_eq!(report.requested_runs, None, "a full batch is never flagged truncated");
+}
+
+#[test]
+fn task_budget_scales_with_k_so_a_bigger_pass_k_is_not_truncated_early() {
+    // The bug: a FLAT per-task cap let only a fixed number of slow runs through regardless of k,
+    // truncating every tier above the smallest before it could finish. The budget must grow with k
+    // so each requested run gets the same guaranteed slice.
+    let easy = task_budget(5, false);
+    let hard = task_budget(16, false);
+    let extreme = task_budget(24, false);
+    assert_eq!(easy, std::time::Duration::from_secs(300) * 5, "k=5 → 5 per-run slices");
+    assert_eq!(hard, std::time::Duration::from_secs(300) * 16);
+    assert!(easy < hard && hard < extreme, "more runs → more wall-clock, never a flat cap");
+    // k=0 can't underflow the multiply into a zero budget that truncates the only sampled run.
+    assert_eq!(task_budget(0, false), task_budget(1, false));
+}
+
+#[test]
+fn task_budget_gives_a_thinking_model_more_wall_clock_per_run() {
+    // A reasoning model emits a multi-k-token <think> scratchpad each turn, so a run is
+    // intrinsically slower; without the thinking bump it truncates mid-batch while progressing
+    // normally. Same k, strictly more time — and the bump is per-RUN, so it compounds with k.
+    for k in [1u32, 5, 16, 24] {
+        assert!(
+            task_budget(k, true) > task_budget(k, false),
+            "thinking gets more time at k={k}"
+        );
+        assert_eq!(task_budget(k, true), task_budget(k, false) * 3, "3× per-run for thinking");
+    }
 }
 
 #[tokio::test]
