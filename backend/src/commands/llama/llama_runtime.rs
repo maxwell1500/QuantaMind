@@ -74,19 +74,33 @@ pub fn build_spawn_args(gguf_path: &str, port: u16, ctx: u32, template_file: Opt
     args
 }
 
-/// Context window to launch with: the GGUF's own `context_length`, or a safe
-/// floor when the header omits it. Kept separate from `build_spawn_args` so the
-/// arg list stays a pure function of its inputs.
+/// Context window to launch with when the GGUF header omits one.
 pub const DEFAULT_CONTEXT: u32 = 4096;
 
+/// Upper bound on `-c`. The GGUF's declared `context_length` is the model's MAX
+/// (e.g. gemma4 reports 262144 = 256K), and launching `llama-server -c <that>`
+/// allocates a KV cache for the full window up front — 256K tokens for a 12B
+/// model OOMs and llama-server dies with "Compute error". So `-c` is the GGUF
+/// value CAPPED here: ample headroom for agentic transcripts (well above the old
+/// 4096 default), small enough that the KV cache always allocates.
+pub const MAX_CONTEXT: u32 = 8192;
+
 /// One GGUF header read → the two values the spawn needs: the context window
-/// (`-c`) and the architecture string (the chat-template override lookup key).
-/// Both degrade safely when the header can't be read (`DEFAULT_CONTEXT`, empty arch).
+/// (`-c`, capped — see `MAX_CONTEXT`) and the architecture string (the
+/// chat-template override lookup key). Both degrade safely when the header can't
+/// be read (`DEFAULT_CONTEXT`, empty arch).
 pub fn spawn_meta(gguf_path: &str) -> (u32, String) {
     match crate::inference::gguf::gguf::inspect_gguf(Path::new(gguf_path)) {
-        Ok(m) => (m.context_length.unwrap_or(DEFAULT_CONTEXT), m.architecture),
+        Ok(m) => (cap_context(m.context_length), m.architecture),
         Err(_) => (DEFAULT_CONTEXT, String::new()),
     }
+}
+
+/// The `-c` value: the GGUF's declared context, capped at `MAX_CONTEXT`; the
+/// `DEFAULT_CONTEXT` floor when the header omits it. Pure, so the cap is tested
+/// without a GGUF fixture.
+pub fn cap_context(ctx: Option<u32>) -> u32 {
+    ctx.unwrap_or(DEFAULT_CONTEXT).min(MAX_CONTEXT)
 }
 
 /// The `llama-server` executable file name for this platform.

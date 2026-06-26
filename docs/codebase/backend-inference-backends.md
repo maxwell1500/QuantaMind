@@ -613,7 +613,9 @@ stderr-aware launcher where loading is slow.
   binary **directory** (`QUANTAMIND_LLAMA_DIR` → bundled `resources/binaries` →
   dev tree — the dir, not a lone binary, because `@loader_path` dylibs must stay
   colocated), spawn with `build_spawn_args(path, PORT, ctx, template)` (ctx + arch
-  from one `spawn_meta`/`inspect_gguf` read, `--jinja` always on; `template` is an
+  from one `spawn_meta`/`inspect_gguf` read — ctx is the GGUF context **capped at
+  `MAX_CONTEXT` 8K**, since the declared value is the model MAX and `-c 262144`
+  OOMs the KV cache; `--jinja` always on; `template` is an
   optional `--chat-template-file` override resolved by `llama_templates` — `None`
   ⇒ the embedded template), then **block on
   `wait_until_ready()`** (poll `/health` every 500ms ≤30s). If readiness fails,
