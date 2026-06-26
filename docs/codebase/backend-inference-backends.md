@@ -358,12 +358,27 @@ impl GenerateChunk {
 - **Responsibility:** Native `/api/chat` with a `tools` array (non-streaming),
   for the eval tool-call pass.
 - **What:** `chat_with_tools(endpoint, model, system, user, tools: &Value,
-  options) -> ChatResult`; `parse_chat(json)`; `NativeToolCall { name, args }`;
-  `ChatResult { tool_calls, content, stats }`. `normalize_args` re-parses a
-  tool-call `arguments` value that a model returned as a JSON *string* back into
-  a real object. The `tools` argument is a pre-built `serde_json::Value` so this
-  client never depends on the eval layer's types.
+  options) -> ChatResult`; `parse_chat(json)`; the SHARED native-tool-call types
+  `NativeToolCall { name, args }` + `ChatResult { tool_calls, content, stats }`;
+  and `pub fn normalize_args` (re-parses an `arguments` value a model returned as
+  a JSON *string* back into a real object). The `tools` argument is a pre-built
+  `serde_json::Value` so this client never depends on the eval layer's types.
 - **How/Where used:** eval's native function-calling pass (see `backend-eval`).
+  `NativeToolCall`/`ChatResult`/`normalize_args` are reused by `llama_chat.rs`
+  (the shared canonical interface — native FC follows the running server).
+
+#### File: `inference/llama/llama_chat.rs`
+- **Responsibility:** llama.cpp's native tool pass — OpenAI `/v1/chat/completions`
+  with a `tools` array (non-streaming). Requires `--jinja` at spawn so the GGUF's
+  embedded tool grammar applies.
+- **What:** `chat_with_tools(...) -> ChatResult` (same shape as Ollama's) +
+  `parse_chat`. Reads `choices[0].message.{content, tool_calls[].function.{name,
+  arguments}}`; reuses `normalize_args` because llama.cpp builds disagree on
+  string-vs-object `arguments` (verified live: gemma returns the string form).
+  Usage → stats via `mlx_stats::from_usage`.
+- **Why:** so a llama.cpp native turn canonicalizes tool calls byte-identically
+  to Ollama's — `NativeToolTurn` (`agentic/model_turn.rs`) dispatches the right
+  `chat_with_tools` by `BackendKind`; a new server adds one arm.
 
 #### File: `inference/ollama/ollama_show.rs`
 - **Responsibility:** `/api/show` model metadata.

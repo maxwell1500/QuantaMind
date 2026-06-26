@@ -1163,10 +1163,13 @@ with no VRAM-fit measurement, or `min_context_tokens` with no cliff probe), that
 diagnostic. The `pass^k` core gate likewise blocks when no agentic run was recorded.
 Float comparisons are epsilon-guarded (`1e-6`) so a true `0.80` can't false-block.
 
-**The per-model deep-dive (Phase 9B).** Below the multi-model table a model selector
-opens a three-section drill-down for one model, sourced from `ModelVerdict.by_tier` /
-`failures` — the **same native-first aggregate the gate read** (one `native_first_source`
-helper feeds the gate, the per-tier breakdown, and the taxonomy, so they can't drift):
+**The per-model deep-dive (Phase 9B).** Below the multi-model table a *(model, path)*
+selector opens a three-section drill-down for one verdict, sourced from
+`ModelVerdict.by_tier` / `failures` — the **same per-path aggregate the gate read**
+(`source_for_path` feeds that path's gate, per-tier breakdown, and taxonomy strictly from
+its own pass, so they can't drift across paths). Because a model now has up to two verdicts
+(native + prompt-based), the selector key is the *(model, path)* pair, not the bare model
+name — and the reset logic guarantees focus never orphans to a path a model didn't run:
 
 - **Executive Verdict** — the headline tier is the **tier that actually ran** (the highest
   tier exercised in `by_tier`), *not* the profile's `required_tier`. The hardware class
@@ -1244,24 +1247,33 @@ only cross-backend-fair method. The **native** path (Phase 7.2) runs the *same* 
 tasks through the model's real `tool_calls` API — the path a production agent actually
 uses.
 
-- **Measuring native.** Tick **Measure native tool-calling (Ollama)** on the Eval run.
-  For each **Ollama** model that reports the `tools` capability (`/api/show`), QuantaMind
-  runs a parallel pass via `/api/chat` with a native `tools` array, parses the real
-  `tool_calls`, and shows a **Native FC pass^k** column in the Matrix (behind a toggle).
-  Only the call *extraction* differs — the deterministic sandbox, scoring, and failure
-  taxonomy are identical, so the two columns are comparable. An empty/abstaining
-  `tool_calls` is scored as a correct no-call; parallel `tool_calls` are processed
-  one-per-step (the sandbox is sequential). **Ollama-only** today: llama.cpp / MLX show
-  **N/A**, never a guessed score — hovering an N/A native cell explains why ("non-Ollama
-  backend, or the model has no tools capability"), so following the *enable native* nudge
-  never dead-ends at a silent N/A. (The **RUN BATCH** button likewise explains any disabled
-  state on hover — "Select at least one model" / "This collection has no tasks".)
-- **In the verdict.** When native was measured for a model, the readiness verdict
-  **prefers it** — the core Pass^k gate and the loop/hallucination gates use the native
-  result, and the row is labelled **(Native FC)**. Models without a native measurement
-  fall back to the prompt-based proxy, labelled **(Prompt-Based)**. So a model that passes
-  the prompt proxy but fails the native path reads **NotReady** on the path your app
-  actually uses — the honest gap, made visible.
+- **Measuring native.** Tick **Measure native tool-calling** on the Eval run. The native
+  pass **follows the running server**: an **Ollama** model that reports the `tools`
+  capability (`/api/show`) runs via `/api/chat`; a **llama.cpp** model (launched with
+  `--jinja`) runs via the OpenAI `/v1/chat/completions` `tools` API. Either way QuantaMind
+  parses the real `tool_calls` and shows a **Native FC pass^k** column in the Matrix (behind
+  a toggle). Only the call *extraction* differs — the deterministic sandbox, scoring, and
+  failure taxonomy are identical (and tool-call args are canonicalized the same whether the
+  backend returns a JSON string or an object), so the two columns are comparable. An
+  empty/abstaining `tool_calls` is scored as a correct no-call; parallel `tool_calls` are
+  processed one-per-step (the sandbox is sequential). **MLX** has no native tool API, so it
+  shows **N/A**, never a guessed score — hovering an N/A native cell explains why ("backend
+  has no native tool API, or the model has no tools capability"), so following the *enable
+  native* nudge never dead-ends at a silent N/A. (The **RUN BATCH** button likewise explains
+  any disabled state on hover — "Select at least one model" / "This collection has no tasks".)
+- **In the verdict — one row PER MEASURED PATH.** `assess_readiness` emits a separate
+  `ModelVerdict` for every path a model actually ran: a **(Native FC)** row when native was
+  measured (`agentic_native_fc.total_runs > 0`) **and** a **(Prompt-Based)** row when the
+  prompt pass ran. Each row's Pass^k / steps / failures / per-tier ladder are sourced
+  **strictly from its own path** (`source_for_path`, never a cross-path fallback), so the two
+  rows are directly comparable and a model that passes the prompt proxy but fails native reads
+  **NotReady** on the native row — the honest gap, made visible side-by-side. The
+  **Show Native-FC Path** toggle hides the native rows; the deep-dive selector targets a
+  specific *(model, path)* pair. Native capability is a **model-level** fact: the
+  `require_native_fc` gate reads whether the *model* supports native (so a native-capable
+  model's prompt-based row is never falsely blocked), while the `path` label states which
+  pass *this* row measured — the two are deliberately decoupled (`ReadinessInputs.path`).
+  A model with no native measurement yields a single Prompt-Based row.
 
 **Source of truth.** `run_batch_eval` persists the full report per collection; the
 `assess_readiness` command loads it and calls the one pure scoring function
@@ -1280,8 +1292,10 @@ share lever (see `process.md#phase-roadmap`, step 8.B4).
 **Publishing to the community board (Phase 8 — privacy contract).** Separate from the
 offline export, an *opt-in* publish path can contribute a verdict to a shared
 leaderboard. What's sent is **verdicts + metrics, never content or context** — a
-`PublishRow` per measured model, built by **allowlist** (only the named fields ship; a
-new `ModelVerdict` field stays private until added to `project` on purpose): `model`,
+`PublishRow` per measured **path** per model (a model evaluated on both native + prompt-based
+publishes **two** rows, distinguished by `eval_method`), built by **allowlist** (only the
+named fields ship; a new `ModelVerdict` field stays private until added to `project` on
+purpose): `model`,
 `quant`, a **hardware `cohort_key`** (`{platform}/{accel}/{mem_tier}`, e.g.
 `apple-silicon/m3-pro/32-64gb`), `tool_version`, the metrics bag (`pass_k`, `effort?`,
 `avg_steps?`), and — since the **Phase 9 extension** — the graduated tier verdict
@@ -1316,6 +1330,13 @@ baselines) is a separate hosted repo; the desktop app is fully functional offlin
 without it. ⚠ The `cohort_key` taxonomy is **v1 pending backend sign-off** — the
 server's bucketing must match it exactly or dedup `UNIQUE(user, model, quant,
 cohort_key)` breaks.
+⚠ **COUPLED SERVER CHANGE (dual-path publish):** now that the client sends one row per
+`eval_method` (native + prompt-based), the server's dedup key **must become**
+`UNIQUE(user, model, quant, cohort_key, eval_method)`. If it still dedups on
+`(user, model, quant, cohort_key)`, the second path 422s and the publish **silently
+half-succeeds** (one path lands, the other is rejected) — it looks fine in the local
+preview (two rows shown) but fails on the real POST. This server change must land **with or
+before** the desktop change; until it's confirmed, dual-path publish is not shippable.
 
 *Auth + send.* The API base is resolved once from `QM_API_BASE`, defaulting to the live
 production host `https://api.quantamind.co` (set `QM_API_BASE=http://localhost:8787` for

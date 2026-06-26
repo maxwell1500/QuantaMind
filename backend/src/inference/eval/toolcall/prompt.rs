@@ -38,7 +38,7 @@ pub fn reply_tool_name(tools: &[ToolSchema]) -> Option<&str> {
 /// builds the identical prompt, gating the closing line on its task's end_state.
 /// The closing answer-delivery mandate, gated on act-vs-abstain and the toolset's reporter
 /// tool. Extracted so BOTH the prompt path (`build_system_for`, which wraps it with JSON-format
-/// instructions) and the NATIVE path (`NativeOllamaTurn`, which uses ONLY this mandate — native
+/// instructions) and the NATIVE path (`NativeToolTurn`, which uses ONLY this mandate — native
 /// tool calls need no JSON instructions) share one source of truth. An act-task with a reporter
 /// tool is told to use it BY NAME; an action-only act-task is told its actions ARE the answer
 /// (so the mandate never points at a `reply` tool that doesn't exist → no phantom call).

@@ -411,12 +411,15 @@ FaultInjection::TransientError { status_code, clears_after } => {
 ### File: `model_turn.rs`
 - **Responsibility:** The `ModelTurn` seam (prompt → text + stats) and its impls.
 - **Why:** The runner depends on the trait, not a backend, so it's unit-testable
-  with a scripted model; the native Ollama path translates structured `tool_calls`
-  back into canonical `{name,args}` JSON so sandbox/scoring stay byte-identical.
+  with a scripted model; the native path translates structured `tool_calls`
+  back into canonical `{name,args}` JSON so sandbox/scoring stay byte-identical
+  — across both passes AND across backends.
 - **What:** `trait ModelTurn { async fn run(&self, &GenerateSpec) -> …; async fn warm_up(&self) -> AppResult<()> { Ok(()) } }`;
   `BackendTurn{backend,endpoint,model,cancel,options,keep_alive}` (dispatch by
-  `BackendKind`); `NativeOllamaTurn{endpoint,model,tools,options}` (`/api/chat` +
-  `synthesize_calls`).
+  `BackendKind`); `NativeToolTurn{backend,endpoint,model,tools,options,…}` — native
+  FC follows the running server, dispatching `chat_with_tools` by `BackendKind`
+  (Ollama `/api/chat`, llama.cpp OpenAI `/v1/chat/completions`; MLX has none),
+  then `synthesize_calls` for the shared canonical text.
 - **Options merge (`merge_eval_options`):** `BackendTurn::run` merges the header's global
   eval params with the harness per-turn spec **field-wise** — it does NOT let one replace the
   other. The loop's structural caps win: `num_predict` (the `MAX_TOKENS=256` anti-runaway
@@ -733,11 +736,13 @@ required-but-unmeasured input *blocks* ("ignorance is not a pass").
   `CliffStatus::{NotProbed(default), NoCliff{tested}, Collapsed{depth}, Broken{tested}}`;
   `AgentPath::{PromptBased, NativeFc}`; `NativeFcStatus::{Tested{pass_k}, NotSupported}`;
   `ReadinessInputs{pass_k, avg_steps, ms_per_step, cliff, fits_in_vram, vram_pressure,
-  loops, hallucinated, native_fc}`; `Readiness::{Ready, Conditional, NotReady}`;
+  loops, hallucinated, native_fc, path}` (`native_fc` = model-level capability for the gate;
+  `path` = the row's own path for the label — deliberately decoupled);
+  `Readiness::{Ready, Conditional, NotReady}`;
   `ReadinessVerdict{status, blocking, conditions, path, required_tier, cleared_tier}`;
   `ModelVerdict{model, backend, verdict, memory, avg_steps, effort, pass_k, quantization,
   cliff, by_tier, failures}` (Phase 9B: `by_tier`/`failures` for the Agent Report deep-dive,
-  from the native-first source the verdict gated on).
+  from the **same-path** source that path's verdict gated on — one ModelVerdict per measured path).
 
 ### File: `profile.rs`
 - **Responsibility:** The tunable use-case presets verdicts are measured against.
@@ -757,6 +762,12 @@ required-but-unmeasured input *blocks* ("ignorance is not a pass").
 - **Responsibility:** THE gate — `assess(inputs, profile) -> ReadinessVerdict`.
 - **Decision rule:** any `blocking` reason ⇒ **NotReady**; else any `conditions` ⇒
   **Conditional**; else **Ready**.
+- **`path` is decoupled from the native-FC gate:** `verdict.path = i.path` (the row's own
+  path, set by the caller) — **not** derived from `i.native_fc`. The `require_native_fc` gate
+  reads `i.native_fc`, which carries the **model-level** native capability (identical for both
+  of a column's rows). So a native-capable model's prompt-based row labels itself
+  `PromptBased` yet still passes `require_native_fc` (its `native_fc` is `Tested`); only a
+  genuinely native-incapable model's prompt row is blocked. Honest per-row, gate per-model.
 
 ```rust
 match i.pass_k {
@@ -811,14 +822,23 @@ pub fn estimate(weights_bytes, layers, head_count, head_count_kv, embedding_leng
 ```
 
 ### File: `inputs.rs`
-- **Responsibility:** Adapter `BatchColumn -> ReadinessInputs`/verdicts, native-FC
-  preferred (the path a real agent uses) when measured.
-- **What:** `native_first_source(col) -> Option<&AggAgentic>` (the one native-first
-  selector — `agentic_native_fc.filter(total_runs>0).or(agentic)` — that `from_column`,
-  `pass_k_of`, `agentic_metrics`, AND the deep-dive's `by_tier`/`failures` all route
-  through, so the displayed per-tier data can't drift from the gating source);
-  `from_column`, `verdict_for` (error column short-circuits to NotReady), `agentic_metrics`,
-  `pass_k_of`, `assess_report(report, profile) -> Vec<ModelVerdict>`.
+- **Responsibility:** Adapter `BatchColumn -> ReadinessInputs`/verdicts. Emits **one verdict
+  per MEASURED PATH** (native + prompt-based), each sourced strictly from its own pass.
+- **Per-path emission (the report + publish path):** `measured_paths(col)` enumerates the
+  paths a column ran (native first when `agentic_native_fc.total_runs>0`, then prompt; an
+  errored/unmeasured column still yields one `(PromptBased, None)` so it never vanishes);
+  `source_for_path(col, path)` is the **STRICT** same-path selector (NO `native_first_source`
+  fallback — a row's metrics + tier ladder come from its own pass or are an honest gap);
+  `col_native_status(col)` is the **model-level** native capability shared by both rows;
+  `from_source(source, path, native_fc, …)` builds the inputs with `path` set explicitly and
+  `native_fc` carrying the model-level capability (decoupled — see `verdict.rs`);
+  `merged_by_tier_for_path` merges siblings strictly same-path; `verdicts_for_column(…)` ties
+  it together (the shared body of `assess_readiness` and `assess_report`).
+- **Legacy single-verdict helpers (kept for non-report callers + tests):**
+  `native_first_source(col) -> Option<&AggAgentic>` (`agentic_native_fc.filter(total_runs>0)
+  .or(agentic)`), `from_column`, `verdict_for` (error column → NotReady), `agentic_metrics`,
+  `pass_k_of`, `merged_by_tier_for`. `assess_report(report, profile) -> Vec<ModelVerdict>`
+  now flat-maps `verdicts_for_column` (one row per measured path).
 
 ```rust
 let native = col.agentic_native_fc.as_ref().filter(|a| a.total_runs > 0);

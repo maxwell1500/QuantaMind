@@ -9,9 +9,10 @@ use crate::inference::generate::generate_options::GenerateOptions;
 use crate::inference::generate::generate_spec::GenerateSpec;
 use crate::inference::generate::generate_stats::GenerateStats;
 use crate::inference::llama::llama_backend::LlamaCppBackend;
+use crate::inference::llama::llama_chat;
 use crate::inference::mlx::mlx_backend::MlxBackend;
 use crate::inference::ollama::ollama_backend::OllamaBackend;
-use crate::inference::ollama::ollama_chat::{chat_with_tools, NativeToolCall};
+use crate::inference::ollama::ollama_chat::{self, NativeToolCall};
 use crate::inference::ollama::ollama_show::show_model;
 use serde_json::{json, Value};
 use tokio::sync::OnceCell;
@@ -216,12 +217,19 @@ fn native_system(tools: &[ToolSchema], terminal: TerminalGuidance) -> String {
     format!("You complete the task using the available tools. {}", terminal_closing(tools, terminal))
 }
 
-/// Native path (Ollama only): call `/api/chat` with a real `tools` array and
-/// translate the structured `tool_calls` back into the canonical `{"name","args"}`
-/// JSON the runner's `extract_calls` already parses — so the sandbox, scoring, and
-/// `TrajectoryStep` stay byte-identical to the prompt path. Built per task (it
-/// carries that task's tool schemas + the act/abstain terminal guidance).
-pub struct NativeOllamaTurn {
+/// Native path: call the running backend's native tool API with a real `tools`
+/// array and translate the structured `tool_calls` back into the canonical
+/// `{"name","args"}` JSON the runner's `extract_calls` already parses — so the
+/// sandbox, scoring, and `TrajectoryStep` stay byte-identical to the prompt path
+/// AND across backends. Built per task (it carries that task's tool schemas +
+/// the act/abstain terminal guidance).
+///
+/// The backend is the only dispatch point: Ollama → `/api/chat`, llama.cpp →
+/// OpenAI `/v1/chat/completions` (needs `--jinja`). A new server plugs in by
+/// adding one match arm in `run` + its `chat_with_tools`. MLX has no native tool
+/// API and is gated out upstream (`probe_native_tools`).
+pub struct NativeToolTurn {
+    pub backend: BackendKind,
     pub endpoint: String,
     pub model: String,
     pub tools: Vec<ToolSchema>,
@@ -264,7 +272,7 @@ fn synthesize_calls(calls: &[NativeToolCall]) -> String {
 
 /// The text the runner sees from a native turn. With real `tool_calls`, the canonical JSON
 /// (so scoring is byte-identical to the prompt path). With NONE, the raw assistant `content`
-/// rather than `""` — see the rationale on `NativeOllamaTurn::run`. Pure, so the selection is
+/// rather than `""` — see the rationale on `NativeToolTurn::run`. Pure, so the selection is
 /// unit-tested without a live server.
 fn native_turn_text(calls: &[NativeToolCall], content: String) -> String {
     if calls.is_empty() {
@@ -274,7 +282,7 @@ fn native_turn_text(calls: &[NativeToolCall], content: String) -> String {
     }
 }
 
-impl ModelTurn for NativeOllamaTurn {
+impl ModelTurn for NativeToolTurn {
     async fn run(&self, spec: &GenerateSpec) -> AppResult<(String, GenerateStats)> {
         let tools = build_tools_value(&self.tools);
         let system = native_system(&self.tools, self.terminal);
@@ -283,17 +291,30 @@ impl ModelTurn for NativeOllamaTurn {
         // native turn runs on the SAME budget — the spec's structural cap wins, user sampling
         // prefs come from `self.options` (see `merge_eval_options`).
         let options = merge_eval_options(self.options.as_ref(), spec.options.as_ref());
-        let result =
-            chat_with_tools(&self.endpoint, &self.model, &system, &spec.prompt, &tools, options).await?;
-        // When Ollama's native parser returned tool calls, hand the runner the canonical
+        // The ONLY backend dispatch: each native server has its own tool wire, but all return
+        // the shared `ChatResult` so canonicalization below stays identical across backends.
+        let result = match self.backend {
+            BackendKind::Ollama => {
+                ollama_chat::chat_with_tools(&self.endpoint, &self.model, &system, &spec.prompt, &tools, options).await?
+            }
+            BackendKind::LlamaCpp => {
+                llama_chat::chat_with_tools(&self.endpoint, &self.model, &system, &spec.prompt, &tools, options).await?
+            }
+            BackendKind::Mlx => {
+                return Err(crate::errors::AppError::Inference(
+                    "MLX has no native tool-calling API; it must run the prompt path".into(),
+                ))
+            }
+        };
+        // When the native parser returned tool calls, hand the runner the canonical
         // JSON. When it returned NONE, surface the raw assistant `content` instead of an
         // empty string: a mis-built model often emits a foreign dialect (channel-token soup)
-        // that Ollama can't parse into `tool_calls` but leaves in `content`; dropping it made
+        // the backend can't parse into `tool_calls` but leaves in `content`; dropping it made
         // every such turn a silent empty → `Hallucinated`, hiding the real cause. Returning
         // `content` lets the runner name the honest verdict (`ForeignDialect` / prose /
-        // hallucination). Parity-safe: Ollama already yielded zero calls, and the forms that
-        // land here (paren / `<|"|>`-wrapped soup, or plain prose) are exactly the ones the
-        // text salvager (`harmony_calls`) also drops — so this never credits a call Ollama
+        // hallucination). Parity-safe: the backend already yielded zero calls, and the forms
+        // that land here (paren / `<|"|>`-wrapped soup, or plain prose) are exactly the ones the
+        // text salvager (`harmony_calls`) also drops — so this never credits a call the backend
         // missed, it only makes the FAILURE honest.
         Ok((native_turn_text(&result.tool_calls, result.content), result.stats))
     }

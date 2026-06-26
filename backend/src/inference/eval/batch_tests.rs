@@ -565,7 +565,7 @@ fn ollama_version_makes_a_native_garble_diagnosable_on_the_report() {
 #[tokio::test]
 #[ignore = "DIAG: replicate the app's native pass for gemma4 — probe + run_native_fc_pass + streaming"]
 async fn live_diag_app_native_pass_for_gemma4() {
-    use crate::inference::eval::agentic::model_turn::NativeOllamaTurn;
+    use crate::inference::eval::agentic::model_turn::NativeToolTurn;
     use crate::inference::eval::agentic::sandbox::EndStateRule as ESR;
     use crate::inference::eval::agentic::v2::collection::load_v2_collection;
     use crate::inference::eval::agentic::v2::scenarios::v2_json;
@@ -615,7 +615,7 @@ async fn live_diag_app_native_pass_for_gemma4() {
                 Some(ESR::RequireAll(_)) | Some(ESR::RequireSequence(_)) => TerminalGuidance::MustUseTools,
                 _ => TerminalGuidance::PlainTextOk,
             };
-            NativeOllamaTurn { endpoint: endpoint.to_string(), model: model.to_string(), tools: task.tools.clone(), options: None, terminal, max_tokens: 256, is_thinking: false }
+            NativeToolTurn { backend: BackendKind::Ollama, endpoint: endpoint.to_string(), model: model.to_string(), tools: task.tools.clone(), options: None, terminal, max_tokens: 256, is_thinking: false }
         },
         &[],
         &|_| {},
