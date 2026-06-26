@@ -110,7 +110,6 @@ pub(crate) async fn trace_one_with<M: ModelTurn>(turn: &M, model: &str, task: &T
         system: Some(system_message.clone()),
         options: Some(GenerateOptions { temperature: Some(0.0), repeat_penalty: Some(EVAL_REPEAT_PENALTY), num_predict: Some(MAX_TOKENS), ..Default::default() }),
         keep_alive: None,
-        images: None,
     };
     let (raw_output, stats) = turn.run(&spec).await?;
     let verdict = score(&task.expected, extract_calls(&raw_output).as_deref());
