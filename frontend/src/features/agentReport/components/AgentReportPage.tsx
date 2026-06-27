@@ -17,6 +17,7 @@ import { READINESS_HELP } from "../readinessHelp";
 import { capOptions, defaultCapBytes, archLabel } from "../capBytes";
 import { EditProfileModal } from "./EditProfileModal";
 import { useToast } from "../../../shared/ui/Toast";
+import type { Tier } from "../../../shared/ipc/eval/readiness";
 
 /// Stable composite identity for a deep-dive target — a model now has up to two verdicts
 /// (native + prompt), so the path is part of the key. Pipe-separated: a model name (which
@@ -54,6 +55,9 @@ export function AgentReportPage() {
   const [showNativeFc, setShowNativeFc] = useState(true);
   const [isSection1Collapsed, setIsSection1Collapsed] = useState(false);
   const [editingProfile, setEditingProfile] = useState(false);
+  // Which tier's failures the deep-dive shows (set by clicking a Tier Matrix card);
+  // null = none shown. Cleared when the deep-dive target (model/path) changes.
+  const [selectedTier, setSelectedTier] = useState<Tier | null>(null);
 
   // The report card (banner + table) snapshotted to PNG by the export menu.
   const cardRef = useRef<HTMLDivElement>(null);
@@ -80,6 +84,12 @@ export function AgentReportPage() {
     if (!exists) setFocus(verdicts[0].model, verdicts[0].verdict.path);
   }, [verdicts, focusedModel, focusedPath, setFocus]);
 
+  // Clear the tier-failure selection when the deep-dive target changes, so one tier's
+  // failures never linger after switching model/path.
+  useEffect(() => {
+    setSelectedTier(null);
+  }, [focusedModel, focusedPath]);
+
   // Auto-refresh after an eval batch finishes (so a new model / tier shows without a
   // manual Run Validation). Re-assess when the completed batch is the shown collection
   // OR a tier-sibling of the same domain (the per-domain merge picks up the new tier).
@@ -93,8 +103,12 @@ export function AgentReportPage() {
     if (batchReport.collection_id === selected || sameDomain) void assess(selected);
   }, [batchReport, selected, assessed, presets, assess]);
 
+  // Built-in presets are labeled by DOMAIN only (`humanize(id minus "<tier>-")`), so
+  // every tier-variant of a domain collides ("Coding", "Coding", …). Disambiguate each
+  // by its tier so the dropdown has no duplicate labels; the id (unique) stays the value.
+  const tierCap = (t: string) => t.charAt(0).toUpperCase() + t.slice(1);
   const options = [
-    ...presets.map((p) => ({ id: p.id, label: p.label })),
+    ...presets.map((p) => ({ id: p.id, label: `${p.label} — ${tierCap(p.tier)}` })),
     ...collections.map((c) => ({ id: c, label: c })),
   ];
 
@@ -431,8 +445,14 @@ export function AgentReportPage() {
               </button>
             </div>
             <ExecutiveVerdict verdict={focused} hardwareTier={hardwareTier} minPassK={minPassK} />
-            <TierProgressionMatrix byTier={focused.by_tier} minPassK={minPassK} params={tierParams} />
-            <FailureTaxonomy byTier={focused.by_tier} />
+            <TierProgressionMatrix
+              byTier={focused.by_tier}
+              minPassK={minPassK}
+              params={tierParams}
+              selectedTier={selectedTier}
+              onSelectTier={setSelectedTier}
+            />
+            <FailureTaxonomy tier={focused.by_tier?.find((s) => s.tier === selectedTier) ?? null} />
           </div>
         )}
 

@@ -22,32 +22,32 @@ const stat = (tier: Tier, failures: Partial<FailureTracker>): TierStat => ({
 });
 
 describe("FailureTaxonomy", () => {
-  it("sums across the tested tiers, sorts modes desc, shows share-of-events %", () => {
+  it("renders nothing until a tier is selected (failures are tier-gated)", () => {
+    const { container } = render(<FailureTaxonomy tier={null} />);
+    expect(screen.queryByTestId("failure-taxonomy")).toBeNull();
+    expect(container).toBeEmptyDOMElement();
+  });
+
+  it("shows ONLY the selected tier's failures, sorted desc, as share-of-events %", () => {
     render(
       <FailureTaxonomy
-        byTier={[
-          stat("hard", { unknown_tool_calls: 30, forbidden_calls: 20, infinite_loop_hits: 10 }),
-          stat("extreme", { unknown_tool_calls: 15, forbidden_calls: 10, hallucinated_completions: 10, infinite_loop_hits: 5 }),
-        ]}
+        tier={stat("hard", { unknown_tool_calls: 30, forbidden_calls: 20, infinite_loop_hits: 10 })}
       />,
     );
-    // Heading names the tiers that actually ran (NOT a hardcoded Hard+Extreme rule).
-    expect(screen.getByTestId("failure-taxonomy")).toHaveTextContent("across Hard + Extreme");
-    // Totals: UnknownTool 45, ForbiddenCall 30, InfiniteLoop 15, Hallucinated 10 → /100.
-    expect(screen.getByTestId("failure-row-unknown_tool_calls")).toHaveTextContent("45%");
-    expect(screen.getByTestId("failure-row-forbidden_calls")).toHaveTextContent("30%");
-    expect(screen.getByTestId("failure-row-infinite_loop_hits")).toHaveTextContent("15%");
-    expect(screen.getByTestId("failure-row-hallucinated_completions")).toHaveTextContent("10%");
-    // Honest denominator wording — failure events, not failed runs.
+    // Heading names the single selected tier (not a cross-tier sum).
+    expect(screen.getByTestId("failure-taxonomy")).toHaveTextContent("— Hard");
+    // Just this tier's 60 events: UnknownTool 30/60=50%, ForbiddenCall 20/60=33%, InfiniteLoop 10/60=17%.
+    expect(screen.getByTestId("failure-row-unknown_tool_calls")).toHaveTextContent("50%");
+    expect(screen.getByTestId("failure-row-forbidden_calls")).toHaveTextContent("33%");
+    expect(screen.getByTestId("failure-row-infinite_loop_hits")).toHaveTextContent("17%");
     expect(screen.getByTestId("failure-taxonomy")).toHaveTextContent("tracked failure events");
     // A zero mode is omitted entirely.
     expect(screen.queryByTestId("failure-row-turn_timeouts")).toBeNull();
   });
 
-  it("a clean run (no failures) shows the empty state, not fabricated rows", () => {
-    render(<FailureTaxonomy byTier={[stat("medium", {})]} />);
+  it("a selected tier with no failures shows the empty state for that tier", () => {
+    render(<FailureTaxonomy tier={stat("medium", {})} />);
     expect(screen.getByTestId("failure-taxonomy-empty")).toBeInTheDocument();
-    // Mainstream Easy/Medium runs still get a real (here empty) section — heading names them.
-    expect(screen.getByTestId("failure-taxonomy")).toHaveTextContent("across Medium");
+    expect(screen.getByTestId("failure-taxonomy")).toHaveTextContent("— Medium");
   });
 });

@@ -386,10 +386,15 @@ verdict, so they can't disagree:
 - **`TierProgressionMatrix.tsx`** — four tier cards: measured Pass^k + avg-steps, a
   `CLEAR/SATURATED/FAIL` badge on the same `min_pass_k` bar, and `NOT TESTED` (gray) for a
   tier absent from `by_tier` (never a guessed fail). "Task Parameters" (Horizon/Decoys) come
-  from real task `axes` via `deepDive.axesByTier`, or read "not declared".
+  from real task `axes` via `deepDive.axesByTier`, or read "not declared". A **tested** tier
+  card is clickable (`onSelectTier`) — selecting it reveals that tier's failures below;
+  re-clicking clears. A NOT-TESTED card is inert. `AgentReportPage` owns the `selectedTier`
+  state (cleared when the focused model/path changes).
 - **`FailureTaxonomy.tsx`** — failure-mode distribution (`unknown_tool_calls`→decoys,
-  `forbidden_calls`→must_not_call, loops, hallucinations…) summed across the **tested**
-  tiers (named in the heading), as a share of tracked failure *events* (not failed runs).
+  `forbidden_calls`→must_not_call, loops, hallucinations…) for the **single selected tier**
+  (failures are tied to the tier they occurred in), as a share of that tier's tracked
+  failure *events* (not failed runs). Renders **nothing** until a tier is clicked in the
+  matrix.
 - **`deepDive.ts`** — `axesByTier(tasks)` (real per-tier Horizon/Decoy ranges or absent) +
   `deepDiveJson(verdict,…)` (versioned `schema_version` JSON export).
 
