@@ -329,8 +329,10 @@ prompt_based|native_fc }, memory?: { weights_bytes, kv_cache_bytes, total_bytes,
 cap_bytes, context_length, fits, pressure, estimated? }, avg_steps?, effort?,
 pass_k?, quantization?, cliff?: NotProbed|NoCliff|Collapsed|Broken, by_tier?:
 TierStat[], failures? }`. Hard gate failed → `not_ready`; soft target exceeded →
-`conditional`; nothing failing → `ready`. **A required-but-unmeasured metric blocks
-— it never guesses.** Backend returns verdicts already ranked best-first. A model
+`conditional`; nothing failing → `ready`. **A MEASURED hard-gate failure blocks; a
+required-but-unmeasured metric is a Conditional caveat (not a red block) — unmeasured
+≠ guessed fail** (e.g. memory fit on llama.cpp / unified memory, an unprobed cliff).
+Backend returns verdicts already ranked best-first. A model
 measured on both tool-calling paths yields **two** `ModelVerdict`s — one `native_fc`,
 one `prompt_based` — rendered as separate rows (the VerdictTable keys on
 `model+backend+path`; the **Show Native-FC Path** toggle hides the native rows). Phase 9B

@@ -172,6 +172,21 @@ describe("VerdictTable", () => {
     expect(within(weak).getByTestId("readiness-metrics")).not.toHaveClass("hidden");
   });
 
+  it("labels memory 'Unified memory' on a unified-memory machine, 'VRAM' otherwise", () => {
+    // Default (discrete GPU): says VRAM.
+    const { rerender } = render(<VerdictTable verdicts={VERDICTS} />);
+    const readyDiscrete = screen.getByTestId("readiness-row-qwen2.5-coder");
+    expect(readyDiscrete).toHaveTextContent("VRAM:");
+    expect(readyDiscrete).toHaveTextContent("✓ Fits in VRAM");
+    // Apple Silicon / unified: no discrete VRAM — say "Unified memory".
+    rerender(<VerdictTable verdicts={VERDICTS} unified />);
+    const readyUnified = screen.getByTestId("readiness-row-qwen2.5-coder");
+    expect(readyUnified).toHaveTextContent("Unified memory:");
+    expect(readyUnified).toHaveTextContent("✓ Fits in Unified memory");
+    // (The visible labels switch to "Unified memory"; a hidden MemoryLine — kept only for
+    // Vitest — may still contain "VRAM", so we don't assert its absence row-wide.)
+  });
+
   it("renders a broken baseline as 'fails from start', never a depth", () => {
     const broke: ModelVerdict[] = [
       {

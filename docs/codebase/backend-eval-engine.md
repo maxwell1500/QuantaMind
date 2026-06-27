@@ -725,8 +725,10 @@ else `NoCliff{tested}`.
 
 Synthesizes a measured batch report (+ cliff depth + VRAM fit) into ranked
 **Ready / Conditional / NotReady** verdicts against a tunable use-case profile.
-Pure and Tauri-free; hard gates block, soft gates downgrade, and a
-required-but-unmeasured input *blocks* ("ignorance is not a pass").
+Pure and Tauri-free; a MEASURED hard-gate failure blocks (NotReady), soft gates
+downgrade, and a required-but-**unmeasured** input is a **Conditional caveat**
+("run the missing diagnostic"), never a red block — unmeasured ≠ guessed fail.
+(The `pass^k` core gate is the exception: no agentic run at all still blocks.)
 
 ### File: `mod.rs`
 - Declares `inputs, profile, recommend, types, verdict, vram_fit`.
@@ -778,8 +780,8 @@ match i.pass_k {
 if p.forbid_infinite_loop && i.loops > 0 { blocking.push(format!("loops on {} run{}", i.loops, plural(i.loops))); }
 if p.forbid_hallucinated_completion && i.hallucinated > 0 { blocking.push(format!("false 'done' on {} run{}", i.hallucinated, plural(i.hallucinated))); }
 if p.require_full_vram { match i.fits_in_vram {
-    Some(false) => blocking.push("partial offload → severe slowdown".into()),
-    None        => blocking.push("require_full_vram set, but VRAM fit not measured".into()),  // null-gate
+    Some(false) => blocking.push("partial offload → severe slowdown".into()),       // MEASURED fail → block
+    None        => conditions.push("memory fit not measured — set a memory cap to certify".into()), // unmeasured → caveat
     Some(true)  => {} } }
 if i.vram_pressure { conditions.push("high VRAM pressure near allocation ceiling".into()); }
 // soft targets → Conditional only on breach; unmeasured is silent
@@ -796,9 +798,11 @@ let status = if !blocking.is_empty() { Readiness::NotReady }
 | `pass_k` unmeasured / `< min_pass_k` | hard → NotReady | always (core gate) |
 | `forbid_infinite_loop` & `loops > 0` | hard → NotReady | when profile sets it |
 | `forbid_hallucinated_completion` & `hallucinated > 0` | hard → NotReady | when profile sets it |
-| `require_full_vram` & (`fits==false` or unmeasured) | hard → NotReady | when profile sets it |
+| `require_full_vram` & `fits==false` (MEASURED) | hard → NotReady | when profile sets it |
+| `require_full_vram` & fit **unmeasured** | soft → Conditional caveat | when profile sets it (e.g. llama.cpp / unified memory) |
 | `require_native_fc` & `NotSupported` | hard → NotReady | when profile sets it |
-| `min_context_tokens` vs cliff (`Collapsed<min` / `NoCliff<min` / `Broken` / `NotProbed`) | hard → NotReady | when profile sets `min_context_tokens` |
+| `min_context_tokens` vs cliff (`Collapsed<min` / `NoCliff<min` / `Broken`) MEASURED | hard → NotReady | when profile sets `min_context_tokens` |
+| `min_context_tokens` & cliff `NotProbed` (unmeasured) | soft → Conditional caveat | when profile sets `min_context_tokens` |
 | `vram_pressure` (≥ 0.85·cap) | soft → Conditional | always |
 | `ms_per_step > max_ms_per_step` | soft → Conditional | when both present |
 | `avg_steps > max_avg_steps` | soft → Conditional | when both present |

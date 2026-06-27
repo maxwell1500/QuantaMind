@@ -408,6 +408,7 @@ export function AgentReportPage() {
               verdicts={verdicts}
               profileName={activeProfile?.name}
               showNativeFc={showNativeFc}
+              unified={!!hardware?.gpu?.unified}
             />
           </div>
         )}
