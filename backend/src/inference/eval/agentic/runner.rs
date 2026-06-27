@@ -368,6 +368,8 @@ async fn run_steps<M: ModelTurn>(
                     kind: StepKind::TurnTimeout,
                     env: EnvView::None,
                     cache_n: None, // no model response on a timeout
+                    prefill_tokens: None,
+                    prefill_ms: None,
                 });
                 return Ok(RunOutcome::failure(step_index + 1, output_tokens, FailureKind::TurnTimeout)
                     .with_schema(hit_schema_error, schema_recovered)
@@ -378,8 +380,10 @@ async fn run_steps<M: ModelTurn>(
         // Per-turn prompt-cache reuse (llama.cpp `timings.cache_n`); None for other
         // backends. Captured here so each streamed step carries its own turn's value.
         let cache_n = stats.cache_n;
+        let prefill_tokens = stats.prompt_eval_count; // prompt_n = recomputed; total = cache_n + this
+        let prefill_ms = stats.prompt_eval_ms;
         let send = |kind: StepKind, injection: Option<String>, env: EnvView| {
-            let _ = tx.send(TrajectoryStep { run_index, step_index, raw_output: raw.clone(), injection, kind, env, cache_n });
+            let _ = tx.send(TrajectoryStep { run_index, step_index, raw_output: raw.clone(), injection, kind, env, cache_n, prefill_tokens, prefill_ms });
         };
 
         // For a reasoning model, parse and persist the `<think>`-stripped output: its inner
@@ -615,6 +619,8 @@ async fn run_steps<M: ModelTurn>(
                 kind: StepKind::InfiniteLoop,
                 env: EnvView::None,
                 cache_n: None, // synthetic terminal step, no model response
+                prefill_tokens: None,
+                prefill_ms: None,
             });
             return Ok(RunOutcome::failure(step_index + 1, output_tokens, FailureKind::InfiniteLoop)
                 .with_schema(hit_schema_error, schema_recovered)
@@ -630,6 +636,8 @@ async fn run_steps<M: ModelTurn>(
         kind: StepKind::InfiniteLoop,
         env: EnvView::None,
         cache_n: None, // synthetic terminal step, no model response
+        prefill_tokens: None,
+        prefill_ms: None,
     });
     Ok(RunOutcome::failure(max_steps, output_tokens, FailureKind::InfiniteLoop)
         .with_schema(hit_schema_error, schema_recovered)

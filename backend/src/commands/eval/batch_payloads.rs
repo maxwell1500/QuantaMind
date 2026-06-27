@@ -69,13 +69,19 @@ mod tests {
                     matches: vec![],
                 }),
                 cache_n: Some(42),
+                prefill_tokens: Some(8),
+                prefill_ms: Some(12),
             },
         };
         let v = serde_json::to_value(&payload).unwrap();
         // Flattened: step fields at top level.
         assert_eq!(v["kind"], "tool_call");
         assert_eq!(v["run_index"], 0);
-        assert_eq!(v["cache_n"], 42); // per-turn cache hit flattens to the top level too
+        // Per-turn prefix-cache fields flatten to the top level too (the trace reads them to
+        // show reused-vs-recomputed; total prompt = cache_n + prefill_tokens = 42 + 8 = 50).
+        assert_eq!(v["cache_n"], 42);
+        assert_eq!(v["prefill_tokens"], 8);
+        assert_eq!(v["prefill_ms"], 12);
         // env present and tagged.
         assert_eq!(v["env"]["kind"], "file_system");
         assert_eq!(v["env"]["op"], "read");

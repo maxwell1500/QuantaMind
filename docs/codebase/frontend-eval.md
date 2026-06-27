@@ -605,6 +605,11 @@ A task with category "agentic" runs the sandbox loop; backend emits agentic-step
 Scoreboard row Result = Pass^k (all k pass / partial p/total / fail)
   → click → TraceDebugger: Pass^k header + colour-coded turn timeline
     (tool_call · schema_error · hallucinated_completion · infinite_loop · end_state_reached)
+    + per-turn llama.cpp prefix-cache readout (CacheBadge): green "N reused / M recomputed"
+      when the prefix was reused, amber "⚠ CACHE BUST · M re-prefilled (+ms)" when a
+      non-first turn's prefix collapsed (reuseRatio < CACHE_BUST_BELOW=0.5), neutral on the
+      first turn; absent for Ollama/MLX. The bust is rare by design (agentic_num_ctx sizes
+      the per-run window to keep the prefix cacheable) — so it flags a genuine anomaly.
 ```
 
 ### (c) Batch crash → recovery dialog → resume

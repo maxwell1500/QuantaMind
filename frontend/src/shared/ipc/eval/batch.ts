@@ -83,6 +83,11 @@ export const TrajectoryStepSchema = z.object({
   // Per-turn prompt-cache reuse (llama.cpp `timings.cache_n`); null/absent for backends
   // that don't report it (Ollama/MLX) or non-model turns. High → prefix reused (prefill ≈ 0).
   cache_n: z.number().int().nonnegative().nullable().optional(),
+  // Tokens PROCESSED (prefilled/recomputed) this turn + prefill ms (llama.cpp `prompt_n` /
+  // `prompt_ms`). `prefill_tokens` is the recomputed count; total prompt = cache_n +
+  // prefill_tokens, and reuseRatio = cache_n / total drives the green/amber state.
+  prefill_tokens: z.number().int().nonnegative().nullable().optional(),
+  prefill_ms: z.number().int().nonnegative().nullable().optional(),
 });
 export type TrajectoryStep = z.infer<typeof TrajectoryStepSchema>;
 
