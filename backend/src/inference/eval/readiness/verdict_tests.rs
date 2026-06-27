@@ -87,14 +87,17 @@ fn forbidden_loop_and_hallucination_each_block() {
 }
 
 #[test]
-fn required_vram_but_unmeasured_blocks() {
+fn required_but_unmeasured_memory_is_a_conditional_caveat_not_a_block() {
+    // Unmeasured ≠ failure: a required-but-unmeasured memory fit (e.g. llama.cpp /
+    // unified memory can't report one) is an honest Conditional caveat, NOT red NotReady.
     let mut p = lenient();
     p.require_full_vram = true;
     let mut i = clean_inputs();
-    i.fits_in_vram = None; // never measured — ignorance is not a pass
+    i.fits_in_vram = None; // never measured
     let v = assess(&i, &p);
-    assert_eq!(v.status, Readiness::NotReady);
-    assert!(v.blocking.iter().any(|b| b.contains("VRAM fit not measured")));
+    assert_eq!(v.status, Readiness::Conditional);
+    assert!(v.blocking.is_empty(), "unmeasured memory must not block");
+    assert!(v.conditions.iter().any(|c| c.contains("memory fit not measured")));
 }
 
 #[test]
@@ -118,14 +121,17 @@ fn vram_pressure_is_a_conditional_note_independent_of_the_gate() {
 }
 
 #[test]
-fn required_context_but_unmeasured_blocks() {
+fn required_but_unmeasured_context_is_a_conditional_caveat_not_a_block() {
+    // Same honesty rule for the context-cliff gate: an unprobed model gets a caveat to
+    // run the probe, not a red block.
     let mut p = lenient();
     p.min_context_tokens = Some(8192);
     let mut i = clean_inputs();
     i.cliff = CliffStatus::NotProbed;
     let v = assess(&i, &p);
-    assert_eq!(v.status, Readiness::NotReady);
-    assert!(v.blocking.iter().any(|b| b.contains("context headroom required (8192 tok)")));
+    assert_eq!(v.status, Readiness::Conditional);
+    assert!(v.blocking.is_empty(), "unprobed context must not block");
+    assert!(v.conditions.iter().any(|c| c.contains("context headroom not measured")));
 }
 
 #[test]

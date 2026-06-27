@@ -37,11 +37,15 @@ pub fn assess(i: &ReadinessInputs, p: &ReadinessProfile) -> ReadinessVerdict {
         blocking.push(format!("false 'done' on {} run{}", i.hallucinated, plural(i.hallucinated)));
     }
 
-    // Hardware hard gate (strict null-gating: required ⇒ unmeasured blocks).
+    // Hardware gate. A MEASURED bad fit is a hard block; an UNMEASURED fit is an honest
+    // caveat (Conditional), not a red failure — "unmeasured ≠ guessed fail," consistent
+    // with the Tier Matrix's gray NOT-TESTED. (On llama.cpp / Apple-Silicon unified memory
+    // the fit often can't be measured, so blocking would falsely red-flag every model.)
+    // "memory" not "VRAM" — unified-memory machines have no discrete VRAM.
     if p.require_full_vram {
         match i.fits_in_vram {
             Some(false) => blocking.push("partial offload → severe slowdown".into()),
-            None => blocking.push("require_full_vram set, but VRAM fit not measured".into()),
+            None => conditions.push("memory fit not measured — set a memory cap to certify".into()),
             Some(true) => {}
         }
     }
@@ -67,15 +71,17 @@ pub fn assess(i: &ReadinessInputs, p: &ReadinessProfile) -> ReadinessVerdict {
                 blocking.push("tool-call accuracy fails at the baseline (broken) — no usable context window".to_string());
             }
             CliffStatus::NotProbed => {
-                blocking.push(format!("context headroom required ({} tok) but not measured", min_tok));
+                // Unmeasured ≠ failure: a caveat to run the probe, not a red block.
+                conditions.push(format!("context headroom not measured — run the cliff probe to certify {} tok", min_tok));
             }
             _ => {} // Collapsed{depth >= min} or NoCliff{tested >= min} → pass
         }
     }
 
-    // Soft targets → Conditional on breach only. Unmeasured is silent: an
-    // advisory target we didn't run shouldn't downgrade an otherwise-clean model
-    // (unlike a hard gate, where unmeasured blocks).
+    // Soft targets → Conditional on breach only, and silent when unmeasured: an
+    // advisory target we didn't run shouldn't downgrade an otherwise-clean model.
+    // (Hard gates only block on a MEASURED failure; their unmeasured case is a
+    // Conditional caveat, above — never a red block.)
     if let (Some(mx), Some(ms)) = (p.max_ms_per_step, i.ms_per_step) {
         if ms > mx {
             conditions.push(format!("slow: {}ms/step > {}ms target", ms, mx));

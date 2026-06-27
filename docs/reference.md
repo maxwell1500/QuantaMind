@@ -1166,12 +1166,16 @@ exact reasons. Pick a target collection + a profile, click **Run readiness**.
 targets push to `conditions[]` (→ Conditional). Status = NotReady if any blocking,
 else Conditional if any conditions, else Ready.
 
-**Never fabricated.** A metric the engine didn't measure is N/A, never a guessed
-pass. If a profile *requires* a metric that wasn't measured (e.g. `require_full_vram`
-with no VRAM-fit measurement, or `min_context_tokens` with no cliff probe), that is
-**blocking** — ignorance is not a pass; the report tells you to run the missing
-diagnostic. The `pass^k` core gate likewise blocks when no agentic run was recorded.
-Float comparisons are epsilon-guarded (`1e-6`) so a true `0.80` can't false-block.
+**Never fabricated, but unmeasured ≠ failure.** A metric the engine didn't measure is
+N/A, never a guessed pass. If a profile *requires* a metric that wasn't measured (e.g.
+`require_full_vram` with no memory-fit measurement — common on llama.cpp / Apple-Silicon
+unified memory, which can't report a fit — or `min_context_tokens` with no cliff probe),
+that is a **Conditional caveat** ("set a memory cap / run the cliff probe to certify"),
+**not** a red NotReady block. A red block is reserved for a MEASURED failure (a fit that
+spilled the cap, a cliff that collapsed below the floor). This mirrors the Tier Matrix's
+gray NOT-TESTED (unmeasured is unknown, never a guessed fail). The `pass^k` core gate
+still blocks when no agentic run was recorded (it's the irreducible measurement). Float
+comparisons are epsilon-guarded (`1e-6`) so a true `0.80` can't false-block.
 
 **The per-model deep-dive (Phase 9B).** Below the multi-model table a *(model, path)*
 selector opens a three-section drill-down for one verdict, sourced from
@@ -1216,11 +1220,11 @@ editable by power users and seeded on first run with three built-ins:
 | General agent | 60% | yes | no | no | — |
 
 Built-ins gate on the metrics the engine measures: since Phase 7.4 wired VRAM fit,
-**Coding agent** turns `require_full_vram` on (a model that spills past the cap is
-NotReady). The `min_context_tokens` and native-FC hard gates stay **off** in
-built-ins — those measurements aren't wired yet, and with strict null-gating an
-unmeasured requirement would mark every model NotReady for infra reasons. Author a
-custom profile to switch any gate on and get exactly that strict behaviour.
+**Coding agent** turns `require_full_vram` on (a model whose fit was MEASURED to spill
+past the cap is NotReady; an *unmeasured* fit is a Conditional caveat, not a block).
+The `min_context_tokens` and native-FC hard gates stay **off** in built-ins. Author a
+custom profile to switch any gate on; an unmeasured required gate yields a Conditional
+"run the missing diagnostic" caveat rather than a red NotReady.
 Long/nested profile ids are safe: the file is keyed by a 40-char slug plus an
 8-hex hash of the full id, so two ids sharing a prefix never collide.
 
@@ -1236,7 +1240,9 @@ pressure** condition at ≥85% of the cap, **won't fit** otherwise (which, under
 `require_full_vram`, blocks). The per-model line reads `VRAM: 6.0 GB (5.0 model +
 1.0 cache) < 24 GB cap · fits`. Single-model backends (llama.cpp / MLX) where precise
 dims aren't available show **N/A (single-model backend)** — never an approximated fit;
-under `require_full_vram` that N/A blocks (ignorance is not a pass). Lower the cap and
+under `require_full_vram` that N/A is a **Conditional caveat** ("set a memory cap to
+certify"), not a red block — unmeasured ≠ failure (and unified-memory Macs have no
+discrete VRAM to measure). Lower the cap and
 a fitting model flips to NotReady deterministically — model the exact hardware you're
 buying for.
 

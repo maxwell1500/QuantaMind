@@ -226,12 +226,17 @@ export function VerdictTable({
   verdicts,
   profileName = "Coding Agent",
   showNativeFc = true,
+  unified = false,
 }: {
   verdicts: ModelVerdict[];
   profileName?: string;
   showNativeFc?: boolean;
+  /// Apple-Silicon / shared-memory machines have no discrete VRAM — label memory
+  /// "Unified memory" there, "VRAM" on a discrete GPU. From the hardware snapshot.
+  unified?: boolean;
 }) {
   const filtered = verdicts.filter((m) => showNativeFc || m.verdict.path !== "native_fc");
+  const memLabel = unified ? "Unified memory" : "VRAM";
 
   return (
     <div className="bg-white border border-slate-200 rounded-xl shadow-md overflow-hidden" data-testid="readiness-verdict-table">
@@ -297,11 +302,11 @@ export function VerdictTable({
                   <div className="font-sans text-xs">
                     {status === "ready" && (
                       <div className="flex flex-wrap items-center gap-2 text-emerald-700 font-bold">
-                        <span>VRAM: {m.memory ? `${gb(m.memory.total_bytes)}GB` : "N/A"}</span>
+                        <span>{memLabel}: {m.memory ? `${gb(m.memory.total_bytes)}GB` : "N/A"}</span>
                         {m.memory && (
                           <>
                             <span className="text-slate-300">|</span>
-                            <span>✓ Fits in VRAM</span>
+                            <span>✓ Fits in {memLabel}</span>
                           </>
                         )}
                         <span className="text-slate-300">|</span>
@@ -312,7 +317,7 @@ export function VerdictTable({
                     {status === "not_ready" && (
                       <div className="flex flex-col gap-1.5 font-bold text-rose-700">
                         <div className="flex flex-wrap items-center gap-2">
-                          <span>VRAM: {m.memory ? `${gb(m.memory.total_bytes)}GB` : "N/A"}</span>
+                          <span>{memLabel}: {m.memory ? `${gb(m.memory.total_bytes)}GB` : "N/A"}</span>
                           <span className="text-slate-300">|</span>
                           <span>
                             BLOCKING: {m.verdict.blocking.map(b => `[✗ ${getIndicatorLabel(b)}]`).join(" ")}
@@ -328,7 +333,7 @@ export function VerdictTable({
 
                     {status === "conditional" && (
                       <div className="flex flex-wrap items-center gap-2 text-amber-700 font-bold">
-                        <span>VRAM: {m.memory ? `${gb(m.memory.total_bytes)}GB` : "N/A"}</span>
+                        <span>{memLabel}: {m.memory ? `${gb(m.memory.total_bytes)}GB` : "N/A"}</span>
                         {getConditionalBreakdown(m).map((item, idx) => (
                           <React.Fragment key={idx}>
                             <span className="text-slate-300">|</span>

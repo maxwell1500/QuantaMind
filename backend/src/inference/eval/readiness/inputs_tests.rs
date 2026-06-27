@@ -102,21 +102,22 @@ fn ctx_profile(min_ctx: Option<u32>) -> ReadinessProfile {
 }
 
 #[test]
-fn context_cliff_gate_is_opt_in_and_blocks_only_below_or_unmeasured() {
+fn context_cliff_gate_blocks_a_measured_shortfall_but_only_cautions_when_unmeasured() {
     let c = col(9, 10, 0, 0, Some(2.0)); // pass^k 0.9 clears the 0.5 bar
 
     // Gate OFF (None): the cliff is carried but never blocks → Ready.
     assert_eq!(verdict_for(&c, None, false, CliffStatus::Collapsed { depth: 8000 }, &ctx_profile(None)).status, Readiness::Ready);
 
-    // Gate ON, cliff BELOW the floor → NotReady with the interpolated reason.
+    // Gate ON, cliff BELOW the floor (MEASURED failure) → NotReady with the reason.
     let below = verdict_for(&c, None, false, CliffStatus::Collapsed { depth: 8000 }, &ctx_profile(Some(16000)));
     assert_eq!(below.status, Readiness::NotReady);
     assert!(below.blocking.iter().any(|b| b.contains("8000") && b.contains("16000")), "{:?}", below.blocking);
 
-    // Gate ON, cliff UNMEASURED → NotReady "not measured" (never a guessed pass).
+    // Gate ON, cliff UNMEASURED → Conditional caveat (never a guessed pass, never a red block).
     let unmeasured = verdict_for(&c, None, false, CliffStatus::NotProbed, &ctx_profile(Some(16000)));
-    assert_eq!(unmeasured.status, Readiness::NotReady);
-    assert!(unmeasured.blocking.iter().any(|b| b.to_lowercase().contains("measured")), "{:?}", unmeasured.blocking);
+    assert_eq!(unmeasured.status, Readiness::Conditional);
+    assert!(unmeasured.blocking.is_empty(), "unmeasured must not block: {:?}", unmeasured.blocking);
+    assert!(unmeasured.conditions.iter().any(|c| c.to_lowercase().contains("not measured")), "{:?}", unmeasured.conditions);
 
     // Gate ON, cliff ABOVE the floor → passes (Ready).
     assert_eq!(verdict_for(&c, None, false, CliffStatus::Collapsed { depth: 32000 }, &ctx_profile(Some(16000))).status, Readiness::Ready);
