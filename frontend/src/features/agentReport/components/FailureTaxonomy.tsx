@@ -18,47 +18,28 @@ const FAILURE_MODES: { key: keyof FailureTracker; label: string; vuln: string }[
   { key: "empty_output_calls", label: "EmptyOutput", vuln: "Produced no usable output (empty / punctuation-only) — a generation/template artifact; often needs native tool-calling." },
 ];
 
-const ZERO: FailureTracker = {
-  infinite_loop_hits: 0,
-  hallucinated_completions: 0,
-  malformed_json_calls: 0,
-  schema_unrecovered_calls: 0,
-  unknown_tool_calls: 0,
-  forbidden_calls: 0,
-  turn_timeouts: 0,
-  reported_in_prose_calls: 0,
-  foreign_dialect_calls: 0,
-  empty_output_calls: 0,
-};
-
-function sumFailures(list: FailureTracker[]): FailureTracker {
-  return list.reduce((acc, f) => {
-    (Object.keys(acc) as (keyof FailureTracker)[]).forEach((k) => (acc[k] += f[k] ?? 0));
-    return acc;
-  }, { ...ZERO });
-}
-
-/// Section 3: the distribution of failure MODES across the tiers that actually ran (not a
-/// hardcoded Hard+Extreme — a Mainstream Easy/Medium run gets a truthful section too). The
-/// denominator is total tracked failure *events*, not failed runs — labeled as such.
-export function FailureTaxonomy({ byTier }: { byTier: TierStat[] | undefined }) {
-  const tiers = byTier ?? [];
-  const total = sumFailures(tiers.map((s) => s.failures));
+/// Section 3: the distribution of failure MODES for a SINGLE tier — shown only when the
+/// user clicks that tier in the Tier Progression Matrix (failures are tied to the tier
+/// they happened in). Renders nothing until a tier is selected. The denominator is total
+/// tracked failure *events* in that tier, not failed runs — labeled as such.
+export function FailureTaxonomy({ tier }: { tier: TierStat | null }) {
+  if (!tier) return null; // nothing until a tier card is clicked
+  const total = tier.failures;
   const rows = FAILURE_MODES.map((m) => ({ ...m, count: total[m.key] ?? 0 }))
     .filter((r) => r.count > 0)
     .sort((a, b) => b.count - a.count);
   const grand = rows.reduce((n, r) => n + r.count, 0);
-  const tierLabel = tiers.map((s) => cap(s.tier)).join(" + ");
+  const tierLabel = cap(tier.tier);
 
   return (
     <section data-testid="failure-taxonomy" className="space-y-3">
       <h3 className="text-xs font-bold uppercase tracking-wider text-slate-700">
-        Failure Taxonomy{tierLabel && <span className="text-slate-500 font-medium normal-case"> — across {tierLabel}</span>}
+        Failure Taxonomy<span className="text-slate-500 font-medium normal-case"> — {tierLabel}</span>
       </h3>
 
       {grand === 0 ? (
         <p data-testid="failure-taxonomy-empty" className="text-sm text-slate-500">
-          No failures recorded across the tested tiers.
+          No failures recorded for {tierLabel}.
         </p>
       ) : (
         <>

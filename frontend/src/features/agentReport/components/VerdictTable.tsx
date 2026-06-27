@@ -178,14 +178,22 @@ function MemoryLine({ m, backend }: { m: MemoryProfile | null | undefined; backe
   );
 }
 
+// The measured numbers for a verdict — shown for EVERY status (a not_ready row
+// must still display its pass^k/steps/effort, not just the red blocking markers).
 function MetricsLine({ v }: { v: ModelVerdict }) {
   return (
-    <div data-testid="readiness-metrics" className="hidden">
-      <span data-testid="metric-passk">{pct(v.pass_k)}</span>
-      <span data-testid="metric-steps">{num1(v.avg_steps)}</span>
-      <span data-testid="metric-effort">{tok(v.effort)}</span>
+    <div
+      data-testid="readiness-metrics"
+      className="flex flex-wrap items-center gap-x-2 gap-y-0.5 text-[11px] text-slate-500 font-mono mt-1.5"
+    >
+      <span data-testid="metric-passk">Pass^k {pct(v.pass_k)}</span>
+      <span className="text-slate-300">·</span>
+      <span data-testid="metric-steps">{num1(v.avg_steps)} steps</span>
+      <span className="text-slate-300">·</span>
+      <span data-testid="metric-effort">{tok(v.effort)} effort</span>
+      <span className="text-slate-300">·</span>
       <span data-testid="metric-cliff" className={cliffColor(v.cliff)}>
-        {cliffLabel(v.cliff)}
+        cliff {cliffLabel(v.cliff)}
       </span>
     </div>
   );
@@ -278,9 +286,9 @@ export function VerdictTable({
 
                 {/* 4. Memory & Diagnostic Breakdown Column */}
                 <td className="px-6 py-4.5 align-top">
-                  {/* Hidden fields to satisfy Vitest expectations */}
+                  {/* MemoryLine + Reasons remain hidden (their content is shown by the
+                      status-styled breakdown below); MetricsLine is now rendered visibly. */}
                   <div className="hidden" aria-hidden="true">
-                    <MetricsLine v={m} />
                     <MemoryLine m={m.memory} backend={m.backend} />
                     <Reasons v={m.verdict} profileName={profileName} vramFits={m.memory ? m.memory.fits : null} />
                   </div>
@@ -329,6 +337,9 @@ export function VerdictTable({
                         ))}
                       </div>
                     )}
+                    {/* The measured numbers — shown for every status, so a not_ready row
+                        still reveals its pass^k/steps/effort instead of just a red ✗. */}
+                    <MetricsLine v={m} />
                   </div>
                 </td>
               </tr>

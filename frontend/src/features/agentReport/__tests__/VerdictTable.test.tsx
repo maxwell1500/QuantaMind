@@ -167,6 +167,9 @@ describe("VerdictTable", () => {
     expect(within(weak).getByTestId("metric-steps")).toHaveTextContent("N/A");
     expect(within(weak).getByTestId("metric-effort")).toHaveTextContent("N/A");
     expect(within(weak).getByTestId("metric-cliff")).toHaveTextContent("N/A"); // no probe → N/A, not fabricated
+    // The metrics must be VISIBLE even on a not_ready row (the bug: they were in a
+    // `hidden` wrapper, so the row showed only a red ✗ with no numbers).
+    expect(within(weak).getByTestId("readiness-metrics")).not.toHaveClass("hidden");
   });
 
   it("renders a broken baseline as 'fails from start', never a depth", () => {

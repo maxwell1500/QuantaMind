@@ -1,5 +1,5 @@
-import { describe, it, expect } from "vitest";
-import { render, screen } from "@testing-library/react";
+import { describe, it, expect, vi } from "vitest";
+import { render, screen, fireEvent } from "@testing-library/react";
 import { TierProgressionMatrix } from "../components/TierProgressionMatrix";
 import type { Tier, TierStat } from "../../../shared/ipc/eval/readiness";
 
@@ -32,6 +32,8 @@ describe("TierProgressionMatrix", () => {
         ]}
         minPassK={0.8}
         params={{ easy: { horizon: "3–8 steps", decoys: "0" } }}
+        selectedTier={null}
+        onSelectTier={() => {}}
       />,
     );
 
@@ -53,5 +55,34 @@ describe("TierProgressionMatrix", () => {
     // Task Parameters: real axes where provided, "not declared" otherwise (never faked).
     expect(screen.getByTestId("tier-horizon-easy")).toHaveTextContent("3–8 steps");
     expect(screen.getByTestId("tier-horizon-hard")).toHaveTextContent("not declared");
+  });
+
+  it("clicking a TESTED tier selects it; a NOT-TESTED tier is inert; re-click clears", () => {
+    const onSelect = vi.fn();
+    const { rerender } = render(
+      <TierProgressionMatrix
+        byTier={[stat("hard", 0, 1, 28.0)]} // hard tested; others not tested
+        minPassK={0.8}
+        selectedTier={null}
+        onSelectTier={onSelect}
+      />,
+    );
+    // A tested tier selects on click.
+    fireEvent.click(screen.getByTestId("tier-card-hard"));
+    expect(onSelect).toHaveBeenCalledWith("hard");
+    // A not-tested tier is inert (no callback).
+    fireEvent.click(screen.getByTestId("tier-card-easy"));
+    expect(onSelect).toHaveBeenCalledTimes(1);
+    // When already selected, clicking it again clears (null).
+    rerender(
+      <TierProgressionMatrix
+        byTier={[stat("hard", 0, 1, 28.0)]}
+        minPassK={0.8}
+        selectedTier="hard"
+        onSelectTier={onSelect}
+      />,
+    );
+    fireEvent.click(screen.getByTestId("tier-card-hard"));
+    expect(onSelect).toHaveBeenLastCalledWith(null);
   });
 });
