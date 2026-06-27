@@ -25,7 +25,10 @@ you don't kick off a run your machine can't hold.
 
 **What it shows.**
 - One **output column per model** (`CompareColumn`), streaming live with a
-  status badge (pending → loading → running → done/cancelled/error).
+  status badge (pending → loading → running → done/cancelled/error). Its done-state
+  metrics line (`formatMetrics`) appends a llama.cpp **prefix-cache** segment
+  (`cache N/total reused`) only when `cacheReuse(stats.cache_n, stats.prompt_eval_count)`
+  is `available` — purely additive, so Ollama/MLX rows are byte-identical to before.
 - A **metrics bar chart** (`MetricsChart`) — THROUGHPUT (tok/s) and TTFT (ms),
   ASCII bars with data-derived axis ticks and a pairwise diff caret.
 - A **word-level token diff** (`CompareDiff` + `DiffView`) between exactly two

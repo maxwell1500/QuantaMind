@@ -69,4 +69,14 @@ pub struct TrajectoryStep {
     /// prefix was reused (prefill ≈ 0) rather than re-prefilled.
     #[serde(default)]
     pub cache_n: Option<u32>,
+    /// Prompt tokens actually PROCESSED (prefilled) this turn — llama.cpp's `timings.prompt_n`
+    /// (`prompt_eval_count`), i.e. the RECOMPUTED count (the cached prefix is NOT counted here;
+    /// total prompt = `cache_n + prefill_tokens`). With `cache_n` the trace shows reused-vs-
+    /// recomputed and the green/amber prefix-reuse state. `None` when the backend doesn't report it.
+    #[serde(default)]
+    pub prefill_tokens: Option<u32>,
+    /// Wall-clock spent prefilling this turn's prompt (`timings.prompt_ms`) — the cost a
+    /// cache bust re-incurs. `None` when the backend doesn't report it / no model response.
+    #[serde(default)]
+    pub prefill_ms: Option<u64>,
 }

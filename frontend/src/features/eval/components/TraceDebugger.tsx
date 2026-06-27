@@ -12,6 +12,7 @@ import { agenticSystemPreview } from "../agenticPrompt";
 import { RunIoModal, type RunIoMode } from "./RunIoModal";
 import { EnvironmentReplayPanel, hasEnvReplay } from "./replay/EnvironmentReplayPanel";
 import { isStrictPass, type TrajectoryStep, type AgenticReport } from "../../../shared/ipc/eval/batch";
+import { cacheReuse } from "../../../shared/format/cache";
 
 interface TraceDebuggerProps {
   model: string;
@@ -301,6 +302,43 @@ export function expectedRunCount(
 /// kind — or a run still streaming — is not a pass.
 export function runPassed(group: RunGroup): boolean {
   return group.steps[group.steps.length - 1]?.kind === "end_state_reached";
+}
+
+/// Below this prefix-reuse fraction, a NON-first turn re-prefilled the transcript instead of
+/// reusing the cached prefix — a cache bust (the slow turn). Healthy non-first turns reuse
+/// ~0.95+ (the whole prior transcript was just cached); a bust collapses to ~0, so 0.5 sits
+/// safely in the gap and never trips on the normal recompute of a turn's own NEW tokens.
+export const CACHE_BUST_BELOW = 0.5;
+
+/// Per-turn llama.cpp prefix-cache readout: green when the prefix was reused, amber when it
+/// collapsed (a non-first turn re-prefilled), neutral on the first turn (no prior prefix to
+/// reuse). Renders nothing when the backend doesn't report it (Ollama/MLX → `available`
+/// false). The single `cacheReuse` gate keeps absence-of-feature absent, not a false "0".
+export function CacheBadge({ s }: { s: TrajectoryStep }) {
+  // cacheReuse(cached = cache_n, recomputed = prefill_tokens); total = cache_n + prefill_tokens.
+  const cr = cacheReuse(s.cache_n, s.prefill_tokens);
+  if (!cr.available) return null;
+  const base = { fontSize: 10, fontWeight: 700, padding: "2px 6px", borderRadius: 4, marginLeft: "auto" } as const;
+  if (s.step_index === 0) {
+    return (
+      <span data-testid="cache-badge-first" title="First turn — the whole prompt is prefilled (there's no prior transcript to reuse yet)." style={{ ...base, background: "#f8fafc", color: "#475569", border: "1px solid #e2e8f0" }}>
+        prefill · {cr.total} tok
+      </span>
+    );
+  }
+  if (cr.reuseRatio < CACHE_BUST_BELOW) {
+    const ms = s.prefill_ms != null ? ` (+${s.prefill_ms}ms)` : "";
+    return (
+      <span data-testid="cache-badge-bust" title="The reusable transcript prefix was NOT reused this turn — the prompt was re-prefilled (the prefix cache busted: context shifted/evicted). This is the slow turn." style={{ ...base, background: "#fef2f2", color: "#991b1b", border: "1px solid #fee2e2" }}>
+        ⚠ CACHE BUST · {cr.recomputed} re-prefilled{ms}
+      </span>
+    );
+  }
+  return (
+    <span data-testid="cache-badge-hit" title="The transcript prefix was reused from llama.cpp's prefix cache this turn — only the new tokens were recomputed (prefill ≈ 0)." style={{ ...base, background: "#f0fdf4", color: "#15803d", border: "1px solid #dcfce7" }}>
+      PREFIX CACHE · {cr.cached} reused / {cr.recomputed} recomputed
+    </span>
+  );
 }
 
 export function TraceDebugger({
@@ -659,14 +697,9 @@ export function TraceDebugger({
                                             FAULT INTERCEPTED
                                           </span>
                                         )}
-                                        {/* llama.cpp-only: prompt tokens this turn served from the prefix
-                                            cache (not recomputed) — the agentic transcript prefix was reused.
-                                            null for Ollama/MLX (no cache count); 0 → no badge (fresh prefill). */}
-                                        {s.cache_n != null && s.cache_n > 0 && (
-                                          <span title="Prompt tokens served from llama.cpp's prefix cache this turn — the transcript prefix was reused rather than re-prefilled (prefill ≈ 0)." style={{ fontSize: 10, fontWeight: 700, padding: "2px 6px", borderRadius: 4, background: "#f0fdf4", color: "#15803d", border: "1px solid #dcfce7", marginLeft: "auto" }}>
-                                            PREFIX CACHE: {s.cache_n} reused
-                                          </span>
-                                        )}
+                                        {/* llama.cpp-only per-turn prefix-cache readout (reused vs recomputed;
+                                            amber on a cache bust). Renders nothing for Ollama/MLX. */}
+                                        <CacheBadge s={s} />
                                       </div>
 
                                       <pre style={codeBlockStyle}>

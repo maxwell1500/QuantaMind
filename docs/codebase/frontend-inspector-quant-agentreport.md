@@ -190,7 +190,7 @@ calls `buildLatencyBars` and `buildHistogram` once and threads the results down.
 |---|---|
 | `TokenTimeline.tsx` | visx `<Bar>` chart: x = cumulative `tMs`, y = gap latency (scaled to `gapMaxMs` so jitter stays visible, TTFT clamps); dashed vertical phase-boundary lines (slate load / violet prefill / amber TTFT); per-bar invisible hit-rect drives hover. |
 | `LatencyHistogram.tsx` | visx band/linear histogram of the `HistogramBucket[]`; outlier bins rose (`#e11d48`), hover shows the bin's `lo–hi ms · count`. |
-| `TtftBreakdown.tsx` | stacked horizontal CSS bar (load/prefill/stream-gen) sized by `%`; shows "not available for this backend" via `buildTtftSegments(...).available`. |
+| `TtftBreakdown.tsx` | stacked horizontal CSS bar (load/prefill/stream-gen) sized by `%`; shows "not available for this backend" via `buildTtftSegments(...).available`. Adds a llama.cpp **prefix-cache reuse** line (`· prefix cache: N reused / M recomputed`) gated on `cacheReuse(stats.cache_n, stats.prompt_eval_count).available` — absent for Ollama/MLX (`cache_n` null), a measured `0 reused` for a cold llama run (the two render differently by design). |
 | `VramBar.tsx` | ASCII-cell (`█`/`░`) memory monitor: model cells + system-base cells over the device pool, with an 85% OOM-risk marker; system base derived only when **both** VRAM totals are reported (else it would fabricate a figure). |
 | `ContextBudgetBar.tsx` | ASCII context-window monitor: `prompt_eval_count / context_length`; overlays an indicative attention "cliff" marker from `cliffStore.cliffForModel(model)` (backend-hydrated, not browser-cached); hot at ≥95%. |
 | `ColdWarmPanel.tsx` | renders `coldWarmState` → cold-start headline or the right "n/a" reason. |

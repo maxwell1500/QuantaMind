@@ -1,5 +1,6 @@
 import type { GenerateStats } from "../../../shared/ipc/events/events";
 import { buildTtftSegments } from "../format/ttft";
+import { cacheReuse } from "../../../shared/format/cache";
 
 // Phase palette — kept distinct from the token-event colors (amber TTFT / blue
 // gap / red outlier) so a colour means one thing across both inspector charts.
@@ -129,6 +130,22 @@ export function TtftBreakdown({
           · {promptTokens} prompt tokens{prefillTps ? ` · ${prefillTps}` : ""}
         </div>
       )}
+      {/* llama.cpp-only prefix-cache reuse. `available` is false for Ollama/MLX
+          (cache_n null) → absent; a cold llama run (cache_n 0) honestly shows
+          "0 reused / N recomputed" — a measured zero, not absence-of-feature. */}
+      {(() => {
+        const cr = cacheReuse(stats?.cache_n, stats?.prompt_eval_count);
+        if (!cr.available) return null;
+        return (
+          <div
+            className="text-[10px] text-gray-500 font-semibold"
+            data-testid="ttft-prefix-cache"
+            style={{ marginLeft: `${marginLeft}px` }}
+          >
+            · prefix cache: {cr.cached} reused / {cr.recomputed} recomputed
+          </div>
+        );
+      })()}
     </div>
   );
 }
