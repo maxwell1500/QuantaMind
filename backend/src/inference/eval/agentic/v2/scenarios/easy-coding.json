@@ -34,12 +34,6 @@
           }
         },
         {
-          "name": "read_file",
-          "params": {
-            "path": "string"
-          }
-        },
-        {
           "name": "reply",
           "params": {
             "text": "string"
