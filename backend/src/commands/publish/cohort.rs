@@ -62,16 +62,17 @@ fn apple_class(cpu: &str) -> String {
 }
 
 /// Derive the hardware cohort key — `"{platform}/{accel}/{mem_tier}"`. Quant is a
-/// SEPARATE dedup column, so it is NOT part of the cohort. **v1 taxonomy, pending
-/// backend sign-off:** the server's bucketing must match this exactly or dedup
-/// `UNIQUE(user, model, quant, cohort_key)` breaks (see plan + reference.md).
+/// SEPARATE dedup column, so it is NOT part of the cohort. Uses the actual CPU model
+/// name for CPU-only systems instead of just the architecture, so different CPUs in the
+/// same arch class are distinguishable (e.g. "cpu/ryzen-9-5900x/16-32gb" vs
+/// "cpu/core-i7-12700k/16-32gb").
 pub fn cohort_key(hw: &HardwareSnapshot) -> String {
     let (platform, accel) = if hw.is_apple_silicon {
         ("apple-silicon".to_string(), apple_class(&hw.cpu))
     } else if let Some(name) = hw.gpu.name.as_deref().filter(|_| hw.gpu.available) {
         (gpu_vendor(name).to_string(), slug(name))
     } else {
-        ("cpu".to_string(), slug(&hw.arch))
+        ("cpu".to_string(), slug(&hw.cpu))
     };
     let accel = if accel.is_empty() { "unknown".to_string() } else { accel };
     format!("{platform}/{accel}/{}", mem_tier(hw.total_memory_bytes))

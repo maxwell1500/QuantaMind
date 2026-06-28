@@ -34,10 +34,10 @@ fn discrete_nvidia_gpu_uses_vendor_and_name_slug() {
 }
 
 #[test]
-fn cpu_only_falls_back_to_arch() {
+fn cpu_only_uses_cpu_model_slug() {
     let gpu = GpuInfo { name: None, available: false, ..GpuInfo::default() };
-    let h = hw(false, "Intel i7", "x86_64", gpu, 16);
-    assert_eq!(cohort_key(&h), "cpu/x86-64/8-16gb");
+    let h = hw(false, "Intel Core i7-12700K", "x86_64", gpu, 16);
+    assert_eq!(cohort_key(&h), "cpu/intel-core-i7-12700k/8-16gb");
 }
 
 #[test]
