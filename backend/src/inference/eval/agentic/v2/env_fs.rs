@@ -15,7 +15,7 @@ use std::collections::{BTreeMap, BTreeSet, HashSet};
 /// read/list/search; any other recognized tool acks; an unrecognized tool is a decoy (None).
 const READ: &str = "read_file";
 const LIST: &str = "list_dir";
-const SEARCH: &[&str] = &["search_files", "grep"];
+const SEARCH: &[&str] = &["search_files", "search_symbol", "grep"];
 
 /// An immutable simulated filesystem: absolute-ish relative `path -> file content`.
 #[derive(Clone, Debug, PartialEq)]
@@ -186,6 +186,7 @@ fn query_arg(call: &Call) -> String {
         .get("query")
         .or_else(|| call.args.get("pattern"))
         .or_else(|| call.args.get("q"))
+        .or_else(|| call.args.get("name"))
         .and_then(Value::as_str)
         .or_else(|| call.args.as_object().and_then(|o| o.values().find_map(Value::as_str)))
         .unwrap_or("")
@@ -209,7 +210,7 @@ mod tests {
         Call { name: name.into(), args }
     }
     fn recognized() -> HashSet<String> {
-        ["read_file", "list_dir", "search_files", "grep", "reply"].iter().map(|s| s.to_string()).collect()
+        ["read_file", "list_dir", "search_files", "search_symbol", "grep", "reply"].iter().map(|s| s.to_string()).collect()
     }
 
     #[test]
@@ -238,6 +239,12 @@ mod tests {
     fn grep_returns_deterministic_path_line_matches() {
         let got = fs().respond(&call("grep", json!({ "query": "return" })), &recognized());
         assert_eq!(got.as_deref(), Some(r#"["src/cart.py:2: return x + 1"]"#));
+    }
+
+    #[test]
+    fn search_symbol_uses_name_arg_and_returns_match_lines() {
+        let got = fs().respond(&call("search_symbol", json!({ "name": "add" })), &recognized());
+        assert_eq!(got.as_deref(), Some(r#"["src/cart.py:1: def add(x):","tests/test_cart.py:1: def test_add():","tests/test_cart.py:2: assert add(1) == 2"]"#));
     }
 
     #[test]

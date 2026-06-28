@@ -34,6 +34,19 @@ pub struct V2Task {
     pub must_not_call: Vec<MustNotCall>,
     #[serde(default)]
     pub faults: Vec<V2Fault>,
+    /// Custom mock responses for specific tool calls. Overrides the default ack behavior.
+    /// Use this when a tool should return realistic output instead of `{"ok":true}`.
+    #[serde(default)]
+    pub mocks: Vec<V2Mock>,
+}
+
+/// A custom mock response: when the model calls `tool` with matching args,
+/// return `response` instead of the default ack.
+#[derive(Deserialize)]
+pub struct V2Mock {
+    pub tool: String,
+    pub args: Option<Value>,
+    pub response: String,
 }
 
 fn default_recovery() -> u8 {
@@ -171,8 +184,21 @@ pub fn transpile_task(
 
     let world_state = if t.world_state.is_null() { None } else { Some(t.world_state) };
 
+    // Convert v2 mocks to MockResponse: tool + optional args → Call + response.
+    let mocks = t
+        .mocks
+        .iter()
+        .map(|m| {
+            let args = m.args.clone().unwrap_or(serde_json::json!({}));
+            crate::inference::eval::agentic::sandbox::MockResponse {
+                call: crate::inference::eval::toolcall::tasks::Call { name: m.tool.clone(), args },
+                response: m.response.clone(),
+            }
+        })
+        .collect();
+
     let spec = AgenticSpec {
-        mocks: vec![],
+        mocks,
         end_state,
         environment,
         tier,
