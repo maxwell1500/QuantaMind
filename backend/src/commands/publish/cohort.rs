@@ -33,6 +33,61 @@ fn mem_tier(bytes: u64) -> &'static str {
     }
 }
 
+fn cpu_vendor(cpu: &str) -> &'static str {
+    let l = cpu.to_lowercase();
+    if l.contains("amd") || l.contains("ryzen") || l.contains("epyc") || l.contains("threadripper") {
+        "amd"
+    } else if l.contains("intel") || l.contains("xeon") || l.contains("pentium") || l.contains("celeron") {
+        "intel"
+    } else if l.contains("qualcomm") || l.contains("snapdragon") {
+        "qualcomm"
+    } else {
+        "cpu"
+    }
+}
+
+/// Strip the vendor prefix from a CPU model name for the cohort slug.
+/// "Intel Core i7-12700K" → "i7-12700k", "AMD Ryzen 9 5900X 12-Core Processor" → "ryzen-9-5900x".
+fn cpu_model(cpu: &str) -> String {
+    let l = cpu.to_lowercase();
+    for prefix in &["intel core ", "intel ", "amd ", "qualcomm snapdragon "] {
+        if let Some(rest) = l.strip_prefix(prefix) {
+            let tokens: Vec<&str> = rest.split_whitespace().collect();
+            let mut model_tokens = Vec::new();
+            for tok in &tokens {
+                let t = tok.trim();
+                // Stop at known suffixes: "processor", "64-bit", "32-bit"
+                if ["processor", "64-bit", "32-bit"].contains(&t.as_ref()) {
+                    break;
+                }
+                // Stop at "12-core", "24-core" etc (number-hyphen-core)
+                if let Some((num, rest)) = t.split_once('-') {
+                    if num.chars().all(|c| c.is_ascii_digit())
+                        && ["core", "threads"].contains(&rest)
+                    {
+                        break;
+                    }
+                }
+                // Stop at standalone number like "12" followed by "core"/"processor"
+                if t.chars().all(|c| c.is_ascii_digit()) {
+                    // Check if next token is a suffix
+                    if let Some(next) = tokens.iter().position(|x| *x == t).and_then(|i| tokens.get(i + 1)) {
+                        let n = next.to_lowercase();
+                        if n == "core" || n == "processor" || n.ends_with("-bit") {
+                            break;
+                        }
+                    }
+                }
+                model_tokens.push(t);
+            }
+            if !model_tokens.is_empty() {
+                return slug(&model_tokens.join(" "));
+            }
+        }
+    }
+    slug(cpu)
+}
+
 fn gpu_vendor(name: &str) -> &'static str {
     let l = name.to_lowercase();
     if ["nvidia", "geforce", "rtx", "gtx", "tesla", "quadro"].iter().any(|t| l.contains(t)) {
@@ -61,18 +116,17 @@ fn apple_class(cpu: &str) -> String {
     "apple-unknown".to_string()
 }
 
-/// Derive the hardware cohort key — `"{platform}/{accel}/{mem_tier}"`. Quant is a
-/// SEPARATE dedup column, so it is NOT part of the cohort. Uses the actual CPU model
-/// name for CPU-only systems instead of just the architecture, so different CPUs in the
-/// same arch class are distinguishable (e.g. "cpu/ryzen-9-5900x/16-32gb" vs
-/// "cpu/core-i7-12700k/16-32gb").
+/// Derive the hardware cohort key — `"{vendor}/{model}/{mem_tier}"`. Quant is a
+/// SEPARATE dedup column, so it is NOT part of the cohort. CPU-only systems use the
+/// actual CPU vendor and model name (e.g. "intel/i7-12700k/16-32gb") instead of just
+/// the architecture, so different CPUs are distinguishable.
 pub fn cohort_key(hw: &HardwareSnapshot) -> String {
     let (platform, accel) = if hw.is_apple_silicon {
         ("apple-silicon".to_string(), apple_class(&hw.cpu))
     } else if let Some(name) = hw.gpu.name.as_deref().filter(|_| hw.gpu.available) {
         (gpu_vendor(name).to_string(), slug(name))
     } else {
-        ("cpu".to_string(), slug(&hw.cpu))
+        (cpu_vendor(&hw.cpu).to_string(), cpu_model(&hw.cpu))
     };
     let accel = if accel.is_empty() { "unknown".to_string() } else { accel };
     format!("{platform}/{accel}/{}", mem_tier(hw.total_memory_bytes))

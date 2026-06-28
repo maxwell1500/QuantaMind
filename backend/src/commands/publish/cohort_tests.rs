@@ -34,10 +34,17 @@ fn discrete_nvidia_gpu_uses_vendor_and_name_slug() {
 }
 
 #[test]
-fn cpu_only_uses_cpu_model_slug() {
+fn cpu_only_uses_vendor_and_model_slug() {
     let gpu = GpuInfo { name: None, available: false, ..GpuInfo::default() };
     let h = hw(false, "Intel Core i7-12700K", "x86_64", gpu, 16);
-    assert_eq!(cohort_key(&h), "cpu/intel-core-i7-12700k/8-16gb");
+    assert_eq!(cohort_key(&h), "intel/i7-12700k/8-16gb");
+}
+
+#[test]
+fn amd_cpu_uses_amd_vendor() {
+    let gpu = GpuInfo { name: None, available: false, ..GpuInfo::default() };
+    let h = hw(false, "AMD Ryzen 9 5900X 12-Core Processor", "x86_64", gpu, 32);
+    assert_eq!(cohort_key(&h), "amd/ryzen-9-5900x/16-32gb");
 }
 
 #[test]
