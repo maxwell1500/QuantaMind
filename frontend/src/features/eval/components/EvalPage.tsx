@@ -41,6 +41,9 @@ export function EvalPage() {
   const [evalModel, setEvalModel] = useState<string>("");
   const [focusedModel, setFocusedModel] = useState<string>("");
   const [focusedTaskId, setFocusedTaskId] = useState<string | null>(null);
+  // Which pass the Evaluator shows — set when the user clicks a Prompt vs Native result in the
+  // Simulator, so the trace opens on the pass they clicked.
+  const [focusedPass, setFocusedPass] = useState<"prompt" | "native">("prompt");
   // The per-model detail panels live above the Performance Matrix; a row click
   // scrolls them into view so the inspect action is tangible even for one model.
   const detailRef = useRef<HTMLDivElement>(null);
@@ -172,6 +175,19 @@ export function EvalPage() {
     if (evalModel) setFocusedModel(evalModel);
   }, [evalModel]);
 
+  // Auto-follow: while a run streams, point the Evaluator at the live task + its pass so each
+  // task's trace shows AS it runs/finishes — the user watches every task, not a blank panel
+  // until the whole batch ends. After the run (running=false) the user can click any task freely.
+  const liveTaskId = useBatchStore((s) => s.live.taskId);
+  const liveNative = useBatchStore((s) => s.live.native);
+  const batchRunning = useBatchStore((s) => s.running);
+  useEffect(() => {
+    if (batchRunning && liveTaskId) {
+      setFocusedTaskId(liveTaskId);
+      setFocusedPass(liveNative ? "native" : "prompt");
+    }
+  }, [batchRunning, liveTaskId, liveNative]);
+
   // Resolve the tier selection into the effective tier. `Auto` resolves to the machine's
   // recommended tier (undefined only in the brief window before `hwTier` lands).
   const effectiveTier: Tier | undefined = tierSel === "auto" ? hwTier?.recommended_tier : tierSel;
@@ -284,9 +300,18 @@ export function EvalPage() {
                 decoys={decoys}
                 focusedTaskId={focusedTaskId}
                 setFocusedTaskId={setFocusedTaskId}
+                focusedPass={focusedPass}
+                setFocusedPass={setFocusedPass}
               />
             </div>
-            <TraceDebugger model={focusedModel} taskId={focusedTaskId} setTaskId={setFocusedTaskId} />
+            <TraceDebugger
+              model={focusedModel}
+              taskId={focusedTaskId}
+              setTaskId={setFocusedTaskId}
+              decoys={decoys}
+              tracePass={focusedPass}
+              k={iterationsK}
+            />
             <PerformanceMatrix focusedModel={focusedModel} onFocusModel={focusModel} />
           </>
         )}

@@ -1,5 +1,6 @@
 import type { CompareRow, RowStatus } from "../state/compareStore";
 import { useModelLabel } from "../../models/hooks/useModelLabel";
+import { cacheReuse } from "../../../shared/format/cache";
 
 type Props = { row: CompareRow };
 
@@ -25,7 +26,12 @@ const formatMetrics = (m: NonNullable<CompareRow["metrics"]>): string => {
   const ttft = m.ttft_ms != null ? `TTFT ${m.ttft_ms}ms` : null;
   const tps = m.tokens_per_sec != null ? `${m.tokens_per_sec.toFixed(1)} tok/s` : null;
   const tokens = `${m.token_count} tokens`;
-  return [ttft, tps, tokens].filter(Boolean).join(" · ");
+  // Purely additive: the prefix-cache segment appends ONLY for a llama.cpp run that
+  // reported cache reuse (`available`). For Ollama/MLX it's absent, so the string is
+  // byte-identical to before — never a false "0 reused" on a backend without the feature.
+  const cr = cacheReuse(m.stats?.cache_n, m.stats?.prompt_eval_count);
+  const cache = cr.available ? `cache ${cr.cached}/${cr.cached + cr.recomputed} reused` : null;
+  return [ttft, tps, tokens, cache].filter(Boolean).join(" · ");
 };
 
 export function CompareColumn({ row }: Props) {

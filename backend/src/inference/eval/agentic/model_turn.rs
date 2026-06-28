@@ -3,14 +3,16 @@ use crate::inference::backend::backend::InferenceBackend;
 use crate::inference::backend::backend_kind::BackendKind;
 use crate::inference::chat::chat_templates::detect_template;
 use crate::inference::eval::agentic::difficulty::passk::NON_THINKING_MAX_TOKENS;
+use crate::inference::eval::toolcall::prompt::{terminal_closing, TerminalGuidance};
 use crate::inference::eval::toolcall::tasks::ToolSchema;
 use crate::inference::generate::generate_options::GenerateOptions;
 use crate::inference::generate::generate_spec::GenerateSpec;
 use crate::inference::generate::generate_stats::GenerateStats;
 use crate::inference::llama::llama_backend::LlamaCppBackend;
+use crate::inference::llama::llama_chat;
 use crate::inference::mlx::mlx_backend::MlxBackend;
 use crate::inference::ollama::ollama_backend::OllamaBackend;
-use crate::inference::ollama::ollama_chat::{chat_with_tools, NativeToolCall};
+use crate::inference::ollama::ollama_chat::{self, NativeToolCall};
 use crate::inference::ollama::ollama_show::show_model;
 use serde_json::{json, Value};
 use tokio::sync::OnceCell;
@@ -206,21 +208,42 @@ impl ModelTurn for BackendTurn {
     }
 }
 
-/// Tools are provided natively, so the native path uses a neutral system instead
-/// of the prompt path's "respond with JSON" instructions.
-const NATIVE_SYSTEM: &str =
-    "You complete the task using the available tools. Call a tool when one applies; otherwise reply in plain text.";
+/// The native path's system prompt. Tools are provided natively (no "respond with JSON"
+/// instructions), but it carries the SAME act-vs-abstain reporter-tool mandate the prompt path
+/// uses (`terminal_closing`) — without it, the old fixed "...otherwise reply in plain text"
+/// nudged capable native models (gemma4) OFF the `reply` tool into prose → an unfair
+/// `ReportedInProse` the prompt path doesn't suffer. Path-fairness, one source of truth.
+fn native_system(tools: &[ToolSchema], terminal: TerminalGuidance) -> String {
+    format!("You complete the task using the available tools. {}", terminal_closing(tools, terminal))
+}
 
-/// Native path (Ollama only): call `/api/chat` with a real `tools` array and
-/// translate the structured `tool_calls` back into the canonical `{"name","args"}`
-/// JSON the runner's `extract_calls` already parses — so the sandbox, scoring, and
-/// `TrajectoryStep` stay byte-identical to the prompt path. Built per task (it
-/// carries that task's tool schemas).
-pub struct NativeOllamaTurn {
+/// Native path: call the running backend's native tool API with a real `tools`
+/// array and translate the structured `tool_calls` back into the canonical
+/// `{"name","args"}` JSON the runner's `extract_calls` already parses — so the
+/// sandbox, scoring, and `TrajectoryStep` stay byte-identical to the prompt path
+/// AND across backends. Built per task (it carries that task's tool schemas +
+/// the act/abstain terminal guidance).
+///
+/// The backend is the only dispatch point: Ollama → `/api/chat`, llama.cpp →
+/// OpenAI `/v1/chat/completions` (needs `--jinja`). A new server plugs in by
+/// adding one match arm in `run` + its `chat_with_tools`. MLX has no native tool
+/// API and is gated out upstream (`probe_native_tools`).
+pub struct NativeToolTurn {
+    pub backend: BackendKind,
     pub endpoint: String,
     pub model: String,
     pub tools: Vec<ToolSchema>,
     pub options: Option<GenerateOptions>,
+    /// Act-vs-abstain mandate for this task (from its end_state), so the native system tells the
+    /// model to use the reporter tool on an ACT task instead of inviting prose.
+    pub terminal: TerminalGuidance,
+    /// Per-turn output-token budget — tier-scaled exactly like the prompt path's `BackendTurn`
+    /// (`max_tokens_for(tier, is_thinking)`), so native isn't run on a different budget than
+    /// prompt (budget parity across the two passes).
+    pub max_tokens: u32,
+    /// Reasoning model? Raises the per-turn budget so a `<think>` scratchpad isn't truncated —
+    /// matches the prompt path.
+    pub is_thinking: bool,
 }
 
 /// Shape the tool schemas into Ollama's `tools` array (OpenAI-style function specs).
@@ -247,22 +270,97 @@ fn synthesize_calls(calls: &[NativeToolCall]) -> String {
     serde_json::to_string(&Value::Array(arr)).unwrap_or_default()
 }
 
-impl ModelTurn for NativeOllamaTurn {
+/// The text the runner sees from a native turn. With real `tool_calls`, the canonical JSON
+/// (so scoring is byte-identical to the prompt path). With NONE, the raw assistant `content`
+/// rather than `""` — see the rationale on `NativeToolTurn::run`. Pure, so the selection is
+/// unit-tested without a live server.
+fn native_turn_text(calls: &[NativeToolCall], content: String) -> String {
+    if calls.is_empty() {
+        content
+    } else {
+        synthesize_calls(calls)
+    }
+}
+
+impl ModelTurn for NativeToolTurn {
     async fn run(&self, spec: &GenerateSpec) -> AppResult<(String, GenerateStats)> {
         let tools = build_tools_value(&self.tools);
-        let result =
-            chat_with_tools(&self.endpoint, &self.model, NATIVE_SYSTEM, &spec.prompt, &tools, self.options.clone())
-                .await?;
-        Ok((synthesize_calls(&result.tool_calls), result.stats))
+        let system = native_system(&self.tools, self.terminal);
+        // Budget parity with the prompt path: the runner pins the tier-scaled per-turn
+        // `num_predict` on `spec.options` (from `max_output_tokens()` below); merge it in so the
+        // native turn runs on the SAME budget — the spec's structural cap wins, user sampling
+        // prefs come from `self.options` (see `merge_eval_options`).
+        let options = merge_eval_options(self.options.as_ref(), spec.options.as_ref());
+        // The ONLY backend dispatch: each native server has its own tool wire, but all return
+        // the shared `ChatResult` so canonicalization below stays identical across backends.
+        let result = match self.backend {
+            BackendKind::Ollama => {
+                ollama_chat::chat_with_tools(&self.endpoint, &self.model, &system, &spec.prompt, &tools, options).await?
+            }
+            BackendKind::LlamaCpp => {
+                llama_chat::chat_with_tools(&self.endpoint, &self.model, &system, &spec.prompt, &tools, options).await?
+            }
+            BackendKind::Mlx => {
+                return Err(crate::errors::AppError::Inference(
+                    "MLX has no native tool-calling API; it must run the prompt path".into(),
+                ))
+            }
+        };
+        // When the native parser returned tool calls, hand the runner the canonical
+        // JSON. When it returned NONE, surface the raw assistant `content` instead of an
+        // empty string: a mis-built model often emits a foreign dialect (channel-token soup)
+        // the backend can't parse into `tool_calls` but leaves in `content`; dropping it made
+        // every such turn a silent empty → `Hallucinated`, hiding the real cause. Returning
+        // `content` lets the runner name the honest verdict (`ForeignDialect` / prose /
+        // hallucination). Parity-safe: the backend already yielded zero calls, and the forms
+        // that land here (paren / `<|"|>`-wrapped soup, or plain prose) are exactly the ones the
+        // text salvager (`harmony_calls`) also drops — so this never credits a call the backend
+        // missed, it only makes the FAILURE honest.
+        Ok((native_turn_text(&result.tool_calls, result.content), result.stats))
+    }
+
+    fn is_thinking(&self) -> bool {
+        self.is_thinking
+    }
+
+    fn max_output_tokens(&self) -> u32 {
+        self.max_tokens
     }
 }
 
 #[cfg(test)]
 mod tests {
-    use super::{merge_eval_options, synthesize_calls, NativeToolCall};
-    use crate::inference::eval::toolcall::parse::{extract_calls, looks_like_broken_json};
+    use super::{merge_eval_options, native_system, native_turn_text, synthesize_calls, NativeToolCall};
+    use crate::inference::eval::toolcall::parse::{extract_calls, extract_calls_dialect, looks_like_broken_json, looks_like_foreign_dialect, ToolCallDialect};
+    use crate::inference::eval::toolcall::prompt::TerminalGuidance;
+    use crate::inference::eval::toolcall::tasks::ToolSchema;
     use crate::inference::generate::generate_options::{GenerateOptions, EVAL_REPEAT_PENALTY};
     use serde_json::json;
+
+    fn tool(name: &str, props: serde_json::Value) -> ToolSchema {
+        ToolSchema { name: name.into(), description: format!("tool {name}"), parameters: json!({ "type": "object", "properties": props }) }
+    }
+
+    #[test]
+    fn native_system_mandates_the_reporter_tool_on_an_act_task() {
+        // The Gap A' fix: an ACT task with a `reply` tool must tell the native model to CALL
+        // reply, not "answer in plain text" (the old fixed prompt's prose nudge → ReportedInProse).
+        let tools = vec![tool("read_file", json!({ "path": { "type": "string" } })), tool("reply", json!({ "text": { "type": "string" } }))];
+        let sys = native_system(&tools, TerminalGuidance::MustUseTools);
+        assert!(sys.contains("call the `reply` tool"), "{sys}");
+        assert!(sys.contains("Do not answer in plain text"), "{sys}");
+        // Native uses real tools — never the prompt path's JSON-format instructions.
+        assert!(!sys.contains("respond with ONLY a JSON object"), "{sys}");
+        assert!(!sys.to_lowercase().contains("json array of such objects"), "{sys}");
+    }
+
+    #[test]
+    fn native_system_keeps_plain_text_for_an_abstain_task() {
+        let tools = vec![tool("search", json!({ "q": { "type": "string" } }))];
+        let sys = native_system(&tools, TerminalGuidance::PlainTextOk);
+        assert!(sys.contains("just answer the user in plain text"), "{sys}");
+        assert!(!sys.contains("Do not answer in plain text"), "{sys}");
+    }
 
     #[test]
     fn a_header_without_max_tokens_cannot_strip_the_harness_token_cap() {
@@ -369,6 +467,51 @@ mod tests {
         assert_eq!(text, "");
         assert!(extract_calls(&text).is_none());
         assert!(!looks_like_broken_json(&text)); // not a MalformedJson — a true abstain
+    }
+
+    #[test]
+    fn native_turn_with_calls_returns_canonical_json_ignoring_content() {
+        // When Ollama parsed real tool calls, the content is irrelevant — the runner scores
+        // the canonical JSON, byte-identical to the prompt path.
+        let calls = vec![NativeToolCall { name: "run_tests".into(), args: json!({ "module": "cart" }) }];
+        let text = native_turn_text(&calls, "some prose Ollama also returned".into());
+        let parsed = extract_calls(&text).unwrap();
+        assert_eq!(parsed.len(), 1);
+        assert_eq!(parsed[0].name, "run_tests");
+    }
+
+    #[test]
+    fn native_turn_with_no_calls_surfaces_foreign_content_so_the_runner_flags_it() {
+        // The bug: Ollama's parser found NO tool_calls in a mis-built model's channel-token
+        // soup, but the soup is in `content`. Returning "" hid it as a silent empty →
+        // Hallucinated. Surfacing `content` lets the runner name the honest ForeignDialect.
+        let soup =
+            "<channel|><|tool_response|>call:reply(text='cart suite failed: test_apply_discount_negative_total')<tool_call|>";
+        let text = native_turn_text(&[], soup.into());
+        assert_eq!(text, soup);
+        // Parity-safe: the soup is NOT salvaged (no call credited), but it IS flagged foreign.
+        assert!(extract_calls_dialect(&text).is_none());
+        assert!(looks_like_foreign_dialect(&text));
+    }
+
+    #[test]
+    fn native_turn_with_no_calls_and_clean_harmony_brace_matches_what_ollama_recovers() {
+        // The clean `call:NAME{…}` form Ollama's native parser DOES recover would normally
+        // arrive as a real tool_call; if it ever reaches the content branch the salvager
+        // recovers it as Harmony — same call a real deployment gets (production parity).
+        let text = native_turn_text(&[], "<channel|>call:run_tests{module: \"cart\"}<tool_call|>".into());
+        let (calls, dialect) = extract_calls_dialect(&text).unwrap();
+        assert_eq!(dialect, ToolCallDialect::Harmony);
+        assert_eq!(calls[0].name, "run_tests");
+    }
+
+    #[test]
+    fn native_turn_with_no_calls_and_empty_content_is_still_a_clean_abstain() {
+        // A genuine native abstention (no calls, no content) stays an empty no-call yield.
+        let text = native_turn_text(&[], String::new());
+        assert_eq!(text, "");
+        assert!(extract_calls(&text).is_none());
+        assert!(!looks_like_foreign_dialect(&text));
     }
 
     #[test]

@@ -9,9 +9,12 @@ import { isAllowedWriteupLink } from "./writeupLink";
 
 interface Props {
   verdicts: ModelVerdict[];
-  /// The active collection id — the backend stamps its identity/hash on each row and
-  /// excludes rows from custom (non-built-in) collections.
+  /// The active collection id — the backend stamps its identity/name on each row.
   collectionId: string;
+  /// The run's content-verified leaderboard hash (from the report): a string only for a pristine
+  /// bundled collection, null for custom/imported OR any edit. The backend uses THIS to exclude
+  /// non-publishable rows (never re-derives from the id) — so an edited collection can't publish.
+  collectionHash: string | null;
   onClose: () => void;
   /// Invoked with the agreed preview, the (optional, allow-listed) write-up link, and
   /// the exact params snapshot the preview was built from — so what's published is
@@ -22,7 +25,7 @@ interface Props {
 /// The privacy gate: build the exact payload preview in Rust, show the user what
 /// will (and won't) leave their machine plus the raw JSON, and require an explicit
 /// default-OFF opt-in before Publish enables. Aggregate-only, community-reported.
-export function PublishDialog({ verdicts, collectionId, onClose, onPublish }: Props) {
+export function PublishDialog({ verdicts, collectionId, collectionHash, onClose, onPublish }: Props) {
   const [preview, setPreview] = useState<PublishPreview | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [agreed, setAgreed] = useState(false);
@@ -35,13 +38,13 @@ export function PublishDialog({ verdicts, collectionId, onClose, onPublish }: Pr
 
   useEffect(() => {
     let live = true;
-    previewPublishPayload(verdicts, params, collectionId)
+    previewPublishPayload(verdicts, params, collectionId, collectionHash)
       .then((p) => live && setPreview(p))
       .catch((e) => live && setError(formatIpcError(e)));
     return () => {
       live = false;
     };
-  }, [verdicts, params, collectionId]);
+  }, [verdicts, params, collectionId, collectionHash]);
 
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => e.key === "Escape" && onClose();
@@ -92,7 +95,9 @@ export function PublishDialog({ verdicts, collectionId, onClose, onPublish }: Pr
           <>
             <WhatsSharedPanel />
             <p className="text-xs text-slate-500">
-              Publishing <b>{preview.rows.length}</b> model{preview.rows.length === 1 ? "" : "s"} in cohort{" "}
+              {/* One row PER MEASURED PATH — a model evaluated on both native + prompt-based
+                  publishes two results, so this counts results (rows), not distinct models. */}
+              Publishing <b>{preview.rows.length}</b> result{preview.rows.length === 1 ? "" : "s"} in cohort{" "}
               <code className="text-slate-700">{preview.cohort_key}</code>
               {preview.excluded_count > 0 && <> · {preview.excluded_count} excluded (no measured Pass^k)</>}.
             </p>

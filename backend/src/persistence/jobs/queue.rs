@@ -25,7 +25,13 @@ pub struct RunConfig {
     pub max_steps: Option<u32>,
     pub params: Option<InferenceParams>,
     pub keep_alive: Option<i32>,
+    /// Run the NATIVE tool-calling pass (Ollama `/api/chat` tool_calls).
     pub native: bool,
+    /// Run the PROMPT-based pass (JSON-in-text proxy). At least one of `native`/`prompt` is set by
+    /// the UI. `#[serde(default = "default_true")]` → a job log written before this field resumes
+    /// with the prior behavior, where the prompt pass always ran.
+    #[serde(default = "default_true")]
+    pub prompt: bool,
     /// Phase 9: the difficulty tier the run was launched at. `None` is the legacy
     /// (Custom / free-`k`) path. `#[serde(default)]` keeps pre-Phase-9 job logs
     /// resumable — an interrupted run written before this field still parses.
@@ -36,6 +42,12 @@ pub struct RunConfig {
     /// same back-compat reason as `tier`.
     #[serde(default)]
     pub decoy_tools: Option<u32>,
+}
+
+/// serde default for `RunConfig::prompt` — an interrupted job written before the field existed
+/// always ran the prompt pass, so it resumes as `true`.
+fn default_true() -> bool {
+    true
 }
 
 /// One `.jsonl` line: the run header (first line) or a completed unit.

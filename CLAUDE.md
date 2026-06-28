@@ -18,6 +18,12 @@ Project guide for Claude Code sessions. Read this top-to-bottom before any work.
    the relevant section under `docs/` in the same commit.
 5. **Locked tech stack.** Do not substitute libraries. See `docs/process.md#tech-stack`.
    Alternatives go to `docs/process.md#future-considerations`, never into code.
+6. **Test LIVE against a real Ollama model — every time.** Unit tests / `tsc` /
+   vitest are necessary but never sufficient. After they pass, run the change
+   against an actual model from Ollama (`:11434`) and inspect the real output.
+   This project's hardest bugs (empty `.` output, foreign-dialect soup, the
+   native-path discard, read_file acking empty) surfaced ONLY by running the live
+   model — a green test just proves the path you told it to run.
 
 ## Workflow per step (mandatory loop)
 
@@ -27,12 +33,13 @@ Project guide for Claude Code sessions. Read this top-to-bottom before any work.
 3. Write the test for the expected behavior
 4. Run the test — must pass
 5. Inspect actual output vs expected output — must match in shape AND value
-6. Update the relevant section(s) under docs/
-7. Commit (Conventional Commits)
-8. Only now: move to the next step
+6. Run it LIVE against a real Ollama model and inspect the real output (rule 6)
+7. Update the relevant section(s) under docs/
+8. Commit (Conventional Commits)
+9. Only now: move to the next step
 ```
 
-If step 5 fails, do not "fix" by loosening the assertion. Fix the code.
+If step 5 or 6 fails, do not "fix" by loosening the assertion. Fix the code.
 
 ## Quick reference
 
@@ -42,7 +49,9 @@ If step 5 fails, do not "fix" by loosening the assertion. Fix the code.
   `backend/src/` (Rust commands + inference) + `backend/tauri.conf.json`,
   plus `docs/`. Full tree in `docs/architecture.md#folder-structure`.
 - **Naming:** Rust `snake_case`, TS `camelCase`, components `PascalCase`,
-  branches `phase-N/feature-name`. Full list in `docs/process.md#conventions`.
+  branches `<type>/<short-description>` (`feature/`, `fix/`, `bug/`, `docs/`,
+  `chore/`, `refactor/`) — name the change, not a phase. Full list in
+  `docs/process.md#conventions`.
 - **Setup:** Day-zero install + verification steps in `docs/process.md#setup`.
 - **Phases:** Current roadmap and phase boundaries in
   `docs/process.md#phase-roadmap`.

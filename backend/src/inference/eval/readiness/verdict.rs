@@ -1,5 +1,5 @@
 use super::profile::ReadinessProfile;
-use super::types::{AgentPath, CliffStatus, NativeFcStatus, Readiness, ReadinessInputs, ReadinessVerdict, EPSILON};
+use super::types::{CliffStatus, NativeFcStatus, Readiness, ReadinessInputs, ReadinessVerdict, EPSILON};
 use crate::inference::eval::agentic::spec::Tier;
 
 /// "" for a count of 1, "s" otherwise — so a reason reads "1 run" not "1 runs".
@@ -37,11 +37,15 @@ pub fn assess(i: &ReadinessInputs, p: &ReadinessProfile) -> ReadinessVerdict {
         blocking.push(format!("false 'done' on {} run{}", i.hallucinated, plural(i.hallucinated)));
     }
 
-    // Hardware hard gate (strict null-gating: required ⇒ unmeasured blocks).
+    // Hardware gate. A MEASURED bad fit is a hard block; an UNMEASURED fit is an honest
+    // caveat (Conditional), not a red failure — "unmeasured ≠ guessed fail," consistent
+    // with the Tier Matrix's gray NOT-TESTED. (On llama.cpp / Apple-Silicon unified memory
+    // the fit often can't be measured, so blocking would falsely red-flag every model.)
+    // "memory" not "VRAM" — unified-memory machines have no discrete VRAM.
     if p.require_full_vram {
         match i.fits_in_vram {
             Some(false) => blocking.push("partial offload → severe slowdown".into()),
-            None => blocking.push("require_full_vram set, but VRAM fit not measured".into()),
+            None => conditions.push("memory fit not measured — set a memory cap to certify".into()),
             Some(true) => {}
         }
     }
@@ -67,15 +71,17 @@ pub fn assess(i: &ReadinessInputs, p: &ReadinessProfile) -> ReadinessVerdict {
                 blocking.push("tool-call accuracy fails at the baseline (broken) — no usable context window".to_string());
             }
             CliffStatus::NotProbed => {
-                blocking.push(format!("context headroom required ({} tok) but not measured", min_tok));
+                // Unmeasured ≠ failure: a caveat to run the probe, not a red block.
+                conditions.push(format!("context headroom not measured — run the cliff probe to certify {} tok", min_tok));
             }
             _ => {} // Collapsed{depth >= min} or NoCliff{tested >= min} → pass
         }
     }
 
-    // Soft targets → Conditional on breach only. Unmeasured is silent: an
-    // advisory target we didn't run shouldn't downgrade an otherwise-clean model
-    // (unlike a hard gate, where unmeasured blocks).
+    // Soft targets → Conditional on breach only, and silent when unmeasured: an
+    // advisory target we didn't run shouldn't downgrade an otherwise-clean model.
+    // (Hard gates only block on a MEASURED failure; their unmeasured case is a
+    // Conditional caveat, above — never a red block.)
     if let (Some(mx), Some(ms)) = (p.max_ms_per_step, i.ms_per_step) {
         if ms > mx {
             conditions.push(format!("slow: {}ms/step > {}ms target", ms, mx));
@@ -114,10 +120,11 @@ pub fn assess(i: &ReadinessInputs, p: &ReadinessProfile) -> ReadinessVerdict {
         }
     }
 
-    let path = match i.native_fc {
-        NativeFcStatus::Tested { .. } => AgentPath::NativeFc,
-        NativeFcStatus::NotSupported => AgentPath::PromptBased,
-    };
+    // The path is the row's OWN path, set explicitly by the caller — NOT derived from
+    // `native_fc` (which now carries the model-level capability shared by both rows). This
+    // is what lets a native-capable model's prompt-based row label itself `PromptBased`
+    // while still passing the `require_native_fc` gate above (its `native_fc` is `Tested`).
+    let path = i.path;
     let status = if !blocking.is_empty() {
         Readiness::NotReady
     } else if !conditions.is_empty() {

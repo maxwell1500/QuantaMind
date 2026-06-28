@@ -72,8 +72,8 @@ export function ModelTimeline({
           <span>{label(row.model)}</span>
         </span>
         <span className="text-xs text-gray-500">
-          <span className="hidden">{m?.token_count ?? 0} tokens · TTFT {m?.ttft_ms ?? "—"}ms</span>
-          {m?.token_count ?? "—"} tokens · {tps != null ? `${tps.toFixed(1)} tok/s` : "— tok/s"} ·{" "}
+          {m?.token_count ?? "—"} tokens · TTFT {m?.ttft_ms != null ? `${m.ttft_ms}ms` : "—"} ·{" "}
+          {tps != null ? `${tps.toFixed(1)} tok/s` : "— tok/s"} ·{" "}
           <span data-testid={`outliers-${row.model}`}>{outliers} outlier{outliers === 1 ? "" : "s"}</span>
         </span>
       </div>

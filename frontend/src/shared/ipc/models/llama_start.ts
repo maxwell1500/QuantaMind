@@ -24,6 +24,22 @@ export async function stopLlamaServer(): Promise<void> {
   await invoke("stop_llama_server");
 }
 
+/// One-time spawn readout for the running llama-server: the model's on-disk
+/// footprint and the spawn→ready load time. `null` when no server is up (the UI
+/// then shows nothing rather than a fabricated phase). `model_bytes` is null when
+/// the GGUF couldn't be stat'd.
+export const LlamaServerInfoSchema = z
+  .object({
+    model_bytes: z.number().int().nonnegative().nullable(),
+    load_ms: z.number().int().nonnegative(),
+  })
+  .nullable();
+export type LlamaServerInfo = z.infer<typeof LlamaServerInfoSchema>;
+
+export async function llamaServerInfo(): Promise<LlamaServerInfo> {
+  return LlamaServerInfoSchema.parse(await invoke("llama_server_info"));
+}
+
 /// GGUF models discovered on disk for the llama.cpp backend.
 export async function listLlamaModels(): Promise<InstalledModelInfo[]> {
   const raw = await invoke("list_llama_models");

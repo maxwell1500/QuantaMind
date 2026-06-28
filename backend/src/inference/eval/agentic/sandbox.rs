@@ -1,4 +1,7 @@
 use crate::inference::eval::agentic::spec::{FaultInjection, FaultRule};
+use crate::inference::eval::agentic::v2::env_corpus::CorpusState;
+use crate::inference::eval::agentic::v2::env_fs::FsState;
+use crate::inference::eval::agentic::v2::env_webui::WebUiSpec;
 use crate::inference::eval::agentic::v2::r#match::MustNotCall;
 use crate::inference::eval::toolcall::tasks::{Call, ToolSchema};
 use serde::{Deserialize, Serialize};
@@ -37,6 +40,11 @@ pub enum EndStateRule {
     /// (consume-once, wildcard-aware). v2 tasks are multi-entity with independent
     /// sub-sequences, so strict ordering would false-negative a correct model.
     RequireAll(Vec<TaskCheckpoint>),
+    /// Phase 2 Slice 3 (stateful web-UI): the FINAL UI state must EXACTLY match this target
+    /// sub-state (every target field present + equal). No partial credit. Graded the instant the
+    /// per-run `WebUiState` reaches the target — and only after the forbidden pre-scan, so a
+    /// `must_not_call` violation still fails even if the target was reached.
+    RequireEndState(Value),
 }
 
 /// A strictly prompt-based simulated environment: the opening user prompt, the
@@ -51,6 +59,16 @@ pub enum EndStateRule {
 pub enum ResponderKind {
     StaticMocks,
     WorldState(Value),
+    /// Phase 1: a simulated filesystem the agent browses with `read_file`/`list_dir`/
+    /// `search_files`/`grep`. Getters return REAL content (never an empty ack).
+    FileSystem(FsState),
+    /// Phase 2: a frozen web-search corpus the agent browses with `search`/`fetch`. Getters
+    /// return deterministically-ranked snippets / real document text (never an empty ack).
+    WebCorpus(CorpusState),
+    /// Phase 2 Slice 3: a STATEFUL web UI. Holds only the immutable spec (initial state); the
+    /// mutable `WebUiState` is per-run (in the runner), so `respond` here is a no-op fallback —
+    /// real UI actions go through the runner's mutating apply branch, not `respond`.
+    WebUi(WebUiSpec),
 }
 
 #[derive(Clone, Debug)]
@@ -150,6 +168,27 @@ impl DeterministicSandbox {
         self
     }
 
+    /// Switch to the Phase-1 simulated-filesystem responder (builder form). `read_file` etc.
+    /// then return real content from `fs` instead of static mocks / entity blobs.
+    pub fn with_filesystem(mut self, fs: FsState) -> Self {
+        self.responder = ResponderKind::FileSystem(fs);
+        self
+    }
+
+    /// Switch to the Phase-2 web-search-corpus responder (builder form). `search`/`fetch` then
+    /// return ranked snippets / real document text from `corpus`.
+    pub fn with_web_corpus(mut self, corpus: CorpusState) -> Self {
+        self.responder = ResponderKind::WebCorpus(corpus);
+        self
+    }
+
+    /// Switch to the Phase-2 Slice-3 stateful web-UI responder (builder form). Holds only the
+    /// immutable spec; the mutable per-run state lives in the runner.
+    pub fn with_web_ui(mut self, spec: WebUiSpec) -> Self {
+        self.responder = ResponderKind::WebUi(spec);
+        self
+    }
+
     /// The deterministic result for a parsed call. `StaticMocks`: `Some(mock)` or
     /// `None` for an unknown/hallucinated tool or wrong args (matched via `canonical`).
     /// `WorldState`: three-way — a GETTER surfaces the entity blob, a recognized ACTION
@@ -169,6 +208,11 @@ impl DeterministicSandbox {
                     None
                 }
             }
+            ResponderKind::FileSystem(fs) => fs.respond(call, &self.recognized_tools),
+            ResponderKind::WebCorpus(c) => c.respond(call, &self.recognized_tools),
+            // WebUi mutations are applied in the runner against the per-run state; this fallback
+            // is only hit if a WebUi sandbox is driven through the stateless path (it isn't).
+            ResponderKind::WebUi(_) => Some(r#"{"ok":true}"#.to_string()),
         }
     }
 }
@@ -345,6 +389,35 @@ mod tests {
         assert_eq!(sb.respond(&call("get_dep", json!({ "id": "D-1" }))).as_deref(), Some(r#"{"kind":"major"}"#));
         assert_eq!(sb.respond(&call("pin_and_flag", json!({ "dep": "D-1" }))).as_deref(), Some(r#"{"ok":true}"#));
         assert!(sb.respond(&call("read_file", json!({ "path": "x.py" }))).is_none());
+    }
+
+    #[test]
+    fn respond_byte_parity_anchor_for_the_responderkind_refactor() {
+        // GOLDEN: pins the EXACT bytes respond() returns for the pre-environment responder
+        // kinds. Adding a ResponderKind variant (FileSystem/WebCorpus/WebUi) must NOT change
+        // these — the model's next-turn transcript depends on them byte-for-byte. If this fails
+        // after a responder refactor, the refactor drifted the baseline; fix the refactor, not
+        // the assertion. (Fault/recovery transcript parity is pinned by the runner trap tests.)
+        let mocks = sandbox();
+        assert_eq!(
+            mocks.respond(&call("get_balance", json!({"account_id":"ACC-123"}))).as_deref(),
+            Some(r#"{"status":200,"balance":450.0}"#)
+        );
+        assert_eq!(mocks.respond(&call("nope", json!({}))), None);
+
+        let ws = DeterministicSandbox::new(
+            "p".into(),
+            vec![],
+            vec![],
+            EndStateRule::RequireAll(vec![TaskCheckpoint { tool: "act".into(), args: json!({}) }]),
+        )
+        .with_world_state(json!({ "E-1": { "v": 1 }, "calc": { "2+2": 4 } }))
+        .with_entity_tools(["get".to_string()])
+        .with_recognized_tools(["get".to_string(), "act".to_string()]);
+        assert_eq!(ws.respond(&call("get", json!({"id":"E-1"}))).as_deref(), Some(r#"{"v":1}"#));
+        assert_eq!(ws.respond(&call("get", json!({"expr":"2+2"}))).as_deref(), Some("4")); // calc submap
+        assert_eq!(ws.respond(&call("act", json!({"id":"E-1"}))).as_deref(), Some(r#"{"ok":true}"#));
+        assert!(ws.respond(&call("decoy", json!({}))).is_none());
     }
 
     #[test]

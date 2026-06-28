@@ -20,7 +20,9 @@ export interface BackendStore {
 }
 
 export const useBackendStore = create<BackendStore>((set, get) => ({
-  selectedBackend: "ollama",
+  // Default the app to llama.cpp on every start (no persistence — this initial
+  // value IS the startup selection). Matches the header order (llama.cpp first).
+  selectedBackend: "llama_cpp",
   ollamaHealthy: null,
   llamaHealthy: null,
   mlxHealthy: null,

@@ -1,5 +1,5 @@
 use super::super::profile::{builtins, ReadinessProfile};
-use super::super::types::{CliffStatus, NativeFcStatus, Readiness, ReadinessInputs};
+use super::super::types::{AgentPath, CliffStatus, NativeFcStatus, Readiness, ReadinessInputs};
 use super::assess;
 use crate::inference::eval::agentic::spec::Tier;
 
@@ -32,6 +32,7 @@ fn clean_inputs() -> ReadinessInputs {
         loops: 0,
         hallucinated: 0,
         native_fc: NativeFcStatus::NotSupported,
+        path: AgentPath::PromptBased,
         tier_pass_k: vec![],
     }
 }
@@ -86,14 +87,17 @@ fn forbidden_loop_and_hallucination_each_block() {
 }
 
 #[test]
-fn required_vram_but_unmeasured_blocks() {
+fn required_but_unmeasured_memory_is_a_conditional_caveat_not_a_block() {
+    // Unmeasured ≠ failure: a required-but-unmeasured memory fit (e.g. llama.cpp /
+    // unified memory can't report one) is an honest Conditional caveat, NOT red NotReady.
     let mut p = lenient();
     p.require_full_vram = true;
     let mut i = clean_inputs();
-    i.fits_in_vram = None; // never measured — ignorance is not a pass
+    i.fits_in_vram = None; // never measured
     let v = assess(&i, &p);
-    assert_eq!(v.status, Readiness::NotReady);
-    assert!(v.blocking.iter().any(|b| b.contains("VRAM fit not measured")));
+    assert_eq!(v.status, Readiness::Conditional);
+    assert!(v.blocking.is_empty(), "unmeasured memory must not block");
+    assert!(v.conditions.iter().any(|c| c.contains("memory fit not measured")));
 }
 
 #[test]
@@ -117,14 +121,17 @@ fn vram_pressure_is_a_conditional_note_independent_of_the_gate() {
 }
 
 #[test]
-fn required_context_but_unmeasured_blocks() {
+fn required_but_unmeasured_context_is_a_conditional_caveat_not_a_block() {
+    // Same honesty rule for the context-cliff gate: an unprobed model gets a caveat to
+    // run the probe, not a red block.
     let mut p = lenient();
     p.min_context_tokens = Some(8192);
     let mut i = clean_inputs();
     i.cliff = CliffStatus::NotProbed;
     let v = assess(&i, &p);
-    assert_eq!(v.status, Readiness::NotReady);
-    assert!(v.blocking.iter().any(|b| b.contains("context headroom required (8192 tok)")));
+    assert_eq!(v.status, Readiness::Conditional);
+    assert!(v.blocking.is_empty(), "unprobed context must not block");
+    assert!(v.conditions.iter().any(|c| c.contains("context headroom not measured")));
 }
 
 #[test]
@@ -258,6 +265,47 @@ fn tier_gate_passes_when_the_required_tier_is_cleared() {
     let v = assess(&i, &p);
     assert_eq!(v.status, Readiness::Ready);
     assert_eq!(v.cleared_tier, Some(Tier::Hard)); // highest tier cleared at the bar
+}
+
+#[test]
+fn path_is_taken_from_inputs_not_derived_from_native_fc() {
+    // A native-capable model's PROMPT row: native_fc=Tested (model-level capability) but
+    // path=PromptBased (the row's own path). The label must follow `path`, not native_fc.
+    let i = ReadinessInputs {
+        native_fc: NativeFcStatus::Tested { pass_k: 0.9 },
+        path: AgentPath::PromptBased,
+        ..clean_inputs()
+    };
+    assert_eq!(assess(&i, &lenient()).path, AgentPath::PromptBased);
+}
+
+#[test]
+fn require_native_fc_does_not_block_a_native_capable_models_prompt_row() {
+    // The prompt-based row of a model that DOES support native (native_fc=Tested) must NOT
+    // be blocked under require_native_fc — native is available on the model, this row just
+    // measured the prompt path. The gate reads the model-level native_fc, not the path.
+    let mut p = lenient();
+    p.require_native_fc = true;
+    let i = ReadinessInputs {
+        native_fc: NativeFcStatus::Tested { pass_k: 0.9 },
+        path: AgentPath::PromptBased,
+        ..clean_inputs()
+    };
+    let v = assess(&i, &p);
+    assert_eq!(v.status, Readiness::Ready, "{:?}", v.blocking);
+    assert_eq!(v.path, AgentPath::PromptBased); // honest label: this row is the prompt path
+}
+
+#[test]
+fn require_native_fc_still_blocks_a_native_incapable_models_prompt_row() {
+    // A model with no native support: native_fc=NotSupported. Its single prompt row is
+    // correctly blocked under require_native_fc (native genuinely unavailable).
+    let mut p = lenient();
+    p.require_native_fc = true;
+    let i = ReadinessInputs { native_fc: NativeFcStatus::NotSupported, path: AgentPath::PromptBased, ..clean_inputs() };
+    let v = assess(&i, &p);
+    assert_eq!(v.status, Readiness::NotReady);
+    assert!(v.blocking.iter().any(|b| b.contains("native")), "{:?}", v.blocking);
 }
 
 #[test]

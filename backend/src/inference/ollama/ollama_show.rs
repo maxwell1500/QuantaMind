@@ -69,6 +69,25 @@ pub async fn probe_supports_tools(endpoint: &str, model: &str) -> bool {
     show_model(endpoint, model).await.map(|r| supports_tools(&r.capabilities)).unwrap_or(false)
 }
 
+/// Extract the version string from a `/api/version` body (`{"version":"0.11.10"}`).
+/// Split out so it's unit-tested without a live server.
+pub fn parse_version(body: &str) -> Option<String> {
+    serde_json::from_str::<serde_json::Value>(body).ok()?.get("version")?.as_str().map(str::to_string)
+}
+
+/// Best-effort: the running Ollama server version (`GET /api/version`). Stamped on the batch
+/// report so a NATIVE tool-calling regression on a version bump (e.g. Qwen3 → `333…` after
+/// v0.11.4→v0.11.10) is DIAGNOSABLE — the honest garbled/foreign verdict reads as "at Ollama
+/// vX", not a silent zero. `None` on any error (no fabrication).
+pub async fn probe_ollama_version(endpoint: &str) -> Option<String> {
+    let client = Client::builder().timeout(DEFAULT_TIMEOUT).build().ok()?;
+    let resp = client.get(format!("{endpoint}/api/version")).send().await.ok()?;
+    if !resp.status().is_success() {
+        return None;
+    }
+    parse_version(&resp.text().await.ok()?)
+}
+
 #[cfg(test)]
 #[path = "ollama_show_tests.rs"]
 mod tests;

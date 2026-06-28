@@ -1,12 +1,17 @@
 use crate::errors::AppResult;
 use crate::inference::eval::agentic::context::{tool_result_line, Conversation};
+use crate::inference::eval::agentic::env_view::{env_view, EnvView};
 use crate::inference::eval::agentic::scoring::endstate;
 use crate::inference::eval::agentic::model_turn::ModelTurn;
 use crate::inference::eval::agentic::scoring::report::{AgenticReport, FailureKind, RunOutcome};
-use crate::inference::eval::agentic::sandbox::{canonical, DeterministicSandbox, EndStateRule, SandboxState, TaskCheckpoint};
+use crate::inference::eval::agentic::sandbox::{canonical, DeterministicSandbox, EndStateRule, ResponderKind, SandboxState, TaskCheckpoint};
+use crate::inference::eval::agentic::v2::env_webui::WebUiState;
 use crate::inference::eval::agentic::v2::r#match::text_matches;
 use crate::inference::eval::agentic::step::{StepKind, TrajectoryStep};
-use crate::inference::eval::toolcall::parse::{extract_calls_dialect, looks_like_broken_json, strip_think, ToolCallDialect};
+use crate::inference::eval::toolcall::parse::{
+    extract_calls_dialect, is_empty_output, looks_like_broken_json, looks_like_foreign_dialect, strip_think,
+    ToolCallDialect,
+};
 use crate::inference::eval::toolcall::prompt::{build_system_for, TerminalGuidance};
 use crate::inference::generate::generate_options::{GenerateOptions, EVAL_REPEAT_PENALTY};
 use crate::inference::generate::generate_spec::GenerateSpec;
@@ -92,7 +97,7 @@ fn reported_in_prose(end_state: &EndStateRule, satisfied: &[bool], next_cp: usiz
     let unsatisfied: Vec<&TaskCheckpoint> = match end_state {
         EndStateRule::RequireAll(cps) => cps.iter().zip(satisfied).filter(|(_, &s)| !s).map(|(c, _)| c).collect(),
         EndStateRule::RequireSequence(cps) => cps.get(next_cp..).unwrap_or(&[]).iter().collect(),
-        EndStateRule::ExpectAbstainingText => return false,
+        EndStateRule::ExpectAbstainingText | EndStateRule::RequireEndState(_) => return false,
     };
     matches!(unsatisfied.as_slice(), [cp] if reporter_text(cp).is_some_and(|p| text_matches(p, raw)))
 }
@@ -152,17 +157,38 @@ where
     M: ModelTurn,
     F: Fn(u32) -> AppResult<(DeterministicSandbox, u32, u8)>,
 {
-    run_agentic_within(turn, k, make, cancel, TASK_BUDGET, tx).await
+    run_agentic_within(turn, k, make, cancel, task_budget(k, turn.is_thinking()), tx).await
 }
 
-/// Per-task wall-clock budget for a whole Pass^k batch. A slow model (a 12B on a 16GB host
-/// generates minutes per step) can otherwise grind for hours: k runs × max_steps real
-/// multi-minute turns. Once a batch passes this budget we stop launching NEW runs and
-/// report the honest pass rate over the COMPLETED runs (flagged via
-/// `AgenticReport::with_truncation`) — an unbiased estimate that makes no claim about the
-/// runs we skipped. Generous (8 min) so it only fires on a pathologically slow batch; a
-/// healthy 7B finishes Hard well under it.
-const TASK_BUDGET: std::time::Duration = std::time::Duration::from_secs(480);
+/// Per-RUN wall-clock allotment, multiplied by `k` to get the whole-batch budget
+/// (`task_budget`). A slow model (a 12B on a 16GB host generates minutes per step) can
+/// otherwise grind for hours: k runs × max_steps real multi-minute turns. Once a batch passes
+/// its budget we stop launching NEW runs and report the honest pass rate over the COMPLETED
+/// runs (flagged via `AgenticReport::with_truncation`).
+///
+/// It MUST scale with `k`: a flat per-task cap silently broke Pass^k for every tier above the
+/// smallest — a slow model takes minutes per run, so a flat 8-min cap let only ~3 runs through
+/// whether k was 5 or 16, truncating the batch (and voiding its strict-pass credit, see
+/// `AgenticReport::is_strict_pass`) before it could ever finish. Per-run scaling gives each
+/// requested repetition a guaranteed slice, so the cap only fires on a pathologically slow batch
+/// (every run blowing its whole allotment), never merely because k is large. 5 min/run is
+/// generous for a terse model — a healthy 7B finishes a run in seconds and never approaches it.
+const PER_RUN_BUDGET: std::time::Duration = std::time::Duration::from_secs(300);
+
+/// A reasoning model emits a 1–2k+ token `<think>` scratchpad BEFORE every tool call — the
+/// per-turn token budget it gets is already 6–16× a terse model's (`max_tokens_for(.., true)` =
+/// 1536–4096 vs 256), so each turn is several times slower in wall-clock, and a run is many turns.
+/// Without this a thinking model on a deep task blows the per-run slice and gets truncated even
+/// though it's progressing normally. 3× (not the full token ratio) because not every turn maxes
+/// its budget and per-turn overhead is partly fixed; `STEP_TIMEOUT` still caps any single wedged turn.
+const THINKING_BUDGET_MULTIPLIER: u32 = 3;
+
+/// The whole-batch wall-clock budget for a `k`-run Pass^k task: a per-run slice (larger for a
+/// thinking model, which is intrinsically slower per turn) times `k`.
+fn task_budget(k: u32, is_thinking: bool) -> std::time::Duration {
+    let per_run = if is_thinking { PER_RUN_BUDGET * THINKING_BUDGET_MULTIPLIER } else { PER_RUN_BUDGET };
+    per_run * k.max(1)
+}
 
 /// `run_agentic_with` with an injectable wall-clock budget (so the truncation path is
 /// testable without a multi-minute wait — a ZERO budget truncates after the first run).
@@ -280,7 +306,9 @@ async fn run_steps<M: ModelTurn>(
     // RequireAll task otherwise yields → HallucinatedCompletion).
     let terminal = match &sandbox.end_state {
         EndStateRule::ExpectAbstainingText => TerminalGuidance::PlainTextOk,
-        EndStateRule::RequireAll(_) | EndStateRule::RequireSequence(_) => TerminalGuidance::MustUseTools,
+        EndStateRule::RequireAll(_) | EndStateRule::RequireSequence(_) | EndStateRule::RequireEndState(_) => {
+            TerminalGuidance::MustUseTools
+        }
     };
     let system = build_system_for(&sandbox.tools, terminal);
     let mut convo = Conversation::new(sandbox.initial_prompt.clone());
@@ -292,6 +320,12 @@ async fn run_steps<M: ModelTurn>(
         _ => Vec::new(),
     };
     let mut state = SandboxState::new(); // per-run fault attempt counters (Driver B)
+    // Per-run MUTABLE web-UI state (Slice 3) — fresh each run, NEVER in the shared sandbox (which
+    // holds only the immutable spec). Mirrors the per-run `SandboxState` lifecycle.
+    let mut web_ui = match &sandbox.responder {
+        ResponderKind::WebUi(spec) => Some(WebUiState::from_spec(spec)),
+        _ => None,
+    };
     let mut recoveries = 0u8; // schema corrections used this run (Driver D)
     let mut hit_schema_error = false; // this run emitted a schema-invalid call
     let mut schema_recovered = false; // ...and later produced a valid one
@@ -332,6 +366,10 @@ async fn run_steps<M: ModelTurn>(
                     raw_output: String::new(),
                     injection: None,
                     kind: StepKind::TurnTimeout,
+                    env: EnvView::None,
+                    cache_n: None, // no model response on a timeout
+                    prefill_tokens: None,
+                    prefill_ms: None,
                 });
                 return Ok(RunOutcome::failure(step_index + 1, output_tokens, FailureKind::TurnTimeout)
                     .with_schema(hit_schema_error, schema_recovered)
@@ -339,8 +377,13 @@ async fn run_steps<M: ModelTurn>(
             }
         };
         output_tokens += stats.eval_count.unwrap_or(0);
-        let send = |kind: StepKind, injection: Option<String>| {
-            let _ = tx.send(TrajectoryStep { run_index, step_index, raw_output: raw.clone(), injection, kind });
+        // Per-turn prompt-cache reuse (llama.cpp `timings.cache_n`); None for other
+        // backends. Captured here so each streamed step carries its own turn's value.
+        let cache_n = stats.cache_n;
+        let prefill_tokens = stats.prompt_eval_count; // prompt_n = recomputed; total = cache_n + this
+        let prefill_ms = stats.prompt_eval_ms;
+        let send = |kind: StepKind, injection: Option<String>, env: EnvView| {
+            let _ = tx.send(TrajectoryStep { run_index, step_index, raw_output: raw.clone(), injection, kind, env, cache_n, prefill_tokens, prefill_ms });
         };
 
         // For a reasoning model, parse and persist the `<think>`-stripped output: its inner
@@ -359,12 +402,26 @@ async fn run_steps<M: ModelTurn>(
             None => match &sandbox.end_state {
                 // Declined to call any tool, exactly as the task demanded.
                 EndStateRule::ExpectAbstainingText => {
-                    send(StepKind::EndStateReached, None);
+                    send(StepKind::EndStateReached, None, EnvView::None);
                     return Ok(RunOutcome::success(step_index + 1, output_tokens));
                 }
-                // Yielded (no call) without completing the required checkpoints.
-                EndStateRule::RequireSequence(_) | EndStateRule::RequireAll(_) => {
-                    let (kind, failure) = if looks_like_broken_json(&clean) {
+                // Yielded (no call) without completing the required checkpoints / reaching the
+                // target UI state.
+                EndStateRule::RequireSequence(_) | EndStateRule::RequireAll(_) | EndStateRule::RequireEndState(_) => {
+                    let (kind, failure) = if is_empty_output(&clean) {
+                        // The model produced nothing usable (empty / whitespace / a lone
+                        // punctuation char before its stop token). A generation/template
+                        // artifact, NOT a claimed-but-false completion. Checked first: an
+                        // empty string trivially matches none of the others, and labeling it
+                        // `Hallucinated` reads as "the model lied about finishing".
+                        (StepKind::EmptyOutput, FailureKind::EmptyOutput)
+                    } else if looks_like_foreign_dialect(&clean) {
+                        // The model spoke a non-JSON tool dialect the parser (and a real
+                        // deployment) can't read — a template/dialect artifact, NOT a
+                        // hallucination or broken JSON. Checked before the
+                        // braces-but-no-object `Malformed` heuristic.
+                        (StepKind::ForeignDialect, FailureKind::ForeignDialect)
+                    } else if looks_like_broken_json(&clean) {
                         (StepKind::MalformedJson, FailureKind::Malformed)
                     } else if reported_in_prose(&sandbox.end_state, &satisfied, next_cp, &clean) {
                         // G3: did ALL the work, only failed to route the final answer through
@@ -373,7 +430,7 @@ async fn run_steps<M: ModelTurn>(
                     } else {
                         (StepKind::HallucinatedCompletion, FailureKind::Hallucinated)
                     };
-                    send(kind, None);
+                    send(kind, None, EnvView::None);
                     return Ok(RunOutcome::failure(step_index + 1, output_tokens, failure)
                         .with_schema(hit_schema_error, schema_recovered)
                         .with_unknown_tools(unknown_tools));
@@ -388,10 +445,16 @@ async fn run_steps<M: ModelTurn>(
             }
         };
 
+        // The per-turn environment snapshot for the visual replay, derived from the turn's
+        // calls (the env picks its representative action — e.g. the last file read, even when
+        // batched before a reply). A pure fn of the immutable responder + calls, so the picture
+        // can never disagree with the score. `None` for non-env tasks.
+        let turn_env = env_view(&sandbox.responder, &calls, web_ui.as_ref());
+
         // Acted (called ≥1 tool) when the task wanted a plain-text abstention — declining
         // was correct, so this is a failure.
         if matches!(sandbox.end_state, EndStateRule::ExpectAbstainingText) {
-            send(StepKind::HallucinatedCompletion, None);
+            send(StepKind::HallucinatedCompletion, None, turn_env.clone());
             return Ok(RunOutcome::failure(step_index + 1, output_tokens, FailureKind::Hallucinated));
         }
 
@@ -409,7 +472,7 @@ async fn run_steps<M: ModelTurn>(
         for call in &calls {
             let schema_ok = sandbox.tools.is_empty() || endstate::validate_call(call, &sandbox.tools).is_ok();
             if schema_ok && sandbox.must_not_call.iter().any(|m| m.matches(call)) {
-                send(StepKind::ForbiddenCall, None);
+                send(StepKind::ForbiddenCall, None, turn_env.clone());
                 return Ok(RunOutcome::failure(step_index + 1, output_tokens, FailureKind::ForbiddenCall)
                     .with_schema(hit_schema_error, schema_recovered)
                     .with_unknown_tools(unknown_tools));
@@ -433,7 +496,7 @@ async fn run_steps<M: ModelTurn>(
                 if let Err(msg) = endstate::validate_call(call, &sandbox.tools) {
                     hit_schema_error = true;
                     if recoveries >= max_recovery {
-                        send(StepKind::SchemaError, join_injection(&turn_lines)); // terminal: budget spent
+                        send(StepKind::SchemaError, join_injection(&turn_lines), turn_env.clone()); // terminal: budget spent
                         return Ok(RunOutcome::failure(step_index + 1, output_tokens, FailureKind::MalformedSchema)
                             .with_schema(true, schema_recovered)
                             .with_unknown_tools(unknown_tools));
@@ -457,9 +520,23 @@ async fn run_steps<M: ModelTurn>(
                 turn_lines.push((StepKind::ToolError, tool_result_line(&err)));
                 continue;
             }
-            // 3c — checkpoint progress: ordered (RequireSequence, exact) or unordered
-            // consume-once set (RequireAll, wildcard-aware). Two calls in one turn satisfy
-            // two distinct checkpoints — the whole point of processing the full array.
+            // 3c — apply the STATEFUL web-UI action NOW (the mutation IS the env's effect, and the
+            // completion check below reads the post-action state). For a stateless env nothing is
+            // applied here — `respond` is deferred to 3f so a terminal checkpoint call is never
+            // called (and so never mis-counted as an unknown tool).
+            let applied = match web_ui.as_mut() {
+                Some(st) => Some(match st.apply(call, &sandbox.recognized_tools) {
+                    Some(r) => (StepKind::ToolCall, r),
+                    None => {
+                        unknown_tools += 1;
+                        (StepKind::UnknownTool, UNKNOWN_TOOL.to_string())
+                    }
+                }),
+                None => None,
+            };
+            // 3d — end-state progress: ordered (RequireSequence) / unordered consume-once
+            // (RequireAll, wildcard-aware) / exact final-state match (RequireEndState, read AFTER
+            // the apply above). Two calls in one turn satisfy two distinct checkpoints.
             let complete = match &sandbox.end_state {
                 EndStateRule::RequireSequence(cps) => {
                     if endstate::checkpoint_matches(&cps[next_cp], call) {
@@ -476,32 +553,51 @@ async fn run_steps<M: ModelTurn>(
                     }
                     satisfied.iter().all(|&s| s)
                 }
+                EndStateRule::RequireEndState(target) => web_ui.as_ref().is_some_and(|st| st.matches(target)),
                 EndStateRule::ExpectAbstainingText => unreachable!("handled above"),
             };
-            // 3d — terminal success the instant the last checkpoint is satisfied (race-free:
-            // step 1 already cleared the turn of forbidden calls).
+            // The per-call replay snapshot: for the stateful web-UI it must reflect the
+            // POST-action state, so rebuild it from the mutated `web_ui`; otherwise the
+            // pre-computed `turn_env`.
+            let call_env = match web_ui.as_ref() {
+                Some(st) => EnvView::WebUi(st.view(&calls)),
+                None => turn_env.clone(),
+            };
+            // 3e — terminal success the instant the end-state is reached (race-free: the forbidden
+            // pre-scan already cleared the turn, so a `must_not_call` can't be laundered here).
             if complete {
-                send(StepKind::EndStateReached, join_injection(&turn_lines));
+                send(StepKind::EndStateReached, join_injection(&turn_lines), call_env);
                 return Ok(RunOutcome::success(step_index + 1, output_tokens)
                     .with_schema(hit_schema_error, schema_recovered)
                     .with_unknown_tools(unknown_tools));
             }
-            // 3e — not complete: inject this call's tool result and continue.
-            let (kind, result) = match sandbox.respond(call) {
-                Some(r) => (StepKind::ToolCall, r),
-                None => {
-                    unknown_tools += 1; // a decoy or hallucinated tool — no mock exists
-                    (StepKind::UnknownTool, UNKNOWN_TOOL.to_string())
-                }
+            // 3f — not complete: inject this call's tool result and continue. The web-UI result
+            // was already produced by the apply in 3c; a stateless env reads `respond` now (so a
+            // terminal checkpoint call above never reached `respond` → never mis-counted unknown).
+            let (kind, result) = match applied {
+                Some(kr) => kr,
+                None => match sandbox.respond(call) {
+                    Some(r) => (StepKind::ToolCall, r),
+                    None => {
+                        unknown_tools += 1; // a decoy or hallucinated tool — no mock exists
+                        (StepKind::UnknownTool, UNKNOWN_TOOL.to_string())
+                    }
+                },
             };
             ensure_model_pushed(&mut convo, &clean, &mut model_pushed);
             convo.push_tool_result(&result);
             turn_lines.push((kind, tool_result_line(&result)));
         }
 
-        // Turn complete, NON-terminal: stream one step carrying every injected result.
+        // Turn complete, NON-terminal: stream one step carrying every injected result + the
+        // environment snapshot for the visual replay. For the stateful web-UI, rebuild the view
+        // from the POST-action state so the replay shows the resulting UI.
         let (kind, injection) = summarize_turn(&turn_lines);
-        send(kind, injection);
+        let final_env = match web_ui.as_ref() {
+            Some(st) => EnvView::WebUi(st.view(&calls)),
+            None => turn_env,
+        };
+        send(kind, injection, final_env);
 
         // Loop detector: a turn that re-emits the exact same calls as the previous turn
         // AND advanced no checkpoint is a stall. After `STALL_REPEAT_LIMIT` such turns in a
@@ -521,6 +617,10 @@ async fn run_steps<M: ModelTurn>(
                 raw_output: String::new(),
                 injection: None,
                 kind: StepKind::InfiniteLoop,
+                env: EnvView::None,
+                cache_n: None, // synthetic terminal step, no model response
+                prefill_tokens: None,
+                prefill_ms: None,
             });
             return Ok(RunOutcome::failure(step_index + 1, output_tokens, FailureKind::InfiniteLoop)
                 .with_schema(hit_schema_error, schema_recovered)
@@ -534,6 +634,10 @@ async fn run_steps<M: ModelTurn>(
         raw_output: String::new(),
         injection: None,
         kind: StepKind::InfiniteLoop,
+        env: EnvView::None,
+        cache_n: None, // synthetic terminal step, no model response
+        prefill_tokens: None,
+        prefill_ms: None,
     });
     Ok(RunOutcome::failure(max_steps, output_tokens, FailureKind::InfiniteLoop)
         .with_schema(hit_schema_error, schema_recovered)

@@ -140,6 +140,40 @@ toggles are tracked per `run_index` and reset on task/model change. Without this
 k single-step runs rendered as ambiguous duplicate "TURN 1 / Sandbox Response
 Injection" cards.
 
+**Visual environment replay (split-view).** When a run's steps carry an `EnvView`
+(`hasEnvReplay(steps)` — i.e. an environment task like the filesystem env), the expanded
+timeline becomes a 2-column split: the text trace (left) beside a visual replay (right) in
+`components/replay/`. `EnvironmentReplayPanel` holds a `StepScrubber` (◀/▶ + range over the
+run's turns) and a kind-switched panel; it follows the live tail (defaults to the latest real
+filesystem action, not a terminal no-op) until the user scrubs, then pins. `FileTreeReplay`
+draws the file tree with the touched path highlighted and the **real returned content/matches**
+(making the acks-empty fix visible — the user watches the model open a file and read it).
+Non-environment tasks stream `env.kind === "none"` → no panel, zero change to the text trace.
+`EnvView` is local-only (never published). Tested in `__tests__/EnvironmentReplay.test.tsx`.
+
+**Per-run Input/Output drill-down.** Every run in the trace carries an **Input** and
+an **Output** button (single-turn → on the Turn-1 card; agentic → on each "Run N of
+K" header, `stopPropagation` so they don't toggle the run's expand). They open
+`RunIoModal` scoped to that run: **Input** = the prompt the model was given (single →
+captured `trace.system_message` + `user_prompt`; agentic → the package reconstructed
+from `task.tools`); **Output** = the raw response (single → `trace.raw_output`;
+agentic → *only that run's* turns — `steps` filtered by `run_index` — incl. each
+turn's sandbox injection and an `(empty output)` fallback for a whitespace turn). The
+"no response" cases are surfaced explicitly, never a blank, each with its own testid:
+`run-io-not-run`, `run-io-error` (shows the message), `run-io-empty`. While an
+agentic run is still streaming (outcome not yet cached) the Output shows the in-flight
+trajectory rather than a false "not run". `decoys` threads from `EvalPage` so a
+reconstructed agentic Input admits the decoy tools the model also saw.
+
+The view-model logic is the pure **`components/runIo.ts`** (`buildRunInput(task,
+outcome, decoys?)` / `buildRunOutput(outcome, steps)`) — no React, encoding the
+no-response branches and the fidelity **`note`** (non-null whenever the shown Input
+isn't verbatim: a not-yet-run/**errored** single-turn task, or a decoy-widened agentic
+run). `RunIoModal.tsx` is the thin renderer. The agentic system-package string lives
+once in **`agenticPrompt.ts`** (`agenticSystemPreview`), imported by both `runIo` and
+`TraceDebugger`, so the two can't diverge. Tested in `__tests__/runIo.test.ts` (unit)
+and `__tests__/TraceDebuggerRunIo.test.tsx` (rendered).
+
 ### ToolCallPanel / ContextCliffPanel / CpuFallbackBanner / RunRecoveryDialog
 
 | File | One-line |
@@ -399,11 +433,16 @@ Malformed). Clicking a row → `onFocusModel` (scrolls the detail panels up).
 
 ### MatrixScoreboard.tsx — the per-task table ("2. The Simulator")
 
-Per the **focused** model: aggregates pass-rate / avg-steps / effort over
-`tasks × outcomeByKey`, a live progress bar (`progress.done/total`), and a task
-table. Each row's Result badge: `single` → Pass/Fail; `agentic` → all-pass
-`Pass`, none `Fail`, **partial → amber `Partial p/total`** ("unreliable, not a
-clean pass"). Row click sets `focusedTaskId` → drives `TraceDebugger`. Collapsible.
+Per the **focused** model: an `aggregate(byKey)` helper computes pass-rate / avg-steps /
+effort over `tasks × byKey`, called **once per pass** — `nativeOutcomeByKey` and
+`outcomeByKey` — and the AGGREGATE box renders **one labeled line per measured pass**
+(`Tool-Calling (native):` / `Prompt-based:`). The two are **never blended** (different
+measurement modes — eval-metric comparability); a native-only run shows the native line
+(previously the AGGREGATE read only the prompt pass and showed `—` for a native run). A
+live progress bar (`progress.done/total`) and a task table follow. Each row's Result badge:
+`single` → Pass/Fail; `agentic` → all-pass `Pass`, none `Fail`, **partial → amber
+`Partial p/total`** ("unreliable, not a clean pass"). Row click sets `focusedTaskId` →
+drives `TraceDebugger`. Collapsible.
 Read-only — per-task Edit/Delete live in the sidebar (`EvalManager`), not here. Header
 chips echo the run shape (`Tier · K · Decoys`).
 
@@ -566,6 +605,11 @@ A task with category "agentic" runs the sandbox loop; backend emits agentic-step
 Scoreboard row Result = Pass^k (all k pass / partial p/total / fail)
   → click → TraceDebugger: Pass^k header + colour-coded turn timeline
     (tool_call · schema_error · hallucinated_completion · infinite_loop · end_state_reached)
+    + per-turn llama.cpp prefix-cache readout (CacheBadge): green "N reused / M recomputed"
+      when the prefix was reused, amber "⚠ CACHE BUST · M re-prefilled (+ms)" when a
+      non-first turn's prefix collapsed (reuseRatio < CACHE_BUST_BELOW=0.5), neutral on the
+      first turn; absent for Ollama/MLX. The bust is rare by design (agentic_num_ctx sizes
+      the per-run window to keep the prefix cacheable) — so it flags a genuine anomaly.
 ```
 
 ### (c) Batch crash → recovery dialog → resume

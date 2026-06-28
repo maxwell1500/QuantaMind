@@ -7,6 +7,7 @@ import { InfoButton } from "../../../../shared/ui/InfoButton";
 import { TOOL_HELP } from "../../help";
 import { useBatchStore } from "../../state/batchStore";
 import { useBatchRun } from "../../hooks/useBatchRun";
+import { useBackendStore } from "../../../../shared/state/backendStore";
 import { formatIpcError } from "../../../../shared/ipc/core/error";
 import { useToast } from "../../../../shared/ui/Toast";
 import type { ToolTask } from "../../../../shared/ipc/eval/registry";
@@ -15,6 +16,7 @@ import type { HardwareTier } from "../../../../shared/ipc/compare/hardware";
 import { batchToCsv, download } from "../../exportBatch";
 import { ConfirmDialog } from "./ConfirmDialog";
 import { CsvImportModal } from "./CsvImportModal";
+import { WorldStateEditor } from "../../env/WorldStateEditor";
 import { KebabMenu } from "./KebabMenu";
 import { Spinner } from "../../../../shared/ui/Spinner";
 
@@ -63,7 +65,7 @@ export function EvalManager({
   onEditTask,
   onDeleteTask,
 }: Partial<EvalManagerProps> = {}) {
-  const { presets, collections, selected, tasks, init, select, isPreset, importFile, save, remove, hidePreset } =
+  const { presets, collections, selected, tasks, edited, init, select, isPreset, importFile, save, remove, hidePreset, editWorldState } =
     useEvalRegistryStore();
   const showToast = useToast();
   const list = useInstalledModelsStore((s) => s.list);
@@ -76,6 +78,7 @@ export function EvalManager({
 
   const [collectionsExpanded, setCollectionsExpanded] = useState(true);
   const [hoverTaskId, setHoverTaskId] = useState<string | null>(null);
+  const [editEnvTaskId, setEditEnvTaskId] = useState<string | null>(null);
   // Which collection's task list is expanded (accordion). Toggled by double-clicking
   // the collection; only the SELECTED collection's tasks are loaded, so the list shows
   // when `expandedId === selected`.
@@ -83,8 +86,15 @@ export function EvalManager({
   const [error, setError] = useState<string | null>(null);
   const [deleteTarget, setDeleteTarget] = useState<string | null>(null);
   const [csvOpen, setCsvOpen] = useState(false);
-  // Phase 7.2: also measure each Ollama model's NATIVE tool-calling path.
-  const [nativeFc, setNativeFc] = useState(false);
+  // Calling method(s) to measure — pick either or both (at least one). Tool-Calling (native)
+  // is the DEFAULT; Prompt-based (JSON-in-text proxy) is opt-in. Native follows the running
+  // backend (Ollama /api/chat, llama.cpp /v1/chat/completions with --jinja); N/A for MLX /
+  // no-`tools` models.
+  const [nativeFc, setNativeFc] = useState(true); // Tool-Calling (native)
+  const [promptBased, setPromptBased] = useState(false); // Prompt-based proxy
+  // The running backend drives which native tool API is used; the UI says so for
+  // llama.cpp (jinja templating) while leaving the Ollama view unchanged.
+  const selectedBackend = useBackendStore((s) => s.selectedBackend);
 
   const handleCsvImport = async (name: string, csvTasks: ToolTask[]) => {
     await save(name, csvTasks);
@@ -178,10 +188,11 @@ export function EvalManager({
       nativeFc,
       effectiveTier,
       decoyEnabled ? decoyCount : undefined,
+      promptBased,
     );
   };
 
-  const runDisabled = !model || tasks.length === 0;
+  const runDisabled = !model || tasks.length === 0 || (!nativeFc && !promptBased);
   // Explain WHY RUN BATCH is disabled instead of leaving a greyed-out dead button.
   const runDisabledReason =
     !model && tasks.length === 0
@@ -190,7 +201,9 @@ export function EvalManager({
         ? "Select a model at the top"
         : tasks.length === 0
           ? "This collection has no tasks"
-          : undefined;
+          : !nativeFc && !promptBased
+            ? "Pick at least one calling method (Tool-Calling and/or Prompt-based)"
+            : undefined;
 
   // The selected collection's individual tasks, indented beneath it — each reveals
   // Edit + Delete on hover (the authoring entry points live here, not the scoreboard).
@@ -213,6 +226,9 @@ export function EvalManager({
             </span>
             {hov && (
               <>
+                {t.agentic?.world_state != null && (
+                  <button type="button" onClick={(e) => { e.stopPropagation(); setEditEnvTaskId(t.id); }} style={taskBtnStyle} data-testid={`eval-task-edit-env-${t.id}`} title="Edit environment snapshot">🌐</button>
+                )}
                 <button type="button" onClick={(e) => { e.stopPropagation(); onEditTask?.(t.id); }} style={taskBtnStyle} data-testid={`eval-task-edit-${t.id}`} title="Edit task">✎</button>
                 <button type="button" onClick={(e) => { e.stopPropagation(); onDeleteTask?.(t.id); }} style={{ ...taskBtnStyle, color: "#b91c1c" }} data-testid={`eval-task-delete-${t.id}`} title="Delete task">🗑</button>
               </>
@@ -282,6 +298,12 @@ export function EvalManager({
         </div>
       )}
 
+      {edited && (
+        <div style={{ margin: "8px 16px 0", padding: "6px 10px", background: "#fffbeb", border: "1px solid #fde68a", borderRadius: 6, fontSize: 11, color: "#92400e", fontFamily: "Inter, sans-serif" }} data-testid="eval-edited-banner">
+          Environment edited — this collection is now <b>local-only</b> and its results won't publish to the leaderboard.
+        </div>
+      )}
+
       {/* Sidebar Controls Body */}
       <div style={{ padding: "16px 20px", display: "flex", flexDirection: "column", gap: 24, flex: 1, overflowY: "auto" }}>
 
@@ -329,6 +351,32 @@ export function EvalManager({
             {hwTier && (
               <span style={{ fontSize: 11, color: "#94a3b8", fontFamily: "Inter, sans-serif" }} data-testid="eval-hw-hint">
                 HW: {gbLabel(hwTier.total_memory_bytes)} · {hwTier.class} · {cap(hwTier.recommended_tier)} recommended
+              </span>
+            )}
+          </div>
+
+          {/* Calling method — pick either or both (at least one). Tool-Calling (native) is the
+              default; Prompt-based is the JSON-in-text proxy. */}
+          <div style={{ display: "flex", flexDirection: "column", gap: 6 }} data-testid="eval-calling-method">
+            <span style={controlLabelStyle}>Calling method:</span>
+            <label style={{ display: "flex", alignItems: "center", gap: 8, cursor: "pointer", fontSize: 12, color: "#334155", fontFamily: "Inter, sans-serif" }}
+              title="Run the model through its backend's NATIVE tool_calls API — Ollama /api/chat or llama.cpp /v1/chat/completions (with --jinja). N/A for MLX / no-`tools` models.">
+              <input type="checkbox" checked={nativeFc} onChange={(e) => setNativeFc(e.target.checked)} data-testid="eval-method-native" />
+              Tool-Calling (native) <span style={{ color: "#94a3b8" }}>· default</span>
+            </label>
+            {selectedBackend === "llama_cpp" && (
+              <span data-testid="eval-method-llama-jinja-note" style={{ fontSize: 11, color: "#64748b", fontFamily: "Inter, sans-serif", paddingLeft: 24 }}>
+                llama.cpp applies the model's Jinja template (<code>--jinja</code>) for native tool-calling. If a model's embedded template is broken, drop a <code>&lt;model&gt;.jinja</code> override in the <code>chat_templates</code> folder.
+              </span>
+            )}
+            <label style={{ display: "flex", alignItems: "center", gap: 8, cursor: "pointer", fontSize: 12, color: "#334155", fontFamily: "Inter, sans-serif" }}
+              title="Run the prompt-based proxy: tools described in the system prompt, the model emits JSON-in-text the harness parses.">
+              <input type="checkbox" checked={promptBased} onChange={(e) => setPromptBased(e.target.checked)} data-testid="eval-method-prompt" />
+              Prompt-based
+            </label>
+            {!nativeFc && !promptBased && (
+              <span data-testid="eval-method-none-hint" style={{ fontSize: 11, color: "#b45309", fontFamily: "Inter, sans-serif" }}>
+                Pick at least one calling method to run.
               </span>
             )}
           </div>
@@ -506,40 +554,8 @@ export function EvalManager({
           </div>
         </div>
 
-        {/* 4. ACTIONS — native-FC, RUN BATCH, Export. */}
+        {/* 4. ACTIONS — RUN BATCH, Export. (Calling method moved up under Difficulty.) */}
         <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
-          <label
-            style={{ ...controlLabelStyle, display: "flex", alignItems: "center", gap: 8, cursor: "pointer" }}
-            title="Also run each Ollama model through its native /api/chat tool_calls API and compare. llama.cpp / MLX show N/A."
-          >
-            <input
-              type="checkbox"
-              checked={nativeFc}
-              onChange={(e) => setNativeFc(e.target.checked)}
-              data-testid="eval-native-fc"
-            />
-            Measure native tool-calling (Ollama)
-          </label>
-
-          {!nativeFc && (
-            <div
-              data-testid="native-fc-hint"
-              style={{
-                fontSize: 11,
-                lineHeight: 1.5,
-                color: "#64748b",
-                background: "#f8fafc",
-                border: "1px solid #e2e8f0",
-                borderRadius: 6,
-                padding: "7px 9px",
-                fontFamily: "Inter, sans-serif",
-              }}
-            >
-              Prompt-based results may underrepresent native tool-calling capability. Enable{" "}
-              <strong style={{ color: "#475569" }}>Measure native tool-calling</strong> for strict API fidelity.
-            </div>
-          )}
-
           <button
             type="button"
             onClick={() => void handleRunBatch()}
@@ -595,6 +611,21 @@ export function EvalManager({
         />
       )}
       {csvOpen && <CsvImportModal onImport={handleCsvImport} onClose={() => setCsvOpen(false)} />}
+      {editEnvTaskId &&
+        (() => {
+          const t = tasks.find((x) => x.id === editEnvTaskId);
+          if (!t) return null;
+          return (
+            <WorldStateEditor
+              task={t}
+              onClose={() => setEditEnvTaskId(null)}
+              onSave={(ws) => {
+                editWorldState(t.id, ws);
+                setEditEnvTaskId(null);
+              }}
+            />
+          );
+        })()}
     </div>
   );
 }

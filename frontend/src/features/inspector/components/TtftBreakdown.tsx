@@ -1,5 +1,6 @@
 import type { GenerateStats } from "../../../shared/ipc/events/events";
 import { buildTtftSegments } from "../format/ttft";
+import { cacheReuse } from "../../../shared/format/cache";
 
 // Phase palette — kept distinct from the token-event colors (amber TTFT / blue
 // gap / red outlier) so a colour means one thing across both inspector charts.
@@ -41,6 +42,16 @@ export function TtftBreakdown({
   const prefillMs = stats?.prompt_eval_ms ?? 0;
   const totalDuration = maxTime || Math.max(stats?.total_ms ?? 0, ttftMs ?? 0) || 1;
   const remainderMs = Math.max(0, totalDuration - loadMs - prefillMs);
+
+  // Derived prefill throughput. Guard the 0/0 case: a full prefix-cache hit yields
+  // prompt_eval_ms ≈ 0 AND prompt_eval_count ≈ 0 — render "cache hit, no prefill"
+  // rather than NaN/∞. Otherwise tokens ÷ seconds. `null` when counts are unknown.
+  const prefillTps =
+    promptTokens == null
+      ? null
+      : promptTokens === 0 || prefillMs === 0
+        ? "cache hit — no prefill"
+        : `${Math.round(promptTokens / (prefillMs / 1000)).toLocaleString()} tok/s prefill`;
 
   const loadPct = (loadMs / totalDuration) * 100;
   const prefillPct = (prefillMs / totalDuration) * 100;
@@ -116,9 +127,25 @@ export function TtftBreakdown({
           className="text-[10px] text-gray-500 font-semibold"
           style={{ marginLeft: `${marginLeft}px` }}
         >
-          · {promptTokens} prompt tokens
+          · {promptTokens} prompt tokens{prefillTps ? ` · ${prefillTps}` : ""}
         </div>
       )}
+      {/* llama.cpp-only prefix-cache reuse. `available` is false for Ollama/MLX
+          (cache_n null) → absent; a cold llama run (cache_n 0) honestly shows
+          "0 reused / N recomputed" — a measured zero, not absence-of-feature. */}
+      {(() => {
+        const cr = cacheReuse(stats?.cache_n, stats?.prompt_eval_count);
+        if (!cr.available) return null;
+        return (
+          <div
+            className="text-[10px] text-gray-500 font-semibold"
+            data-testid="ttft-prefix-cache"
+            style={{ marginLeft: `${marginLeft}px` }}
+          >
+            · prefix cache: {cr.cached} reused / {cr.recomputed} recomputed
+          </div>
+        );
+      })()}
     </div>
   );
 }

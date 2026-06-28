@@ -18,8 +18,8 @@ export type PublishOutcome = z.infer<typeof PublishOutcomeSchema>;
 /// collection id + optional allow-listed write-up link) to the community board. One
 /// batch = one request; the Rust side handles nonce/hash/auth and rebuilds the exact
 /// same payload the preview showed.
-export async function publishToBoard(verdicts: ModelVerdict[], params: InferenceParams, collectionId: string, link: string): Promise<PublishOutcome> {
-  return PublishOutcomeSchema.parse(await invoke("publish_to_board", { verdicts, params, collectionId, link: link || null }));
+export async function publishToBoard(verdicts: ModelVerdict[], params: InferenceParams, collectionId: string, collectionHash: string | null, link: string): Promise<PublishOutcome> {
+  return PublishOutcomeSchema.parse(await invoke("publish_to_board", { verdicts, params, collectionId, collectionHash, link: link || null }));
 }
 
 /// Start the PKCE browser sign-in (opens the system browser, catches the loopback

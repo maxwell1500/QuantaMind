@@ -106,6 +106,16 @@ describe("EvalManager Sidebar Controls", () => {
     expect(screen.getByTestId("info-popup-iterations")).toHaveTextContent(/Pass\^k/);
   });
 
+  it("shows the llama.cpp jinja note under native tool-calling, hidden for Ollama", () => {
+    // Ollama (set in beforeEach): the Ollama view is unchanged — no llama note.
+    const { rerender } = render(<EvalManager {...props()} />);
+    expect(screen.queryByTestId("eval-method-llama-jinja-note")).toBeNull();
+    // Switch the running backend to llama.cpp → the jinja/template note appears.
+    useBackendStore.setState({ selectedBackend: "llama_cpp" });
+    rerender(<EvalManager {...props()} />);
+    expect(screen.getByTestId("eval-method-llama-jinja-note")).toHaveTextContent(/jinja/i);
+  });
+
   it("explains WHY the RUN BATCH button is disabled (no model vs no tasks)", () => {
     useSelectedModelStore.setState({ selectedModels: [] });
     const { rerender } = render(<EvalManager {...props({ model: "" })} />);
@@ -117,11 +127,21 @@ describe("EvalManager Sidebar Controls", () => {
     expect(screen.getByTestId("eval-run-all")).toHaveAttribute("title", "This collection has no tasks");
   });
 
-  it("nudges to enable native tool-calling while it's off, and hides the nudge once enabled", () => {
+  it("calling method: Tool-Calling is default-on, Prompt-based off; unticking both blocks the run", () => {
     render(<EvalManager {...props()} />);
-    expect(screen.getByTestId("native-fc-hint")).toHaveTextContent(/underrepresent native tool-calling/i);
-    fireEvent.click(screen.getByTestId("eval-native-fc"));
-    expect(screen.queryByTestId("native-fc-hint")).toBeNull();
+    const native = screen.getByTestId("eval-method-native") as HTMLInputElement;
+    const prompt = screen.getByTestId("eval-method-prompt") as HTMLInputElement;
+    // Tool-Calling default-on, Prompt-based default-off.
+    expect(native.checked).toBe(true);
+    expect(prompt.checked).toBe(false);
+    // Untick the only selected method → "pick at least one" hint + RUN disabled.
+    fireEvent.click(native);
+    expect(screen.getByTestId("eval-method-none-hint")).toBeInTheDocument();
+    expect(screen.getByTestId("eval-run-all")).toBeDisabled();
+    // Pick Prompt-based → hint gone, RUN enabled again.
+    fireEvent.click(prompt);
+    expect(screen.queryByTestId("eval-method-none-hint")).toBeNull();
+    expect(screen.getByTestId("eval-run-all")).not.toBeDisabled();
   });
 
   it("renders the headers and Data Source radio controls", () => {
@@ -265,9 +285,10 @@ describe("EvalManager Sidebar Controls", () => {
         8,
         { temperature: 0.2 },
         undefined,
-        false, // runNativeFc — off by default
+        true, // runNativeFc — PRE-SELECTED by default
         "medium", // tier still flows (for spec.tier)
         undefined, // decoyTools — off by default
+        false, // runPromptBased — off by default (Tool-Calling is the default method)
       );
     });
   });
@@ -314,9 +335,10 @@ describe("EvalManager Sidebar Controls", () => {
         8,
         {},
         undefined,
-        false,
+        true, // runNativeFc — PRE-SELECTED by default
         "easy",
         4, // decoyTools
+        false, // runPromptBased — off by default
       );
     });
   });

@@ -3,7 +3,7 @@ import { useBackendStore } from "../backendStore";
 
 beforeEach(() => {
   useBackendStore.setState({
-    selectedBackend: "ollama",
+    selectedBackend: "llama_cpp",
     ollamaHealthy: null,
     llamaHealthy: null,
     mlxHealthy: null,
@@ -11,9 +11,9 @@ beforeEach(() => {
 });
 
 describe("backendStore (global backend selection + health)", () => {
-  it("defaults to ollama with unknown (null) health", () => {
+  it("defaults to llama.cpp with unknown (null) health", () => {
     const s = useBackendStore.getState();
-    expect(s.selectedBackend).toBe("ollama");
+    expect(s.selectedBackend).toBe("llama_cpp");
     expect(s.ollamaHealthy).toBeNull();
     expect(s.llamaHealthy).toBeNull();
     expect(s.mlxHealthy).toBeNull();

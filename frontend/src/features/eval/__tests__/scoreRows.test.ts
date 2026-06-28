@@ -81,4 +81,23 @@ describe("toScoreRows", () => {
     // so the matrix is meaningful for non-agentic collections too.
     expect(rows[0]).toMatchObject({ passK: "92%", avgSteps: "—", effort: "—", topError: "—", composite: "92%" });
   });
+
+  it("surfaces native (Tool-Calling) avg steps separately from the prompt avg steps", () => {
+    const report: BatchReport = {
+      collection_id: "c",
+      columns: [
+        {
+          model: "qwen",
+          backend: "ollama",
+          toolcall: null,
+          agentic: { tasks_passed: 1, tasks_total: 2, passes: 1, total_runs: 2, avg_steps: 3.2, avg_output_tokens_success: 100, schema_resilience: null, top_error: "none", failures: { infinite_loop_hits: 0, hallucinated_completions: 0, malformed_json_calls: 0, schema_unrecovered_calls: 0 } },
+          agentic_native_fc: { tasks_passed: 2, tasks_total: 2, passes: 2, total_runs: 2, avg_steps: 1.5, avg_output_tokens_success: 60, schema_resilience: null, top_error: "none", failures: { infinite_loop_hits: 0, hallucinated_completions: 0, malformed_json_calls: 0, schema_unrecovered_calls: 0 } },
+          error: null,
+        },
+      ],
+    };
+    const rows = toScoreRows(report, []);
+    // Prompt steps and native steps are NOT conflated — each pass keeps its own cost.
+    expect(rows[0]).toMatchObject({ avgSteps: "3.2", avgStepsNative: "1.5", passKNative: "2/2" });
+  });
 });

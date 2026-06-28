@@ -65,6 +65,9 @@ pub fn instantiate(base: &ToolTask, seed: u64) -> ToolTask {
                 cp.args = remap_value(&cp.args, &map);
             }
         }
+        EndStateRule::RequireEndState(target) => {
+            *target = remap_value(target, &map);
+        }
         EndStateRule::ExpectAbstainingText => {}
     }
     for m in &mut spec.must_not_call {

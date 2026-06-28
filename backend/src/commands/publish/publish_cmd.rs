@@ -106,8 +106,8 @@ fn net(e: reqwest::Error) -> AppError {
 /// payload the dialog previewed, resolves an access token (→ `NeedsAuth` if none),
 /// and sends one batch. A 401 clears the cached token so the next try re-auths.
 #[tauri::command]
-pub async fn publish_to_board(state: tauri::State<'_, AuthState>, verdicts: Vec<ModelVerdict>, params: InferenceParams, collection_id: String, link: Option<String>) -> Result<PublishOutcome, AppError> {
-    let preview = build_preview(&verdicts, &publish_context(&collection_id, params))?;
+pub async fn publish_to_board(state: tauri::State<'_, AuthState>, verdicts: Vec<ModelVerdict>, params: InferenceParams, collection_id: String, collection_hash: Option<String>, link: Option<String>) -> Result<PublishOutcome, AppError> {
+    let preview = build_preview(&verdicts, &publish_context(&collection_id, params, collection_hash))?;
     if let Some(inv) = preview.invalid {
         return Ok(PublishOutcome::Invalid {
             index: inv.index,

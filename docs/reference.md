@@ -138,10 +138,13 @@ always clear what you're running and how:
   Context-Cliff probe runs one global model (a dropdown picks which when 2+
   Ollama models are selected).
 
-The llama.cpp path posts to the native `/completion`; if that route 404s (a build
-that lacks it, or another OpenAI-style server answering on the same port — e.g.
-`mlx_lm.server`, whose default port is also 8080), it falls back to the
-OpenAI-compatible `/v1/chat/completions` so the run still works.
+The llama.cpp path posts to the templated `/v1/chat/completions` (the server is
+launched with `--jinja`, so it applies the model's embedded chat template — this
+is what makes the model stop instead of looping). If that route 404s (an older
+build, or another OpenAI-style server answering on the same port — e.g.
+`mlx_lm.server`, whose default port is also 8080), it falls back to the legacy
+`/completion`; if neither route exists, the error points at the likely port
+collision. See [llama.cpp won't stop / loops](#llama-loops).
 - **Inference params** (`paramsStore`) — temperature, top_p, top_k, max_tokens,
   repeat_penalty, seed. **The single source of truth for every run** — Workspace,
   Analysis compare, Eval batch, and the Context-Cliff probe all read
@@ -181,6 +184,29 @@ running you'll see "Ollama isn't running".
 - Confirm it's up: `curl http://localhost:11434/api/tags` should return JSON.
 - On Windows, launch the Ollama app/service manually — in-app start is
   not yet supported.
+
+### llama.cpp won't stop / repeats forever {#llama-loops}
+
+If a llama.cpp run repeats the prompt or rambles until it hits the token limit
+(while the *same* GGUF answers correctly under Ollama), the chat template wasn't
+applied. QuantaMind launches `llama-server` with `--jinja` and drives the
+templated `/v1/chat/completions` precisely to prevent this. If you still see it:
+
+- **"The bundled llama-server is too old for the --jinja flag…"** on start means
+  the bundled binary predates `--jinja` and rejected it. Rebuild/update the
+  bundled `llama-server`; QuantaMind needs a build new enough to support `--jinja`.
+- A model whose *embedded* chat template is broken (some DeepSeek-R1 / Qwen3
+  quants) can still misbehave. Drop a corrected `<model>.jinja` or
+  `<architecture>.jinja` into the `chat_templates/` folder (user config dir, or
+  the bundled defaults) — QuantaMind auto-passes it as `--chat-template-file` at
+  launch. Remove the file to revert to the embedded template. No rebuild needed;
+  `list_chat_templates` shows what's available. See `docs/chat_templates/README.md`.
+- **Running your own `llama-server`** (e.g. it isn't bundled for your platform)?
+  QuantaMind talks to it on port 8081, but it only adds `--jinja` when *it* spawns
+  the bundled server. A server you launch must carry the flag itself — the in-app
+  Setup Guide shows the exact command:
+  `llama-server -m your-model.gguf --host 127.0.0.1 --port 8081 --jinja -c 8192`.
+  Without `--jinja`, generations loop on builds where it isn't the default.
 
 ### Backend server down — batch pre-flight {#batch-preflight}
 
@@ -427,6 +453,21 @@ Error), with a click-through Trace Debugger. See [the workspace](#eval-runner).
   holds the initial prompt, the tool schemas (injected into the system prompt via
   the shared `build_system_for`), the mock tool results, and an `EndStateRule`.
   No native function-calling — identical across Ollama / llama.cpp / MLX.
+- **Deterministic environments (`ResponderKind`) + visual replay.** A task's tool
+  responses come from one of: `StaticMocks` (authored map), `WorldState` (entity
+  ground-truth the model discovers), or — Phase 1 — `FileSystem` (a simulated file
+  tree). The filesystem env's getters (`read_file`/`list_dir`/`search_files`/`grep`)
+  return **real content** (or a deterministic not-found), fixing the world_state
+  acks-empty bug where `read_file` used to ack `{"ok":true}`. Authored via
+  `"environment": "filesystem"` on a collection with a `world_state` of
+  `path → content`; the `easy-coding-fs` bundle is the reference (`write_file` is the
+  `must_not_call` decoy). Each turn streams an `EnvView` snapshot (a PURE function of
+  the immutable env + the turn's calls — so it can never disagree with the score) that
+  the Trace Debugger replays as a file tree beside the text trace, with a step
+  scrubber. `EnvView` is internal/local-only — it is the agent's run (model output)
+  and is **never** added to the publish allowlist; the leaderboard ships metrics only.
+  Adding a new `ResponderKind` variant is a compile-forced decision (exhaustive match,
+  not a trait), and `StaticMocks`/`WorldState` byte-parity is pinned by a golden test.
 - **The loop.** Each turn: render the running transcript → model emits a JSON tool
   call (parsed with the same lenient `extract_calls`) → the sandbox returns the
   mocked result, injected back as a `"Tool result: …"` text message. A call the
@@ -451,7 +492,10 @@ Error), with a click-through Trace Debugger. See [the workspace](#eval-runner).
   per-task `AgenticReport` carries `passes/total_runs`, a
   `FailureTracker` with **distinct** tallies (`infinite_loop_hits` = hit the step
   cap, `hallucinated_completions` = fake done, `malformed_json_calls` = broken
-  JSON, `schema_unrecovered_calls` = exhausted the recovery budget), and a
+  JSON, `schema_unrecovered_calls` = exhausted the recovery budget,
+  `reported_in_prose_calls` = content-correct/wrong-channel, `foreign_dialect_calls`
+  = emitted an unparseable non-JSON tool dialect — see the production-parity note
+  below, `empty_output_calls` = produced no usable output at all), and a
   `top_error` headline. `unknown_tool_calls` is a Phase-9 **diagnostic** tally
   (decoy / hallucinated-tool calls) — it captures *how* a model coped with decoys
   but is **not** a terminal failure, so it is excluded from `top_error`. The **collection-level Pass^k** (the Matrix headline and
@@ -460,6 +504,32 @@ Error), with a click-through Trace Debugger. See [the workspace](#eval-runner).
   flaky 3/5 task counts as a failure, not 0.6 — reliability compounds and a model
   that "usually works" is not agent-ready. The run-level sums (`passes/total_runs`)
   are retained only as the secondary per-run rate behind the "Partial *p/k*" badge.
+- **Foreign-dialect verdict & production-parity (no over-lenient salvage).** A
+  mis-built model (e.g. a mis-quantized GGUF) can emit a non-JSON tool grammar — a
+  mismatched harmony/channel dialect like `<|tool_response|>call:reply(text='…')` —
+  that neither the parser nor a real deployment can read. Such a run is labeled
+  **`foreign_dialect`** (its own `StepKind`/`TopError`/tally), *distinct* from
+  `malformed_json` (broke real JSON) and `hallucinated_completions` (yielded
+  nothing): the failure verdict names the real cause — a template/dialect artifact,
+  **not** a model-capability failure. Crucially the harness does **not** salvage
+  these forms. The bar is **production parity**: a call is recovered only when a real
+  client (Ollama's native tools parser) would also recover it — the existing
+  `Harmony` normalizer keeps salvaging the clean `call:NAME{…}` form Ollama recovers,
+  but the broken `<|"|>`-wrapped and paren forms Ollama drops are labeled, not
+  reconstructed. Salvaging what production can't would make the bench *more lenient
+  than reality*, inverting the founding principle into "pass in the bench → fail in
+  production". The detector keys on an attempted-call **structure** (`call:IDENT`
+  + `{`/`(`) co-occurring with a channel control token, so prose merely mentioning
+  these tokens is never mislabeled.
+- **Empty-output verdict.** A model that emits nothing usable — empty / whitespace /
+  punctuation-only (e.g. gemma-qat on the prompt path emits a lone `.` then its stop
+  token, because it doesn't engage the prompt-based JSON tool format) — is labeled
+  **`empty_output`** (its own `StepKind`/`TopError`/tally), *distinct* from
+  `hallucinated_completions`: "the model said nothing" is not "the model claimed it
+  finished". Detected by the **absence of any alphanumeric character**, so a real prose
+  answer or foreign `call:` soup (which carries the tool name) is never swept in. Such a
+  model usually needs **native tool-calling** (the `Measure native tool-calling` toggle):
+  the same model that emits `.` on the prompt path returns clean `tool_calls` natively.
 - **Lazy-agent traps (Driver B fault injection).** A task may attach `faults` —
   per-call `TransientError { status_code, clears_after }` or
   `PersistentError { status_code }`, keyed by the same canonical call form as the
@@ -1100,17 +1170,24 @@ exact reasons. Pick a target collection + a profile, click **Run readiness**.
 targets push to `conditions[]` (→ Conditional). Status = NotReady if any blocking,
 else Conditional if any conditions, else Ready.
 
-**Never fabricated.** A metric the engine didn't measure is N/A, never a guessed
-pass. If a profile *requires* a metric that wasn't measured (e.g. `require_full_vram`
-with no VRAM-fit measurement, or `min_context_tokens` with no cliff probe), that is
-**blocking** — ignorance is not a pass; the report tells you to run the missing
-diagnostic. The `pass^k` core gate likewise blocks when no agentic run was recorded.
-Float comparisons are epsilon-guarded (`1e-6`) so a true `0.80` can't false-block.
+**Never fabricated, but unmeasured ≠ failure.** A metric the engine didn't measure is
+N/A, never a guessed pass. If a profile *requires* a metric that wasn't measured (e.g.
+`require_full_vram` with no memory-fit measurement — common on llama.cpp / Apple-Silicon
+unified memory, which can't report a fit — or `min_context_tokens` with no cliff probe),
+that is a **Conditional caveat** ("set a memory cap / run the cliff probe to certify"),
+**not** a red NotReady block. A red block is reserved for a MEASURED failure (a fit that
+spilled the cap, a cliff that collapsed below the floor). This mirrors the Tier Matrix's
+gray NOT-TESTED (unmeasured is unknown, never a guessed fail). The `pass^k` core gate
+still blocks when no agentic run was recorded (it's the irreducible measurement). Float
+comparisons are epsilon-guarded (`1e-6`) so a true `0.80` can't false-block.
 
-**The per-model deep-dive (Phase 9B).** Below the multi-model table a model selector
-opens a three-section drill-down for one model, sourced from `ModelVerdict.by_tier` /
-`failures` — the **same native-first aggregate the gate read** (one `native_first_source`
-helper feeds the gate, the per-tier breakdown, and the taxonomy, so they can't drift):
+**The per-model deep-dive (Phase 9B).** Below the multi-model table a *(model, path)*
+selector opens a three-section drill-down for one verdict, sourced from
+`ModelVerdict.by_tier` / `failures` — the **same per-path aggregate the gate read**
+(`source_for_path` feeds that path's gate, per-tier breakdown, and taxonomy strictly from
+its own pass, so they can't drift across paths). Because a model now has up to two verdicts
+(native + prompt-based), the selector key is the *(model, path)* pair, not the bare model
+name — and the reset logic guarantees focus never orphans to a path a model didn't run:
 
 - **Executive Verdict** — the headline tier is the **tier that actually ran** (the highest
   tier exercised in `by_tier`), *not* the profile's `required_tier`. The hardware class
@@ -1147,11 +1224,11 @@ editable by power users and seeded on first run with three built-ins:
 | General agent | 60% | yes | no | no | — |
 
 Built-ins gate on the metrics the engine measures: since Phase 7.4 wired VRAM fit,
-**Coding agent** turns `require_full_vram` on (a model that spills past the cap is
-NotReady). The `min_context_tokens` and native-FC hard gates stay **off** in
-built-ins — those measurements aren't wired yet, and with strict null-gating an
-unmeasured requirement would mark every model NotReady for infra reasons. Author a
-custom profile to switch any gate on and get exactly that strict behaviour.
+**Coding agent** turns `require_full_vram` on (a model whose fit was MEASURED to spill
+past the cap is NotReady; an *unmeasured* fit is a Conditional caveat, not a block).
+The `min_context_tokens` and native-FC hard gates stay **off** in built-ins. Author a
+custom profile to switch any gate on; an unmeasured required gate yields a Conditional
+"run the missing diagnostic" caveat rather than a red NotReady.
 Long/nested profile ids are safe: the file is keyed by a 40-char slug plus an
 8-hex hash of the full id, so two ids sharing a prefix never collide.
 
@@ -1167,7 +1244,9 @@ pressure** condition at ≥85% of the cap, **won't fit** otherwise (which, under
 `require_full_vram`, blocks). The per-model line reads `VRAM: 6.0 GB (5.0 model +
 1.0 cache) < 24 GB cap · fits`. Single-model backends (llama.cpp / MLX) where precise
 dims aren't available show **N/A (single-model backend)** — never an approximated fit;
-under `require_full_vram` that N/A blocks (ignorance is not a pass). Lower the cap and
+under `require_full_vram` that N/A is a **Conditional caveat** ("set a memory cap to
+certify"), not a red block — unmeasured ≠ failure (and unified-memory Macs have no
+discrete VRAM to measure). Lower the cap and
 a fitting model flips to NotReady deterministically — model the exact hardware you're
 buying for.
 
@@ -1188,24 +1267,33 @@ only cross-backend-fair method. The **native** path (Phase 7.2) runs the *same* 
 tasks through the model's real `tool_calls` API — the path a production agent actually
 uses.
 
-- **Measuring native.** Tick **Measure native tool-calling (Ollama)** on the Eval run.
-  For each **Ollama** model that reports the `tools` capability (`/api/show`), QuantaMind
-  runs a parallel pass via `/api/chat` with a native `tools` array, parses the real
-  `tool_calls`, and shows a **Native FC pass^k** column in the Matrix (behind a toggle).
-  Only the call *extraction* differs — the deterministic sandbox, scoring, and failure
-  taxonomy are identical, so the two columns are comparable. An empty/abstaining
-  `tool_calls` is scored as a correct no-call; parallel `tool_calls` are processed
-  one-per-step (the sandbox is sequential). **Ollama-only** today: llama.cpp / MLX show
-  **N/A**, never a guessed score — hovering an N/A native cell explains why ("non-Ollama
-  backend, or the model has no tools capability"), so following the *enable native* nudge
-  never dead-ends at a silent N/A. (The **RUN BATCH** button likewise explains any disabled
-  state on hover — "Select at least one model" / "This collection has no tasks".)
-- **In the verdict.** When native was measured for a model, the readiness verdict
-  **prefers it** — the core Pass^k gate and the loop/hallucination gates use the native
-  result, and the row is labelled **(Native FC)**. Models without a native measurement
-  fall back to the prompt-based proxy, labelled **(Prompt-Based)**. So a model that passes
-  the prompt proxy but fails the native path reads **NotReady** on the path your app
-  actually uses — the honest gap, made visible.
+- **Measuring native.** Tick **Measure native tool-calling** on the Eval run. The native
+  pass **follows the running server**: an **Ollama** model that reports the `tools`
+  capability (`/api/show`) runs via `/api/chat`; a **llama.cpp** model (launched with
+  `--jinja`) runs via the OpenAI `/v1/chat/completions` `tools` API. Either way QuantaMind
+  parses the real `tool_calls` and shows a **Native FC pass^k** column in the Matrix (behind
+  a toggle). Only the call *extraction* differs — the deterministic sandbox, scoring, and
+  failure taxonomy are identical (and tool-call args are canonicalized the same whether the
+  backend returns a JSON string or an object), so the two columns are comparable. An
+  empty/abstaining `tool_calls` is scored as a correct no-call; parallel `tool_calls` are
+  processed one-per-step (the sandbox is sequential). **MLX** has no native tool API, so it
+  shows **N/A**, never a guessed score — hovering an N/A native cell explains why ("backend
+  has no native tool API, or the model has no tools capability"), so following the *enable
+  native* nudge never dead-ends at a silent N/A. (The **RUN BATCH** button likewise explains
+  any disabled state on hover — "Select at least one model" / "This collection has no tasks".)
+- **In the verdict — one row PER MEASURED PATH.** `assess_readiness` emits a separate
+  `ModelVerdict` for every path a model actually ran: a **(Native FC)** row when native was
+  measured (`agentic_native_fc.total_runs > 0`) **and** a **(Prompt-Based)** row when the
+  prompt pass ran. Each row's Pass^k / steps / failures / per-tier ladder are sourced
+  **strictly from its own path** (`source_for_path`, never a cross-path fallback), so the two
+  rows are directly comparable and a model that passes the prompt proxy but fails native reads
+  **NotReady** on the native row — the honest gap, made visible side-by-side. The
+  **Show Native-FC Path** toggle hides the native rows; the deep-dive selector targets a
+  specific *(model, path)* pair. Native capability is a **model-level** fact: the
+  `require_native_fc` gate reads whether the *model* supports native (so a native-capable
+  model's prompt-based row is never falsely blocked), while the `path` label states which
+  pass *this* row measured — the two are deliberately decoupled (`ReadinessInputs.path`).
+  A model with no native measurement yields a single Prompt-Based row.
 
 **Source of truth.** `run_batch_eval` persists the full report per collection; the
 `assess_readiness` command loads it and calls the one pure scoring function
@@ -1224,15 +1312,18 @@ share lever (see `process.md#phase-roadmap`, step 8.B4).
 **Publishing to the community board (Phase 8 — privacy contract).** Separate from the
 offline export, an *opt-in* publish path can contribute a verdict to a shared
 leaderboard. What's sent is **verdicts + metrics, never content or context** — a
-`PublishRow` per measured model, built by **allowlist** (only the named fields ship; a
-new `ModelVerdict` field stays private until added to `project` on purpose): `model`,
+`PublishRow` per measured **path** per model (a model evaluated on both native + prompt-based
+publishes **two** rows, distinguished by `eval_method`), built by **allowlist** (only the
+named fields ship; a new `ModelVerdict` field stays private until added to `project` on
+purpose): `model`,
 `quant`, a **hardware `cohort_key`** (`{platform}/{accel}/{mem_tier}`, e.g.
 `apple-silicon/m3-pro/32-64gb`), `tool_version`, the metrics bag (`pass_k`, `effort?`,
 `avg_steps?`), and — since the **Phase 9 extension** — the graduated tier verdict
 (`status`, `eval_method`, `tier_tested`, `cleared_tier`, `hardware_class`,
 `recommended_tier`), the per-tier saturation curve (`by_tier`:
 `{tier, pass_k_rate, k, avg_steps?, decoy_count?}`), the failure **distribution**
-(`failure_distribution` — counts by mode incl. the new `reported_in_prose`, never the
+(`failure_distribution` — counts by mode incl. `reported_in_prose` and
+`foreign_dialect`, never the
 failing runs), the collection identity (`collection_name` + a content `collection_hash`
 so results compare only across an identical scenario set), build provenance
 (`schema_version`, `engine_version`, `build_hash` — a short git commit from `build.rs`),
@@ -1259,6 +1350,13 @@ baselines) is a separate hosted repo; the desktop app is fully functional offlin
 without it. ⚠ The `cohort_key` taxonomy is **v1 pending backend sign-off** — the
 server's bucketing must match it exactly or dedup `UNIQUE(user, model, quant,
 cohort_key)` breaks.
+⚠ **COUPLED SERVER CHANGE (dual-path publish):** now that the client sends one row per
+`eval_method` (native + prompt-based), the server's dedup key **must become**
+`UNIQUE(user, model, quant, cohort_key, eval_method)`. If it still dedups on
+`(user, model, quant, cohort_key)`, the second path 422s and the publish **silently
+half-succeeds** (one path lands, the other is rejected) — it looks fine in the local
+preview (two rows shown) but fails on the real POST. This server change must land **with or
+before** the desktop change; until it's confirmed, dual-path publish is not shippable.
 
 *Auth + send.* The API base is resolved once from `QM_API_BASE`, defaulting to the live
 production host `https://api.quantamind.co` (set `QM_API_BASE=http://localhost:8787` for

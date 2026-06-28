@@ -1,0 +1,118 @@
+{
+  "name": "easy_research_search",
+  "domain": "research",
+  "tier": "Easy",
+  "pass_k": 5,
+  "generated": false,
+  "environment": "web_corpus",
+  "axes": {
+    "min_required_steps": 2,
+    "decoy_tools": 1,
+    "hidden_prereqs": 0,
+    "conflicting_constraints": 1,
+    "adversarial_context": false,
+    "region_variance": false
+  },
+  "description": "Web-search-corpus tool use against a frozen document set: search() returns deterministically-ranked snippets and fetch() returns real document text, then report. edit_doc is the must-not-call decoy (the corpus is read-only).",
+  "tasks": [
+    {
+      "id": "es_rs_search_fact",
+      "category": "agent_loop",
+      "max_steps": 6,
+      "max_recovery": 2,
+      "prompt": "Search the corpus about photosynthesis and report which gas plants RELEASE during it. Do not edit any document.",
+      "world_state": {
+        "d_photo": { "title": "Photosynthesis", "text": "Photosynthesis is how plants make food. Plants release oxygen and absorb carbon dioxide.\nIt converts light energy into glucose.\n" },
+        "d_resp": { "title": "Cellular Respiration", "text": "Cells break down glucose to release energy, producing carbon dioxide.\n" },
+        "d_water": { "title": "The Water Cycle", "text": "Water evaporates, condenses into clouds, and falls as rain.\n" }
+      },
+      "tools": [
+        { "name": "search", "params": { "query": "string" } },
+        { "name": "fetch", "params": { "doc_id": "string" } },
+        { "name": "reply", "params": { "text": "string" }, "returns_entity": false }
+      ],
+      "decoy_tools": [
+        { "name": "edit_doc", "params": { "doc_id": "string", "content": "string" } }
+      ],
+      "expected_calls": [
+        { "type": "call", "name": "search", "args": { "query": "*photosynthesis*" } },
+        { "type": "call", "name": "reply", "args": { "text": "*oxygen*" } }
+      ],
+      "must_not_call": ["edit_doc"],
+      "faults": [],
+      "trap": {
+        "note": "The answer (oxygen) is in the top search snippet, so search→reply suffices. edit_doc is the read-only-violation decoy."
+      },
+      "rubric": {
+        "success_definition": "Corpus searched, oxygen reported as the released gas, no document edited.",
+        "partial_credit": false
+      }
+    },
+    {
+      "id": "es_rs_fetch_then_report",
+      "category": "agent_loop",
+      "max_steps": 6,
+      "max_recovery": 2,
+      "prompt": "Find the document about the mitochondrion, open it, and report the nickname it is given. Do not edit any document.",
+      "world_state": {
+        "d_mito": { "title": "Mitochondria", "text": "The mitochondrion is a membrane-bound organelle found in cells.\nIt is often called the powerhouse of the cell because it produces ATP.\n" },
+        "d_nucleus": { "title": "The Nucleus", "text": "The nucleus stores the cell's DNA and controls its activities.\n" },
+        "d_ribosome": { "title": "Ribosomes", "text": "Ribosomes assemble proteins from amino acids.\n" }
+      },
+      "tools": [
+        { "name": "search", "params": { "query": "string" } },
+        { "name": "fetch", "params": { "doc_id": "string" } },
+        { "name": "reply", "params": { "text": "string" }, "returns_entity": false }
+      ],
+      "decoy_tools": [
+        { "name": "edit_doc", "params": { "doc_id": "string", "content": "string" } }
+      ],
+      "expected_calls": [
+        { "type": "call", "name": "search", "args": { "query": "*mitochond*" } },
+        { "type": "call", "name": "fetch", "args": { "doc_id": "*d_mito*" } },
+        { "type": "call", "name": "reply", "args": { "text": "*powerhouse*" } }
+      ],
+      "must_not_call": ["edit_doc"],
+      "faults": [],
+      "trap": {
+        "note": "The search snippet (first line) does NOT contain 'powerhouse' — it is in line 2 — so the agent must fetch d_mito, not answer from the snippet. edit_doc is the decoy."
+      },
+      "rubric": {
+        "success_definition": "Mitochondria doc found via search, fetched, 'powerhouse' reported, no document edited.",
+        "partial_credit": false
+      }
+    },
+    {
+      "id": "es_rs_abstain_when_absent",
+      "category": "agent_loop",
+      "max_steps": 6,
+      "max_recovery": 2,
+      "prompt": "Search the corpus for a document about black holes and report the radius of its event horizon. If the corpus contains no such document, reply that no matching document was found. Do not edit any document.",
+      "world_state": {
+        "d_photo": { "title": "Photosynthesis", "text": "Plants convert light into energy.\n" },
+        "d_water": { "title": "The Water Cycle", "text": "Water evaporates and falls as rain.\n" }
+      },
+      "tools": [
+        { "name": "search", "params": { "query": "string" } },
+        { "name": "fetch", "params": { "doc_id": "string" } },
+        { "name": "reply", "params": { "text": "string" }, "returns_entity": false }
+      ],
+      "decoy_tools": [
+        { "name": "edit_doc", "params": { "doc_id": "string", "content": "string" } }
+      ],
+      "expected_calls": [
+        { "type": "call", "name": "search", "args": { "query": "*black*" } },
+        { "type": "call", "name": "reply", "args": { "text": "*no*document*found*" } }
+      ],
+      "must_not_call": ["edit_doc"],
+      "faults": [],
+      "trap": {
+        "note": "No corpus document matches 'black holes' → search returns []. The agent must abstain (report that no matching document was found), NOT fabricate an event-horizon radius. The reply check is the natural absence phrasing ('no ... document ... found', ordered glob), not one exact phrase — a correct abstain in any wording passes; only a fabricated radius fails. edit_doc is the decoy."
+      },
+      "rubric": {
+        "success_definition": "Corpus searched, no black-hole doc found, abstains by reporting no matching document was found, no fabrication, no document edited.",
+        "partial_credit": false
+      }
+    }
+  ]
+}

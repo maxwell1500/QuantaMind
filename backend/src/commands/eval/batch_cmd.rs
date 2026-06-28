@@ -8,23 +8,27 @@ use crate::commands::prompt::prompt_options::{to_generate_options, validate_para
 use crate::errors::AppError;
 use crate::inference::backend::backend_kind::BackendKind;
 use crate::inference::eval::agentic::difficulty::passk::{max_tokens_for, pass_k_for};
-use crate::inference::eval::agentic::model_turn::{BackendTurn, NativeOllamaTurn};
+use crate::inference::eval::agentic::model_turn::{BackendTurn, NativeToolTurn};
+use crate::inference::eval::agentic::sandbox::EndStateRule;
 use crate::inference::eval::agentic::spec::Tier;
+use crate::inference::eval::toolcall::prompt::TerminalGuidance;
 use crate::inference::eval::agentic::step::TrajectoryStep;
+use crate::inference::eval::agentic::v2::collection::load_v2_collection;
+use crate::inference::eval::agentic::v2::scenarios::{collection_hash, v2_json};
 use crate::inference::eval::batch::{
-    batch_summaries, fold_report, run_batch_resumable, run_native_fc_pass, BatchReport, BatchSink, CompletedUnit,
-    OllamaVramGate, TaskOutcome,
+    batch_summaries, fold_report, run_batch_resumable, run_native_fc_pass, AggAgentic, BatchColumn, BatchReport,
+    BatchSink, CompletedUnit, OllamaVramGate, TaskOutcome,
 };
 use crate::inference::eval::toolcall::matrix::ModelTarget;
 use crate::inference::eval::toolcall::tasks::{validate_tasks, ToolTask};
-use crate::inference::ollama::ollama_show::probe_supports_tools;
+use crate::inference::ollama::ollama_show::{probe_ollama_version, probe_supports_tools};
 use crate::persistence::eval_history;
 use crate::persistence::jobs::queue::{self, RunConfig};
 use crate::persistence::prompts::schema::InferenceParams;
 use crate::persistence::readiness::reports;
 use crate::sync::MutexExt;
 use serde::Serialize;
-use std::collections::HashSet;
+use std::collections::{HashMap, HashSet};
 use std::path::PathBuf;
 use std::sync::{Arc, Mutex};
 use tauri::{AppHandle, Manager};
@@ -62,20 +66,62 @@ struct TauriBatchSink {
 }
 
 impl BatchSink for TauriBatchSink {
-    fn task_started(&self, model: &str, task_id: &str, index: usize, total: usize, category: &str) {
+    fn task_started(&self, model: &str, task_id: &str, index: usize, total: usize, category: &str, is_native: bool) {
         log_emit(&self.app, EVENT_BATCH_PROGRESS, BatchProgress::Started {
-            model: model.into(), task_id: task_id.into(), index, total, category: category.into(),
+            model: model.into(), task_id: task_id.into(), index, total, category: category.into(), is_native,
         });
     }
-    fn agentic_turn(&self, model: &str, task_id: &str, step: &TrajectoryStep) {
+    fn agentic_turn(&self, model: &str, task_id: &str, step: &TrajectoryStep, is_native: bool) {
         log_emit(&self.app, EVENT_AGENTIC_STEP, AgenticStepPayload {
-            model: model.into(), task_id: task_id.into(), step: step.clone(),
+            model: model.into(), task_id: task_id.into(), step: step.clone(), is_native,
         });
     }
-    fn task_done(&self, model: &str, task_id: &str, outcome: &TaskOutcome) {
+    fn task_done(&self, model: &str, task_id: &str, outcome: &TaskOutcome, is_native: bool) {
         log_emit(&self.app, EVENT_BATCH_PROGRESS, BatchProgress::Done {
-            model: model.into(), task_id: task_id.into(), outcome: outcome.clone(),
+            model: model.into(), task_id: task_id.into(), outcome: outcome.clone(), is_native,
         });
+    }
+}
+
+/// An empty report with one column per target (all metrics `None`). The native pass runs FIRST
+/// and fills `agentic_native_fc` on this skeleton; the prompt pass then produces the real report
+/// and we merge the native aggregates in. Lets the native column surface before the prompt pass.
+fn skeleton_report(collection_id: &str, targets: &[ModelTarget]) -> BatchReport {
+    BatchReport {
+        collection_id: collection_id.to_string(),
+        num_ctx: None,
+        ollama_version: None,
+        collection_hash: None, // set on the FINAL report only (content-verified); intermediates stay unpublishable
+        columns: targets
+            .iter()
+            .map(|t| BatchColumn {
+                model: t.model.clone(),
+                backend: t.backend,
+                toolcall: None,
+                agentic: None,
+                agentic_native_fc: None,
+                error: None,
+                is_thinking: t.is_thinking,
+            })
+            .collect(),
+    }
+}
+
+/// The leaderboard identity hash for a run — CONTENT-VERIFIED (the fork-on-edit guard).
+/// `Some(collection_hash(id))` ONLY when `tasks` are byte-for-byte the pristine bundled collection
+/// (compared as `serde_json::Value`, exact — no tolerance); `None` for a custom/imported id OR ANY
+/// edit to ANY field (world_state, end_state, prompt, tools, …). Compared on the RECEIVED tasks
+/// (pre-`apply_overrides`) so run params (k/tier/decoys, passed separately) never fork the identity.
+/// This is the single source of truth for publishability — publish reads the report's hash, never
+/// re-derives from `collection_id`.
+fn verified_collection_hash(collection_id: &str, tasks: &[ToolTask]) -> Option<String> {
+    let pristine = v2_json(collection_id).and_then(|j| load_v2_collection(j).ok())?;
+    let received = serde_json::to_value(tasks).ok()?;
+    let pristine_v = serde_json::to_value(&pristine).ok()?;
+    if received == pristine_v {
+        collection_hash(collection_id)
+    } else {
+        None
     }
 }
 
@@ -159,6 +205,7 @@ pub async fn run_batch_eval(
     run_native_fc: Option<bool>,
     tier: Option<Tier>,
     decoy_tools: Option<u32>,
+    run_prompt_based: Option<bool>,
 ) -> Result<BatchReport, AppError> {
     validate_tasks(&tasks)?;
     if let Some(p) = &params {
@@ -173,6 +220,9 @@ pub async fn run_batch_eval(
         params,
         keep_alive,
         native: run_native_fc.unwrap_or(false),
+        // Default true: an old frontend / persisted job without the flag keeps the prior behavior
+        // where the prompt pass always ran.
+        prompt: run_prompt_based.unwrap_or(true),
         tier,
         decoy_tools,
     };
@@ -218,64 +268,120 @@ pub(crate) async fn run_passes(
     // often `Auto` (→ `None`) and would collapse every tier to Easy's cap.
     let tier = effective_tier(&tasks);
 
-    let mut report = run_batch_resumable(
-        &config.collection_id,
-        &config.targets,
-        &tasks,
-        cancel,
-        sink,
-        move |t: &ModelTarget| BackendTurn {
-            backend: t.backend,
-            endpoint: endpoint_for(t.backend),
-            model: t.model.clone(),
-            cancel: turn_cancel.clone(),
-            options: options.clone(),
-            keep_alive,
-            is_thinking: t.is_thinking,
-            max_tokens: max_tokens_for(tier, t.is_thinking),
-            stop_cache: Default::default(),
-        },
-        prior,
-        &record,
-        &OllamaVramGate,
-    )
-    .await?;
+    // Native (tool-calling) pass FIRST — so a slow native run streams to the UI immediately
+    // instead of waiting out the whole prompt pass. It fills `agentic_native_fc` on a column
+    // skeleton; the prompt pass runs next and we merge the native aggregates into its report.
+    let native_aggs: HashMap<String, AggAgentic> = if config.native {
+        // Native FC follows the running server: probe each target on ITS backend
+        // (Ollama via /api/show tools; llama.cpp with --jinja is tool-capable; MLX
+        // has no native tool API). A batch is single-backend (UI), so this just
+        // selects whichever server the user is on.
+        let mut supported = HashSet::new();
+        for t in &config.targets {
+            if probe_native_tools(t.backend, &endpoint_for(t.backend), &t.model).await {
+                supported.insert(t.model.clone());
+            }
+        }
+        let mut skeleton = skeleton_report(&config.collection_id, &config.targets);
+        let targets = config.targets.clone();
+        run_native_fc_pass(
+            &mut skeleton,
+            &tasks,
+            &supported,
+            native_cancel,
+            |model, task| {
+                let backend = targets.iter().find(|t| t.model == model).map(|t| t.backend).unwrap_or_default();
+                // Gate the native system's answer-delivery mandate on act-vs-abstain, exactly
+                // like the prompt path (runner.rs) — so a native model on an ACT task is told to
+                // call the reporter tool, not nudged into prose (an unfair ReportedInProse).
+                let terminal = match task.agentic.as_ref().map(|s| &s.end_state) {
+                    Some(EndStateRule::RequireAll(_)) | Some(EndStateRule::RequireSequence(_)) => {
+                        TerminalGuidance::MustUseTools
+                    }
+                    _ => TerminalGuidance::PlainTextOk,
+                };
+                // Native turns emit STRUCTURED tool_calls — often several parallel calls per turn
+                // (plus any reasoning) — so the prompt path's terse 256-token cap truncates them
+                // (→ EmptyOutput on hard/extreme). Give native the GENEROUS tier budget
+                // (`max_tokens_for(tier, true)` = 1536–4096): tier-scaled, ample headroom, still
+                // bounded (anti-runaway) and capped by the per-turn wall-clock timeout.
+                let is_thinking = targets.iter().find(|t| t.model == model).is_some_and(|t| t.is_thinking);
+                NativeToolTurn {
+                    backend,
+                    endpoint: endpoint_for(backend),
+                    model: model.to_string(),
+                    tools: task.tools.clone(),
+                    options: native_options.clone(),
+                    terminal,
+                    max_tokens: max_tokens_for(tier, true),
+                    is_thinking,
+                }
+            },
+            prior,
+            &record,
+            &OllamaVramGate,
+            sink.clone(),
+        )
+        .await?; // a gate Err halts; per-task run errors are swallowed inside
+        // Surface the native column right away — but ONLY as an INTERMEDIATE complete when the
+        // prompt pass will follow (so the UI keeps "running"). If native is the only selected
+        // pass, the skeleton becomes the final report below, emitted once.
+        if config.prompt {
+            log_emit(app, EVENT_BATCH_COMPLETE, BatchCompletePayload { report: skeleton.clone(), r#final: false });
+        }
+        skeleton.columns.into_iter().filter_map(|c| c.agentic_native_fc.map(|a| (c.model, a))).collect()
+    } else {
+        HashMap::new()
+    };
+
+    // Prompt pass — only when selected. When it's NOT, the report is the column skeleton that the
+    // native aggregates merge into (a native-only run). At least one pass is guaranteed by the UI.
+    let mut report = if config.prompt {
+        run_batch_resumable(
+            &config.collection_id,
+            &config.targets,
+            &tasks,
+            cancel,
+            sink.clone(),
+            move |t: &ModelTarget| BackendTurn {
+                backend: t.backend,
+                endpoint: endpoint_for(t.backend),
+                model: t.model.clone(),
+                cancel: turn_cancel.clone(),
+                options: options.clone(),
+                keep_alive,
+                is_thinking: t.is_thinking,
+                max_tokens: max_tokens_for(tier, t.is_thinking),
+                stop_cache: Default::default(),
+            },
+            prior,
+            &record,
+            &OllamaVramGate,
+        )
+        .await?
+    } else {
+        skeleton_report(&config.collection_id, &config.targets)
+    };
+    // Merge the native aggregates (collected before the prompt pass) into its columns.
+    for col in &mut report.columns {
+        if let Some(a) = native_aggs.get(&col.model) {
+            col.agentic_native_fc = Some(a.clone());
+        }
+    }
     report.num_ctx = config.params.as_ref().and_then(|p| p.num_ctx);
-    log_emit(app, EVENT_BATCH_COMPLETE, BatchCompletePayload { report: report.clone() });
+    // Fork-on-edit guard: stamp the content-verified hash from the RECEIVED tasks (pre-override).
+    // `Some` only for a pristine bundled collection; `None` for custom OR any edit → unpublishable.
+    report.collection_hash = verified_collection_hash(&config.collection_id, &config.tasks);
+    // Stamp the running Ollama version so a native tool-calling regression on a version bump is
+    // diagnosable (the honest garbled/foreign verdict reads as "at Ollama vX"). Best-effort.
+    report.ollama_version = probe_ollama_version(&endpoint_for(BackendKind::Ollama)).await;
+    log_emit(app, EVENT_BATCH_COMPLETE, BatchCompletePayload { report: report.clone(), r#final: true });
 
     if let Ok(dir) = history_dir(app) {
         let entries = batch_summaries(&report, &crate::time_iso::now_utc());
         if !entries.is_empty() {
             let _ = eval_history::append(&dir, &config.collection_id, &entries);
         }
-    }
-
-    // Native FC pass — also queued/resumable (is_native units) and gated.
-    if config.native {
-        let endpoint = endpoint_for(BackendKind::Ollama);
-        let mut supported = HashSet::new();
-        for t in &config.targets {
-            if t.backend == BackendKind::Ollama && probe_supports_tools(&endpoint, &t.model).await {
-                supported.insert(t.model.clone());
-            }
-        }
-        run_native_fc_pass(
-            &mut report,
-            &tasks,
-            &supported,
-            native_cancel,
-            |model, task| NativeOllamaTurn {
-                endpoint: endpoint.clone(),
-                model: model.to_string(),
-                tools: task.tools.clone(),
-                options: native_options.clone(),
-            },
-            prior,
-            &record,
-            &OllamaVramGate,
-        )
-        .await?; // a gate Err halts; per-task run errors are swallowed inside
-        log_emit(app, EVENT_BATCH_COMPLETE, BatchCompletePayload { report: report.clone() });
     }
 
     // Transactional finish: persist → verify on disk → only THEN delete the log,
@@ -308,14 +414,31 @@ pub struct UnfinishedRun {
     pub total: usize,
 }
 
+/// Does this backend+model support a NATIVE tool-calling API? Ollama answers via
+/// `/api/show`'s `tools` capability; llama.cpp launched with `--jinja` applies the
+/// model's embedded tool grammar (treated as capable — a template lacking tool
+/// support simply yields no `tool_calls`, which the harness labels honestly); MLX
+/// has no native tool API. Mirrors the prompt path's backend dispatch so native
+/// FC follows whichever server is running.
+async fn probe_native_tools(backend: BackendKind, endpoint: &str, model: &str) -> bool {
+    match backend {
+        BackendKind::Ollama => probe_supports_tools(endpoint, model).await,
+        BackendKind::LlamaCpp => true,
+        BackendKind::Mlx => false,
+    }
+}
+
 /// Upper bound on a run's units — prompt (targets × tasks) plus, when native is
-/// on, the agentic tasks on each Ollama target (the only ones that get a native run).
+/// on, the agentic tasks on each native-capable target. MLX has no native tool API
+/// so it's excluded; an Ollama model without the `tools` capability is also a
+/// no-native case, so this stays an upper bound (the actual native pass runs only
+/// for probe-confirmed `supported` models).
 fn total_units(c: &RunConfig) -> usize {
     let prompt = c.targets.len() * c.tasks.len();
     let native = if c.native {
-        let ollama = c.targets.iter().filter(|t| t.backend == BackendKind::Ollama).count();
+        let native_capable = c.targets.iter().filter(|t| t.backend != BackendKind::Mlx).count();
         let agentic = c.tasks.iter().filter(|t| t.category == "agentic").count();
-        ollama * agentic
+        native_capable * agentic
     } else {
         0
     };
@@ -354,7 +477,8 @@ pub async fn resume_batch_eval(
         return Err(AppError::NotFound(format!("no interrupted run to resume for '{run_id}'")));
     };
     let partial = fold_report(&config.collection_id, &config.targets, &config.tasks, &units);
-    log_emit(&app, EVENT_BATCH_COMPLETE, BatchCompletePayload { report: partial });
+    // Partial replay before resuming — NOT final, run_passes emits the real final complete.
+    log_emit(&app, EVENT_BATCH_COMPLETE, BatchCompletePayload { report: partial, r#final: false });
     run_passes(&app, &state, &config, &units).await
 }
 
@@ -380,6 +504,7 @@ mod override_tests {
             agentic: Some(AgenticSpec {
                 mocks: vec![],
                 end_state: EndStateRule::ExpectAbstainingText,
+                environment: Default::default(),
                 tier,
                 axes,
                 k,
@@ -484,5 +609,56 @@ mod override_tests {
         // Explicit values win — forever, or a deliberately shorter window.
         assert_eq!(agentic_keep_alive(Some(-1)), Some(-1));
         assert_eq!(agentic_keep_alive(Some(30)), Some(30));
+    }
+}
+
+#[cfg(test)]
+mod fork_on_edit_tests {
+    use super::*;
+    use crate::inference::eval::agentic::sandbox::EndStateRule;
+
+    fn pristine(id: &str) -> Vec<ToolTask> {
+        load_v2_collection(v2_json(id).unwrap()).unwrap()
+    }
+
+    #[test]
+    fn pristine_bundled_run_carries_the_real_hash() {
+        let tasks = pristine("easy-webui-tasks");
+        assert!(verified_collection_hash("easy-webui-tasks", &tasks).is_some());
+        assert_eq!(verified_collection_hash("easy-webui-tasks", &tasks), collection_hash("easy-webui-tasks"));
+    }
+
+    #[test]
+    fn custom_or_unknown_id_is_none() {
+        let tasks = pristine("easy-webui-tasks");
+        assert_eq!(verified_collection_hash("my-imported-collection", &tasks), None);
+    }
+
+    #[test]
+    fn editing_world_state_forks_to_none() {
+        let mut tasks = pristine("easy-webui-tasks");
+        if let Some(spec) = tasks[0].agentic.as_mut() {
+            spec.world_state = Some(serde_json::json!({ "route": "/hacked", "submitted": true }));
+        }
+        assert_eq!(verified_collection_hash("easy-webui-tasks", &tasks), None);
+    }
+
+    #[test]
+    fn near_miss_single_char_edit_forks_to_none() {
+        // ZERO TOLERANCE: a one-character change to a SINGLE field must sever the hash — proves the
+        // Value compare has no normalization an attacker could exploit to publish a doctored
+        // answer key as pristine.
+        let mut a = pristine("easy-webui-tasks");
+        a[0].prompt.push('!'); // one char, one field
+        assert_eq!(verified_collection_hash("easy-webui-tasks", &a), None);
+
+        // The same, buried in a RequireEndState target value (the answer key).
+        let mut b = pristine("easy-webui-tasks");
+        if let Some(spec) = b[0].agentic.as_mut() {
+            if let EndStateRule::RequireEndState(target) = &mut spec.end_state {
+                *target = serde_json::json!({ "fields": { "coupon": "SAVE11" }, "submitted": true });
+            }
+        }
+        assert_eq!(verified_collection_hash("easy-webui-tasks", &b), None);
     }
 }

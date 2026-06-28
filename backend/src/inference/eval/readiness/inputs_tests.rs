@@ -1,6 +1,9 @@
 use super::super::profile::{builtins, ReadinessProfile};
 use super::super::types::{AgentPath, CliffStatus, NativeFcStatus, Readiness};
-use super::{agentic_metrics, assess_report, from_column, merge_by_tier, merged_by_tier_for, pass_k_of, resolve_quant, verdict_for};
+use super::{
+    agentic_metrics, assess_report, from_column, merge_by_tier, merged_by_tier_for, merged_by_tier_for_path,
+    pass_k_of, resolve_quant, verdict_for, verdicts_for_column,
+};
 use crate::inference::eval::batch::BatchReport;
 use crate::inference::backend::backend_kind::BackendKind;
 use crate::inference::eval::agentic::scoring::report::{FailureTracker, TopError};
@@ -29,6 +32,8 @@ fn col(passes: u32, total: u32, loops: u32, hall: u32, steps: Option<f64>) -> Ba
                 forbidden_calls: 0,
                 turn_timeouts: 0,
                 reported_in_prose_calls: 0,
+                foreign_dialect_calls: 0,
+                empty_output_calls: 0,
             },
             by_tier: vec![],
             tasks_errored: 0,
@@ -97,21 +102,22 @@ fn ctx_profile(min_ctx: Option<u32>) -> ReadinessProfile {
 }
 
 #[test]
-fn context_cliff_gate_is_opt_in_and_blocks_only_below_or_unmeasured() {
+fn context_cliff_gate_blocks_a_measured_shortfall_but_only_cautions_when_unmeasured() {
     let c = col(9, 10, 0, 0, Some(2.0)); // pass^k 0.9 clears the 0.5 bar
 
     // Gate OFF (None): the cliff is carried but never blocks → Ready.
     assert_eq!(verdict_for(&c, None, false, CliffStatus::Collapsed { depth: 8000 }, &ctx_profile(None)).status, Readiness::Ready);
 
-    // Gate ON, cliff BELOW the floor → NotReady with the interpolated reason.
+    // Gate ON, cliff BELOW the floor (MEASURED failure) → NotReady with the reason.
     let below = verdict_for(&c, None, false, CliffStatus::Collapsed { depth: 8000 }, &ctx_profile(Some(16000)));
     assert_eq!(below.status, Readiness::NotReady);
     assert!(below.blocking.iter().any(|b| b.contains("8000") && b.contains("16000")), "{:?}", below.blocking);
 
-    // Gate ON, cliff UNMEASURED → NotReady "not measured" (never a guessed pass).
+    // Gate ON, cliff UNMEASURED → Conditional caveat (never a guessed pass, never a red block).
     let unmeasured = verdict_for(&c, None, false, CliffStatus::NotProbed, &ctx_profile(Some(16000)));
-    assert_eq!(unmeasured.status, Readiness::NotReady);
-    assert!(unmeasured.blocking.iter().any(|b| b.to_lowercase().contains("measured")), "{:?}", unmeasured.blocking);
+    assert_eq!(unmeasured.status, Readiness::Conditional);
+    assert!(unmeasured.blocking.is_empty(), "unmeasured must not block: {:?}", unmeasured.blocking);
+    assert!(unmeasured.conditions.iter().any(|c| c.to_lowercase().contains("not measured")), "{:?}", unmeasured.conditions);
 
     // Gate ON, cliff ABOVE the floor → passes (Ready).
     assert_eq!(verdict_for(&c, None, false, CliffStatus::Collapsed { depth: 32000 }, &ctx_profile(Some(16000))).status, Readiness::Ready);
@@ -136,6 +142,8 @@ fn agg(passes: u32, total: u32, loops: u32) -> AggAgentic {
             forbidden_calls: 0,
             turn_timeouts: 0,
             reported_in_prose_calls: 0,
+            foreign_dialect_calls: 0,
+            empty_output_calls: 0,
         },
         by_tier: vec![],
         tasks_errored: 0,
@@ -177,7 +185,7 @@ fn ranking_puts_a_ready_model_first_regardless_of_column_order() {
     let general = builtins().into_iter().find(|p| p.id == "general-agent").unwrap();
     let report = BatchReport {
         collection_id: "c".into(),
-        num_ctx: None,
+        num_ctx: None, ollama_version: None, collection_hash: None,
         columns: vec![
             // NotReady first (no agentic → the core pass^k gate blocks)…
             BatchColumn {
@@ -259,7 +267,7 @@ fn assess_report_grades_clean_models_and_short_circuits_errors() {
     let general = builtins().into_iter().find(|p| p.id == "general-agent").unwrap();
     let report = BatchReport {
         collection_id: "c".into(),
-        num_ctx: None,
+        num_ctx: None, ollama_version: None, collection_hash: None,
         columns: vec![
             col(5, 5, 0, 0, Some(2.0)), // clean → Ready
             BatchColumn {
@@ -303,12 +311,86 @@ fn model_verdict_carries_by_tier_and_failures_from_the_native_first_source() {
     native.failures = FailureTracker { forbidden_calls: 3, ..Default::default() };
     c.agentic_native_fc = Some(native);
 
-    let report = BatchReport { collection_id: "c".into(), num_ctx: None, columns: vec![c] };
+    let report = BatchReport { collection_id: "c".into(), num_ctx: None, ollama_version: None, collection_hash: None, columns: vec![c] };
     let v = &assess_report(&report, &general)[0];
     assert_eq!(v.by_tier.len(), 1);
     assert_eq!(v.by_tier[0].tier, Tier::Hard); // native, NOT the prompt's Easy
     assert_eq!(v.by_tier[0].avg_steps, Some(7.0));
     assert_eq!(v.failures.forbidden_calls, 3);
+}
+
+#[test]
+fn verdicts_for_column_emits_a_row_per_measured_path() {
+    let general = builtins().into_iter().find(|p| p.id == "general-agent").unwrap();
+    let mut c = col(9, 10, 0, 0, Some(2.0)); // prompt pass^k 0.9
+    c.agentic_native_fc = Some(agg(7, 10, 0)); // native pass^k 0.7
+    let rows = verdicts_for_column(&c, None, false, CliffStatus::NotProbed, None, None, &general, &[]);
+    assert_eq!(rows.len(), 2); // one row per measured path
+    // Native first (display order); each row's pass_k is sourced STRICTLY from its own pass.
+    assert_eq!(rows[0].verdict.path, AgentPath::NativeFc);
+    assert_eq!(rows[0].pass_k, Some(0.7));
+    assert_eq!(rows[1].verdict.path, AgentPath::PromptBased);
+    assert_eq!(rows[1].pass_k, Some(0.9));
+}
+
+#[test]
+fn verdicts_for_column_prompt_only_yields_one_row() {
+    let general = builtins().into_iter().find(|p| p.id == "general-agent").unwrap();
+    let rows =
+        verdicts_for_column(&col(9, 10, 0, 0, Some(2.0)), None, false, CliffStatus::NotProbed, None, None, &general, &[]);
+    assert_eq!(rows.len(), 1);
+    assert_eq!(rows[0].verdict.path, AgentPath::PromptBased);
+}
+
+#[test]
+fn verdicts_for_column_errored_column_is_one_not_ready_row() {
+    let general = builtins().into_iter().find(|p| p.id == "general-agent").unwrap();
+    let c = BatchColumn {
+        model: "boom".into(),
+        backend: BackendKind::Ollama,
+        toolcall: None,
+        agentic: None,
+        agentic_native_fc: None,
+        error: Some("backend offline".into()),
+        is_thinking: false,
+    };
+    let rows = verdicts_for_column(&c, None, false, CliffStatus::NotProbed, None, None, &general, &[]);
+    assert_eq!(rows.len(), 1);
+    assert_eq!(rows[0].verdict.status, Readiness::NotReady);
+    assert!(rows[0].verdict.blocking[0].contains("backend offline"));
+}
+
+#[test]
+fn require_native_fc_does_not_block_the_prompt_row_of_a_native_capable_model() {
+    // require_native_fc forced on. The model ran BOTH passes at high pass^k. The prompt row
+    // must be Ready — native is available at the MODEL level — and never blocked for "native
+    // not supported". This is the honesty fix: path is decoupled from the native_fc gate.
+    let mut p = builtins().into_iter().find(|p| p.id == "general-agent").unwrap();
+    p.require_native_fc = true;
+    let mut c = col(9, 10, 0, 0, Some(2.0)); // prompt 0.9
+    c.agentic_native_fc = Some(agg(9, 10, 0)); // native 0.9 → model-level Tested
+    let rows = verdicts_for_column(&c, None, false, CliffStatus::NotProbed, None, None, &p, &[]);
+    let prompt = rows.iter().find(|r| r.verdict.path == AgentPath::PromptBased).unwrap();
+    assert_eq!(prompt.verdict.status, Readiness::Ready, "{:?}", prompt.verdict.blocking);
+    assert!(!prompt.verdict.blocking.iter().any(|b| b.contains("native")));
+}
+
+#[test]
+fn merged_by_tier_for_path_never_crosses_paths() {
+    use crate::inference::eval::agentic::spec::Tier;
+    // A NATIVE ladder whose primary holds Easy. A tier sibling ran ONLY the prompt path
+    // (no native pass). Merging the NATIVE ladder must NOT pull the sibling's prompt Hard
+    // tier in — an honest gap, never the other path's data.
+    let primary = vec![ts(Tier::Easy, 1, 1)];
+    let prompt_only_sibling = report_with("qwen", BackendKind::Ollama, vec![ts(Tier::Hard, 1, 1)]);
+    let native = merged_by_tier_for_path("qwen", BackendKind::Ollama, AgentPath::NativeFc, &primary, &[&prompt_only_sibling]);
+    assert_eq!(native.len(), 1);
+    assert_eq!(native[0].tier, Tier::Easy); // sibling's prompt Hard is NOT crossed in
+
+    // Sanity: the SAME merge on the PROMPT path DOES pick up the sibling's Hard tier.
+    let prompt =
+        merged_by_tier_for_path("qwen", BackendKind::Ollama, AgentPath::PromptBased, &primary, &[&prompt_only_sibling]);
+    assert_eq!(prompt.len(), 2);
 }
 
 fn ts(tier: crate::inference::eval::agentic::spec::Tier, passed: u32, total: u32) -> crate::inference::eval::batch::TierStat {
@@ -321,7 +403,7 @@ fn report_with(model: &str, backend: BackendKind, tiers: Vec<crate::inference::e
     a.by_tier = tiers;
     BatchReport {
         collection_id: "x".into(),
-        num_ctx: None,
+        num_ctx: None, ollama_version: None, collection_hash: None,
         columns: vec![BatchColumn {
             model: model.into(),
             backend,
@@ -398,7 +480,7 @@ fn model_verdict_by_tier_falls_back_to_prompt_when_native_absent() {
         failures: FailureTracker { unknown_tool_calls: 4, ..Default::default() },
     }];
     c.agentic.as_mut().unwrap().failures = FailureTracker { unknown_tool_calls: 4, ..Default::default() };
-    let report = BatchReport { collection_id: "c".into(), num_ctx: None, columns: vec![c] };
+    let report = BatchReport { collection_id: "c".into(), num_ctx: None, ollama_version: None, collection_hash: None, columns: vec![c] };
     let v = &assess_report(&report, &general)[0];
     assert_eq!(v.by_tier.len(), 1);
     assert_eq!(v.by_tier[0].tier, Tier::Medium);

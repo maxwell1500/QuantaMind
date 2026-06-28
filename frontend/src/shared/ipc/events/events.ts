@@ -25,6 +25,10 @@ export const GenerateStatsSchema = z.object({
   eval_ms: optMs,
   load_ms: optMs,
   total_ms: optMs,
+  // Prompt tokens served from llama.cpp's prefix cache (reuse) vs recomputed; null for
+  // backends without the feature (Ollama/MLX). Drives the prefix-cache readout in the
+  // Inspector + Analysis tabs (the backend already sends it on DonePayload.stats).
+  cache_n: optMs,
 });
 export type GenerateStats = z.infer<typeof GenerateStatsSchema>;
 

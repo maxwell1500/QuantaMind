@@ -1,6 +1,6 @@
 use super::has_bin;
 use crate::commands::llama::llama_runtime::bin_name;
-use crate::commands::llama::llama_server_types::LlamaStartResult;
+use crate::commands::llama::llama_server_types::{LlamaServerState, LlamaStartResult, SpawnReadout};
 
 #[test]
 fn has_bin_requires_the_binary_in_the_dir() {
@@ -40,4 +40,24 @@ fn start_failed_serializes_with_error() {
     let json = serde_json::to_string(&r).unwrap();
     assert!(json.contains(r#""status":"start_failed""#));
     assert!(json.contains(r#""error":"boom""#));
+}
+
+#[test]
+fn readout_is_none_until_a_server_is_ready() {
+    // No server up (or a start that never reached the ready arm) → no fabricated
+    // readout. set_readout is a no-op with nothing running.
+    let state = LlamaServerState::default();
+    assert_eq!(state.readout(), None);
+    state.set_readout(SpawnReadout { model_bytes: Some(1), load_ms: 5 });
+    assert_eq!(state.readout(), None, "set_readout no-ops without a running server");
+}
+
+#[test]
+fn spawn_readout_serializes_with_model_bytes_and_load_ms() {
+    let json = serde_json::to_string(&SpawnReadout { model_bytes: Some(4_600_000_000), load_ms: 7000 }).unwrap();
+    assert!(json.contains(r#""model_bytes":4600000000"#));
+    assert!(json.contains(r#""load_ms":7000"#));
+    // Unknown footprint serializes as null (never a fake 0).
+    let unknown = serde_json::to_string(&SpawnReadout { model_bytes: None, load_ms: 100 }).unwrap();
+    assert!(unknown.contains(r#""model_bytes":null"#));
 }

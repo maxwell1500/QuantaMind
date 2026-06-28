@@ -99,6 +99,7 @@ fn agentic_valid() -> ToolTask {
                 tool: "transfer".into(),
                 args: json!({ "amount": 1.0 }),
             }]),
+            environment: Default::default(),
             tier: Default::default(),
             axes: None,
             k: None,

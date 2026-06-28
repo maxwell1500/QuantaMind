@@ -1,3 +1,4 @@
+use crate::inference::eval::agentic::env_view::EnvView;
 use serde::Serialize;
 
 /// What happened on a single agent turn — drives the Trajectory Inspector's
@@ -37,6 +38,14 @@ pub enum StepKind {
     /// instead of calling the required reporter tool — content correct, channel wrong.
     /// A failure, but the mildest (rendered amber, not the red of a true hallucination).
     ReportedInProse,
+    /// The model emitted an unparseable foreign tool-call dialect (channel-token soup from
+    /// a mis-built model) — neither valid JSON nor a recoverable native grammar. Named
+    /// honestly so a template/dialect artifact isn't shown as a hallucination or bad JSON.
+    ForeignDialect,
+    /// The model produced no usable output — empty / whitespace / punctuation-only (e.g. a
+    /// lone `.` before its stop token). A generation/template artifact, distinct from a
+    /// hallucinated completion.
+    EmptyOutput,
 }
 
 /// One turn of an agentic run, streamed to the UI as it happens. `injection` is
@@ -49,4 +58,25 @@ pub struct TrajectoryStep {
     pub raw_output: String,
     pub injection: Option<String>,
     pub kind: StepKind,
+    /// A snapshot of the environment the agent acted on this turn, for the visual replay
+    /// panel. `EnvView::None` for entity/static tasks (no replay). Streamed, never published.
+    #[serde(default)]
+    pub env: EnvView,
+    /// Prompt tokens this turn served from the server's prompt cache (prefix reuse)
+    /// vs recomputed — llama.cpp's `timings.cache_n`. `None` when the backend doesn't
+    /// report it (Ollama/MLX) or the turn produced no model response (timeout/terminal).
+    /// Surfaces per-turn prefix-reuse in the trace: a high value means the transcript
+    /// prefix was reused (prefill ≈ 0) rather than re-prefilled.
+    #[serde(default)]
+    pub cache_n: Option<u32>,
+    /// Prompt tokens actually PROCESSED (prefilled) this turn — llama.cpp's `timings.prompt_n`
+    /// (`prompt_eval_count`), i.e. the RECOMPUTED count (the cached prefix is NOT counted here;
+    /// total prompt = `cache_n + prefill_tokens`). With `cache_n` the trace shows reused-vs-
+    /// recomputed and the green/amber prefix-reuse state. `None` when the backend doesn't report it.
+    #[serde(default)]
+    pub prefill_tokens: Option<u32>,
+    /// Wall-clock spent prefilling this turn's prompt (`timings.prompt_ms`) — the cost a
+    /// cache bust re-incurs. `None` when the backend doesn't report it / no model response.
+    #[serde(default)]
+    pub prefill_ms: Option<u64>,
 }

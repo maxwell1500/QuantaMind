@@ -96,3 +96,36 @@ fn bad_names_rejected() {
         assert!(load(dir.path(), name).is_err());
     }
 }
+
+#[test]
+fn parse_collection_loads_a_v2_object_collection() {
+    use crate::inference::eval::agentic::v2::scenarios::v2_json;
+    // A v2 collection (top-level OBJECT) transpiles via load_v2_collection — the env activates.
+    let tasks = parse_collection(v2_json("easy-webui-tasks").unwrap()).unwrap();
+    assert!(!tasks.is_empty());
+    assert!(tasks.iter().all(|t| t.category == "agent_loop"));
+}
+
+#[test]
+fn parse_collection_loads_a_raw_task_array() {
+    // A raw ToolTask[] (top-level ARRAY) takes the legacy path.
+    let arr = serde_json::to_string(&sample()).unwrap();
+    assert_eq!(parse_collection(&arr).unwrap().len(), 1);
+}
+
+#[test]
+fn parse_collection_object_missing_v2_fields_errors_not_raw_fallthrough() {
+    use crate::inference::eval::agentic::v2::scenarios::v2_json;
+    // A top-level object that LOOKS v2-ish but is invalid (strip required `tier`) must return a
+    // clear v2 error — NEVER silently fall through to the raw-array path.
+    let mut v: serde_json::Value = serde_json::from_str(v2_json("easy-webui-tasks").unwrap()).unwrap();
+    v.as_object_mut().unwrap().remove("tier");
+    assert!(parse_collection(&v.to_string()).is_err());
+}
+
+#[test]
+fn parse_collection_rejects_non_object_non_array_and_non_json() {
+    assert!(parse_collection("\"a string\"").is_err());
+    assert!(parse_collection("42").is_err());
+    assert!(parse_collection("{ not json").is_err());
+}

@@ -23,8 +23,53 @@ export const StepKindSchema = z.enum([
   "forbidden_call",
   "turn_timeout",
   "reported_in_prose",
+  "foreign_dialect",
+  "empty_output",
 ]);
 export type StepKind = z.infer<typeof StepKindSchema>;
+
+// A per-turn snapshot of the deterministic environment the agent acted on, for the visual
+// replay panel. Mirrors Rust `EnvView` (serde internally-tagged on `kind`). Streamed only,
+// never published.
+export const FsOpSchema = z.enum(["none", "read", "list", "search"]);
+export const FsNodeSchema = z.object({ path: z.string(), is_dir: z.boolean() });
+// Phase 2 web-search corpus: a `search`/`fetch` turn over a frozen doc set. `index` is the lazy
+// corpus index (id+title only); full text rides along only for the one fetched doc (`content`).
+export const CorpusOpSchema = z.enum(["none", "search", "fetch"]);
+export const CorpusDocSchema = z.object({ doc_id: z.string(), title: z.string() });
+export const CorpusHitSchema = z.object({ doc_id: z.string(), title: z.string(), snippet: z.string() });
+export const EnvViewSchema = z.discriminatedUnion("kind", [
+  z.object({ kind: z.literal("none") }),
+  z.object({
+    kind: z.literal("file_system"),
+    tree: z.array(FsNodeSchema),
+    focus_path: z.string().nullable(),
+    op: FsOpSchema,
+    content: z.string().nullable(),
+    matches: z.array(z.string()),
+  }),
+  z.object({
+    kind: z.literal("web_corpus"),
+    index: z.array(CorpusDocSchema),
+    query: z.string().nullable(),
+    results: z.array(CorpusHitSchema),
+    focus_doc: z.string().nullable(),
+    content: z.string().nullable(),
+    op: CorpusOpSchema,
+  }),
+  // Slice 3 stateful web-UI: the CURRENT (post-action) UI state machine + the action the agent
+  // took this turn. `state` is an opaque JSON object (routes/fields/toggles/submitted) the replay
+  // renders as a schematic; it MUTATES across turns.
+  z.object({
+    kind: z.literal("web_ui"),
+    state: z.record(z.string(), z.unknown()),
+    action: z.string().nullable(),
+    focus: z.string().nullable(),
+  }),
+]);
+export type EnvView = z.infer<typeof EnvViewSchema>;
+export type FsNode = z.infer<typeof FsNodeSchema>;
+export type CorpusHit = z.infer<typeof CorpusHitSchema>;
 
 export const TrajectoryStepSchema = z.object({
   run_index: z.number().int(),
@@ -32,6 +77,17 @@ export const TrajectoryStepSchema = z.object({
   raw_output: z.string(),
   injection: z.string().nullable(),
   kind: StepKindSchema,
+  // Back-compat: events/reports before the visual-replay work have no `env`. Optional so old
+  // payloads + test fixtures parse; consumers treat a missing env as "no replay" (`env?.kind`).
+  env: EnvViewSchema.optional(),
+  // Per-turn prompt-cache reuse (llama.cpp `timings.cache_n`); null/absent for backends
+  // that don't report it (Ollama/MLX) or non-model turns. High → prefix reused (prefill ≈ 0).
+  cache_n: z.number().int().nonnegative().nullable().optional(),
+  // Tokens PROCESSED (prefilled/recomputed) this turn + prefill ms (llama.cpp `prompt_n` /
+  // `prompt_ms`). `prefill_tokens` is the recomputed count; total prompt = cache_n +
+  // prefill_tokens, and reuseRatio = cache_n / total drives the green/amber state.
+  prefill_tokens: z.number().int().nonnegative().nullable().optional(),
+  prefill_ms: z.number().int().nonnegative().nullable().optional(),
 });
 export type TrajectoryStep = z.infer<typeof TrajectoryStepSchema>;
 
@@ -44,6 +100,8 @@ export const TopErrorSchema = z.enum([
   "forbidden_call",
   "turn_timeout",
   "reported_in_prose",
+  "foreign_dialect",
+  "empty_output",
 ]);
 export type TopError = z.infer<typeof TopErrorSchema>;
 
@@ -60,6 +118,12 @@ export const FailureTrackerSchema = z.object({
   turn_timeouts: z.number().int().optional(),
   // G3: content-correct, wrong-channel (answered in prose instead of the reporter tool).
   reported_in_prose_calls: z.number().int().optional(),
+  // Unparseable foreign tool-call dialect (a mis-built model emitting channel-token soup).
+  // A template/dialect artifact, not a capability failure — labeled, never salvaged.
+  foreign_dialect_calls: z.number().int().optional(),
+  // Empty / whitespace / punctuation-only output (the model produced nothing usable) — a
+  // generation/template artifact, distinct from a hallucinated completion.
+  empty_output_calls: z.number().int().optional(),
 });
 export type FailureTracker = z.infer<typeof FailureTrackerSchema>;
 
@@ -147,6 +211,14 @@ export const BatchReportSchema = z.object({
   // The run's context length, when set — basis for the readiness VRAM-fit KV-cache
   // estimate. Nullish so reports saved before Phase 7.4 still parse.
   num_ctx: z.number().int().nullish(),
+  // The running Ollama version (`/api/version`) when the batch ran — so a native tool-calling
+  // regression on a version bump is diagnosable. Nullish: older reports / non-Ollama runs omit it.
+  ollama_version: z.string().nullish(),
+  // The run's content-verified leaderboard hash (Slice 4): a string ONLY for a pristine bundled
+  // collection; null for a custom/imported collection OR any edit (the fork-on-edit guard). Pass
+  // this to publish — it's the single source of truth for publishability (the backend never
+  // re-derives it). Nullish so older reports parse (as not-publishable).
+  collection_hash: z.string().nullish(),
 });
 export type BatchReport = z.infer<typeof BatchReportSchema>;
 
@@ -168,19 +240,39 @@ export const BatchProgressSchema = z.discriminatedUnion("phase", [
     index: z.number().int(),
     total: z.number().int(),
     category: z.string(),
+    // Which pass is starting — lets the progress bar reset at the native↔prompt boundary so
+    // each pass shows its own 0→N. Absent ⇒ prompt pass.
+    is_native: z.boolean().optional(),
   }),
-  z.object({ phase: z.literal("done"), model: z.string(), task_id: z.string(), outcome: TaskOutcomeSchema }),
+  z.object({
+    phase: z.literal("done"),
+    model: z.string(),
+    task_id: z.string(),
+    outcome: TaskOutcomeSchema,
+    // The NATIVE pass's per-task result, routed to its own column. Absent ⇒ prompt pass.
+    is_native: z.boolean().optional(),
+  }),
 ]);
 export type BatchProgress = z.infer<typeof BatchProgressSchema>;
 
-/// The `agentic-step` event: a live turn tagged with its (model, task).
+/// The `agentic-step` event: a live turn tagged with its (model, task) and which pass produced
+/// it — the native function-calling pass (`is_native`) or the prompt pass. The Evaluator shows
+/// the two trajectories separately. `default(false)` so pre-native-streaming events parse.
 export const AgenticStepPayloadSchema = TrajectoryStepSchema.extend({
   model: z.string(),
   task_id: z.string(),
+  // Optional so pre-native-streaming events + test fixtures parse; absent ⇒ prompt pass.
+  is_native: z.boolean().optional(),
 });
 export type AgenticStepPayload = z.infer<typeof AgenticStepPayloadSchema>;
 
-export const BatchCompletePayloadSchema = z.object({ report: BatchReportSchema });
+/// `final` is false for an intermediate complete (native pass before the prompt pass, or a
+/// resume's partial replay) — the run is still going. Defaults true so pre-flag events still
+/// read as terminal.
+export const BatchCompletePayloadSchema = z.object({
+  report: BatchReportSchema,
+  final: z.boolean().optional().default(true),
+});
 
 /// The one streaming eval command. Returns the final report (also delivered via
 /// the `batch-complete` event); progress arrives on `batch-progress` /
@@ -199,6 +291,7 @@ export async function runBatchEval(
   runNativeFc?: boolean,
   tier?: Tier,
   decoyTools?: number,
+  runPromptBased?: boolean,
 ): Promise<BatchReport> {
   return BatchReportSchema.parse(
     await invoke("run_batch_eval", {
@@ -212,6 +305,7 @@ export async function runBatchEval(
       runNativeFc,
       tier,
       decoyTools,
+      runPromptBased,
     }),
   );
 }

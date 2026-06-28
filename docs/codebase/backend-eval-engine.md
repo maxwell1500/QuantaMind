@@ -198,12 +198,32 @@ if abstain != matches!(t.expected, Expected::NoCall) { return Err(bad(&t.id, "ex
   (`{name, args|arguments}`), `balanced_brace`, `relax_object`/`relax_to_json` (quote bare
   keys + escape raw control chars in code strings so a JS-object body parses);
   `pub(crate) has_json_object`, `looks_like_broken_json` (used by the agentic runner to
-  tell broken JSON from a hallucinated completion).
+  tell broken JSON from a hallucinated completion), `pub(crate)
+  looks_like_foreign_dialect` (a channel control token co-occurring with an attempted
+  `call:IDENT{`/`(` structure — see below), and `pub(crate) is_empty_output` (no
+  alphanumeric char → the model produced nothing usable → `EmptyOutput`, not
+  `Hallucinated`).
 - **Dialect (`ToolCallDialect`):** `Standard` (instructed JSON) or `Harmony` (native
   channel grammar). The runner threads the recovered dialect onto `RunOutcome`→`AgenticReport`
   so the scoreboard flags a model that only scored via normalization (transparency — the
   score isn't silently laundered). Standard is tried first, so a clean-JSON model is never
   mislabeled; a bareword VALUE still fails to relax → dropped, not guessed.
+- **Foreign-dialect detection — `looks_like_foreign_dialect` (production parity):** a
+  mis-built model can emit an unparseable non-JSON dialect (harmony-ish soup like
+  `<|tool_response|>call:reply(text='…')`, or `call:reply{text:<|"|>…<|"|>}`). The harness
+  does NOT salvage these — `harmony_calls` already drops them (paren form has no `{`; the
+  `<|"|>`-wrapped body fails `relax_object`), matching what Ollama's native parser also
+  drops, so the bench never scores looser than a real deployment. Instead the runner labels
+  such a no-call turn `ForeignDialect` (its own `FailureKind`/`StepKind`/`TopError`/tally),
+  distinct from `Malformed`/`Hallucinated`. The detector requires BOTH a channel control
+  token (`<|tool_response`/`<channel|`/`<tool_call|`) AND an attempted-call structure, so
+  prose merely quoting those tokens is never mislabeled. (`foreign_dialect_calls` is
+  internal-only; not on the publish allowlist — see `backend-publish.md`.)
+- **Empty-output detection — `is_empty_output`:** a no-call turn whose text has no
+  alphanumeric char (empty / whitespace / a lone `.` before the stop token — gemma-qat's
+  prompt-path symptom) is labeled `EmptyOutput`, checked FIRST in the no-call arm, distinct
+  from `Hallucinated`. Such a model usually needs the native tools path (it returns clean
+  `tool_calls` natively). Also internal-only (not on the publish allowlist).
 - **How/Where used:** `eval::trace_one_with`, `runner::run_steps`.
 
 ```rust
@@ -332,6 +352,33 @@ be ranked against a terse model's.
   back-compat); the order keeps v1 behavior byte-identical. The whitelist is built in
   `build::sandbox_for` — from `task.tools` for v1 (decoy-free there) or
   `spec.recognized_tools` for v2 (whose `task.tools` already carries the merged decoys).
+- **Stateful web-UI env (Slice 3):** `ResponderKind::WebUi(WebUiSpec)` holds only the IMMUTABLE
+  initial state; the MUTABLE `WebUiState` (`v2/env_webui.rs`) is per-run — constructed fresh in
+  `run_steps` beside the fault `SandboxState`, NEVER in the shared sandbox. `apply(call)` mutates on
+  `fill`/`toggle`/`navigate`/`click`/`submit` (a pure `(state,action)->state'`); the runner branches
+  to it instead of `respond`. `EndStateRule::RequireEndState(target)` grades on the final state
+  exactly matching the target (no partial credit), evaluated AFTER the forbidden pre-scan so
+  `ForbiddenCall` still dominates. Authored via `target_state` in v2 JSON (→ transpile);
+  `expected_calls` then drive only the oracle. `EnvView::WebUi` is rebuilt POST-action.
+- **`ResponderKind` (enum, not trait) + deterministic envs:** `respond` dispatches an exhaustive
+  `match` over `StaticMocks` / `WorldState(Value)` / `FileSystem(FsState)` / `WebCorpus(CorpusState)`
+  / `WebUi(WebUiSpec)` (the WebUi arm is a no-op fallback — real mutations run in the runner).
+  Adding a variant is compile-forced everywhere; `StaticMocks`/`WorldState` output is pinned
+  byte-identical by `respond_byte_parity_anchor_for_the_responderkind_refactor`. The
+  `FileSystem` arm (`v2/env_fs.rs`, Phase 1) returns REAL content for `read_file`/`list_dir`/
+  `search_files`/`grep`; the `WebCorpus` arm (`v2/env_corpus.rs`, Phase 2) returns COMPUTED
+  deterministically-ranked snippets for `search` and real document text for `fetch` (or a
+  deterministic `{"error":"not found"}`) — both the acks-empty fix. Built from `world_state`
+  (fs: `path→content`; corpus: `doc_id→{title,text}`) per the collection's `"environment"`
+  (`spec::EnvKind` ∈ `Entity` default / `Filesystem` / `WebCorpus`). Stateless-per-call →
+  determinism is structural; corpus ranking is distinct-term-match, tied by `doc_id`, snippet =
+  first query-term line top-to-bottom else head (pure, on the replay-vs-score surface).
+- **`env_view.rs` (visual replay spine):** `EnvView{None, FileSystem(FsView), WebCorpus(CorpusView)}`
+  is a per-turn snapshot streamed on each `TrajectoryStep` (`#[serde(default)]`). `env_view(
+  responder, calls)` (exhaustive match) is a PURE fn of the immutable env + the turn's calls (each
+  env picks the last getter call, so a `read_file`/`search` batched before a `reply` still
+  replays). The corpus view is **lazy** — only the index (id+title) per turn; full text rides along
+  only for the fetched doc. Internal/local-only — NOT on the publish allowlist.
 
 ```rust
 FaultInjection::TransientError { status_code, clears_after } => {
@@ -364,12 +411,15 @@ FaultInjection::TransientError { status_code, clears_after } => {
 ### File: `model_turn.rs`
 - **Responsibility:** The `ModelTurn` seam (prompt → text + stats) and its impls.
 - **Why:** The runner depends on the trait, not a backend, so it's unit-testable
-  with a scripted model; the native Ollama path translates structured `tool_calls`
-  back into canonical `{name,args}` JSON so sandbox/scoring stay byte-identical.
+  with a scripted model; the native path translates structured `tool_calls`
+  back into canonical `{name,args}` JSON so sandbox/scoring stay byte-identical
+  — across both passes AND across backends.
 - **What:** `trait ModelTurn { async fn run(&self, &GenerateSpec) -> …; async fn warm_up(&self) -> AppResult<()> { Ok(()) } }`;
   `BackendTurn{backend,endpoint,model,cancel,options,keep_alive}` (dispatch by
-  `BackendKind`); `NativeOllamaTurn{endpoint,model,tools,options}` (`/api/chat` +
-  `synthesize_calls`).
+  `BackendKind`); `NativeToolTurn{backend,endpoint,model,tools,options,…}` — native
+  FC follows the running server, dispatching `chat_with_tools` by `BackendKind`
+  (Ollama `/api/chat`, llama.cpp OpenAI `/v1/chat/completions`; MLX has none),
+  then `synthesize_calls` for the shared canonical text.
 - **Options merge (`merge_eval_options`):** `BackendTurn::run` merges the header's global
   eval params with the harness per-turn spec **field-wise** — it does NOT let one replace the
   other. The loop's structural caps win: `num_predict` (the `MAX_TOKENS=256` anti-runaway
@@ -478,9 +528,17 @@ schema_resilience: (schema_hits > 0).then(|| schema_recovered as f64 / schema_hi
   siblings; two calls can satisfy two checkpoints in one turn. The raw turn is pushed once,
   then one tool-result line per call; the turn streams a single `TrajectoryStep` carrying
   every injection. A single-call turn is byte-identical to the pre-multi-call path.
-- **Wall-clock budget (`TASK_BUDGET=480s`):** a Pass^k batch over a slow model (a 12B on a
-  16GB host generates minutes per step) can otherwise grind for hours — `k × max_steps`
-  real multi-minute turns. `run_agentic_within` stops launching NEW runs once the batch
+- **Wall-clock budget (`task_budget(k, is_thinking) = PER_RUN_BUDGET(300s) × (3 if thinking) × k`):**
+  a Pass^k batch over a slow model (a 12B on a 16GB host generates minutes per step) can otherwise
+  grind for hours — `k × max_steps` real multi-minute turns. The budget **scales with `k`**: a flat
+  per-task cap silently broke Pass^k for every tier above the smallest (a slow model takes minutes
+  per run, so a flat 8-min cap let only ~3 runs through whether k was 5 or 16 — truncating the batch
+  and voiding its strict-pass credit before it could finish). Per-run scaling gives each requested
+  repetition a guaranteed slice, so the cap fires only on a pathologically slow batch, never merely
+  because k is large. It **also scales with `is_thinking`** (×3): a reasoning model emits a
+  multi-k-token `<think>` scratchpad each turn (its per-turn token budget is already 6–16× a terse
+  model's), so a run is intrinsically slower and would otherwise truncate while progressing normally;
+  `STEP_TIMEOUT` still caps any single wedged turn. `run_agentic_within` stops launching NEW runs once the batch
   passes the budget, but only BETWEEN whole runs and after sampling at least one, so every
   counted run is complete. The report is stamped `requested_runs = Some(k)` (truncated);
   `total_runs` holds the completed runs and the pass rate stays an honest, unbiased estimate
@@ -502,7 +560,7 @@ pub async fn run_agentic<M: ModelTurn>(turn, sandbox, config, tx) -> AppResult<A
     let start = Instant::now();
     let mut outcomes = Vec::with_capacity(config.k as usize);
     for run_index in 0..config.k {
-        if run_index > 0 && start.elapsed() >= TASK_BUDGET { truncated = true; break; } // whole runs only
+        if run_index > 0 && start.elapsed() >= task_budget(config.k, turn.is_thinking()) { truncated = true; break; } // whole runs only; budget scales with k AND thinking
         outcomes.push(run_once(turn, sandbox, config.max_steps, config.max_recovery, run_index, tx).await?);
     }
     let report = AgenticReport::from_outcomes(&outcomes);
@@ -667,8 +725,10 @@ else `NoCliff{tested}`.
 
 Synthesizes a measured batch report (+ cliff depth + VRAM fit) into ranked
 **Ready / Conditional / NotReady** verdicts against a tunable use-case profile.
-Pure and Tauri-free; hard gates block, soft gates downgrade, and a
-required-but-unmeasured input *blocks* ("ignorance is not a pass").
+Pure and Tauri-free; a MEASURED hard-gate failure blocks (NotReady), soft gates
+downgrade, and a required-but-**unmeasured** input is a **Conditional caveat**
+("run the missing diagnostic"), never a red block — unmeasured ≠ guessed fail.
+(The `pass^k` core gate is the exception: no agentic run at all still blocks.)
 
 ### File: `mod.rs`
 - Declares `inputs, profile, recommend, types, verdict, vram_fit`.
@@ -678,11 +738,13 @@ required-but-unmeasured input *blocks* ("ignorance is not a pass").
   `CliffStatus::{NotProbed(default), NoCliff{tested}, Collapsed{depth}, Broken{tested}}`;
   `AgentPath::{PromptBased, NativeFc}`; `NativeFcStatus::{Tested{pass_k}, NotSupported}`;
   `ReadinessInputs{pass_k, avg_steps, ms_per_step, cliff, fits_in_vram, vram_pressure,
-  loops, hallucinated, native_fc}`; `Readiness::{Ready, Conditional, NotReady}`;
+  loops, hallucinated, native_fc, path}` (`native_fc` = model-level capability for the gate;
+  `path` = the row's own path for the label — deliberately decoupled);
+  `Readiness::{Ready, Conditional, NotReady}`;
   `ReadinessVerdict{status, blocking, conditions, path, required_tier, cleared_tier}`;
   `ModelVerdict{model, backend, verdict, memory, avg_steps, effort, pass_k, quantization,
   cliff, by_tier, failures}` (Phase 9B: `by_tier`/`failures` for the Agent Report deep-dive,
-  from the native-first source the verdict gated on).
+  from the **same-path** source that path's verdict gated on — one ModelVerdict per measured path).
 
 ### File: `profile.rs`
 - **Responsibility:** The tunable use-case presets verdicts are measured against.
@@ -702,6 +764,12 @@ required-but-unmeasured input *blocks* ("ignorance is not a pass").
 - **Responsibility:** THE gate — `assess(inputs, profile) -> ReadinessVerdict`.
 - **Decision rule:** any `blocking` reason ⇒ **NotReady**; else any `conditions` ⇒
   **Conditional**; else **Ready**.
+- **`path` is decoupled from the native-FC gate:** `verdict.path = i.path` (the row's own
+  path, set by the caller) — **not** derived from `i.native_fc`. The `require_native_fc` gate
+  reads `i.native_fc`, which carries the **model-level** native capability (identical for both
+  of a column's rows). So a native-capable model's prompt-based row labels itself
+  `PromptBased` yet still passes `require_native_fc` (its `native_fc` is `Tested`); only a
+  genuinely native-incapable model's prompt row is blocked. Honest per-row, gate per-model.
 
 ```rust
 match i.pass_k {
@@ -712,8 +780,8 @@ match i.pass_k {
 if p.forbid_infinite_loop && i.loops > 0 { blocking.push(format!("loops on {} run{}", i.loops, plural(i.loops))); }
 if p.forbid_hallucinated_completion && i.hallucinated > 0 { blocking.push(format!("false 'done' on {} run{}", i.hallucinated, plural(i.hallucinated))); }
 if p.require_full_vram { match i.fits_in_vram {
-    Some(false) => blocking.push("partial offload → severe slowdown".into()),
-    None        => blocking.push("require_full_vram set, but VRAM fit not measured".into()),  // null-gate
+    Some(false) => blocking.push("partial offload → severe slowdown".into()),       // MEASURED fail → block
+    None        => conditions.push("memory fit not measured — set a memory cap to certify".into()), // unmeasured → caveat
     Some(true)  => {} } }
 if i.vram_pressure { conditions.push("high VRAM pressure near allocation ceiling".into()); }
 // soft targets → Conditional only on breach; unmeasured is silent
@@ -730,9 +798,11 @@ let status = if !blocking.is_empty() { Readiness::NotReady }
 | `pass_k` unmeasured / `< min_pass_k` | hard → NotReady | always (core gate) |
 | `forbid_infinite_loop` & `loops > 0` | hard → NotReady | when profile sets it |
 | `forbid_hallucinated_completion` & `hallucinated > 0` | hard → NotReady | when profile sets it |
-| `require_full_vram` & (`fits==false` or unmeasured) | hard → NotReady | when profile sets it |
+| `require_full_vram` & `fits==false` (MEASURED) | hard → NotReady | when profile sets it |
+| `require_full_vram` & fit **unmeasured** | soft → Conditional caveat | when profile sets it (e.g. llama.cpp / unified memory) |
 | `require_native_fc` & `NotSupported` | hard → NotReady | when profile sets it |
-| `min_context_tokens` vs cliff (`Collapsed<min` / `NoCliff<min` / `Broken` / `NotProbed`) | hard → NotReady | when profile sets `min_context_tokens` |
+| `min_context_tokens` vs cliff (`Collapsed<min` / `NoCliff<min` / `Broken`) MEASURED | hard → NotReady | when profile sets `min_context_tokens` |
+| `min_context_tokens` & cliff `NotProbed` (unmeasured) | soft → Conditional caveat | when profile sets `min_context_tokens` |
 | `vram_pressure` (≥ 0.85·cap) | soft → Conditional | always |
 | `ms_per_step > max_ms_per_step` | soft → Conditional | when both present |
 | `avg_steps > max_avg_steps` | soft → Conditional | when both present |
@@ -756,14 +826,23 @@ pub fn estimate(weights_bytes, layers, head_count, head_count_kv, embedding_leng
 ```
 
 ### File: `inputs.rs`
-- **Responsibility:** Adapter `BatchColumn -> ReadinessInputs`/verdicts, native-FC
-  preferred (the path a real agent uses) when measured.
-- **What:** `native_first_source(col) -> Option<&AggAgentic>` (the one native-first
-  selector — `agentic_native_fc.filter(total_runs>0).or(agentic)` — that `from_column`,
-  `pass_k_of`, `agentic_metrics`, AND the deep-dive's `by_tier`/`failures` all route
-  through, so the displayed per-tier data can't drift from the gating source);
-  `from_column`, `verdict_for` (error column short-circuits to NotReady), `agentic_metrics`,
-  `pass_k_of`, `assess_report(report, profile) -> Vec<ModelVerdict>`.
+- **Responsibility:** Adapter `BatchColumn -> ReadinessInputs`/verdicts. Emits **one verdict
+  per MEASURED PATH** (native + prompt-based), each sourced strictly from its own pass.
+- **Per-path emission (the report + publish path):** `measured_paths(col)` enumerates the
+  paths a column ran (native first when `agentic_native_fc.total_runs>0`, then prompt; an
+  errored/unmeasured column still yields one `(PromptBased, None)` so it never vanishes);
+  `source_for_path(col, path)` is the **STRICT** same-path selector (NO `native_first_source`
+  fallback — a row's metrics + tier ladder come from its own pass or are an honest gap);
+  `col_native_status(col)` is the **model-level** native capability shared by both rows;
+  `from_source(source, path, native_fc, …)` builds the inputs with `path` set explicitly and
+  `native_fc` carrying the model-level capability (decoupled — see `verdict.rs`);
+  `merged_by_tier_for_path` merges siblings strictly same-path; `verdicts_for_column(…)` ties
+  it together (the shared body of `assess_readiness` and `assess_report`).
+- **Legacy single-verdict helpers (kept for non-report callers + tests):**
+  `native_first_source(col) -> Option<&AggAgentic>` (`agentic_native_fc.filter(total_runs>0)
+  .or(agentic)`), `from_column`, `verdict_for` (error column → NotReady), `agentic_metrics`,
+  `pass_k_of`, `merged_by_tier_for`. `assess_report(report, profile) -> Vec<ModelVerdict>`
+  now flat-maps `verdicts_for_column` (one row per measured path).
 
 ```rust
 let native = col.agentic_native_fc.as_ref().filter(|a| a.total_runs > 0);
@@ -810,6 +889,18 @@ crash-resume.
   every run errors is COUNTED into `tasks_errored` + classified, never silently dropped;
   an all-errored pass still emits a column, which `inputs.rs` filters on `total_runs>0`
   so it never pollutes the verdict), `batch_summaries`, `agg_agentic`.
+- **Pass selection + order (`run_passes`, batch_cmd):** the UI picks the calling method(s) —
+  `RunConfig.native` (Tool-Calling) and/or `RunConfig.prompt` (Prompt-based), at least one
+  (Tool-Calling is the default; `prompt` defaults true for back-compat on resumed job logs). The
+  NATIVE pass runs FIRST when selected (into a `skeleton_report` column shell), emitting an
+  intermediate `batch-complete` (`final:false`) ONLY if the prompt pass will follow; then the
+  PROMPT pass runs **when selected** (else the report is the skeleton the native aggregates merge
+  into — a native-only run), merged by model; the terminal `batch-complete` carries `final:true`.
+  Native steps stream to the sink tagged `is_native` (UI shows the native trajectory separately).
+  Rationale: a slow native model (e.g. gemma4-qat, ~half its turns time out at the 180s
+  STEP_TIMEOUT) is watchable up front; the UI keeps `running` true until `final` so a still-empty
+  cell reads "Running…", not a misleading "N/A". The Matrix renders one row PER measured pass
+  (`scoreRows` `hasNative`/`hasPrompt`), so a native-only run shows no empty Prompt-based row.
 
 **Pass^k is strict** — a task is credited only when *all k runs* succeed:
 

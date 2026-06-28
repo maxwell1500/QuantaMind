@@ -50,6 +50,20 @@ fn rejects_empty_collection_identity() {
 }
 
 #[test]
+fn accepts_two_rows_for_one_model_distinguished_by_eval_method() {
+    // Dual-path publish sends one row per measured path: the SAME (model, quant, cohort)
+    // appears twice, distinguished only by `eval_method`. pre_validate does NOT dedup by
+    // model — both rows must survive. This pins the no-dedup property so a future validation
+    // change that adds model-deduping fails here instead of silently dropping the prompt path.
+    use crate::inference::eval::readiness::types::AgentPath;
+    let mut native = row("qwen2.5-coder", 0.82);
+    native.eval_method = AgentPath::NativeFc;
+    let mut prompt = row("qwen2.5-coder", 0.74);
+    prompt.eval_method = AgentPath::PromptBased;
+    assert!(pre_validate(&[native, prompt]).is_ok());
+}
+
+#[test]
 fn rejects_out_of_range_per_tier_rate() {
     use crate::inference::eval::agentic::spec::Tier;
     use crate::persistence::publish::row::TierMetric;

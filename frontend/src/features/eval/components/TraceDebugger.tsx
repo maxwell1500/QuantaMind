@@ -8,12 +8,25 @@ import { VerifyPhase } from "./pipeline/VerifyPhase";
 import { InfoButton } from "../../../shared/ui/InfoButton";
 import { Spinner } from "../../../shared/ui/Spinner";
 import { TOOL_HELP } from "../help";
-import { isStrictPass, type TrajectoryStep } from "../../../shared/ipc/eval/batch";
+import { agenticSystemPreview } from "../agenticPrompt";
+import { RunIoModal, type RunIoMode } from "./RunIoModal";
+import { EnvironmentReplayPanel, hasEnvReplay } from "./replay/EnvironmentReplayPanel";
+import { isStrictPass, type TrajectoryStep, type AgenticReport } from "../../../shared/ipc/eval/batch";
+import { cacheReuse } from "../../../shared/format/cache";
 
 interface TraceDebuggerProps {
   model: string;
   taskId: string | null;
   setTaskId: (id: string | null) => void;
+  /// The active run's decoy-tool budget — passed through to the per-run Input drill-down
+  /// so a reconstructed agentic prompt admits the decoy tools the model also saw.
+  decoys?: number;
+  /// Which pass's trajectory to show — controlled by the parent (the Simulator click), so the
+  /// Evaluator has no toggle of its own.
+  tracePass: "prompt" | "native";
+  /// The run's configured Pass^k — the denominator for the "RUN n OF N" headers while the
+  /// batch is still streaming (before the terminal report lands carries the intended total).
+  k?: number;
 }
 
 type TabType = "config" | "prompt" | "trace" | "matcher";
@@ -66,7 +79,7 @@ const FlagIcon = () => (
 
 const getStepIcon = (kind: string, isError: boolean): React.ReactNode => {
   if (kind === "tool_call") return <GearIcon />;
-  if (kind === "tool_error" || kind === "schema_error" || kind === "malformed_json" || kind === "turn_timeout") return <ErrorIcon />;
+  if (kind === "tool_error" || kind === "schema_error" || kind === "malformed_json" || kind === "turn_timeout" || kind === "foreign_dialect" || kind === "empty_output") return <ErrorIcon />;
   if (kind === "infinite_loop") return <LoopIcon />;
   if (kind === "hallucinated_completion" || kind === "forbidden_call" || kind === "reported_in_prose") return <StopIcon />;
   if (kind === "end_state_reached") return <FlagIcon />;
@@ -85,7 +98,9 @@ export const isErrorKind = (kind: string): boolean =>
   kind === "infinite_loop" ||
   kind === "forbidden_call" ||
   kind === "turn_timeout" ||
-  kind === "reported_in_prose";
+  kind === "reported_in_prose" ||
+  kind === "foreign_dialect" ||
+  kind === "empty_output";
 
 export const getStepTitle = (kind: string, isError: boolean) => {
   if (kind === "tool_call") return "Model Outputs Tool Call";
@@ -98,6 +113,8 @@ export const getStepTitle = (kind: string, isError: boolean) => {
   if (kind === "forbidden_call") return "Forbidden Action (Trap Sprung)";
   if (kind === "turn_timeout") return "Turn Timeout (Stalled Model)";
   if (kind === "reported_in_prose") return "Reported In Prose (Wrong Channel)";
+  if (kind === "foreign_dialect") return "Foreign Tool Dialect (Unparseable)";
+  if (kind === "empty_output") return "Empty Output (No Usable Response)";
   if (kind === "end_state_reached") return "End State Verification";
   return isError ? "Execution Failure" : "Model Output Success";
 };
@@ -120,6 +137,18 @@ export const verdictLabel = (topError: string): { title: string; detail: string 
       return { title: "FORBIDDEN ACTION", detail: "The model invoked a must_not_call trap — terminal the moment it fired." };
     case "turn_timeout":
       return { title: "TURN TIMEOUT", detail: "A model turn exceeded the per-step wall-clock budget (a stalled model)." };
+    case "foreign_dialect":
+      return {
+        title: "FOREIGN TOOL DIALECT",
+        detail:
+          "The model emitted an unparseable non-JSON tool dialect (a mis-built model's channel-token soup) — a template/dialect artifact, not a capability failure. Not salvaged: a real deployment couldn't read it either.",
+      };
+    case "empty_output":
+      return {
+        title: "EMPTY OUTPUT",
+        detail:
+          "The model produced no usable output (empty / whitespace / a lone punctuation char before its stop token) — a generation/template artifact, not a hallucinated completion. Often a model that doesn't engage the prompt-based tool format; try Measure native tool-calling.",
+      };
     case "reported_in_prose":
       return {
         title: "REPORTED IN PROSE",
@@ -152,7 +181,7 @@ const getStepNodeStyle = (kind: string, isError: boolean): React.CSSProperties =
     bg = "#f0fdfa";
     border = "1px solid #ccfbf1";
     color = "#0f766e"; // teal — mildest failure, distinct from amber/red
-  } else if (kind === "schema_error" || kind === "hallucinated_completion" || kind === "malformed_json") {
+  } else if (kind === "schema_error" || kind === "hallucinated_completion" || kind === "malformed_json" || kind === "foreign_dialect" || kind === "empty_output") {
     bg = "#fffbeb";
     border = "1px solid #fef3c7";
     color = "#b45309";
@@ -196,7 +225,7 @@ const getCardStyle = (kind: string, isError: boolean): React.CSSProperties => {
     bg = "#f0fdfa";
     border = "1px solid #ccfbf1";
     borderLeft = "3px solid #14b8a6"; // teal — mildest failure, distinct from amber/red
-  } else if (kind === "schema_error" || kind === "hallucinated_completion" || kind === "malformed_json") {
+  } else if (kind === "schema_error" || kind === "hallucinated_completion" || kind === "malformed_json" || kind === "foreign_dialect" || kind === "empty_output") {
     bg = "#fffbeb";
     border = "1px solid #fef3c7";
     borderLeft = "3px solid #f59e0b";
@@ -254,30 +283,91 @@ export function groupStepsByRun(steps: TrajectoryStep[]): RunGroup[] {
   return groups;
 }
 
+/// The "RUN n OF N" denominator: the CONFIGURED Pass^k, not the runs streamed so far —
+/// otherwise a live batch reads "RUN 3 OF 3" then "RUN 4 OF 4" as each rep lands. A
+/// completed report carries the intended total (`requested_runs` when the batch was
+/// budget-truncated, else `total_runs`); before the terminal outcome lands we fall back to
+/// the run's configured `k`. Never drop below the runs actually present, so a stray rep
+/// can't read as "RUN 6 OF 5".
+export function expectedRunCount(
+  report: Pick<AgenticReport, "total_runs" | "requested_runs"> | undefined,
+  k: number | undefined,
+  groupCount: number,
+): number {
+  const intended = report ? report.requested_runs ?? report.total_runs : k ?? groupCount;
+  return Math.max(intended, groupCount);
+}
+
 /// A run passed iff its terminal (last) step reached the end-state. Any other terminal
 /// kind — or a run still streaming — is not a pass.
 export function runPassed(group: RunGroup): boolean {
   return group.steps[group.steps.length - 1]?.kind === "end_state_reached";
 }
 
+/// Below this prefix-reuse fraction, a NON-first turn re-prefilled the transcript instead of
+/// reusing the cached prefix — a cache bust (the slow turn). Healthy non-first turns reuse
+/// ~0.95+ (the whole prior transcript was just cached); a bust collapses to ~0, so 0.5 sits
+/// safely in the gap and never trips on the normal recompute of a turn's own NEW tokens.
+export const CACHE_BUST_BELOW = 0.5;
+
+/// Per-turn llama.cpp prefix-cache readout: green when the prefix was reused, amber when it
+/// collapsed (a non-first turn re-prefilled), neutral on the first turn (no prior prefix to
+/// reuse). Renders nothing when the backend doesn't report it (Ollama/MLX → `available`
+/// false). The single `cacheReuse` gate keeps absence-of-feature absent, not a false "0".
+export function CacheBadge({ s }: { s: TrajectoryStep }) {
+  // cacheReuse(cached = cache_n, recomputed = prefill_tokens); total = cache_n + prefill_tokens.
+  const cr = cacheReuse(s.cache_n, s.prefill_tokens);
+  if (!cr.available) return null;
+  const base = { fontSize: 10, fontWeight: 700, padding: "2px 6px", borderRadius: 4, marginLeft: "auto" } as const;
+  if (s.step_index === 0) {
+    return (
+      <span data-testid="cache-badge-first" title="First turn — the whole prompt is prefilled (there's no prior transcript to reuse yet)." style={{ ...base, background: "#f8fafc", color: "#475569", border: "1px solid #e2e8f0" }}>
+        prefill · {cr.total} tok
+      </span>
+    );
+  }
+  if (cr.reuseRatio < CACHE_BUST_BELOW) {
+    const ms = s.prefill_ms != null ? ` (+${s.prefill_ms}ms)` : "";
+    return (
+      <span data-testid="cache-badge-bust" title="The reusable transcript prefix was NOT reused this turn — the prompt was re-prefilled (the prefix cache busted: context shifted/evicted). This is the slow turn." style={{ ...base, background: "#fef2f2", color: "#991b1b", border: "1px solid #fee2e2" }}>
+        ⚠ CACHE BUST · {cr.recomputed} re-prefilled{ms}
+      </span>
+    );
+  }
+  return (
+    <span data-testid="cache-badge-hit" title="The transcript prefix was reused from llama.cpp's prefix cache this turn — only the new tokens were recomputed (prefill ≈ 0)." style={{ ...base, background: "#f0fdf4", color: "#15803d", border: "1px solid #dcfce7" }}>
+      PREFIX CACHE · {cr.cached} reused / {cr.recomputed} recomputed
+    </span>
+  );
+}
+
 export function TraceDebugger({
   model,
   taskId,
   setTaskId,
+  decoys,
+  tracePass,
+  k,
 }: TraceDebuggerProps) {
   const { tasks } = useEvalRegistryStore();
   const outcomeByKey = useBatchStore((s) => s.outcomeByKey);
+  const nativeOutcomeByKey = useBatchStore((s) => s.nativeOutcomeByKey);
   const stepsByKey = useBatchStore((s) => s.stepsByKey);
+  const nativeStepsByKey = useBatchStore((s) => s.nativeStepsByKey);
   const running = useBatchStore((s) => s.running);
 
   const [activeTab, setActiveTab] = useState<TabType>("trace");
   const [collapsed, setCollapsed] = useState(false);
+  // The per-run Input/Output drill-down: which run (null = the single-turn run) and
+  // which view. Reset when the task/model changes so it never points at a stale run.
+  const [ioRun, setIoRun] = useState<{ runIndex: number | null; mode: RunIoMode } | null>(null);
   // User-toggled expansion overrides per run_index. Empty = follow the default
   // (expand the first failing run, else the first). Reset when the task/model
   // changes so a freshly selected task starts from its own default.
   const [runOverrides, setRunOverrides] = useState<Record<number, boolean>>({});
   useEffect(() => {
     setRunOverrides({});
+    setIoRun(null);
   }, [model, taskId]);
 
   // Find the selected task definition
@@ -305,13 +395,20 @@ export function TraceDebugger({
   }
 
   const key = cellKey(model, taskId);
-  const outcome = outcomeByKey[key];
-  const steps = stepsByKey[key] || [];
+  const nativeSteps = nativeStepsByKey[key] || [];
+  const hasNative = nativeSteps.length > 0;
+  // Everything below renders the SELECTED pass: its steps AND its terminal outcome. Gating on
+  // the prompt outcome was the bug — with native-first the prompt pass hasn't run, so a live
+  // native trace was hidden behind "No trace recorded".
+  const onNative = tracePass === "native" && hasNative;
+  const steps = (onNative ? nativeSteps : stepsByKey[key]) || [];
+  const outcome = onNative ? nativeOutcomeByKey[key] : outcomeByKey[key];
 
   // Split the flat trajectory into per-run sections. Runs execute sequentially, so
   // every group but the last is complete; while `running`, the last group may still
   // be streaming (shown as RUNNING rather than a premature FAIL).
   const groups = groupStepsByRun(steps);
+  const totalRuns = expectedRunCount(outcome?.kind === "agentic" ? outcome.report : undefined, k, groups.length);
   const isRunComplete = (gi: number) => !running || gi < groups.length - 1;
   // Default-expanded run: the first completed-and-failed run, else the first run.
   const defaultRunIndex =
@@ -322,6 +419,41 @@ export function TraceDebugger({
     runOverrides[runIndex] ?? runIndex === defaultRunIndex;
   const toggleRun = (runIndex: number) =>
     setRunOverrides((o) => ({ ...o, [runIndex]: !isRunExpanded(runIndex) }));
+
+  // The per-run Input/Output button pair. `runIndex` is the agentic run, or null for the
+  // single-turn run. `stopPropagation` keeps the agentic buttons from toggling the run's
+  // expand when they sit inside the run header row.
+  const ioButtons = (runIndex: number | null) => {
+    const suffix = runIndex === null ? "" : `-${runIndex}`;
+    return (
+      <span style={{ display: "inline-flex", gap: 6 }}>
+        <button
+          type="button"
+          onClick={(e) => {
+            e.stopPropagation();
+            setIoRun({ runIndex, mode: "input" });
+          }}
+          style={ioBtnStyle}
+          data-testid={`trace-io-input${suffix}`}
+          title="Show the prompt this run sent to the model"
+        >
+          Input
+        </button>
+        <button
+          type="button"
+          onClick={(e) => {
+            e.stopPropagation();
+            setIoRun({ runIndex, mode: "output" });
+          }}
+          style={ioBtnStyle}
+          data-testid={`trace-io-output${suffix}`}
+          title="Show the model's raw response for this run"
+        >
+          Output
+        </button>
+      </span>
+    );
+  };
 
   // Tab labels helper
   const renderTabHeader = (id: TabType, label: string) => {
@@ -408,7 +540,7 @@ export function TraceDebugger({
             systemMessage={
               outcome?.kind === "single"
                 ? outcome.trace.system_message
-                : `Constructed agentic prompt package for tools:\n${JSON.stringify(task.tools, null, 2)}`
+                : agenticSystemPreview(task)
             }
             userPrompt={
               outcome?.kind === "single"
@@ -420,11 +552,30 @@ export function TraceDebugger({
 
         {activeTab === "trace" && (
           <div style={{ display: "flex", flexDirection: "column", gap: 14 }}>
-            {!outcome ? (
+            {/* Which pass this trace is — read-only. The pass is chosen by clicking a Prompt or
+                Native result in the Simulator (no in-Evaluator toggle). */}
+            {tracePass === "native" && (
+              <div data-testid="trace-pass-label" style={{ alignSelf: "flex-start" }}>
+                <span
+                  style={{
+                    fontSize: 11,
+                    fontWeight: 700,
+                    padding: "3px 10px",
+                    borderRadius: 6,
+                    border: "1px solid #c4b5fd",
+                    background: "#f5f3ff",
+                    color: "#6d28d9",
+                  }}
+                >
+                  Tool-Calling (native) trace
+                </span>
+              </div>
+            )}
+            {!outcome && steps.length === 0 ? (
               <div style={{ color: "#64748b", fontSize: 13, fontFamily: "Inter, sans-serif", textAlign: "center", padding: 24 }}>
                 No trace recorded for this task yet. Run the batch to simulate.
               </div>
-            ) : outcome.kind === "single" ? (
+            ) : outcome?.kind === "single" ? (
               <div style={{ display: "flex", flexDirection: "column", gap: 16 }}>
                 {/* Single turn trace */}
                 <div style={{ ...getCardStyle("tool_call", false) }}>
@@ -433,6 +584,7 @@ export function TraceDebugger({
                     <span style={turnHeaderTitleStyle}>
                       TURN 1: Model Output (Raw text extracted)
                     </span>
+                    <span style={{ marginLeft: "auto" }}>{ioButtons(null)}</span>
                   </div>
                   <pre style={codeBlockStyle}>
                     {outcome.trace.raw_output || "(empty output)"}
@@ -468,9 +620,10 @@ export function TraceDebugger({
                   )}
                 </div>
               </div>
-            ) : outcome.kind === "agentic" ? (
+            ) : outcome?.kind === "agentic" || (!outcome && steps.length > 0) ? (
               <div style={{ display: "flex", flexDirection: "column", gap: 20 }}>
-                {/* Chronological agentic turns */}
+                {/* Chronological agentic turns (renders live from streaming steps even before
+                    the terminal outcome lands — the native-first live-trace fix). */}
                 {steps.length === 0 ? (
                   <div style={{ color: "#64748b", fontSize: 13, fontFamily: "Inter, sans-serif", textAlign: "center" }}>
                     No steps recorded for this multi-turn run yet.
@@ -487,24 +640,28 @@ export function TraceDebugger({
                         : "fail";
                       return (
                         <div key={group.runIndex} style={runSectionStyle}>
-                          <button
-                            type="button"
-                            onClick={() => toggleRun(group.runIndex)}
-                            style={runHeaderStyle}
-                            aria-expanded={expanded}
-                          >
-                            <span style={runCaretStyle}>{expanded ? "▼" : "▶"}</span>
-                            <span style={runTitleStyle}>
-                              RUN {gi + 1} OF {groups.length}
-                            </span>
-                            <span style={runChipStyle(status)}>{status.toUpperCase()}</span>
-                            <span style={runStepCountStyle}>
-                              {group.steps.length} {group.steps.length === 1 ? "turn" : "turns"}
-                            </span>
-                          </button>
+                          <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
+                            <button
+                              type="button"
+                              onClick={() => toggleRun(group.runIndex)}
+                              style={runHeaderStyle}
+                              aria-expanded={expanded}
+                            >
+                              <span style={runCaretStyle}>{expanded ? "▼" : "▶"}</span>
+                              <span style={runTitleStyle}>
+                                RUN {gi + 1} OF {totalRuns}
+                              </span>
+                              <span style={runChipStyle(status)}>{status.toUpperCase()}</span>
+                              <span style={runStepCountStyle}>
+                                {group.steps.length} {group.steps.length === 1 ? "turn" : "turns"}
+                              </span>
+                            </button>
+                            {ioButtons(group.runIndex)}
+                          </div>
 
                           {expanded && (
-                            <div style={{ ...timelineContainer, marginTop: 12 }}>
+                            <div style={hasEnvReplay(group.steps) ? splitRow : undefined}>
+                            <div style={{ ...timelineContainer, marginTop: 12, ...(hasEnvReplay(group.steps) ? splitTimeline : null) }}>
                               {group.steps.map((s, index) => {
                                 const isError = isErrorKind(s.kind);
 
@@ -540,6 +697,9 @@ export function TraceDebugger({
                                             FAULT INTERCEPTED
                                           </span>
                                         )}
+                                        {/* llama.cpp-only per-turn prefix-cache readout (reused vs recomputed;
+                                            amber on a cache bust). Renders nothing for Ollama/MLX. */}
+                                        <CacheBadge s={s} />
                                       </div>
 
                                       <pre style={codeBlockStyle}>
@@ -562,6 +722,12 @@ export function TraceDebugger({
                                 );
                               })}
                             </div>
+                            {hasEnvReplay(group.steps) && (
+                              <div style={replayCol} data-testid={`env-replay-${group.runIndex}`}>
+                                <EnvironmentReplayPanel steps={group.steps} />
+                              </div>
+                            )}
+                            </div>
                           )}
                         </div>
                       );
@@ -569,8 +735,10 @@ export function TraceDebugger({
                   </div>
                 )}
 
-                {/* Final Verdict */}
-                {steps.length > 0 && (
+                {/* Final Verdict — prompt pass only, and only once the outcome has LANDED (a
+                    still-streaming prompt task has steps but no `outcome.report` yet). The native
+                    trace shows its own per-run PASS/FAIL chips instead of this. */}
+                {tracePass === "prompt" && outcome?.kind === "agentic" && (
                   <div
                      style={verdictStyle(
                        isStrictPass(outcome.report)
@@ -641,11 +809,45 @@ export function TraceDebugger({
       </div>
       </>
       )}
+
+      {ioRun && (() => {
+        const isSingle = ioRun.runIndex === null;
+        const runSteps = isSingle ? [] : steps.filter((s) => s.run_index === ioRun.runIndex);
+        let title = "Single-turn run";
+        if (!isSingle) {
+          const pos = groups.findIndex((g) => g.runIndex === ioRun.runIndex);
+          title = pos >= 0 ? `RUN ${pos + 1} OF ${groups.length}` : `RUN ${ioRun.runIndex}`;
+        }
+        return (
+          <RunIoModal
+            task={task}
+            outcome={outcome}
+            steps={runSteps}
+            title={title}
+            decoys={decoys}
+            mode={ioRun.mode}
+            setMode={(mode) => setIoRun({ runIndex: ioRun.runIndex, mode })}
+            onClose={() => setIoRun(null)}
+          />
+        );
+      })()}
     </div>
   );
 }
 
 // ── Styles ──────────────────────────────────────────────────────────────────
+
+const ioBtnStyle: React.CSSProperties = {
+  fontSize: 11,
+  fontWeight: 600,
+  fontFamily: "Inter, sans-serif",
+  color: "#2563eb",
+  background: "#eff6ff",
+  border: "1px solid #dbeafe",
+  borderRadius: 6,
+  padding: "2px 10px",
+  cursor: "pointer",
+};
 
 const panelStyle: React.CSSProperties = {
   background: "#ffffff",
@@ -745,6 +947,11 @@ const timelineContainer: React.CSSProperties = {
   gap: "18px",
   position: "relative",
 };
+
+// Split-view: text trace (left) + visual environment replay (right), for environment tasks.
+const splitRow: React.CSSProperties = { display: "flex", gap: 12, alignItems: "flex-start", marginTop: 12 };
+const splitTimeline: React.CSSProperties = { flex: "1 1 0", minWidth: 0, marginTop: 0 };
+const replayCol: React.CSSProperties = { flex: "1 1 0", minWidth: 0, position: "sticky", top: 12 };
 
 const runSectionStyle: React.CSSProperties = {
   border: "1px solid #e2e8f0",

@@ -1,6 +1,6 @@
 use crate::errors::{AppError, AppResult};
 use crate::inference::eval::agentic::sandbox::{EndStateRule, TaskCheckpoint};
-use crate::inference::eval::agentic::spec::{AgenticSpec, DifficultyAxes, FaultInjection, NameFault, Tier};
+use crate::inference::eval::agentic::spec::{AgenticSpec, DifficultyAxes, EnvKind, FaultInjection, NameFault, Tier};
 use crate::inference::eval::agentic::v2::r#match::MustNotCall;
 use crate::inference::eval::toolcall::tasks::{ToolSchema, ToolTask};
 use serde::Deserialize;
@@ -25,6 +25,11 @@ pub struct V2Task {
     pub decoy_tools: Vec<V2Tool>,
     #[serde(default)]
     pub expected_calls: Vec<V2ExpectedCall>,
+    /// Slice 3 (stateful web-UI): the target end state. When present, the task is graded on the
+    /// final UI state matching this sub-state (`RequireEndState`), NOT on `expected_calls`
+    /// (those become the oracle's drive script in tests). Absent → checkpoint grading.
+    #[serde(default)]
+    pub target_state: Option<Value>,
     #[serde(default)]
     pub must_not_call: Vec<MustNotCall>,
     #[serde(default)]
@@ -118,7 +123,14 @@ fn to_tool_schema(t: &V2Tool) -> ToolSchema {
 /// `expected_calls` → `RequireAll` (or `ExpectAbstainingText` when empty); authored
 /// `decoy_tools` merge into the presented tool list; `faults` become name-keyed;
 /// `world_state` drives the responder.
-pub fn transpile_task(t: V2Task, tier: Tier, pass_k: u32, axes: DifficultyAxes, generated: bool) -> AppResult<ToolTask> {
+pub fn transpile_task(
+    t: V2Task,
+    tier: Tier,
+    pass_k: u32,
+    axes: DifficultyAxes,
+    generated: bool,
+    environment: EnvKind,
+) -> AppResult<ToolTask> {
     let mut tools: Vec<ToolSchema> = t.tools.iter().map(to_tool_schema).collect();
     tools.extend(t.decoy_tools.iter().map(to_tool_schema));
 
@@ -143,8 +155,13 @@ pub fn transpile_task(t: V2Task, tier: Tier, pass_k: u32, axes: DifficultyAxes, 
             }
         }
     }
-    let end_state =
-        if checkpoints.is_empty() { EndStateRule::ExpectAbstainingText } else { EndStateRule::RequireAll(checkpoints) };
+    // A `target_state` (stateful web-UI) grades on the final state and overrides checkpoint
+    // grading — `expected_calls` then serve only as the oracle's drive script (in tests).
+    let end_state = match t.target_state {
+        Some(target) => EndStateRule::RequireEndState(target),
+        None if checkpoints.is_empty() => EndStateRule::ExpectAbstainingText,
+        None => EndStateRule::RequireAll(checkpoints),
+    };
 
     let name_faults = t
         .faults
@@ -157,6 +174,7 @@ pub fn transpile_task(t: V2Task, tier: Tier, pass_k: u32, axes: DifficultyAxes, 
     let spec = AgenticSpec {
         mocks: vec![],
         end_state,
+        environment,
         tier,
         axes: Some(axes),
         k: Some(pass_k),

@@ -38,6 +38,11 @@ export const EndStateRuleSchema = z.union([
   z.object({ require_sequence: z.array(TaskCheckpointSchema).min(1) }),
   z.object({ require_all: z.array(TaskCheckpointSchema).min(1) }),
   z.literal("expect_abstaining_text"),
+  // Slice 3 (stateful web-UI): `{ "require_end_state": <target sub-state> }`. MUST be here or
+  // `z.object` strips it on the task round-trip → the backend re-receives a different end_state
+  // and the state-diff grader breaks (same bug class as the `environment` field below). The
+  // target is opaque to the frontend; preserved verbatim.
+  z.object({ require_end_state: z.unknown() }),
 ]);
 
 /// Mirrors the externally-tagged Rust `FaultInjection` (Driver B): a transient
@@ -82,6 +87,18 @@ export const AgenticSpecSchema = z.object({
   world_state: z.unknown().optional(),
   name_faults: z.array(z.unknown()).optional(),
   generated: z.boolean().optional(),
+  /// Backend-derived tool sets (Phase 9-v2): the getter set + the recognized-tool whitelist. MUST
+  /// be listed or `z.object()` strips them on the round-trip → (a) the backend re-receives them
+  /// empty so decoys ack `{"ok":true}` instead of nudging (a weakened trap), AND (b) the
+  /// content-verified `collection_hash` (Slice 4) falsely forks EVERY bundled run (received tasks
+  /// no longer equal pristine) → nothing publishable. Opaque to the frontend; preserved verbatim.
+  entity_tools: z.array(z.string()).optional(),
+  recognized_tools: z.array(z.string()).optional(),
+  /// Phase 1: which deterministic environment backs the task ("filesystem" selects the
+  /// simulated-filesystem responder). MUST be listed here or `z.object()` strips it on the
+  /// task round-trip → the backend re-receives it as `Entity` → the fs env never activates
+  /// (read_file acks empty, no visual replay). Opaque to the frontend; preserved verbatim.
+  environment: z.string().optional(),
 });
 export type AgenticSpec = z.infer<typeof AgenticSpecSchema>;
 

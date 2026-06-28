@@ -190,7 +190,7 @@ calls `buildLatencyBars` and `buildHistogram` once and threads the results down.
 |---|---|
 | `TokenTimeline.tsx` | visx `<Bar>` chart: x = cumulative `tMs`, y = gap latency (scaled to `gapMaxMs` so jitter stays visible, TTFT clamps); dashed vertical phase-boundary lines (slate load / violet prefill / amber TTFT); per-bar invisible hit-rect drives hover. |
 | `LatencyHistogram.tsx` | visx band/linear histogram of the `HistogramBucket[]`; outlier bins rose (`#e11d48`), hover shows the bin's `lo–hi ms · count`. |
-| `TtftBreakdown.tsx` | stacked horizontal CSS bar (load/prefill/stream-gen) sized by `%`; shows "not available for this backend" via `buildTtftSegments(...).available`. |
+| `TtftBreakdown.tsx` | stacked horizontal CSS bar (load/prefill/stream-gen) sized by `%`; shows "not available for this backend" via `buildTtftSegments(...).available`. Adds a llama.cpp **prefix-cache reuse** line (`· prefix cache: N reused / M recomputed`) gated on `cacheReuse(stats.cache_n, stats.prompt_eval_count).available` — absent for Ollama/MLX (`cache_n` null), a measured `0 reused` for a cold llama run (the two render differently by design). |
 | `VramBar.tsx` | ASCII-cell (`█`/`░`) memory monitor: model cells + system-base cells over the device pool, with an 85% OOM-risk marker; system base derived only when **both** VRAM totals are reported (else it would fabricate a figure). |
 | `ContextBudgetBar.tsx` | ASCII context-window monitor: `prompt_eval_count / context_length`; overlays an indicative attention "cliff" marker from `cliffStore.cliffForModel(model)` (backend-hydrated, not browser-cached); hot at ≥95%. |
 | `ColdWarmPanel.tsx` | renders `coldWarmState` → cold-start headline or the right "n/a" reason. |
@@ -329,11 +329,17 @@ prompt_based|native_fc }, memory?: { weights_bytes, kv_cache_bytes, total_bytes,
 cap_bytes, context_length, fits, pressure, estimated? }, avg_steps?, effort?,
 pass_k?, quantization?, cliff?: NotProbed|NoCliff|Collapsed|Broken, by_tier?:
 TierStat[], failures? }`. Hard gate failed → `not_ready`; soft target exceeded →
-`conditional`; nothing failing → `ready`. **A required-but-unmeasured metric blocks
-— it never guesses.** Backend returns verdicts already ranked best-first. Phase 9B
+`conditional`; nothing failing → `ready`. **A MEASURED hard-gate failure blocks; a
+required-but-unmeasured metric is a Conditional caveat (not a red block) — unmeasured
+≠ guessed fail** (e.g. memory fit on llama.cpp / unified memory, an unprobed cliff).
+Backend returns verdicts already ranked best-first. A model
+measured on both tool-calling paths yields **two** `ModelVerdict`s — one `native_fc`,
+one `prompt_based` — rendered as separate rows (the VerdictTable keys on
+`model+backend+path`; the **Show Native-FC Path** toggle hides the native rows). Phase 9B
 adds `by_tier` (per-tier strict Pass^k + avg-steps + failures) and `failures`
-(overall tally), both from the **native-first** source the verdict gated on — they
-feed the deep-dive below.
+(overall tally), both from the **same-path** source that path's verdict gated on — they
+feed the deep-dive below, which targets a specific *(model, path)* via the composite-key
+selector (`focusedModel` + `focusedPath`, reset-guarded so focus never orphans).
 
 **Per-domain tier accumulation + quant fallback (backend `assess_readiness`).**
 Built-in tiers are *separate single-tier collections* (`easy-coding`,
@@ -382,10 +388,15 @@ verdict, so they can't disagree:
 - **`TierProgressionMatrix.tsx`** — four tier cards: measured Pass^k + avg-steps, a
   `CLEAR/SATURATED/FAIL` badge on the same `min_pass_k` bar, and `NOT TESTED` (gray) for a
   tier absent from `by_tier` (never a guessed fail). "Task Parameters" (Horizon/Decoys) come
-  from real task `axes` via `deepDive.axesByTier`, or read "not declared".
+  from real task `axes` via `deepDive.axesByTier`, or read "not declared". A **tested** tier
+  card is clickable (`onSelectTier`) — selecting it reveals that tier's failures below;
+  re-clicking clears. A NOT-TESTED card is inert. `AgentReportPage` owns the `selectedTier`
+  state (cleared when the focused model/path changes).
 - **`FailureTaxonomy.tsx`** — failure-mode distribution (`unknown_tool_calls`→decoys,
-  `forbidden_calls`→must_not_call, loops, hallucinations…) summed across the **tested**
-  tiers (named in the heading), as a share of tracked failure *events* (not failed runs).
+  `forbidden_calls`→must_not_call, loops, hallucinations…) for the **single selected tier**
+  (failures are tied to the tier they occurred in), as a share of that tier's tracked
+  failure *events* (not failed runs). Renders **nothing** until a tier is clicked in the
+  matrix.
 - **`deepDive.ts`** — `axesByTier(tasks)` (real per-tier Horizon/Decoy ranges or absent) +
   `deepDiveJson(verdict,…)` (versioned `schema_version` JSON export).
 

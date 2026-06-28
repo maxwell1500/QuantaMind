@@ -13,6 +13,7 @@ fn config() -> RunConfig {
         params: None,
         keep_alive: None,
         native: true,
+        prompt: true,
         tier: None,
         decoy_tools: None,
     }

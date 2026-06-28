@@ -28,6 +28,21 @@ describe("batchStore (rAF-buffered)", () => {
     expect(get().stepsByKey[cellKey("m1", "a1")]).toHaveLength(500);
   });
 
+  it("routes native steps to nativeStepsByKey, separate from the prompt trace", () => {
+    get().startRun();
+    // Two prompt turns, then two native turns for the same (model, task).
+    get().ingestStep(step("m1", "a1", 0));
+    get().ingestStep(step("m1", "a1", 1));
+    get().ingestStep({ ...step("m1", "a1", 0), is_native: true });
+    get().ingestStep({ ...step("m1", "a1", 1), is_native: true });
+    flushBatchBufferForTests();
+
+    const key = cellKey("m1", "a1");
+    // The two trajectories are kept apart — the native run never pollutes the prompt trace.
+    expect(get().stepsByKey[key]).toHaveLength(2);
+    expect(get().nativeStepsByKey[key]).toHaveLength(2);
+  });
+
   it("routes progress + steps by (model, task) and tracks done/total", () => {
     get().startRun();
     const started: BatchProgress = { phase: "started", model: "m1", task_id: "a1", index: 0, total: 3, category: "agentic" };
@@ -56,6 +71,47 @@ describe("batchStore (rAF-buffered)", () => {
     expect(get().progress).toEqual({ done: 1, total: 3 });
     expect(get().stepsByKey[cellKey("m1", "a1")]).toHaveLength(1);
     expect(get().outcomeByKey[cellKey("m1", "a1")]?.kind).toBe("agentic");
+  });
+
+  it("routes native vs prompt results to their own slices; the bar resets at the pass boundary", () => {
+    get().startRun();
+    const started = (is_native: boolean) =>
+      ({ phase: "started", model: "m1", task_id: "a1", index: 0, total: 1, category: "agentic", is_native }) as BatchProgress;
+    const done = (is_native: boolean) =>
+      ({ phase: "done", model: "m1", task_id: "a1", is_native, outcome: { kind: "single", passed: true, trace: {} } }) as unknown as BatchProgress;
+    // Native pass first: started → done advances its bar to 1/1.
+    get().ingestProgress(started(true));
+    get().ingestProgress(done(true));
+    flushBatchBufferForTests();
+    expect(get().progress.done).toBe(1);
+    // Prompt pass starts → pass boundary resets the bar to 0, then its done → 1/1 again.
+    get().ingestProgress(started(false));
+    get().ingestProgress(done(false));
+    flushBatchBufferForTests();
+
+    const key = cellKey("m1", "a1");
+    expect(get().nativeOutcomeByKey[key]).toBeDefined(); // native result kept separate
+    expect(get().outcomeByKey[key]).toBeDefined(); // prompt result in its own slice
+    expect(get().progress.done).toBe(1); // bar reset at the boundary — not 2 (no double-count)
+  });
+
+  it("an intermediate complete (final=false) keeps running true; the final one ends the run", () => {
+    get().startRun();
+    expect(get().running).toBe(true);
+    const report = { collection_id: "c", columns: [] } as unknown as BatchReport;
+    // Native pass posts its column but the prompt pass is still going → still running.
+    get().complete(report, false);
+    expect(get().running).toBe(true);
+    // The final (prompt) complete ends it.
+    get().complete(report, true);
+    expect(get().running).toBe(false);
+  });
+
+  it("marks the live pass native when a native-tagged step streams", () => {
+    get().startRun();
+    get().ingestStep({ ...step("m1", "a1", 0), is_native: true });
+    flushBatchBufferForTests();
+    expect(get().live.native).toBe(true);
   });
 
   it("tracks the live task/run/step so the UI can show motion during a run", () => {

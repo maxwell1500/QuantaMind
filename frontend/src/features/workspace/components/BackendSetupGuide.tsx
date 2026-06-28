@@ -51,12 +51,19 @@ function useEngines(): Engine[] {
       tag: "Local GGUF",
       blurb: "Runs a single GGUF directly via llama-server.",
       runs: "Any .gguf file",
-      commands: [{ label: "Install", cmd: llamaInstall }],
+      commands: [
+        { label: "Install", cmd: llamaInstall },
+        {
+          label: "Run your own server (only if not bundled — flags are required)",
+          cmd: "llama-server -m your-model.gguf --host 127.0.0.1 --port 8081 --jinja -c 8192",
+        },
+      ],
       links: [{ text: "llama.cpp project", href: "https://github.com/ggml-org/llama.cpp" }],
       steps: [
-        "Install llama.cpp with the command above (a server also ships bundled).",
+        "Easiest: a llama-server ships bundled — just press ▶ and QuantaMind runs it for you (it adds --jinja and the right port automatically).",
         "Download a GGUF in Models → Hugging Face (or Local File).",
         "Pick llama.cpp + your model in the header, then press ▶.",
+        "Running your own server instead (e.g. it isn't bundled for your platform)? Use the command above exactly — QuantaMind talks to it on port 8081, and the --jinja flag is required or generations loop instead of stopping.",
       ],
     },
     {

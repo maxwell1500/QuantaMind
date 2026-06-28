@@ -1,4 +1,5 @@
 use crate::errors::{AppError, AppResult};
+use crate::inference::eval::agentic::v2::collection::load_v2_collection;
 use crate::inference::eval::toolcall::tasks::{validate_tasks, ToolTask};
 use std::path::{Path, PathBuf};
 
@@ -60,10 +61,28 @@ pub fn read_text_capped(path: &Path) -> AppResult<String> {
 /// parse and validate. Shared by `load` (managed dir) and the import command
 /// (external path) so the cap and the trust boundary are enforced once.
 pub fn read_capped(path: &Path) -> AppResult<Vec<ToolTask>> {
-    let content = read_text_capped(path)?;
-    let tasks: Vec<ToolTask> = serde_json::from_str(&content)?;
-    validate_tasks(&tasks)?;
-    Ok(tasks)
+    parse_collection(&read_text_capped(path)?)
+}
+
+/// Parse a collection from JSON text, detecting the format by the **top-level shape** (an
+/// unambiguous discriminator): a JSON **array** is a raw `ToolTask[]`; a JSON **object** is a v2
+/// collection (`environment`/`world_state`/`expected_calls`/`target_state`), transpiled via
+/// `load_v2_collection`. An object that isn't valid v2 returns `load_v2_collection`'s clear error
+/// — it NEVER falls through to the raw-array path. Both paths run the `validate_tasks` trust
+/// boundary (v2 inside `load_v2_collection`). Anything else (string/number/null) is unrecognized.
+pub fn parse_collection(content: &str) -> AppResult<Vec<ToolTask>> {
+    let value: serde_json::Value = serde_json::from_str(content)?; // malformed JSON → InvalidTaskSchema
+    match value {
+        serde_json::Value::Array(_) => {
+            let tasks: Vec<ToolTask> = serde_json::from_value(value)?;
+            validate_tasks(&tasks)?;
+            Ok(tasks)
+        }
+        serde_json::Value::Object(_) => load_v2_collection(content),
+        _ => Err(AppError::InvalidTaskSchema(
+            "unrecognized collection format: expected a JSON array of tasks or a v2 collection object".into(),
+        )),
+    }
 }
 
 pub fn load(dir: &Path, name: &str) -> AppResult<Vec<ToolTask>> {

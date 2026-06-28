@@ -149,6 +149,61 @@ describe("PerformanceMatrix", () => {
     expect(screen.queryByTestId("failbreak-qwen")).toBeNull();
   });
 
+  it("shows the Bad Dialect badge AND its breakdown for a foreign-dialect-only model", () => {
+    // Regression: a model whose only failures are foreign_dialect used to show the badge but
+    // a `total === 0` breakdown (the ⓘ vanished), reading as 'not wired'. The terminal mode
+    // must count toward the total and appear in the tooltip.
+    const dialectReport: BatchReport = {
+      collection_id: "c",
+      columns: [
+        {
+          model: "gemmaqat",
+          backend: "ollama",
+          toolcall: null,
+          agentic: {
+            tasks_passed: 0, tasks_total: 3, passes: 0, total_runs: 3, avg_steps: 1, avg_output_tokens_success: null,
+            schema_resilience: null, top_error: "foreign_dialect",
+            failures: { infinite_loop_hits: 0, hallucinated_completions: 0, malformed_json_calls: 0, schema_unrecovered_calls: 0, foreign_dialect_calls: 3 },
+          },
+          error: null,
+        },
+      ],
+    };
+    useBatchStore.setState({ report: dialectReport });
+    render(<PerformanceMatrix focusedModel="gemmaqat" onFocusModel={() => {}} />);
+    expect(screen.getByTestId("matrix-model-row-gemmaqat")).toHaveTextContent("Bad Dialect");
+    const info = screen.getByTestId("failbreak-gemmaqat"); // ⓘ present → total > 0
+    fireEvent.mouseEnter(info);
+    expect(screen.getByTestId("tooltip-failbreak-gemmaqat")).toHaveTextContent(/Bad Dialect 3/);
+  });
+
+  it("shows the No Output badge AND its breakdown for an empty-output-only model", () => {
+    // The gemma-qat prompt-path symptom: the model emits nothing usable ('.') → empty_output,
+    // NOT hallucinated. Badge + ⓘ must both reflect it (not a silent '0 failures').
+    const emptyReport: BatchReport = {
+      collection_id: "c",
+      columns: [
+        {
+          model: "gemmaqat",
+          backend: "ollama",
+          toolcall: null,
+          agentic: {
+            tasks_passed: 0, tasks_total: 3, passes: 0, total_runs: 3, avg_steps: 1, avg_output_tokens_success: null,
+            schema_resilience: null, top_error: "empty_output",
+            failures: { infinite_loop_hits: 0, hallucinated_completions: 0, malformed_json_calls: 0, schema_unrecovered_calls: 0, empty_output_calls: 3 },
+          },
+          error: null,
+        },
+      ],
+    };
+    useBatchStore.setState({ report: emptyReport });
+    render(<PerformanceMatrix focusedModel="gemmaqat" onFocusModel={() => {}} />);
+    expect(screen.getByTestId("matrix-model-row-gemmaqat")).toHaveTextContent("No Output");
+    const info = screen.getByTestId("failbreak-gemmaqat");
+    fireEvent.mouseEnter(info);
+    expect(screen.getByTestId("tooltip-failbreak-gemmaqat")).toHaveTextContent(/No Output 3/);
+  });
+
   const failures = { infinite_loop_hits: 0, hallucinated_completions: 0, malformed_json_calls: 0, schema_unrecovered_calls: 0 };
   const nativeReport: BatchReport = {
     collection_id: "c",
@@ -164,47 +219,58 @@ describe("PerformanceMatrix", () => {
     ],
   };
 
-  it("reveals a parallel Native-FC pass^k column behind a toggle when native was measured", () => {
+  it("gives a model TWO rows — Tool-Calling (native) + Prompt-based — when native was measured", () => {
     useBatchStore.setState({ report: nativeReport });
     render(<PerformanceMatrix focusedModel="qwen" onFocusModel={() => {}} />);
 
-    // Hidden by default — prompt-based is the default view.
-    expect(screen.queryByRole("columnheader", { name: "Native FC" })).toBeNull();
-
-    fireEvent.click(screen.getByTestId("matrix-native-toggle"));
-    expect(screen.getByRole("columnheader", { name: "Native FC" })).toBeInTheDocument();
-    expect(screen.getByTestId("matrix-native-qwen")).toHaveTextContent("2/5"); // native pass^k
-    expect(screen.getByTestId("matrix-model-row-qwen")).toHaveTextContent("5/5"); // prompt-based still there
-
-    fireEvent.click(screen.getByTestId("matrix-native-toggle"));
-    expect(screen.queryByRole("columnheader", { name: "Native FC" })).toBeNull(); // toggled back off
+    // Method column instead of a Show/Hide toggle; one row per pass.
+    expect(screen.getByRole("columnheader", { name: "Method" })).toBeInTheDocument();
+    expect(screen.queryByTestId("matrix-native-toggle")).toBeNull();
+    // Two rows for the one model.
+    expect(screen.getByTestId("matrix-native-row-qwen")).toHaveTextContent("Tool-Calling");
+    expect(screen.getByTestId("matrix-model-row-qwen")).toHaveTextContent("Prompt-based");
+    // Each row holds ITS pass's Pass^k.
+    expect(screen.getByTestId("matrix-native-qwen")).toHaveTextContent("2/5"); // native row
+    expect(screen.getByTestId("matrix-prompt-qwen")).toHaveTextContent("5/5"); // prompt row
   });
 
-  it("explains an N/A Native-FC cell instead of leaving a silent wall", () => {
-    // qwen has native; a llama.cpp model was skipped → its native cell is N/A.
+  it("gives only the Prompt-based row when native was NOT measured (no native row)", () => {
     const mixed: BatchReport = {
       collection_id: "c",
       columns: [
-        nativeReport.columns[0],
         { model: "tinyllama.gguf", backend: "llama_cpp", toolcall: null, agentic: { tasks_passed: 3, tasks_total: 5, passes: 3, total_runs: 5, avg_steps: 2, avg_output_tokens_success: 80, schema_resilience: null, top_error: "none", failures }, agentic_native_fc: null, error: null },
       ],
     };
     useBatchStore.setState({ report: mixed });
-    render(<PerformanceMatrix focusedModel="qwen" onFocusModel={() => {}} />);
-    fireEvent.click(screen.getByTestId("matrix-native-toggle"));
-    const naCell = screen.getByTestId("matrix-native-tinyllama.gguf");
-    expect(naCell).toHaveTextContent("—"); // N/A renders as an em-dash badge
-    expect(naCell.getAttribute("title")).toMatch(/tools.*capability|N\/A for this model/i);
+    render(<PerformanceMatrix focusedModel="tinyllama.gguf" onFocusModel={() => {}} />);
+    // Prompt-based row present; NO Tool-Calling row for an unmeasured-native model.
+    expect(screen.getByTestId("matrix-model-row-tinyllama.gguf")).toHaveTextContent("Prompt-based");
+    expect(screen.queryByTestId("matrix-native-row-tinyllama.gguf")).toBeNull();
+    expect(screen.queryByTestId("matrix-native-tinyllama.gguf")).toBeNull();
   });
 
-  it("always offers the Native-FC toggle and explains how to populate it when it was not measured", () => {
+  it("gives only the Tool-Calling row for a NATIVE-ONLY run (no empty Prompt-based row)", () => {
+    // The user picked Tool-Calling only → the column has native data but no prompt agentic/toolcall.
+    const nativeOnly: BatchReport = {
+      collection_id: "c",
+      columns: [
+        { model: "qwen", backend: "ollama", toolcall: null, agentic: null, error: null,
+          agentic_native_fc: { tasks_passed: 2, tasks_total: 2, passes: 2, total_runs: 2, avg_steps: 1.5, avg_output_tokens_success: 60, schema_resilience: null, top_error: "none", failures } },
+      ],
+    };
+    useBatchStore.setState({ report: nativeOnly });
+    render(<PerformanceMatrix focusedModel="qwen" onFocusModel={() => {}} />);
+    expect(screen.getByTestId("matrix-native-row-qwen")).toHaveTextContent("Tool-Calling");
+    expect(screen.getByTestId("matrix-native-qwen")).toHaveTextContent("2/2");
+    // No empty Prompt-based row for a native-only run.
+    expect(screen.queryByTestId("matrix-model-row-qwen")).toBeNull();
+  });
+
+  it("shows only Prompt-based rows + a hint when native was not measured for any model", () => {
     useBatchStore.setState({ report }); // no agentic_native_fc on any column
     render(<PerformanceMatrix focusedModel="qwen" onFocusModel={() => {}} />);
-    // The toggle is always available — clicking it must DO something, not vanish.
-    const toggle = screen.getByTestId("matrix-native-toggle");
-    fireEvent.click(toggle);
-    // Reveals the column (N/A here) plus a hint pointing at the run-config checkbox.
+    // The hint explains the missing native measurement; no native rows exist.
     expect(screen.getByTestId("native-fc-empty-hint")).toHaveTextContent(/Measure native tool-calling/i);
-    expect(screen.getByTestId("matrix-native-qwen")).toHaveTextContent("—"); // N/A renders as an em-dash badge
+    expect(screen.queryByTestId("matrix-native-row-qwen")).toBeNull();
   });
 });

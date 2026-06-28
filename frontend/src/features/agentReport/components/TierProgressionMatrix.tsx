@@ -28,16 +28,23 @@ export function TierProgressionMatrix({
   byTier,
   minPassK,
   params,
+  selectedTier,
+  onSelectTier,
 }: {
   byTier: TierStat[] | undefined;
   minPassK: number;
   params?: Partial<Record<Tier, TierCardParams>>;
+  /// The tier whose failures the deep-dive is showing, or null. Clicking a TESTED
+  /// card selects it (and reveals its failure taxonomy); clicking it again clears.
+  selectedTier: Tier | null;
+  onSelectTier: (t: Tier | null) => void;
 }) {
   const statByTier = new Map((byTier ?? []).map((s) => [s.tier, s]));
   return (
     <section data-testid="tier-matrix" className="space-y-3">
       <h3 className="text-xs font-bold uppercase tracking-wider text-slate-700">
         Tier Progression Matrix (Saturation Curve)
+        <span className="text-slate-400 font-medium normal-case"> — click a tested tier for its failures</span>
       </h3>
       <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3">
         {TIER_ORDER.map((tier) => {
@@ -45,11 +52,29 @@ export function TierProgressionMatrix({
           const k = PASS_K_BY_TIER[tier];
           const p = params?.[tier];
           const res = s ? RESULT[tierResult(s, minPassK)] : NOT_TESTED;
+          const tested = !!s;
+          const selected = selectedTier === tier;
           return (
             <div
               key={tier}
               data-testid={`tier-card-${tier}`}
-              className="border border-slate-200 rounded-xl shadow-sm p-4 bg-white space-y-3"
+              role={tested ? "button" : undefined}
+              tabIndex={tested ? 0 : undefined}
+              aria-pressed={tested ? selected : undefined}
+              onClick={tested ? () => onSelectTier(selected ? null : tier) : undefined}
+              onKeyDown={
+                tested
+                  ? (e) => {
+                      if (e.key === "Enter" || e.key === " ") {
+                        e.preventDefault();
+                        onSelectTier(selected ? null : tier);
+                      }
+                    }
+                  : undefined
+              }
+              className={`rounded-xl shadow-sm p-4 bg-white space-y-3 border ${
+                tested ? "cursor-pointer hover:border-slate-300" : "border-slate-200"
+              } ${selected ? "border-slate-800 ring-2 ring-slate-800/20" : tested ? "border-slate-200" : ""}`}
             >
               <span className="font-mono font-bold text-xs text-slate-800">
                 {res.dot} TIER: {up(tier)}

@@ -31,6 +31,29 @@ describe("CompareColumn", () => {
     );
   });
 
+  it("appends a llama.cpp prefix-cache segment, but stays byte-identical for a no-cache run", () => {
+    // llama.cpp: cache_n=240 reused, prompt_eval_count=10 recomputed → total 250.
+    const llama = ROW({ status: "done", output: "ok",
+      metrics: { ttft_ms: 142, tokens_per_sec: 38.2, token_count: 218,
+        stats: { cache_n: 240, prompt_eval_count: 10 } } });
+    render(<CompareColumn row={llama} />);
+    expect(screen.getByTestId("compare-metrics-llama3.2:1b")).toHaveTextContent(
+      "TTFT 142ms · 38.2 tok/s · 218 tokens · cache 240/250 reused",
+    );
+  });
+
+  it("omits the cache segment for a backend without it (Ollama: stats present, no cache_n)", () => {
+    const ollama = ROW({ status: "done", output: "ok",
+      metrics: { ttft_ms: 142, tokens_per_sec: 38.2, token_count: 218,
+        stats: { prompt_eval_count: 250 } } });
+    render(<CompareColumn row={ollama} />);
+    // Byte-identical to the no-stats case — never a false "cache 0/250".
+    expect(screen.getByTestId("compare-metrics-llama3.2:1b")).toHaveTextContent(
+      "TTFT 142ms · 38.2 tok/s · 218 tokens",
+    );
+    expect(screen.queryByText(/cache/)).toBeNull();
+  });
+
   it("renders the error block when status is error", () => {
     render(<CompareColumn row={ROW({ status: "error", error: { kind: "inference", message: "HTTP 500" } })} />);
     expect(screen.getByTestId("compare-error-llama3.2:1b")).toHaveTextContent("inference: HTTP 500");

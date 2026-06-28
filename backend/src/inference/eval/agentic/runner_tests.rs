@@ -1,7 +1,7 @@
 use crate::errors::AppResult;
 use crate::inference::eval::agentic::model_turn::ModelTurn;
 use crate::inference::eval::agentic::scoring::report::{FailureKind, TopError};
-use crate::inference::eval::agentic::runner::{run_agentic, run_agentic_within, run_once, run_once_inner, AgenticConfig};
+use crate::inference::eval::agentic::runner::{run_agentic, run_agentic_within, run_once, run_once_inner, task_budget, AgenticConfig};
 use tokio_util::sync::CancellationToken;
 use crate::inference::eval::agentic::sandbox::{DeterministicSandbox, EndStateRule, MockResponse, TaskCheckpoint};
 use crate::inference::eval::agentic::spec::{FaultInjection, FaultRule};
@@ -230,6 +230,35 @@ async fn generous_budget_runs_every_requested_run_and_is_not_flagged() {
     assert_eq!(report.requested_runs, None, "a full batch is never flagged truncated");
 }
 
+#[test]
+fn task_budget_scales_with_k_so_a_bigger_pass_k_is_not_truncated_early() {
+    // The bug: a FLAT per-task cap let only a fixed number of slow runs through regardless of k,
+    // truncating every tier above the smallest before it could finish. The budget must grow with k
+    // so each requested run gets the same guaranteed slice.
+    let easy = task_budget(5, false);
+    let hard = task_budget(16, false);
+    let extreme = task_budget(24, false);
+    assert_eq!(easy, std::time::Duration::from_secs(300) * 5, "k=5 → 5 per-run slices");
+    assert_eq!(hard, std::time::Duration::from_secs(300) * 16);
+    assert!(easy < hard && hard < extreme, "more runs → more wall-clock, never a flat cap");
+    // k=0 can't underflow the multiply into a zero budget that truncates the only sampled run.
+    assert_eq!(task_budget(0, false), task_budget(1, false));
+}
+
+#[test]
+fn task_budget_gives_a_thinking_model_more_wall_clock_per_run() {
+    // A reasoning model emits a multi-k-token <think> scratchpad each turn, so a run is
+    // intrinsically slower; without the thinking bump it truncates mid-batch while progressing
+    // normally. Same k, strictly more time — and the bump is per-RUN, so it compounds with k.
+    for k in [1u32, 5, 16, 24] {
+        assert!(
+            task_budget(k, true) > task_budget(k, false),
+            "thinking gets more time at k={k}"
+        );
+        assert_eq!(task_budget(k, true), task_budget(k, false) * 3, "3× per-run for thinking");
+    }
+}
+
 #[tokio::test]
 async fn a_harmony_dialect_run_is_normalized_scored_and_flagged_on_the_report() {
     // The model ignores the JSON instruction and emits its native channel grammar. The
@@ -316,6 +345,583 @@ async fn lazy_agent_claiming_done_is_a_failure_not_a_pass() {
     let steps = drain(&mut rx);
     assert_eq!(steps.len(), 1); // bailed on turn one, no tools touched
     assert_eq!(steps[0].kind, StepKind::HallucinatedCompletion);
+}
+
+#[tokio::test]
+#[ignore = "hits a live Ollama on :11434 with a mis-built gemma-4-12b-it-qat (nondeterministic dialect)"]
+async fn live_gemma_verdict_matches_its_actual_output() {
+    // End-to-end against the REAL model. gemma-qat is a broken artifact whose output VARIES
+    // run-to-run: a clean call (pass), foreign `call:NAME(...)` token soup (→ ForeignDialect),
+    // or a token-leak-then-prose hallucination (→ Hallucinated). We can't hard-assert one
+    // verdict. Instead we assert the INVARIANT that proves the wiring is honest: the runner's
+    // verdict must AGREE with what the shared classifier says about the model's actual output —
+    // foreign-dialect soup is flagged foreign, and a non-soup yield is NOT false-flagged. This
+    // also guards the original bug: the run is always given a definite verdict, never silently
+    // dropped/empty.
+    use crate::inference::backend::backend_kind::BackendKind;
+    use crate::inference::eval::toolcall::parse::looks_like_foreign_dialect;
+
+    let cart = DeterministicSandbox::new(
+        "Run the test suite for module 'cart'. If it fails, report which test failed. Do not edit any source.".into(),
+        vec![],
+        vec![MockResponse {
+            call: Call { name: "run_tests".into(), args: json!({ "module": "cart" }) },
+            response: r#"{"failed":["test_apply_discount_negative_total"]}"#.into(),
+        }],
+        EndStateRule::RequireSequence(vec![TaskCheckpoint {
+            tool: "run_tests".into(),
+            args: json!({ "module": "cart" }),
+        }]),
+    );
+    let model = crate::inference::eval::agentic::model_turn::BackendTurn {
+        backend: BackendKind::Ollama,
+        endpoint: "http://localhost:11434".into(),
+        model: "gemma-4-12b-it-qat:q4_0".into(),
+        cancel: CancellationToken::new(),
+        options: None,
+        keep_alive: None,
+        is_thinking: false,
+        max_tokens: 512,
+        stop_cache: Default::default(),
+    };
+    let (tx, mut rx) = unbounded_channel();
+    let report = run_agentic(&model, &cart, AgenticConfig { k: 1, max_steps: 3, ..Default::default() }, &tx)
+        .await
+        .unwrap();
+    drop(tx);
+
+    let steps = drain(&mut rx);
+    for s in &steps {
+        eprintln!("step {} kind={:?}\n  raw={}", s.step_index, s.kind, s.raw_output);
+    }
+    eprintln!("report = {report:?}");
+
+    // The verdict must be a real classification of the actual output, never a silent drop.
+    assert_eq!(report.passes + report.failures.foreign_dialect_calls + report.failures.hallucinated_completions
+        + report.failures.malformed_json_calls + report.failures.infinite_loop_hits
+        + report.failures.reported_in_prose_calls, report.total_runs, "every run got a definite verdict");
+
+    // When the terminal turn IS foreign-dialect soup, it must be flagged foreign — and never
+    // when it isn't (no false-positive on a plain prose/hallucinated yield).
+    let terminal = steps.last().expect("at least one step");
+    if looks_like_foreign_dialect(&terminal.raw_output) {
+        assert_eq!(report.top_error, TopError::ForeignDialect, "soup must be flagged ForeignDialect");
+        assert_eq!(report.failures.hallucinated_completions, 0, "soup must not be a hallucination");
+        assert_eq!(report.failures.malformed_json_calls, 0, "soup must not be broken-JSON");
+    } else {
+        assert_eq!(report.failures.foreign_dialect_calls, 0, "a non-soup yield must NOT be false-flagged foreign");
+    }
+}
+
+#[tokio::test]
+#[ignore = "DIAGNOSTIC: prompt-path gemma on the real es_co_lint_then_report task — prints raw bytes"]
+async fn live_gemma_prompt_path_lint_task_raw_output() {
+    // Reproduce the exact app scenario from the screenshot: prompt path (native FC off),
+    // Easy/Coding es_co_lint_then_report, gemma-4-12b-it-qat. Print the raw output bytes and
+    // the verdict so we can see whether the model emits empty, foreign soup, or prose.
+    use crate::inference::backend::backend_kind::BackendKind;
+    use crate::inference::eval::toolcall::parse::{extract_calls_dialect, looks_like_broken_json, looks_like_foreign_dialect};
+    use crate::inference::eval::toolcall::tasks::ToolSchema;
+
+    let tool = |name: &str, props: serde_json::Value| ToolSchema {
+        name: name.into(),
+        description: format!("Agent tool '{name}'."),
+        parameters: json!({ "type": "object", "properties": props }),
+    };
+    let lint = DeterministicSandbox::new(
+        "Run the linter on 'api/routes.py' and report the number of errors. Do not fix them.".into(),
+        vec![tool("run_lint", json!({ "path": { "type": "string" } })), tool("reply", json!({ "text": { "type": "string" } }))],
+        vec![MockResponse {
+            call: Call { name: "run_lint".into(), args: json!({ "path": "api/routes.py" }) },
+            response: r#"{"errors":3}"#.into(),
+        }],
+        EndStateRule::RequireSequence(vec![
+            TaskCheckpoint { tool: "run_lint".into(), args: json!({ "path": "api/routes.py" }) },
+            TaskCheckpoint { tool: "reply".into(), args: json!({ "text": "*3*" }) },
+        ]),
+    );
+    let model = crate::inference::eval::agentic::model_turn::BackendTurn {
+        backend: BackendKind::Ollama,
+        endpoint: "http://localhost:11434".into(),
+        model: "gemma-4-12b-it-qat:q4_0".into(),
+        cancel: CancellationToken::new(),
+        options: None,
+        keep_alive: None,
+        is_thinking: false,
+        max_tokens: 512,
+        stop_cache: Default::default(),
+    };
+    let (tx, mut rx) = unbounded_channel();
+    let report = run_agentic(&model, &lint, AgenticConfig { k: 1, max_steps: 5, ..Default::default() }, &tx).await.unwrap();
+    drop(tx);
+    for s in drain(&mut rx) {
+        let raw = &s.raw_output;
+        eprintln!("--- step {} kind={:?} len={} ---", s.step_index, s.kind, raw.len());
+        eprintln!("RAW(debug)={:?}", raw);
+        eprintln!("foreign={} broken_json={}", looks_like_foreign_dialect(raw), looks_like_broken_json(raw));
+        eprintln!("extract={:?}", extract_calls_dialect(raw).map(|(c, d)| (c.len(), d)));
+    }
+    eprintln!("report = {report:?}");
+}
+
+#[tokio::test]
+#[ignore = "Gap A' validation: gemma4 native on a reporter-tool task CALLS reply (not prose) with the mandate"]
+async fn live_gap_a_prime_gemma4_native_calls_reply_with_the_mandate() {
+    // Step 0 showed gemma4 native answered in PROSE (ReportedInProse) because the old native
+    // system said "...otherwise reply in plain text". With the reporter mandate, it should now
+    // CALL the reply tool. Drives the real native path on a reporter-tool act task.
+    use crate::inference::eval::agentic::build::sandbox_for;
+    use crate::inference::eval::agentic::model_turn::NativeToolTurn;
+    use crate::inference::eval::agentic::v2::collection::load_v2_collection;
+    use crate::inference::eval::agentic::v2::scenarios::v2_json;
+    use crate::inference::eval::toolcall::prompt::TerminalGuidance;
+    let task = load_v2_collection(v2_json("easy-coding").unwrap())
+        .unwrap()
+        .into_iter()
+        .find(|t| t.id == "es_co_run_failing_test")
+        .unwrap();
+    let (sandbox, cfg) = sandbox_for(&task).unwrap();
+    let model = NativeToolTurn {
+        backend: crate::inference::backend::backend_kind::BackendKind::Ollama,
+        endpoint: "http://localhost:11434".into(),
+        model: "gemma-4-12b-it-qat:q4_0".into(),
+        tools: task.tools.clone(),
+        options: None,
+        terminal: TerminalGuidance::MustUseTools,
+        max_tokens: 256,
+        is_thinking: false,
+    };
+    let (tx, mut rx) = unbounded_channel();
+    let outcome = run_once(&model, &sandbox, cfg.max_steps, cfg.max_recovery, 0, &tx).await.unwrap();
+    drop(tx);
+    let steps = drain(&mut rx);
+    for s in &steps {
+        eprintln!("turn {} kind={:?}\n  raw={}", s.step_index, s.kind, s.raw_output.trim());
+    }
+    eprintln!("GAP A' RESULT: reached_end={} failure={:?}", outcome.reached_end, outcome.failure);
+    // The mandate must move gemma4 off pure-prose: SOME turn calls a tool (reply/run_tests),
+    // and the run is NOT a ReportedInProse (the failure mode the mandate fixes).
+    let called_a_tool = steps.iter().any(|s| s.raw_output.contains("\"name\""));
+    assert!(called_a_tool, "with the reporter mandate gemma4 must CALL a tool, not only prose");
+    assert_ne!(outcome.failure, Some(FailureKind::ReportedInProse), "the mandate should prevent the prose-channel failure");
+}
+
+#[tokio::test]
+#[ignore = "Phase-1 fs env on the NATIVE path: qwen3.5:9b reads config.yaml then replies → PASS"]
+async fn live_filesystem_env_passes_on_the_native_path() {
+    // The integration gate: the filesystem env (Phase 1) now runs through the NATIVE tool-calling
+    // path with the reporter mandate (Gap A'). A native-capable model must read the real file
+    // content (the acks-empty fix) and report it BY CALLING reply — reaching the end state.
+    use crate::inference::eval::agentic::build::sandbox_for;
+    use crate::inference::eval::agentic::model_turn::NativeToolTurn;
+    use crate::inference::eval::agentic::v2::collection::load_v2_collection;
+    use crate::inference::eval::agentic::v2::scenarios::v2_json;
+    use crate::inference::eval::toolcall::prompt::TerminalGuidance;
+    let task = load_v2_collection(v2_json("easy-coding-fs").unwrap())
+        .unwrap()
+        .into_iter()
+        .find(|t| t.id == "es_fs_read_config")
+        .unwrap();
+    let (sandbox, cfg) = sandbox_for(&task).unwrap();
+    let model = NativeToolTurn {
+        backend: crate::inference::backend::backend_kind::BackendKind::Ollama,
+        endpoint: "http://localhost:11434".into(),
+        model: "qwen3.5:9b".into(),
+        tools: task.tools.clone(),
+        options: None,
+        terminal: TerminalGuidance::MustUseTools,
+        max_tokens: 256,
+        is_thinking: false,
+    };
+    let (tx, mut rx) = unbounded_channel();
+    let outcome = run_once(&model, &sandbox, cfg.max_steps, cfg.max_recovery, 0, &tx).await.unwrap();
+    drop(tx);
+    let steps = drain(&mut rx);
+    for s in &steps {
+        eprintln!("turn {} kind={:?}\n  raw={}\n  inj={:?}", s.step_index, s.kind, s.raw_output.trim(), s.injection);
+    }
+    eprintln!("FS-NATIVE RESULT: reached_end={} failure={:?}", outcome.reached_end, outcome.failure);
+    assert!(outcome.reached_end, "fs env on the native path must reach the end state (read → reply)");
+    assert_eq!(outcome.failure, None);
+}
+
+#[tokio::test]
+#[ignore = "tier coverage: native path RUNS + produces a definite verdict on medium/hard/extreme"]
+async fn live_native_path_runs_across_medium_hard_extreme_tiers() {
+    // Confirms native tool-calling is tier-agnostic: a native-capable model produces a DEFINITE
+    // scored outcome (reached_end OR a real failure — never an infra error) on a representative
+    // task from each higher tier, on the tier-scaled budget. The model may FAIL a hard/extreme
+    // task — that's a capability measurement, not a harness bug; we only assert it ran + scored.
+    use crate::inference::eval::agentic::build::sandbox_for;
+    use crate::inference::eval::agentic::difficulty::passk::max_tokens_for;
+    use crate::inference::eval::agentic::model_turn::NativeToolTurn;
+    use crate::inference::eval::agentic::v2::collection::load_v2_collection;
+    use crate::inference::eval::agentic::v2::scenarios::v2_json;
+    use crate::inference::eval::toolcall::prompt::TerminalGuidance;
+    let cases = [
+        ("medium-coding", "md_co_trace_root_cause"),
+        ("hard-coding", "hd_co_ci_multifile_instance0"),
+        ("extreme-supply-chain-recon", "ex_sc_release_instance0"),
+    ];
+    for (collection, task_id) in cases {
+        let task = load_v2_collection(v2_json(collection).unwrap())
+            .unwrap()
+            .into_iter()
+            .find(|t| t.id == task_id)
+            .unwrap();
+        let tier = task.agentic.as_ref().map(|s| s.tier).unwrap_or_default();
+        let (sandbox, cfg) = sandbox_for(&task).unwrap();
+        let model = NativeToolTurn {
+        backend: crate::inference::backend::backend_kind::BackendKind::Ollama,
+            endpoint: "http://localhost:11434".into(),
+            model: "qwen3.5:9b".into(),
+            tools: task.tools.clone(),
+            options: None,
+            terminal: TerminalGuidance::MustUseTools,
+            max_tokens: max_tokens_for(tier, true),
+            is_thinking: false,
+        };
+        let (tx, mut rx) = unbounded_channel();
+        let outcome = run_once(&model, &sandbox, cfg.max_steps, cfg.max_recovery, 0, &tx).await.unwrap();
+        drop(tx);
+        let steps = drain(&mut rx);
+        eprintln!(
+            "[{collection}/{task_id}] tier={tier:?} budget={} turns={} reached_end={} failure={:?}",
+            max_tokens_for(tier, true), steps.len(), outcome.reached_end, outcome.failure,
+        );
+        // A definite scored verdict: either it reached the end state, or it hit a real failure
+        // kind. Both are valid measurements; the run must NOT silently produce nothing.
+        assert!(outcome.reached_end || outcome.failure.is_some(), "{collection}/{task_id}: native run produced no verdict");
+    }
+}
+
+#[tokio::test]
+#[ignore = "Slice-2 gate (NATIVE): qwen3.5:9b searches the corpus then replies → PASS, EnvView carries results"]
+async fn live_web_corpus_passes_on_the_native_path() {
+    // The corpus env on the NATIVE path: a native-capable model `search`es and reports the fact
+    // from the top snippet → reaches the end state, and the streamed EnvView carries the ranked
+    // results (the watchable replay). Confirm `ollama show qwen3.5:9b` lists `tools` first — if
+    // not, swap in a confirmed-native model so this exercises native FC, not the prompt fallback.
+    use crate::inference::eval::agentic::build::sandbox_for;
+    use crate::inference::eval::agentic::difficulty::passk::max_tokens_for;
+    use crate::inference::eval::agentic::env_view::{CorpusOp, EnvView};
+    use crate::inference::eval::agentic::model_turn::NativeToolTurn;
+    use crate::inference::eval::agentic::v2::collection::load_v2_collection;
+    use crate::inference::eval::agentic::v2::scenarios::v2_json;
+    use crate::inference::eval::toolcall::prompt::TerminalGuidance;
+    let task = load_v2_collection(v2_json("easy-research-search").unwrap())
+        .unwrap()
+        .into_iter()
+        .find(|t| t.id == "es_rs_search_fact")
+        .unwrap();
+    let tier = task.agentic.as_ref().map(|s| s.tier).unwrap_or_default();
+    let (sandbox, cfg) = sandbox_for(&task).unwrap();
+    let model = NativeToolTurn {
+        backend: crate::inference::backend::backend_kind::BackendKind::Ollama,
+        endpoint: "http://localhost:11434".into(),
+        model: "qwen3.5:9b".into(),
+        tools: task.tools.clone(),
+        options: None,
+        terminal: TerminalGuidance::MustUseTools,
+        max_tokens: max_tokens_for(tier, true),
+        is_thinking: false,
+    };
+    let (tx, mut rx) = unbounded_channel();
+    let outcome = run_once(&model, &sandbox, cfg.max_steps, cfg.max_recovery, 0, &tx).await.unwrap();
+    drop(tx);
+    let steps = drain(&mut rx);
+    for s in &steps {
+        eprintln!("turn {} kind={:?} raw={} env={:?}", s.step_index, s.kind, s.raw_output.trim(), s.env);
+    }
+    eprintln!("CORPUS-NATIVE: reached_end={} failure={:?}", outcome.reached_end, outcome.failure);
+    assert!(outcome.reached_end, "native corpus run must reach the end state (search → reply)");
+    assert_eq!(outcome.failure, None);
+    // The replay carries the real ranked results (a search EnvView with hits).
+    assert!(
+        steps.iter().any(|s| matches!(&s.env, EnvView::WebCorpus(c) if c.op == CorpusOp::Search && !c.results.is_empty())),
+        "a search turn's EnvView must carry ranked results for the replay",
+    );
+}
+
+#[tokio::test]
+#[ignore = "Slice-2 gate (PROMPT): qwen3.5:9b drives the corpus via the prompt path (text-parsed calls)"]
+async fn live_web_corpus_runs_on_the_prompt_path() {
+    // The corpus env on the PROMPT path — a DIFFERENT channel than native (tool calls parsed from
+    // text). Native passing does not prove this works, so validate it live too (standing rule).
+    use crate::inference::backend::backend_kind::BackendKind;
+    use crate::inference::eval::agentic::build::sandbox_for;
+    use crate::inference::eval::agentic::env_view::EnvView;
+    use crate::inference::eval::agentic::model_turn::BackendTurn;
+    use crate::inference::eval::agentic::v2::collection::load_v2_collection;
+    use crate::inference::eval::agentic::v2::scenarios::v2_json;
+    let task = load_v2_collection(v2_json("easy-research-search").unwrap())
+        .unwrap()
+        .into_iter()
+        .find(|t| t.id == "es_rs_search_fact")
+        .unwrap();
+    let (sandbox, cfg) = sandbox_for(&task).unwrap();
+    let model = BackendTurn {
+        backend: BackendKind::Ollama,
+        endpoint: "http://localhost:11434".into(),
+        model: "qwen3.5:9b".into(),
+        cancel: CancellationToken::new(),
+        options: None,
+        keep_alive: None,
+        is_thinking: false,
+        max_tokens: 1024,
+        stop_cache: Default::default(),
+    };
+    let (tx, mut rx) = unbounded_channel();
+    let outcome = run_once(&model, &sandbox, cfg.max_steps, cfg.max_recovery, 0, &tx).await.unwrap();
+    drop(tx);
+    let steps = drain(&mut rx);
+    for s in &steps {
+        eprintln!("turn {} kind={:?} raw={} env={:?}", s.step_index, s.kind, s.raw_output.trim(), s.env);
+    }
+    eprintln!("CORPUS-PROMPT: reached_end={} failure={:?}", outcome.reached_end, outcome.failure);
+    // The prompt channel must produce a definite verdict AND drive the corpus env (a corpus op in
+    // some EnvView) — proving search→reply works through text parsing, not just native tool_calls.
+    assert!(outcome.reached_end || outcome.failure.is_some(), "prompt corpus run produced no verdict");
+    assert!(
+        steps.iter().any(|s| matches!(&s.env, EnvView::WebCorpus(_))),
+        "the prompt path must exercise the corpus env (a web_corpus EnvView)",
+    );
+}
+
+#[tokio::test]
+#[ignore = "Slice-2 abstain gate (NATIVE): qwen3.5:9b searches, finds nothing, reports no-doc-found → PASS"]
+async fn live_web_corpus_abstains_when_doc_absent_native() {
+    // Regression for the brittle-checkpoint bug: a CORRECT abstain (the native model said "No
+    // document about black holes ... was found in the corpus") was failed by the old exact-phrase
+    // `*not available*` checkpoint → the model looped re-replying → InfiniteLoop. The checkpoint is
+    // now the natural absence phrasing (`*no*document*found*`), so a correct abstain reaches the
+    // end state on the native path. NOT a fabrication test — it asserts the abstain is ACCEPTED.
+    use crate::inference::eval::agentic::build::sandbox_for;
+    use crate::inference::eval::agentic::difficulty::passk::max_tokens_for;
+    use crate::inference::eval::agentic::model_turn::NativeToolTurn;
+    use crate::inference::eval::agentic::v2::collection::load_v2_collection;
+    use crate::inference::eval::agentic::v2::scenarios::v2_json;
+    use crate::inference::eval::toolcall::prompt::TerminalGuidance;
+    let task = load_v2_collection(v2_json("easy-research-search").unwrap())
+        .unwrap()
+        .into_iter()
+        .find(|t| t.id == "es_rs_abstain_when_absent")
+        .unwrap();
+    let tier = task.agentic.as_ref().map(|s| s.tier).unwrap_or_default();
+    let (sandbox, cfg) = sandbox_for(&task).unwrap();
+    let model = NativeToolTurn {
+        backend: crate::inference::backend::backend_kind::BackendKind::Ollama,
+        endpoint: "http://localhost:11434".into(),
+        model: "qwen3.5:9b".into(),
+        tools: task.tools.clone(),
+        options: None,
+        terminal: TerminalGuidance::MustUseTools,
+        max_tokens: max_tokens_for(tier, true),
+        is_thinking: false,
+    };
+    let (tx, mut rx) = unbounded_channel();
+    let outcome = run_once(&model, &sandbox, cfg.max_steps, cfg.max_recovery, 0, &tx).await.unwrap();
+    drop(tx);
+    let steps = drain(&mut rx);
+    for s in &steps {
+        eprintln!("turn {} kind={:?} raw={}", s.step_index, s.kind, s.raw_output.trim());
+    }
+    eprintln!("CORPUS-ABSTAIN-NATIVE: reached_end={} failure={:?}", outcome.reached_end, outcome.failure);
+    assert!(outcome.reached_end, "a correct native abstain must reach the end state (no exact-phrase brittleness)");
+    assert_eq!(outcome.failure, None);
+}
+
+#[tokio::test]
+#[ignore = "hits a live Ollama on :11434 driving gemma-4-12b-it-qat through the NATIVE /api/chat tools path"]
+async fn live_gemma_native_path_gives_an_honest_verdict_not_silent_empty() {
+    // The native-path wiring fix end-to-end: NativeToolTurn now surfaces the assistant
+    // `content` when Ollama parses zero tool_calls, so a mis-built model's output is given a
+    // real verdict instead of collapsing to a silent empty → Hallucinated. Drives the REAL
+    // /api/chat tools path. gemma-qat is nondeterministic, so we assert the INVARIANT: the run
+    // gets a definite verdict, and any foreign-dialect soup in the terminal turn is flagged
+    // foreign (never false-flagged on a clean/prose turn).
+    use crate::inference::eval::toolcall::parse::looks_like_foreign_dialect;
+    use crate::inference::eval::toolcall::tasks::ToolSchema;
+
+    let tool = |name: &str, props: serde_json::Value| ToolSchema {
+        name: name.into(),
+        description: format!("Agent tool '{name}'."),
+        parameters: json!({ "type": "object", "properties": props }),
+    };
+    let tools = vec![
+        tool("run_tests", json!({ "module": { "type": "string" } })),
+        tool("read_file", json!({ "path": { "type": "string" } })),
+        tool("reply", json!({ "text": { "type": "string" } })),
+        tool("write_file", json!({ "path": { "type": "string" }, "content": { "type": "string" } })),
+    ];
+    let cart = DeterministicSandbox::new(
+        "Run the test suite for module 'cart'. If it fails, report which test failed. Do not edit any source.".into(),
+        tools.clone(),
+        vec![MockResponse {
+            call: Call { name: "run_tests".into(), args: json!({ "module": "cart" }) },
+            response: r#"{"failed":["test_apply_discount_negative_total"]}"#.into(),
+        }],
+        EndStateRule::RequireSequence(vec![TaskCheckpoint {
+            tool: "run_tests".into(),
+            args: json!({ "module": "cart" }),
+        }]),
+    );
+    let model = crate::inference::eval::agentic::model_turn::NativeToolTurn {
+        backend: crate::inference::backend::backend_kind::BackendKind::Ollama,
+        endpoint: "http://localhost:11434".into(),
+        model: "gemma-4-12b-it-qat:q4_0".into(),
+        tools,
+        options: None,
+        terminal: crate::inference::eval::toolcall::prompt::TerminalGuidance::MustUseTools,
+        max_tokens: 256,
+        is_thinking: false,
+    };
+    let (tx, mut rx) = unbounded_channel();
+    let report = run_agentic(&model, &cart, AgenticConfig { k: 1, max_steps: 3, ..Default::default() }, &tx)
+        .await
+        .unwrap();
+    drop(tx);
+
+    let steps = drain(&mut rx);
+    for s in &steps {
+        eprintln!("step {} kind={:?}\n  raw={}", s.step_index, s.kind, s.raw_output);
+    }
+    eprintln!("NATIVE report = {report:?}");
+
+    // Definite verdict — never the silent-empty bug.
+    assert_eq!(report.passes + report.failures.foreign_dialect_calls + report.failures.hallucinated_completions
+        + report.failures.malformed_json_calls + report.failures.infinite_loop_hits
+        + report.failures.reported_in_prose_calls, report.total_runs, "every run got a definite verdict");
+
+    let terminal = steps.last().expect("at least one step");
+    if looks_like_foreign_dialect(&terminal.raw_output) {
+        assert_eq!(report.top_error, TopError::ForeignDialect, "native soup must be flagged ForeignDialect");
+    } else {
+        assert_eq!(report.failures.foreign_dialect_calls, 0, "a non-soup native yield must NOT be false-flagged");
+    }
+}
+
+#[tokio::test]
+async fn foreign_dialect_soup_is_flagged_not_hallucinated_or_malformed() {
+    // A mis-built model emits an unparseable channel/harmony dialect (paren form in
+    // control tokens) that the parser — like a real deployment — does NOT salvage. It must
+    // be labeled ForeignDialect (a template/dialect artifact), NOT mislabeled as a
+    // hallucinated completion or broken JSON, which would blame the model's capability.
+    let model = ScriptedModel::new(vec![(
+        "<channel|><|tool_response|>call:reply(text='cart suite failed: test_apply_discount_negative_total')<tool_call|>",
+        14,
+    )]);
+    let (tx, mut rx) = unbounded_channel();
+    let report = run_agentic(&model, &sandbox(), AgenticConfig { k: 1, max_steps: 8, ..Default::default() }, &tx).await.unwrap();
+    drop(tx);
+
+    assert_eq!(report.passes, 0);
+    assert_eq!(report.failures.foreign_dialect_calls, 1);
+    assert_eq!(report.failures.hallucinated_completions, 0, "not a hallucination");
+    assert_eq!(report.failures.malformed_json_calls, 0, "not broken JSON");
+    assert_eq!(report.top_error, TopError::ForeignDialect);
+
+    let steps = drain(&mut rx);
+    assert_eq!(steps.len(), 1);
+    assert_eq!(steps[0].kind, StepKind::ForeignDialect);
+}
+
+#[tokio::test]
+#[ignore = "live: drives qwen2.5-coder against easy-coding-fs to verify REAL file content end-to-end"]
+async fn live_filesystem_env_returns_real_content_end_to_end() {
+    // The acks-empty fix, end-to-end against a real model on the real bundled fs collection:
+    // a read_file turn must surface the actual file content (and the streamed EnvView must
+    // carry it for the replay), never `{"ok":true}`.
+    use crate::inference::backend::backend_kind::BackendKind;
+    use crate::inference::eval::agentic::build::sandbox_for;
+    use crate::inference::eval::agentic::env_view::{EnvView, FsOp};
+    use crate::inference::eval::agentic::v2::collection::load_v2_collection;
+    use crate::inference::eval::agentic::v2::scenarios::v2_json;
+    let task = load_v2_collection(v2_json("easy-coding-fs").unwrap())
+        .unwrap()
+        .into_iter()
+        .find(|t| t.id == "es_fs_read_config")
+        .unwrap();
+    let (sandbox, cfg) = sandbox_for(&task).unwrap();
+    let model = crate::inference::eval::agentic::model_turn::BackendTurn {
+        backend: BackendKind::Ollama,
+        endpoint: "http://localhost:11434".into(),
+        model: "qwen2.5-coder-7b-instruct:q4_k_m".into(),
+        cancel: CancellationToken::new(),
+        options: None,
+        keep_alive: None,
+        is_thinking: false,
+        max_tokens: 256,
+        stop_cache: Default::default(),
+    };
+    let (tx, mut rx) = unbounded_channel();
+    let outcome = run_once(&model, &sandbox, cfg.max_steps, cfg.max_recovery, 0, &tx).await.unwrap();
+    drop(tx);
+    let steps = drain(&mut rx);
+    for s in &steps {
+        eprintln!("step {} kind={:?}\n  inj={:?}\n  env={:?}", s.step_index, s.kind, s.injection, s.env);
+    }
+    eprintln!("outcome = {outcome:?}");
+
+    // No read_file turn may ack empty (the bug). If the model read config.yaml, the EnvView
+    // must carry the real content.
+    for s in &steps {
+        if let EnvView::FileSystem(fs) = &s.env {
+            if fs.op == FsOp::Read && fs.focus_path.as_deref() == Some("config.yaml") {
+                let content = fs.content.clone().unwrap_or_default();
+                assert!(content.contains("timeout: 30"), "read_file must surface real content, got {content:?}");
+            }
+        }
+        assert_ne!(s.injection.as_deref(), Some("Tool result: {\"ok\":true}"), "read_file acked empty (the bug)");
+    }
+}
+
+#[tokio::test]
+async fn filesystem_forbidden_write_file_springs_the_trap_env_agnostically() {
+    // The forbidden-trap path is environment-agnostic: a model that "helpfully" edits a file
+    // in the simulated FILESYSTEM env (violating 'do not modify') must spring the must_not_call
+    // trap and terminate as ForbiddenCall — identically to an entity task. Loads the real
+    // bundled fs task so the new env genuinely exercises the unchanged runner trap path.
+    use crate::inference::eval::agentic::build::sandbox_for;
+    use crate::inference::eval::agentic::v2::collection::load_v2_collection;
+    use crate::inference::eval::agentic::v2::scenarios::v2_json;
+    let json = v2_json("easy-coding-fs").unwrap();
+    let task = load_v2_collection(json).unwrap().into_iter().find(|t| t.id == "es_fs_read_config").unwrap();
+    let (sandbox, cfg) = sandbox_for(&task).unwrap();
+
+    let model = ScriptedModel::new(vec![(
+        r#"{"name":"write_file","args":{"path":"config.yaml","content":"timeout: 0"}}"#,
+        12,
+    )]);
+    let (tx, mut rx) = unbounded_channel();
+    let outcome = run_once(&model, &sandbox, cfg.max_steps, cfg.max_recovery, 0, &tx).await.unwrap();
+    drop(tx);
+
+    assert_eq!(outcome.failure, Some(FailureKind::ForbiddenCall), "forbidden write_file must terminate the run");
+    assert!(!outcome.reached_end);
+    let steps = drain(&mut rx);
+    assert_eq!(steps.last().unwrap().kind, StepKind::ForbiddenCall);
+}
+
+#[tokio::test]
+async fn empty_output_is_flagged_not_hallucinated() {
+    // The real gemma-qat prompt-path symptom: the model emits a lone "." then ends its turn
+    // (a generation/template artifact). It must read as EmptyOutput — "the model said
+    // nothing" — NOT Hallucinated, which would imply it falsely claimed completion.
+    let model = ScriptedModel::new(vec![(".", 1)]);
+    let (tx, mut rx) = unbounded_channel();
+    let report = run_agentic(&model, &sandbox(), AgenticConfig { k: 1, max_steps: 8, ..Default::default() }, &tx).await.unwrap();
+    drop(tx);
+
+    assert_eq!(report.passes, 0);
+    assert_eq!(report.failures.empty_output_calls, 1);
+    assert_eq!(report.failures.hallucinated_completions, 0, "not a hallucination — it produced nothing");
+    assert_eq!(report.failures.foreign_dialect_calls, 0);
+    assert_eq!(report.top_error, TopError::EmptyOutput);
+
+    let steps = drain(&mut rx);
+    assert_eq!(steps.len(), 1);
+    assert_eq!(steps[0].kind, StepKind::EmptyOutput);
 }
 
 #[tokio::test]
@@ -1198,4 +1804,275 @@ async fn a_model_making_progress_each_turn_is_not_cut_by_the_loop_detector() {
     assert!(outcome.reached_end);
     assert_eq!(outcome.steps, 2);
     drop(rx);
+}
+
+// ---- Slice 3: stateful web-UI env + RequireEndState grader ----
+
+/// A web-UI sandbox: initial cart state, RequireEndState target (coupon filled + submitted),
+/// `delete_account` as the must-not-call trap. Tools empty (schema validation skipped).
+fn web_ui_sandbox() -> DeterministicSandbox {
+    use crate::inference::eval::agentic::v2::env_webui::WebUiSpec;
+    use crate::inference::eval::agentic::v2::r#match::MustNotCall;
+    let initial = json!({ "route": "/cart", "fields": { "coupon": "" }, "submitted": false });
+    let target = json!({ "fields": { "coupon": "SAVE10" }, "submitted": true });
+    DeterministicSandbox::new("Apply coupon SAVE10 and submit the cart.".into(), vec![], vec![], EndStateRule::RequireEndState(target))
+        .with_web_ui(WebUiSpec::from_world_state(&initial))
+        .with_recognized_tools(["fill".to_string(), "submit".to_string()])
+        .with_must_not_call(vec![MustNotCall::Name("delete_account".into())])
+}
+
+#[tokio::test]
+async fn web_ui_oracle_reaches_target_state_and_passes() {
+    use crate::inference::eval::agentic::env_view::EnvView;
+    // fill the coupon, then submit → the per-run WebUiState reaches the target → success.
+    let model = ScriptedModel::new(vec![
+        (r#"{"name":"fill","args":{"field":"coupon","value":"SAVE10"}}"#, 10),
+        (r#"{"name":"submit","args":{}}"#, 8),
+    ]);
+    let (tx, mut rx) = unbounded_channel();
+    let outcome = run_once(&model, &web_ui_sandbox(), 8, 2, 0, &tx).await.unwrap();
+    drop(tx);
+    assert!(outcome.reached_end, "oracle drove the UI to the target → must pass");
+    assert_eq!(outcome.failure, None);
+    let steps = drain(&mut rx);
+    assert_eq!(steps.last().unwrap().kind, StepKind::EndStateReached);
+    // The replay carries the post-action UI state.
+    assert!(matches!(&steps.last().unwrap().env, EnvView::WebUi(v) if v.state["submitted"] == json!(true)));
+}
+
+#[tokio::test]
+async fn web_ui_trivial_agent_never_reaches_target_and_fails() {
+    // Repeats the WRONG coupon and never submits → never matches the target → stalls → fail.
+    let model = ScriptedModel::new(vec![(r#"{"name":"fill","args":{"field":"coupon","value":"WRONG"}}"#, 6)]);
+    let (tx, rx) = unbounded_channel();
+    let outcome = run_once(&model, &web_ui_sandbox(), 8, 2, 0, &tx).await.unwrap();
+    drop(tx);
+    assert!(!outcome.reached_end, "a trivial agent must NOT reach the target state");
+    assert!(outcome.failure.is_some());
+    drop(rx);
+}
+
+#[tokio::test]
+async fn web_ui_forbidden_call_dominates_even_when_target_reached_same_turn() {
+    // The KEY regression pin: a turn that batches the winning `submit` WITH a forbidden
+    // `delete_account` must fail as ForbiddenCall — the pre-scan dominates, the trap can't be
+    // laundered by also reaching the target.
+    let model = ScriptedModel::new(vec![
+        (r#"{"name":"fill","args":{"field":"coupon","value":"SAVE10"}}"#, 10),
+        (r#"[{"name":"submit","args":{}},{"name":"delete_account","args":{}}]"#, 12),
+    ]);
+    let (tx, mut rx) = unbounded_channel();
+    let outcome = run_once(&model, &web_ui_sandbox(), 8, 2, 0, &tx).await.unwrap();
+    drop(tx);
+    assert!(!outcome.reached_end, "a forbidden call in the winning turn must fail the run");
+    assert_eq!(outcome.failure, Some(FailureKind::ForbiddenCall));
+    let steps = drain(&mut rx);
+    assert_eq!(steps.last().unwrap().kind, StepKind::ForbiddenCall);
+}
+
+#[tokio::test]
+#[ignore = "Slice-3 gate (NATIVE): qwen3.5:9b fills the coupon + submits → target reached, EnvView shows submitted"]
+async fn live_web_ui_passes_on_the_native_path() {
+    // The stateful web-UI env on the NATIVE path: the model fills SAVE10 and submits → the per-run
+    // WebUiState reaches the target → success, and the streamed EnvView carries the mutated state.
+    use crate::inference::eval::agentic::build::sandbox_for;
+    use crate::inference::eval::agentic::difficulty::passk::max_tokens_for;
+    use crate::inference::eval::agentic::env_view::EnvView;
+    use crate::inference::eval::agentic::model_turn::NativeToolTurn;
+    use crate::inference::eval::agentic::v2::collection::load_v2_collection;
+    use crate::inference::eval::agentic::v2::scenarios::v2_json;
+    use crate::inference::eval::toolcall::prompt::TerminalGuidance;
+    let task = load_v2_collection(v2_json("easy-webui-tasks").unwrap())
+        .unwrap()
+        .into_iter()
+        .find(|t| t.id == "es_wu_apply_coupon")
+        .unwrap();
+    let tier = task.agentic.as_ref().map(|s| s.tier).unwrap_or_default();
+    let (sandbox, cfg) = sandbox_for(&task).unwrap();
+    let model = NativeToolTurn {
+        backend: crate::inference::backend::backend_kind::BackendKind::Ollama,
+        endpoint: "http://localhost:11434".into(),
+        model: "qwen3.5:9b".into(),
+        tools: task.tools.clone(),
+        options: None,
+        terminal: TerminalGuidance::MustUseTools,
+        max_tokens: max_tokens_for(tier, true),
+        is_thinking: false,
+    };
+    let (tx, mut rx) = unbounded_channel();
+    let outcome = run_once(&model, &sandbox, cfg.max_steps, cfg.max_recovery, 0, &tx).await.unwrap();
+    drop(tx);
+    let steps = drain(&mut rx);
+    for s in &steps {
+        eprintln!("turn {} kind={:?} raw={} env={:?}", s.step_index, s.kind, s.raw_output.trim(), s.env);
+    }
+    eprintln!("WEBUI-NATIVE: reached_end={} failure={:?}", outcome.reached_end, outcome.failure);
+    assert!(outcome.reached_end, "native web-UI run must reach the target state (fill → submit)");
+    assert_eq!(outcome.failure, None);
+    assert!(
+        steps.iter().any(|s| matches!(&s.env, EnvView::WebUi(v) if v.state.get("submitted") == Some(&serde_json::json!(true)))),
+        "the replay must carry the mutated state (submitted = true)",
+    );
+}
+
+#[tokio::test]
+#[ignore = "Slice-3 gate (PROMPT): qwen3.5:9b drives the web UI via the prompt path (text-parsed calls)"]
+async fn live_web_ui_runs_on_the_prompt_path() {
+    // The web-UI env on the PROMPT path — a different parsing channel than native, so validate it
+    // live too (standing rule). Asserts a definite verdict + that the corpus/UI env was exercised.
+    use crate::inference::backend::backend_kind::BackendKind;
+    use crate::inference::eval::agentic::build::sandbox_for;
+    use crate::inference::eval::agentic::env_view::EnvView;
+    use crate::inference::eval::agentic::model_turn::BackendTurn;
+    use crate::inference::eval::agentic::v2::collection::load_v2_collection;
+    use crate::inference::eval::agentic::v2::scenarios::v2_json;
+    let task = load_v2_collection(v2_json("easy-webui-tasks").unwrap())
+        .unwrap()
+        .into_iter()
+        .find(|t| t.id == "es_wu_apply_coupon")
+        .unwrap();
+    let (sandbox, cfg) = sandbox_for(&task).unwrap();
+    let model = BackendTurn {
+        backend: BackendKind::Ollama,
+        endpoint: "http://localhost:11434".into(),
+        model: "qwen3.5:9b".into(),
+        cancel: CancellationToken::new(),
+        options: None,
+        keep_alive: None,
+        is_thinking: false,
+        max_tokens: 1024,
+        stop_cache: Default::default(),
+    };
+    let (tx, mut rx) = unbounded_channel();
+    let outcome = run_once(&model, &sandbox, cfg.max_steps, cfg.max_recovery, 0, &tx).await.unwrap();
+    drop(tx);
+    let steps = drain(&mut rx);
+    for s in &steps {
+        eprintln!("turn {} kind={:?} raw={} env={:?}", s.step_index, s.kind, s.raw_output.trim(), s.env);
+    }
+    eprintln!("WEBUI-PROMPT: reached_end={} failure={:?}", outcome.reached_end, outcome.failure);
+    assert!(outcome.reached_end || outcome.failure.is_some(), "prompt web-UI run produced no verdict");
+    assert!(
+        steps.iter().any(|s| matches!(&s.env, EnvView::WebUi(_))),
+        "the prompt path must exercise the web-UI env (a web_ui EnvView)",
+    );
+}
+
+#[tokio::test]
+#[ignore = "Slice-3 regression (NATIVE): navigate+toggle reaches target despite slash/name variation"]
+async fn live_web_ui_enable_setting_native() {
+    // Regression for the FAKE-DONE failures: native navigated to "settings" (no slash) → route
+    // canonicalization makes it "/settings"; the model toggles the declared "notifications".
+    use crate::inference::eval::agentic::build::sandbox_for;
+    use crate::inference::eval::agentic::difficulty::passk::max_tokens_for;
+    use crate::inference::eval::agentic::model_turn::NativeToolTurn;
+    use crate::inference::eval::agentic::v2::collection::load_v2_collection;
+    use crate::inference::eval::agentic::v2::scenarios::v2_json;
+    use crate::inference::eval::toolcall::prompt::TerminalGuidance;
+    let task = load_v2_collection(v2_json("easy-webui-tasks").unwrap()).unwrap().into_iter().find(|t| t.id == "es_wu_enable_setting").unwrap();
+    let tier = task.agentic.as_ref().map(|s| s.tier).unwrap_or_default();
+    let (sandbox, cfg) = sandbox_for(&task).unwrap();
+    let model = NativeToolTurn {
+        backend: crate::inference::backend::backend_kind::BackendKind::Ollama,
+        endpoint: "http://localhost:11434".into(),
+        model: "qwen3.5:9b".into(),
+        tools: task.tools.clone(),
+        options: None,
+        terminal: TerminalGuidance::MustUseTools,
+        max_tokens: max_tokens_for(tier, true),
+        is_thinking: false,
+    };
+    let (tx, mut rx) = unbounded_channel();
+    let outcome = run_once(&model, &sandbox, cfg.max_steps, cfg.max_recovery, 0, &tx).await.unwrap();
+    drop(tx);
+    for s in drain(&mut rx) {
+        eprintln!("turn {} kind={:?} raw={}", s.step_index, s.kind, s.raw_output.trim());
+    }
+    eprintln!("ENABLE-SETTING-NATIVE: reached_end={} failure={:?}", outcome.reached_end, outcome.failure);
+    assert!(outcome.reached_end, "native navigate+toggle must reach the target after the slash fix");
+    assert_eq!(outcome.failure, None);
+}
+
+#[tokio::test]
+#[ignore = "Slice-3 regression (PROMPT): unknown-control feedback + clear prompt → reaches target"]
+async fn live_web_ui_enable_setting_prompt() {
+    use crate::inference::backend::backend_kind::BackendKind;
+    use crate::inference::eval::agentic::build::sandbox_for;
+    use crate::inference::eval::agentic::model_turn::BackendTurn;
+    use crate::inference::eval::agentic::v2::collection::load_v2_collection;
+    use crate::inference::eval::agentic::v2::scenarios::v2_json;
+    let task = load_v2_collection(v2_json("easy-webui-tasks").unwrap()).unwrap().into_iter().find(|t| t.id == "es_wu_enable_setting").unwrap();
+    let (sandbox, cfg) = sandbox_for(&task).unwrap();
+    let model = BackendTurn {
+        backend: BackendKind::Ollama,
+        endpoint: "http://localhost:11434".into(),
+        model: "qwen3.5:9b".into(),
+        cancel: CancellationToken::new(),
+        options: None,
+        keep_alive: None,
+        is_thinking: false,
+        max_tokens: 1024,
+        stop_cache: Default::default(),
+    };
+    let (tx, mut rx) = unbounded_channel();
+    let outcome = run_once(&model, &sandbox, cfg.max_steps, cfg.max_recovery, 0, &tx).await.unwrap();
+    drop(tx);
+    for s in drain(&mut rx) {
+        eprintln!("turn {} kind={:?} raw={}", s.step_index, s.kind, s.raw_output.trim());
+    }
+    eprintln!("ENABLE-SETTING-PROMPT: reached_end={} failure={:?}", outcome.reached_end, outcome.failure);
+    assert!(outcome.reached_end, "prompt navigate+toggle must reach the target after the fix");
+    assert_eq!(outcome.failure, None);
+}
+
+#[tokio::test]
+#[ignore = "Slice-4: an EDITED env snapshot reaches the live model (edit → sandbox → model is real)"]
+async fn live_edited_world_state_reaches_the_model() {
+    // The editor's whole point: editing world_state changes what the model actually sees. Edit a
+    // bundled fs task's config.yaml to a distinctive value and confirm the live model reads it. (The
+    // edit also makes this run non-pristine → collection_hash None — the fork-on-edit guard, unit-pinned.)
+    use crate::inference::eval::agentic::build::sandbox_for;
+    use crate::inference::eval::agentic::difficulty::passk::max_tokens_for;
+    use crate::inference::eval::agentic::model_turn::NativeToolTurn;
+    use crate::inference::eval::agentic::v2::collection::load_v2_collection;
+    use crate::inference::eval::agentic::v2::scenarios::v2_json;
+    use crate::inference::eval::toolcall::prompt::TerminalGuidance;
+    let mut task = load_v2_collection(v2_json("easy-coding-fs").unwrap())
+        .unwrap()
+        .into_iter()
+        .find(|t| t.id == "es_fs_read_config")
+        .unwrap();
+    // EDIT the snapshot: change config.yaml's timeout to a distinctive value the pristine never had.
+    if let Some(spec) = task.agentic.as_mut() {
+        spec.world_state = Some(serde_json::json!({
+            "config.yaml": "timeout: 777\nretries: 2\n",
+            "src/app.py": "import config\n",
+            "README.md": "# App\n"
+        }));
+    }
+    let tier = task.agentic.as_ref().map(|s| s.tier).unwrap_or_default();
+    let (sandbox, cfg) = sandbox_for(&task).unwrap();
+    let model = NativeToolTurn {
+        backend: crate::inference::backend::backend_kind::BackendKind::Ollama,
+        endpoint: "http://localhost:11434".into(),
+        model: "qwen3.5:9b".into(),
+        tools: task.tools.clone(),
+        options: None,
+        terminal: TerminalGuidance::MustUseTools,
+        max_tokens: max_tokens_for(tier, true),
+        is_thinking: false,
+    };
+    let (tx, mut rx) = unbounded_channel();
+    let outcome = run_once(&model, &sandbox, cfg.max_steps, cfg.max_recovery, 0, &tx).await.unwrap();
+    drop(tx);
+    let steps = drain(&mut rx);
+    for s in &steps {
+        eprintln!("turn {} kind={:?} inj={:?} raw={}", s.step_index, s.kind, s.injection, s.raw_output.trim());
+    }
+    eprintln!("EDITED-WS: reached_end={} failure={:?}", outcome.reached_end, outcome.failure);
+    // The sandbox served the EDITED file (777), proving the edit reached the live model's tool results.
+    assert!(
+        steps.iter().any(|s| s.injection.as_deref().is_some_and(|i| i.contains("777")) || s.raw_output.contains("777")),
+        "the edited config (timeout: 777) must reach the model",
+    );
 }
